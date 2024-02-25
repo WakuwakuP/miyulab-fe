@@ -47,16 +47,17 @@ export const Status = ({
     >
       {status.reblog ? (
         <>
-          <div className="flex">
+          <div>
             <img
               className={[
-                'rounded-lg object-contain flex-none',
+                'rounded-lg object-contain flex-none inline-block',
                 small ? 'w-3 h-3' : 'w-6 h-6',
               ].join(' ')}
               src={status.account.avatar}
               alt="avatar"
             />
-            <p
+            <span
+              className="pl-2"
               dangerouslySetInnerHTML={{
                 __html: getDisplayName(status.account),
               }}
@@ -148,19 +149,26 @@ export const Status = ({
           (media: Entity.Attachment) => {
             switch (status.media_attachments.length) {
               case 1:
-                return <Media media={media} />
+                return (
+                  <Media
+                    key={media.id}
+                    media={media}
+                  />
+                )
               case 2:
                 return (
                   <Media
-                    media={media}
                     className="w-1/2"
+                    key={media.id}
+                    media={media}
                   />
                 )
               default:
                 return (
                   <Media
-                    media={media}
                     className="w-1/3"
+                    key={media.id}
+                    media={media}
                   />
                 )
             }
