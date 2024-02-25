@@ -1,6 +1,5 @@
 'use client'
 
-import generator, { Entity } from 'megalodon'
 import {
   useContext,
   useEffect,
@@ -8,11 +7,13 @@ import {
   useState,
 } from 'react'
 
+import generator, { Entity } from 'megalodon'
+
+import { Panel } from 'app/_parts/Panel'
+import { Status } from 'app/_parts/Status'
+import { ArrayLengthControl } from 'util/ArrayLengthControl'
 import { BACKEND_URL } from 'util/environment'
 import { TokenContext } from 'util/provider/AppProvider'
-import { Status } from 'app/_parts/Status'
-import { Panel } from 'app/_parts/Panel'
-import { ArrayLengthControl } from 'util/ArrayLengthControl'
 
 export const TagTimeline = ({ tag }: { tag: string }) => {
   const refFirstRef = useRef(true)
@@ -29,7 +30,7 @@ export const TagTimeline = ({ tag }: { tag: string }) => {
       refFirstRef.current = false
       return
     }
-    if (!token) return
+    if (token == null) return
     const client = generator(
       'pleroma',
       `https://${BACKEND_URL}`,
@@ -56,7 +57,7 @@ export const TagTimeline = ({ tag }: { tag: string }) => {
         )
       }
     })
-  }, [])
+  }, [tag, token])
 
   return (
     <Panel name={`#${tag}`}>

@@ -1,5 +1,6 @@
-import { Entity } from 'megalodon'
 import { HTMLProps } from 'react'
+
+import { Entity } from 'megalodon'
 
 export const Media = ({
   media,
@@ -11,9 +12,10 @@ export const Media = ({
   switch (media.type) {
     case 'image':
       return (
+        // eslint-disable-next-line @next/next/no-img-element
         <img
           key={media.id}
-          src={media.preview_url || undefined}
+          src={media.url}
           alt=""
           className={[
             'p-0.5 object-contain max-h-48 border-1',
@@ -25,7 +27,7 @@ export const Media = ({
       return (
         <video
           key={media.id}
-          src={media.url || undefined}
+          src={media.url}
           controls
           muted
           className={[
@@ -38,7 +40,7 @@ export const Media = ({
       return (
         <video
           key={media.id}
-          src={media.url || undefined}
+          src={media.url}
           controls
           className={[
             'p-0.5 object-contain',
@@ -50,7 +52,7 @@ export const Media = ({
       return (
         <audio
           key={media.id}
-          src={media.url || undefined}
+          src={media.url}
           controls
           className={[
             'p-0.5 object-contain',

@@ -1,13 +1,15 @@
 'use client'
 
-import { createContext, useEffect, useState } from 'react'
-
-import { ReactNode } from 'react'
-
-import generator from 'megalodon'
-
-import { OAuth } from 'megalodon'
 import { useRouter, useSearchParams } from 'next/navigation'
+import {
+  ReactNode,
+  createContext,
+  useEffect,
+  useState,
+} from 'react'
+
+import generator, { OAuth } from 'megalodon'
+
 import {
   APP_NAME,
   APP_URL,
@@ -35,20 +37,19 @@ export const AppProvider = ({
   children,
 }: Readonly<{ children: ReactNode }>) => {
   const router = useRouter()
+
   const code = useSearchParams().get('code')
 
   const [appData, setAppData] = useState<OAuth.AppData>(
-    localStorage.getItem('app')
+    localStorage.getItem('app') != null
       ? JSON.parse(localStorage.getItem('app') as string)
       : initialAppData
   )
 
   const [tokenData, setTokenData] =
     useState<OAuth.TokenData | null>(
-      localStorage.getItem('token')
-        ? JSON.parse(
-            localStorage.getItem('token') as string
-          )
+      localStorage.getItem('token') != null
+        ? JSON.parse(localStorage.getItem('token') ?? '')
         : null
     )
 
@@ -66,7 +67,7 @@ export const AppProvider = ({
       'pleroma',
       `https://${BACKEND_URL}`
     )
-    if (code != null && appData.id) {
+    if (code != null && appData.id !== '') {
       client
         .fetchAccessToken(
           appData.client_id,
@@ -79,7 +80,7 @@ export const AppProvider = ({
         })
     }
 
-    if (code == null && !appData.id) {
+    if (code == null && appData.id === '') {
       client
         .registerApp(APP_NAME, {
           scopes: [
@@ -97,7 +98,13 @@ export const AppProvider = ({
           router.push(appData.url as string)
         })
     }
-  }, [code])
+  }, [
+    appData.client_id,
+    appData.client_secret,
+    appData.id,
+    code,
+    router,
+  ])
 
   return (
     <AppContext.Provider value={appData}>

@@ -1,16 +1,20 @@
 'use client'
 
-import generator, { Entity } from 'megalodon'
 import {
+  ReactNode,
   createContext,
   useContext,
   useEffect,
   useRef,
   useState,
 } from 'react'
-import { TokenContext } from './AppProvider'
-import { BACKEND_URL } from 'util/environment'
+
+import generator, { Entity } from 'megalodon'
+
 import { ArrayLengthControl } from 'util/ArrayLengthControl'
+import { BACKEND_URL } from 'util/environment'
+
+import { TokenContext } from './AppProvider'
 
 export const HomeTimelineContext = createContext<
   Entity.Status[]
@@ -23,7 +27,7 @@ export const NotificationsContext = createContext<
 export const HomeTimelineProvider = ({
   children,
 }: {
-  children: React.ReactNode
+  children: ReactNode
 }) => {
   const refFirstRef = useRef(true)
   const token = useContext(TokenContext)
@@ -42,7 +46,7 @@ export const HomeTimelineProvider = ({
       refFirstRef.current = false
       return
     }
-    if (!token) return
+    if (token == null) return
     const client = generator(
       'pleroma',
       `https://${BACKEND_URL}`,
@@ -78,7 +82,7 @@ export const HomeTimelineProvider = ({
         )
       }
     )
-  }, [])
+  }, [token])
 
   return (
     <HomeTimelineContext.Provider value={timeline}>

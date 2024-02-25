@@ -1,6 +1,7 @@
+/* eslint-disable @next/next/no-img-element */
 import { Entity } from 'megalodon'
+
 import { Media } from 'app/_parts/Media'
-import { get } from 'http'
 
 export const Status = ({
   status,
@@ -45,7 +46,7 @@ export const Status = ({
         small ? 'max-h-24 overflow-clip' : '',
       ].join(' ')}
     >
-      {status.reblog ? (
+      {status.reblog != null ? (
         <>
           <div>
             <img
@@ -72,27 +73,27 @@ export const Status = ({
               src={status.reblog.account.avatar}
               alt="avatar"
             />
-            <div className="pl-2 w-[calc(100%-56px)]">
+            <div className="w-[calc(100%-56px)] pl-2">
               {small ? (
-                <p className="w-full truncate text-ellipsis">
+                <p className="w-full truncate">
                   <span>
                     {getDisplayName(status.reblog.account)}
                   </span>
-                  <span className="text-gray-300 pl-1">
+                  <span className="pl-1 text-gray-300">
                     @{status.reblog.account.acct}
                   </span>
                 </p>
               ) : (
                 <>
                   <p
-                    className="w-full truncate text-ellipsis"
+                    className="w-full truncate"
                     dangerouslySetInnerHTML={{
                       __html: getDisplayName(
                         status.reblog.account
                       ),
                     }}
                   />
-                  <p className="text-gray-300 truncate text-ellipsis">
+                  <p className="truncate text-gray-300">
                     @{status.reblog.account.acct}
                   </p>
                 </>
@@ -110,27 +111,27 @@ export const Status = ({
             src={status.account.avatar}
             alt="avatar"
           />
-          <div className="pl-2 w-[calc(100%-56px)]">
+          <div className="w-[calc(100%-56px)] pl-2">
             {small ? (
-              <p className="w-full truncate text-ellipsis">
+              <p className="w-full truncate">
                 <span
                   dangerouslySetInnerHTML={{
                     __html: getDisplayName(status.account),
                   }}
                 />
-                <span className="text-gray-300 pl-1">
+                <span className="pl-1 text-gray-300">
                   @{status.account.acct}
                 </span>
               </p>
             ) : (
               <>
                 <p
-                  className="w-full truncate text-ellipsis"
+                  className="w-full truncate"
                   dangerouslySetInnerHTML={{
                     __html: getDisplayName(status.account),
                   }}
                 />
-                <p className="text-gray-300 truncate text-ellipsis">
+                <p className="truncate text-gray-300">
                   @{status.account.acct}
                 </p>
               </>
