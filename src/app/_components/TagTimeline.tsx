@@ -12,6 +12,7 @@ import { BACKEND_URL } from 'util/environment'
 import { TokenContext } from 'util/provider/AppProvider'
 import { Status } from 'app/_parts/Status'
 import { Panel } from 'app/_parts/Panel'
+import { ArrayLengthControl } from 'util/arrayLengthControl'
 
 export const TagTimeline = ({ tag }: { tag: string }) => {
   const refFirstRef = useRef(true)
@@ -50,7 +51,9 @@ export const TagTimeline = ({ tag }: { tag: string }) => {
 
     stream.on('update', (status) => {
       if (status.media_attachments.length > 0) {
-        setTimeline((prev) => [status, ...prev])
+        setTimeline((prev) =>
+          ArrayLengthControl([status, ...prev])
+        )
       }
     })
   }, [])
