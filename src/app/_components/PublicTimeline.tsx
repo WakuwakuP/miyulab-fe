@@ -11,6 +11,7 @@ import {
 import { BACKEND_URL } from 'util/environment'
 import { TokenContext } from 'util/provider/AppProvider'
 import { Status } from 'app/_parts/Status'
+import { Panel } from 'app/_parts/Panel'
 
 export const PublicTimeline = () => {
   const refFirstRef = useRef(true)
@@ -54,14 +55,13 @@ export const PublicTimeline = () => {
   }, [token])
 
   return (
-    <section>
-      <h3>Public</h3>
+    <Panel name="Public">
       {timeline.map((status) => (
         <Status
           key={status.id}
           status={status}
         />
       ))}
-    </section>
+    </Panel>
   )
 }

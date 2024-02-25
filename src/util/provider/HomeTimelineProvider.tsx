@@ -1,77 +1,82 @@
 'use client'
 
-import generator, {
-  Entity,
-  WebSocketInterface,
-} from 'megalodon'
-
+import generator, { Entity } from 'megalodon'
 import {
-  FC,
   createContext,
   useContext,
   useEffect,
-  useMemo,
+  useRef,
   useState,
 } from 'react'
-
-import { TokenContext } from 'util/provider/AppProvider'
+import { TokenContext } from './AppProvider'
+import { BACKEND_URL } from 'util/environment'
 
 export const HomeTimelineContext = createContext<
   Entity.Status[]
 >([])
 
-export const PushTimelineContext = createContext<
-  (status: Entity.Status) => void
->(() => {})
+export const NotificationsContext = createContext<
+  Entity.Notification[]
+>([])
 
 export const HomeTimelineProvider = ({
   children,
 }: {
   children: React.ReactNode
 }) => {
+  const refFirstRef = useRef(true)
   const token = useContext(TokenContext)
-  if (token?.access_token == null) {
-    return null
-  }
-
-  const [timelineData, setTimelineData] = useState<
-    Entity.Status[]
+  const [timeline, setTimeline] = useState<Entity.Status[]>(
+    []
+  )
+  const [notifications, setNotifications] = useState<
+    Entity.Notification[]
   >([])
 
   useEffect(() => {
+    if (
+      process.env.NODE_ENV === 'development' &&
+      refFirstRef.current
+    ) {
+      refFirstRef.current = false
+      return
+    }
+    if (!token) return
     const client = generator(
       'pleroma',
-      'https://pl.waku.dev',
+      `https://${BACKEND_URL}`,
       token?.access_token
     )
-    client
-      .getHomeTimeline({
-        limit: 40,
-      })
-      .then((res) => {
-        setTimelineData(res.data)
-      })
-  }, [token])
 
-  const pushTimeline = (status: Entity.Status) => {
-    setTimelineData([status, ...timelineData])
-  }
+    const streamClient = generator(
+      'pleroma',
+      `wss://${BACKEND_URL}`,
+      token?.access_token
+    )
+    client.getHomeTimeline({ limit: 40 }).then((res) => {
+      setTimeline(res.data)
+    })
+
+    client.getNotifications({ limit: 40 }).then((res) => {
+      setNotifications(res.data)
+    })
+
+    const stream = streamClient.userSocket()
+
+    stream.on('update', (status) => {
+      setTimeline((prev) => [status, ...prev])
+    })
+
+    stream.on('notification', (notification) => {
+      setNotifications((prev) => [notification, ...prev])
+    })
+  }, [])
 
   return (
-    <HomeTimelineContext.Provider value={timelineData}>
-      <PushTimelineContext.Provider value={pushTimeline}>
-        <Updater />
+    <HomeTimelineContext.Provider value={timeline}>
+      <NotificationsContext.Provider value={notifications}>
         {children}
-      </PushTimelineContext.Provider>
+      </NotificationsContext.Provider>
     </HomeTimelineContext.Provider>
   )
-}
-
-const Updater = () => {
-  const token = useContext(TokenContext)
-
-  if (token?.access_token != null) {
-    
-  }
-  return null
 }
