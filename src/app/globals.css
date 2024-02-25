@@ -1,3 +1,24 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer components {
+  .content {
+    @apply pt-2 [&_*]:text-wrap [&_*]:whitespace-pre-line [&_*]:break-words [&_a]:text-blue-400 [&_blockquote]:border-l-4 [&_blockquote]:border-blue-400 [&_blockquote]:pl-2 [&_blockquote]:ml-2;
+  }
+
+  body {
+    @apply [&_*]:bg-gray-900 [&_*]:text-gray-100;
+  }
+
+  ::-webkit-scrollbar {
+    @apply w-3;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-gray-800;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-gray-600;
+  }
+}
