@@ -1,3 +1,3 @@
-# miyulab-fe
+# Miyulab-fe
 
-This is a Pleroma Client application for web.
+This is Pleroma client application for web.
