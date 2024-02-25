@@ -10,6 +10,7 @@ import {
 } from 'react'
 import { TokenContext } from './AppProvider'
 import { BACKEND_URL } from 'util/environment'
+import { ArrayLengthControl } from 'util/arrayLengthControl'
 
 export const HomeTimelineContext = createContext<
   Entity.Status[]
@@ -63,13 +64,20 @@ export const HomeTimelineProvider = ({
 
     const stream = streamClient.userSocket()
 
-    stream.on('update', (status) => {
-      setTimeline((prev) => [status, ...prev])
+    stream.on('update', (status: Entity.Status) => {
+      setTimeline((prev) =>
+        ArrayLengthControl([status, ...prev])
+      )
     })
 
-    stream.on('notification', (notification) => {
-      setNotifications((prev) => [notification, ...prev])
-    })
+    stream.on(
+      'notification',
+      (notification: Entity.Notification) => {
+        setNotifications((prev) =>
+          ArrayLengthControl([notification, ...prev])
+        )
+      }
+    )
   }, [])
 
   return (
