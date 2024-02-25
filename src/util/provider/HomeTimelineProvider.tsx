@@ -10,7 +10,7 @@ import {
 } from 'react'
 import { TokenContext } from './AppProvider'
 import { BACKEND_URL } from 'util/environment'
-import { ArrayLengthControl } from 'util/arrayLengthControl'
+import { ArrayLengthControl } from 'util/ArrayLengthControl'
 
 export const HomeTimelineContext = createContext<
   Entity.Status[]
