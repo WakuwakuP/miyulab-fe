@@ -106,6 +106,10 @@ export const AppProvider = ({
     router,
   ])
 
+  if (tokenData == null) {
+    return <div>Loading...</div>
+  }
+
   return (
     <AppContext.Provider value={appData}>
       <TokenContext.Provider value={tokenData}>
