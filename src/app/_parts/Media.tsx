@@ -27,6 +27,7 @@ export const Media = ({
           key={media.id}
           src={media.url || undefined}
           controls
+          muted
           className={[
             'p-0.5 object-contain',
             className,
