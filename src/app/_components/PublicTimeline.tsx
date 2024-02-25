@@ -1,6 +1,4 @@
 'use client'
-import Image from 'next/image'
-import generator, { Entity } from 'megalodon'
 import {
   useContext,
   useEffect,
@@ -8,11 +6,13 @@ import {
   useState,
 } from 'react'
 
+import generator, { Entity } from 'megalodon'
+
+import { Panel } from 'app/_parts/Panel'
+import { Status } from 'app/_parts/Status'
+import { ArrayLengthControl } from 'util/ArrayLengthControl'
 import { BACKEND_URL } from 'util/environment'
 import { TokenContext } from 'util/provider/AppProvider'
-import { Status } from 'app/_parts/Status'
-import { Panel } from 'app/_parts/Panel'
-import { ArrayLengthControl } from 'util/ArrayLengthControl'
 
 export const PublicTimeline = () => {
   const refFirstRef = useRef(true)

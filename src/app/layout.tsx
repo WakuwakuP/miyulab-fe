@@ -1,8 +1,12 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
-import './globals.css'
+import { ReactNode, Suspense } from 'react'
+
 import { AppProvider } from 'util/provider/AppProvider'
 import { HomeTimelineProvider } from 'util/provider/HomeTimelineProvider'
+import { SuspenseProvider } from 'util/provider/SuspenseProvider'
+
+import './globals.css'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -14,16 +18,20 @@ export const metadata: Metadata = {
 export default function RootLayout({
   children,
 }: Readonly<{
-  children: React.ReactNode
+  children: ReactNode
 }>) {
   return (
     <html lang="en">
       <body className={inter.className}>
-        <AppProvider>
-          <HomeTimelineProvider>
-            {children}
-          </HomeTimelineProvider>
-        </AppProvider>
+        <SuspenseProvider>
+          <AppProvider>
+            <Suspense>
+              <HomeTimelineProvider>
+                {children}
+              </HomeTimelineProvider>
+            </Suspense>
+          </AppProvider>
+        </SuspenseProvider>
       </body>
     </html>
   )

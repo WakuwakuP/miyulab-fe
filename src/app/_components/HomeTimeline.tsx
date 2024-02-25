@@ -1,16 +1,10 @@
 'use client'
 
-import generator, { Entity } from 'megalodon'
-import {
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-} from 'react'
+import { useContext } from 'react'
 
+import { Panel } from 'app/_parts/Panel'
 import { Status } from 'app/_parts/Status'
 import { HomeTimelineContext } from 'util/provider/HomeTimelineProvider'
-import { Panel } from 'app/_parts/Panel'
 
 export const HomeTimeline = () => {
   const timeline = useContext(HomeTimelineContext)

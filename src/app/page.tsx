@@ -1,7 +1,7 @@
 import { HomeTimeline } from 'app/_components/HomeTimeline'
+import { NotificationTimeline } from 'app/_components/NotificationTimeline'
 import { PublicTimeline } from 'app/_components/PublicTimeline'
 import { TagTimeline } from 'app/_components/TagTimeline'
-import { NotificationTimeline } from 'app/_components/NotificationTimeline'
 
 export default function Home() {
   return (
