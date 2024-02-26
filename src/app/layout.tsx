@@ -7,6 +7,7 @@ import { Toaster } from 'react-hot-toast'
 import { AppProvider } from 'util/provider/AppProvider'
 import { DetailProvider } from 'util/provider/DetailProvider'
 import { HomeTimelineProvider } from 'util/provider/HomeTimelineProvider'
+import { ResourceProvider } from 'util/provider/ResourceProvider'
 import { SuspenseProvider } from 'util/provider/SuspenseProvider'
 
 import './globals.css'
@@ -30,15 +31,17 @@ export default function RootLayout({
         <SuspenseProvider>
           <AppProvider>
             <Suspense>
-              <DetailProvider>
-                <HomeTimelineProvider>
-                  <Toaster
-                    position="bottom-left"
-                    reverseOrder={false}
-                  />
-                  {children}
-                </HomeTimelineProvider>
-              </DetailProvider>
+              <ResourceProvider>
+                <DetailProvider>
+                  <HomeTimelineProvider>
+                    <Toaster
+                      position="bottom-left"
+                      reverseOrder={false}
+                    />
+                    {children}
+                  </HomeTimelineProvider>
+                </DetailProvider>
+              </ResourceProvider>
             </Suspense>
           </AppProvider>
         </SuspenseProvider>

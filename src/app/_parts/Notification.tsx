@@ -111,7 +111,7 @@ export const Notification = ({
       )
     case 'follow':
       return (
-        <div className="ml-1 mt-2 box-border border-b-4 border-l-4 border-l-pink-300 pl-2">
+        <div className="ml-1 mt-2 box-border border-b-4 border-l-4 border-pink-300 pl-2">
           <p>Follow</p>
           <h3 className="flex">
             <img
@@ -132,7 +132,7 @@ export const Notification = ({
       )
     case 'follow_request':
       return (
-        <div className="ml-1 mt-2 box-border border-b-4 border-l-4 border-l-pink-500 pl-2">
+        <div className="ml-1 mt-2 box-border border-b-4 border-l-4 border-pink-500 pl-2">
           <p>Follow request</p>
           <h3 className="flex">
             <img
