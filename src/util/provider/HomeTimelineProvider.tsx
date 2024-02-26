@@ -10,6 +10,7 @@ import {
 } from 'react'
 
 import generator, { Entity } from 'megalodon'
+import toast from 'react-hot-toast'
 
 import { ArrayLengthControl } from 'util/ArrayLengthControl'
 import { BACKEND_URL } from 'util/environment'
@@ -77,11 +78,32 @@ export const HomeTimelineProvider = ({
     stream.on(
       'notification',
       (notification: Entity.Notification) => {
+        toast.error('Error occurred in stream')
         setNotifications((prev) =>
           ArrayLengthControl([notification, ...prev])
         )
       }
     )
+
+    stream.on('delete', (id: string) => {
+      setTimeline((prev) =>
+        prev.filter((status) => status.id !== id)
+      )
+    })
+
+    stream.on('error', (err: Error) => {
+      console.error(err)
+
+      stream.stop()
+      setTimeout(() => {
+        stream.start()
+      }, 1000)
+    })
+
+    stream.on('connect', () => {
+      // eslint-disable-next-line no-console
+      console.info('connected userSocket')
+    })
   }, [token])
 
   return (

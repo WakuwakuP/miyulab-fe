@@ -1,5 +1,10 @@
 'use client'
-import { useContext, useEffect, useRef, useState } from 'react'
+import {
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from 'react'
 
 import { Entity } from 'megalodon'
 
@@ -12,28 +17,43 @@ import { TokenContext } from 'util/provider/AppProvider'
 export const PublicTimeline = () => {
   const refFirstRef = useRef(true)
   const token = useContext(TokenContext)
-  const [timeline, setTimeline] = useState<Entity.Status[]>([])
+  const [timeline, setTimeline] = useState<Entity.Status[]>(
+    []
+  )
 
   useEffect(() => {
-    if (process.env.NODE_ENV === 'development' && refFirstRef.current) {
+    if (
+      process.env.NODE_ENV === 'development' &&
+      refFirstRef.current
+    ) {
       refFirstRef.current = false
       return
     }
     if (token == null) return
     const client = GetClient(token?.access_token)
 
-    const streamClient = GetStreamClient(token?.access_token)
+    const streamClient = GetStreamClient(
+      token?.access_token
+    )
 
-    client.getPublicTimeline({ limit: 40, only_media: true }).then((res) => {
-      setTimeline(res.data)
-      const stream = streamClient.publicSocket()
+    client
+      .getPublicTimeline({ limit: 40, only_media: true })
+      .then((res) => {
+        setTimeline(res.data)
+        const stream = streamClient.publicSocket()
 
-      stream.on('update', (status) => {
-        if (status.media_attachments.length > 0) {
-          setTimeline((prev) => ArrayLengthControl([status, ...prev]))
-        }
+        stream.on('update', (status) => {
+          if (status.media_attachments.length > 0) {
+            setTimeline((prev) =>
+              ArrayLengthControl([status, ...prev])
+            )
+          }
+        })
+        stream.on('connect', () => {
+          // eslint-disable-next-line no-console
+          console.info('connected publicSocket')
+        })
       })
-    })
   }, [token])
 
   return (
