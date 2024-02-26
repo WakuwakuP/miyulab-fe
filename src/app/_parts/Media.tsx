@@ -1,6 +1,8 @@
-import { HTMLProps } from 'react'
+/* eslint-disable @next/next/no-img-element */
+import { HTMLProps, useState } from 'react'
 
 import { Entity } from 'megalodon'
+import { createPortal } from 'react-dom'
 
 export const Media = ({
   media,
@@ -9,19 +11,41 @@ export const Media = ({
   media: Entity.Attachment
   className?: HTMLProps<HTMLElement>['className']
 }) => {
+  const [isModalOpen, setIsModalOpen] = useState(false)
+
   switch (media.type) {
     case 'image':
       return (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          key={media.id}
-          src={media.url}
-          alt=""
-          className={[
-            'p-0.5 object-contain max-h-48 border-1',
-            className,
-          ].join(' ')}
-        />
+        <>
+          <img
+            onClick={() => {
+              setIsModalOpen(true)
+            }}
+            key={media.id}
+            src={media.url}
+            alt=""
+            className={[
+              'p-0.5 object-contain max-h-48 border-1 bg-black',
+              className,
+            ].join(' ')}
+          />
+          {isModalOpen &&
+            createPortal(
+              <div
+                className="fixed inset-0 z-40 h-[100vh] w-[100vw] bg-black/60"
+                onClick={() => {
+                  setIsModalOpen(false)
+                }}
+              >
+                <img
+                  src={media.url}
+                  alt=""
+                  className="fixed inset-0 z-50 m-auto h-[90vh] w-[90vw] object-contain"
+                />
+              </div>,
+              document.body
+            )}
+        </>
       )
     case 'video':
       return (

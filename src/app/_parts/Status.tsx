@@ -1,7 +1,14 @@
 /* eslint-disable @next/next/no-img-element */
+'use client'
+
+import { useContext } from 'react'
+
 import { Entity } from 'megalodon'
 
+import { Actions } from 'app/_parts/Actions'
 import { Media } from 'app/_parts/Media'
+import { UserInfo } from 'app/_parts/UserInfo'
+import { SetDetailContext } from 'util/provider/DetailProvider'
 
 export const Status = ({
   status,
@@ -12,6 +19,8 @@ export const Status = ({
   className?: string
   small?: boolean
 }) => {
+  const setDetail = useContext(SetDetailContext)
+
   const getDisplayName = (account: Entity.Account) => {
     let displayName = account.display_name
     if (account.emojis.length > 0) {
@@ -38,17 +47,29 @@ export const Status = ({
     return content
   }
 
+  const statusClasses = [
+    'box-border',
+    'w-full',
+    'p-2',
+    className,
+    small ? 'max-h-24 overflow-clip' : '',
+    status.reblog != null
+      ? 'border-l-4 border-blue-400 pl-2'
+      : '',
+  ].join(' ')
+
   return (
-    <div
-      className={[
-        'w-full p-2 pb-6',
-        className,
-        small ? 'max-h-24 overflow-clip' : '',
-      ].join(' ')}
-    >
+    <div className={statusClasses}>
       {status.reblog != null ? (
         <>
-          <div>
+          <div
+            onClick={() => {
+              setDetail({
+                type: 'Account',
+                content: status.account,
+              })
+            }}
+          >
             <img
               className={[
                 'rounded-lg object-contain flex-none inline-block',
@@ -64,82 +85,24 @@ export const Status = ({
               }}
             />
           </div>
-          <h3 className="flex">
-            <img
-              className={[
-                'rounded-lg object-contain flex-none',
-                small ? 'w-6 h-6' : 'w-12 h-12',
-              ].join(' ')}
-              src={status.reblog.account.avatar}
-              alt="avatar"
-            />
-            <div className="w-[calc(100%-56px)] pl-2">
-              {small ? (
-                <p className="w-full truncate">
-                  <span>
-                    {getDisplayName(status.reblog.account)}
-                  </span>
-                  <span className="pl-1 text-gray-300">
-                    @{status.reblog.account.acct}
-                  </span>
-                </p>
-              ) : (
-                <>
-                  <p
-                    className="w-full truncate"
-                    dangerouslySetInnerHTML={{
-                      __html: getDisplayName(
-                        status.reblog.account
-                      ),
-                    }}
-                  />
-                  <p className="truncate text-gray-300">
-                    @{status.reblog.account.acct}
-                  </p>
-                </>
-              )}
-            </div>
-          </h3>
+          <UserInfo
+            account={status.reblog.account}
+            small={small}
+          />
         </>
       ) : (
-        <h3 className="flex">
-          <img
-            className={[
-              'rounded-lg object-contain flex-none',
-              small ? 'w-6 h-6' : 'w-12 h-12',
-            ].join(' ')}
-            src={status.account.avatar}
-            alt="avatar"
-          />
-          <div className="w-[calc(100%-56px)] pl-2">
-            {small ? (
-              <p className="w-full truncate">
-                <span
-                  dangerouslySetInnerHTML={{
-                    __html: getDisplayName(status.account),
-                  }}
-                />
-                <span className="pl-1 text-gray-300">
-                  @{status.account.acct}
-                </span>
-              </p>
-            ) : (
-              <>
-                <p
-                  className="w-full truncate"
-                  dangerouslySetInnerHTML={{
-                    __html: getDisplayName(status.account),
-                  }}
-                />
-                <p className="truncate text-gray-300">
-                  @{status.account.acct}
-                </p>
-              </>
-            )}
-          </div>
-        </h3>
+        <UserInfo
+          account={status.account}
+          small={small}
+        />
       )}
       <div
+        onClick={() => {
+          setDetail({
+            type: 'Status',
+            content: status,
+          })
+        }}
         className="content"
         dangerouslySetInnerHTML={{
           __html: getContentFormatted(status),
@@ -176,6 +139,7 @@ export const Status = ({
           }
         )}
       </div>
+      <Actions status={status} />
     </div>
   )
 }
