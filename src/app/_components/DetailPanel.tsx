@@ -5,15 +5,17 @@ import { useContext, useEffect, useState } from 'react'
 import { Entity } from 'megalodon'
 import { RiArrowLeftSLine } from 'react-icons/ri'
 
+import { AccountDetail } from 'app/_parts/AccountDetail'
 import { Panel } from 'app/_parts/Panel'
 import { Status } from 'app/_parts/Status'
-import { UserInfo } from 'app/_parts/UserInfo'
 import { GetClient } from 'util/GetClient'
 import { TokenContext } from 'util/provider/AppProvider'
 import {
   DetailContext,
   SetDetailContext,
 } from 'util/provider/DetailProvider'
+
+import { GettingStarted } from './GettingStarted'
 
 export const DetailPanel = () => {
   const token = useContext(TokenContext)
@@ -22,6 +24,7 @@ export const DetailPanel = () => {
 
   const [context, setContext] =
     useState<Entity.Context | null>(null)
+
 
   useEffect(() => {
     if (token == null || detail.content == null) return
@@ -43,7 +46,7 @@ export const DetailPanel = () => {
   }
 
   if (detail.type === null) {
-    return null
+    return <GettingStarted />
   }
 
   return (
@@ -75,7 +78,7 @@ export const DetailPanel = () => {
       )}
 
       {detail.type === 'Account' && (
-        <UserInfo account={detail.content} />
+        <AccountDetail account={detail.content} />
       )}
     </Panel>
   )

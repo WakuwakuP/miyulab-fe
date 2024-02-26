@@ -4,6 +4,7 @@
 import { useContext } from 'react'
 
 import { Entity } from 'megalodon'
+import { RiRepeatFill } from 'react-icons/ri'
 
 import { Actions } from 'app/_parts/Actions'
 import { Media } from 'app/_parts/Media'
@@ -54,7 +55,7 @@ export const Status = ({
     className,
     small ? 'max-h-24 overflow-clip' : '',
     status.reblog != null
-      ? 'border-l-4 border-blue-400 pl-2'
+      ? 'border-l-4 border-blue-400 pl-2 mb-2'
       : '',
   ].join(' ')
 
@@ -63,6 +64,7 @@ export const Status = ({
       {status.reblog != null ? (
         <>
           <div
+            className="mb-1"
             onClick={() => {
               setDetail({
                 type: 'Account',
@@ -70,6 +72,10 @@ export const Status = ({
               })
             }}
           >
+            <RiRepeatFill
+              size={24}
+              className="mr-2 inline-block text-blue-400"
+            />
             <img
               className={[
                 'rounded-lg object-contain flex-none inline-block',
@@ -87,12 +93,14 @@ export const Status = ({
           </div>
           <UserInfo
             account={status.reblog.account}
+            visibility={status.reblog.visibility}
             small={small}
           />
         </>
       ) : (
         <UserInfo
           account={status.account}
+          visibility={status.visibility}
           small={small}
         />
       )}

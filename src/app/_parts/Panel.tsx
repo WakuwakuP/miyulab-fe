@@ -14,8 +14,8 @@ export const Panel = ({
   const ref = useRef<HTMLDivElement>(null)
   const mainAreaStyle =
     name === undefined
-      ? 'h-[100vh]'
-      : 'h-[calc(100vh-2rem)]'
+      ? 'h-[calc(100vh-0.75rem)]'
+      : 'h-[calc(100vh-0.75rem-2rem)]'
   return (
     <section>
       {name === undefined ? null : (

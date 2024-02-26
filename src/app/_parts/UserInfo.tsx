@@ -5,13 +5,16 @@ import { useContext } from 'react'
 
 import { Entity } from 'megalodon'
 
+import { Visibility } from 'app/_parts/Visibility'
 import { SetDetailContext } from 'util/provider/DetailProvider'
 
 export const UserInfo = ({
   account,
+  visibility,
   small = false,
 }: {
   account: Entity.Account
+  visibility?: Entity.StatusVisibility
   small?: boolean
 }) => {
   const setDetail = useContext(SetDetailContext)
@@ -46,32 +49,38 @@ export const UserInfo = ({
         src={account.avatar}
         alt="avatar"
       />
-      <div className="w-[calc(100%-56px)] pl-2">
-        {small ? (
-          <p className="w-full truncate">
-            <span
-              dangerouslySetInnerHTML={{
-                __html: getDisplayName(account),
-              }}
-            />
-            <span className="pl-1 text-gray-300">
-              @{account.acct}
-            </span>
-          </p>
-        ) : (
-          <>
-            <p
-              className="w-full truncate"
-              dangerouslySetInnerHTML={{
-                __html: getDisplayName(account),
-              }}
-            />
-            <p className="truncate text-gray-300">
-              @{account.acct}
+      {small ? (
+        <div className="w-[calc(100%-24px)] pl-2">
+          <div className="flex w-full justify-between truncate">
+            <p>
+              <span
+                dangerouslySetInnerHTML={{
+                  __html: getDisplayName(account),
+                }}
+              />
+              <span className="pl-1 text-gray-300">
+                @{account.acct}
+              </span>
             </p>
-          </>
-        )}
-      </div>
+            <Visibility visibility={visibility} />
+          </div>
+        </div>
+      ) : (
+        <div className="w-[calc(100%-56px)] pl-2">
+          <p className="flex w-full justify-between [&>span]:inline-block">
+            <span
+              className="truncate"
+              dangerouslySetInnerHTML={{
+                __html: getDisplayName(account),
+              }}
+            />
+            <Visibility visibility={visibility} />
+          </p>
+          <p className="truncate text-gray-300">
+            @{account.acct}
+          </p>
+        </div>
+      )}
     </h3>
   )
 }

@@ -2,6 +2,8 @@ import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import { ReactNode, Suspense } from 'react'
 
+import { Toaster } from 'react-hot-toast'
+
 import { AppProvider } from 'util/provider/AppProvider'
 import { DetailProvider } from 'util/provider/DetailProvider'
 import { HomeTimelineProvider } from 'util/provider/HomeTimelineProvider'
@@ -30,6 +32,10 @@ export default function RootLayout({
             <Suspense>
               <DetailProvider>
                 <HomeTimelineProvider>
+                  <Toaster
+                    position="bottom-left"
+                    reverseOrder={false}
+                  />
                   {children}
                 </HomeTimelineProvider>
               </DetailProvider>
