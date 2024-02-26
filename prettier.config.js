@@ -4,6 +4,6 @@ module.exports = {
   trailingComma: 'es5',
   tabWidth: 2,
   singleAttributePerLine: true,
-  printWidth: 160,
+  printWidth: 60,
   plugins: [],
 }

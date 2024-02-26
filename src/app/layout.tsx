@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google'
 import { ReactNode, Suspense } from 'react'
 
 import { AppProvider } from 'util/provider/AppProvider'
+import { DetailProvider } from 'util/provider/DetailProvider'
 import { HomeTimelineProvider } from 'util/provider/HomeTimelineProvider'
 import { SuspenseProvider } from 'util/provider/SuspenseProvider'
 
@@ -12,7 +13,8 @@ const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: 'Miyulab-FE',
-  description: 'This is Pleroma client application for web.',
+  description:
+    'This is Pleroma client application for web.',
 }
 
 export default function RootLayout({
@@ -26,7 +28,11 @@ export default function RootLayout({
         <SuspenseProvider>
           <AppProvider>
             <Suspense>
-              <HomeTimelineProvider>{children}</HomeTimelineProvider>
+              <DetailProvider>
+                <HomeTimelineProvider>
+                  {children}
+                </HomeTimelineProvider>
+              </DetailProvider>
             </Suspense>
           </AppProvider>
         </SuspenseProvider>

@@ -1,5 +1,6 @@
 /* eslint-disable @next/next/no-img-element */
 import { Entity } from 'megalodon'
+import { RiStarFill } from 'react-icons/ri'
 
 import { Status } from 'app/_parts/Status'
 
@@ -60,6 +61,9 @@ export const Notification = ({
               </p>
             </div>
           </h3>
+          <div>
+            <RiStarFill className="text-3xl text-orange-300" />
+          </div>
           <Status
             status={notification.status as Entity.Status}
             small

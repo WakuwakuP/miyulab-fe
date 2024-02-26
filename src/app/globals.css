@@ -8,7 +8,7 @@
   }
 
   body {
-    @apply [&_*]:bg-gray-900 [&_*]:text-gray-100;
+    @apply bg-gray-900 text-gray-100;
   }
 
   ::-webkit-scrollbar {
