@@ -44,7 +44,8 @@ export const MainPanel = () => {
     resetForm()
   }
 
-  const mediaPost = () => {}
+  // TODO: media post
+  // const mediaPost = () => {}
 
   useEffect(() => {
     if (token == null) return
