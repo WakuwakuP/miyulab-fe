@@ -64,7 +64,7 @@ export const MainPanel = () => {
     <Panel>
       <UserInfo account={account} />
       <div className="px-2 [&>*]:mt-2">
-        <div className="flex items-center space-x-1">
+        <div className="flex items-center space-x-2">
           <div>
             <select
               id="visibility"
@@ -119,7 +119,6 @@ export const MainPanel = () => {
               width: '100%',
               height: '10rem',
               backgroundColor: 'white',
-              borderRadius: '1rem',
               overflowY: 'auto',
               resize: 'none',
             }}
