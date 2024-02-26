@@ -113,7 +113,9 @@ export const Status = ({
         }}
         className="content"
         dangerouslySetInnerHTML={{
-          __html: getContentFormatted(status),
+          __html: getContentFormatted(
+            status.reblog ?? status
+          ),
         }}
       />
       <div className="flex flex-wrap">
