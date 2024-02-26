@@ -12,6 +12,9 @@
     "isolatedModules": true,
     "jsx": "preserve",
     "incremental": true,
+    "paths": {
+      "@public/*": ["../public/*"]
+    },
     "plugins": [
       {
         "name": "next"
