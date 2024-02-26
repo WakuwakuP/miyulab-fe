@@ -236,6 +236,7 @@ export const StatusRichTextarea = ({
         placeholder={placeholder}
         ref={ref}
         style={style}
+        className="rounded-none"
         onChange={(e) => onChange(e.target.value)}
         value={text}
         onKeyDown={(e) => {
