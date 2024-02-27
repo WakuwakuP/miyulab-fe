@@ -1,14 +1,19 @@
 /* eslint-disable @next/next/no-img-element */
+import { useContext } from 'react'
+
 import { Entity } from 'megalodon'
 import { RiStarFill } from 'react-icons/ri'
 
 import { Status } from 'app/_parts/Status'
+import { SetDetailContext } from 'util/provider/DetailProvider'
 
 export const Notification = ({
   notification,
 }: {
   notification: Entity.Notification
 }) => {
+  const setDetail = useContext(SetDetailContext)
+
   switch (notification.type) {
     case 'mention':
       return (
@@ -21,7 +26,16 @@ export const Notification = ({
     case 'reblog':
       return (
         <div className="ml-1 mt-2 box-border border-b-4 border-l-4 border-blue-500 pl-2">
-          <h3 className="flex">
+          <h3
+            className="flex"
+            onClick={() => {
+              if (notification.account == null) return
+              setDetail({
+                type: 'Account',
+                content: notification.account,
+              })
+            }}
+          >
             <img
               className="h-12 w-12 flex-none rounded-lg object-contain"
               src={notification.account?.avatar ?? ''}
@@ -45,7 +59,16 @@ export const Notification = ({
     case 'favourite':
       return (
         <div className="ml-1 mt-2 box-border border-b-4 border-l-4 border-orange-300 pl-2">
-          <h3 className="flex">
+          <h3
+            className="flex"
+            onClick={() => {
+              if (notification.account == null) return
+              setDetail({
+                type: 'Account',
+                content: notification.account,
+              })
+            }}
+          >
             <img
               className="h-12 w-12 flex-none rounded-lg object-contain"
               src={notification.account?.avatar ?? ''}
@@ -73,7 +96,16 @@ export const Notification = ({
       return (
         <div className="ml-1 mt-2 box-border border-b-4 border-l-4 border-orange-300 pl-2">
           <h3>
-            <div className="flex">
+            <div
+              className="flex"
+              onClick={() => {
+                if (notification.account == null) return
+                setDetail({
+                  type: 'Account',
+                  content: notification.account,
+                })
+              }}
+            >
               <img
                 className="h-12 w-12 flex-none rounded-lg object-contain"
                 src={notification.account?.avatar ?? ''}
@@ -112,7 +144,16 @@ export const Notification = ({
       return (
         <div className="ml-1 mt-2 box-border border-b-4 border-l-4 border-pink-300 pl-2">
           <p>Follow</p>
-          <h3 className="flex">
+          <h3
+            className="flex"
+            onClick={() => {
+              if (notification.account == null) return
+              setDetail({
+                type: 'Account',
+                content: notification.account,
+              })
+            }}
+          >
             <img
               className="h-12 w-12 flex-none rounded-lg object-contain"
               src={notification.account?.avatar ?? ''}
@@ -133,7 +174,16 @@ export const Notification = ({
       return (
         <div className="ml-1 mt-2 box-border border-b-4 border-l-4 border-pink-500 pl-2">
           <p>Follow request</p>
-          <h3 className="flex">
+          <h3
+            className="flex"
+            onClick={() => {
+              if (notification.account == null) return
+              setDetail({
+                type: 'Account',
+                content: notification.account,
+              })
+            }}
+          >
             <img
               className="h-12 w-12 flex-none rounded-lg object-contain"
               src={notification.account?.avatar ?? ''}
