@@ -14,6 +14,7 @@ import {
 
 import { GetClient } from 'util/GetClient'
 import { TokenContext } from 'util/provider/AppProvider'
+import { SetReplyToContext } from 'util/provider/ReplyToProvider'
 
 export const Actions = ({
   status,
@@ -21,6 +22,8 @@ export const Actions = ({
   status: Entity.Status
 }) => {
   const token = useContext(TokenContext)
+
+  const setReplyTo = useContext(SetReplyToContext)
 
   const [reblogged, setReblogged] = useState(
     status.reblogged
@@ -64,7 +67,9 @@ export const Actions = ({
     <div className="flex justify-between pt-2 [&>button]:mx-1">
       <button
         className="flex items-center"
-        onClick={() => {}}
+        onClick={() => {
+          setReplyTo(status)
+        }}
       >
         <RiReplyFill size={24} />
 
