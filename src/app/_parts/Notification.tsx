@@ -15,7 +15,6 @@ export const Notification = ({
         <div className="ml-1 mt-2 box-border border-b-4 border-l-4 border-green-500 pl-2">
           <Status
             status={notification.status as Entity.Status}
-            small
           />
         </div>
       )

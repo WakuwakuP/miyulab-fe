@@ -18,24 +18,72 @@ import {
   createRegexRenderer,
 } from 'rich-textarea'
 
-import { EmojiContext } from 'util/provider/ResourceProvider'
-
-const CHARACTERS = [
-  'user1',
-  'user2',
-  'user3',
-  'user4',
-  'user5',
-]
+import {
+  EmojiContext,
+  UsersContext,
+} from 'util/provider/ResourceProvider'
 
 const MAX_LIST_LENGTH = 8
-const MENTION_REG = /@([+\w]*)$/
-const EMOJI_REG = /:([+\w]*)$/
-
+const MENTION_REG = /\B@([\\.@\-+\w]*)$/
 const MENTION_HIGHLIGHT_REG = new RegExp(
-  `(${CHARACTERS.map((c) => `@${c}`).join('|')})`,
+  /@([\\.@\-+\w]*)/,
   'g'
 )
+const EMOJI_REG = /\B:([+\w].*)$/
+
+const MentionMenu = ({
+  chars,
+  index,
+  top,
+  left,
+  complete,
+}: {
+  chars: Pick<
+    Entity.Account,
+    'id' | 'acct' | 'avatar' | 'display_name'
+  >[]
+  index: number
+  top: number
+  left: number
+  complete: (index: number) => void
+}) => {
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        top: top,
+        left: left,
+        backgroundColor: 'white',
+        color: 'black',
+        border: '1px solid black',
+      }}
+    >
+      {chars.map((char, i) => (
+        <div
+          key={char.id}
+          style={{
+            padding: '4px',
+            ...(index === i && {
+              color: 'white',
+              backgroundColor: 'blue',
+            }),
+          }}
+          onMouseDown={(e) => {
+            e.preventDefault()
+            complete(i)
+          }}
+        >
+          <img
+            className="mr-2 inline-block h-8 w-8 rounded-full"
+            src={char.avatar}
+            alt={char.display_name}
+          />
+          <span>{`@${char.acct}`}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 const EmojiMenu = ({
   chars,
@@ -95,6 +143,7 @@ const EmojiMenu = ({
   )
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars, unused-imports/no-unused-vars
 const Menu = ({
   chars,
   index,
@@ -152,6 +201,8 @@ export const StatusRichTextarea = ({
   onChange: (text: string) => void
   style: CSSProperties
 }) => {
+  const users = useContext(UsersContext)
+
   const emojis = useContext(EmojiContext)
   const ref = useRef<RichTextareaHandle>(null)
 
@@ -180,12 +231,14 @@ export const StatusRichTextarea = ({
 
   const mentionFiltered = useMemo(
     () =>
-      CHARACTERS.filter((char) =>
-        char
-          .toLocaleLowerCase()
-          .startsWith(mentionName.toLocaleLowerCase())
-      ).slice(0, MAX_LIST_LENGTH),
-    [mentionName]
+      users
+        .filter((char) =>
+          char.acct
+            .toLocaleLowerCase()
+            .startsWith(mentionName.toLocaleLowerCase())
+        )
+        .slice(0, MAX_LIST_LENGTH),
+    [mentionName, users]
   )
 
   const emojiFiltered = useMemo(
@@ -204,7 +257,7 @@ export const StatusRichTextarea = ({
     if (ref.current == null || pos == null) return
     const selected = mentionFiltered[index]
     ref.current.setRangeText(
-      `@${selected} `,
+      `@${selected.acct} `,
       pos.caret - mentionName.length - 1,
       pos.caret,
       'end'
@@ -279,6 +332,7 @@ export const StatusRichTextarea = ({
                 )
               break
             case 'Enter':
+            case 'Tab':
               e.preventDefault()
               if (isMention) mentionComplete(index)
               if (isEmoji) emojiComplete(index)
@@ -301,7 +355,8 @@ export const StatusRichTextarea = ({
             r.focused &&
             MENTION_REG.test(
               text.slice(0, r.selectionStart)
-            )
+            ) &&
+            isEmoji === false
           ) {
             setIsMention(true)
             setPos({
@@ -312,7 +367,10 @@ export const StatusRichTextarea = ({
             setIndex(0)
           } else if (
             r.focused &&
-            EMOJI_REG.test(text.slice(0, r.selectionStart))
+            EMOJI_REG.test(
+              text.slice(0, r.selectionStart)
+            ) &&
+            isMention === false
           ) {
             setIsEmoji(true)
             setPos({
@@ -335,7 +393,7 @@ export const StatusRichTextarea = ({
         mentionFiltered.length > 0 &&
         isMention &&
         createPortal(
-          <Menu
+          <MentionMenu
             top={pos.top}
             left={pos.left}
             chars={mentionFiltered}
