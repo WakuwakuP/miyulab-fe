@@ -194,11 +194,13 @@ export const StatusRichTextarea = ({
   text,
   placeholder = '',
   onChange,
+  onSubmit,
   style,
 }: {
   text: string
   placeholder?: string
   onChange: (text: string) => void
+  onSubmit: () => void
   style: CSSProperties
 }) => {
   const users = useContext(UsersContext)
@@ -216,6 +218,11 @@ export const StatusRichTextarea = ({
 
   const [isMention, setIsMention] = useState(false)
   const [isEmoji, setIsEmoji] = useState(false)
+
+  const [downLeftCtrl, setDownLeftCtrl] = useState(false)
+  const [downRightCtrl, setDownRightCtrl] = useState(false)
+
+  const downCtrl = downLeftCtrl || downRightCtrl
 
   const targetText =
     pos != null ? text.slice(0, pos.caret) : text
@@ -292,7 +299,50 @@ export const StatusRichTextarea = ({
         className="rounded-none"
         onChange={(e) => onChange(e.target.value)}
         value={text}
+        onKeyUp={(e) => {
+          if (
+            e.code === 'ControlLeft' &&
+            downCtrl === true
+          ) {
+            e.preventDefault()
+            setDownLeftCtrl(false)
+            return
+          }
+
+          if (
+            e.code === 'ControlRight' &&
+            downCtrl === true
+          ) {
+            e.preventDefault()
+            setDownRightCtrl(false)
+            return
+          }
+        }}
         onKeyDown={(e) => {
+          if (
+            e.code === 'ControlLeft' &&
+            downCtrl === false
+          ) {
+            e.preventDefault()
+            setDownLeftCtrl(true)
+            return
+          }
+
+          if (
+            e.code === 'ControlRight' &&
+            downCtrl === false
+          ) {
+            e.preventDefault()
+            setDownRightCtrl(true)
+            return
+          }
+
+          if (e.code === 'Enter' && downCtrl === true) {
+            e.preventDefault()
+            onSubmit()
+            return
+          }
+
           if (
             pos == null ||
             mentionFiltered.length === 0 ||
