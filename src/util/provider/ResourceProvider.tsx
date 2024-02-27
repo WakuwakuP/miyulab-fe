@@ -21,11 +21,22 @@ import { TokenContext } from 'util/provider/AppProvider'
 export const EmojiContext = createContext<Entity.Emoji[]>(
   []
 )
-export const UsersContext = createContext<Entity.Account[]>(
-  []
-)
+export const UsersContext = createContext<
+  Pick<
+    Entity.Account,
+    'id' | 'acct' | 'avatar' | 'display_name'
+  >[]
+>([])
+
 export const SetUsersContext = createContext<
-  Dispatch<SetStateAction<Entity.Account[]>>
+  Dispatch<
+    SetStateAction<
+      Pick<
+        Entity.Account,
+        'id' | 'acct' | 'avatar' | 'display_name'
+      >[]
+    >
+  >
 >(() => {})
 
 export const ResourceProvider = ({
@@ -48,11 +59,24 @@ export const ResourceProvider = ({
         visible_in_picker: false,
       } as Entity.Emoji)
     })
-    return list
+
+    return list.sort(
+      (a, b) => a.shortcode.length - b.shortcode.length
+    )
   }, [])
 
   const [emojis, setEmojis] = useState<Entity.Emoji[]>([])
-  const [users, setUsers] = useState<Entity.Account[]>([])
+  const [users, setUsers] = useState<
+    Pick<
+      Entity.Account,
+      'id' | 'acct' | 'avatar' | 'display_name'
+    >[]
+  >(JSON.parse(localStorage.getItem('users') ?? '[]'))
+
+  useEffect(() => {
+    if (users.length === 0) return
+    localStorage.setItem('users', JSON.stringify(users))
+  }, [users])
 
   useEffect(() => {
     if (token == null) return
