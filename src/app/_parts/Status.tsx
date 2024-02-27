@@ -104,6 +104,11 @@ export const Status = ({
           small={small}
         />
       )}
+      {status.spoiler_text !== '' && (
+        <div className="border-b-2 border-b-gray-600 py-2 text-gray-400">
+          {status.spoiler_text}
+        </div>
+      )}
       <div
         onClick={() => {
           setDetail({
