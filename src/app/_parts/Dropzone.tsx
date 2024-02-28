@@ -101,13 +101,34 @@ export const Dropzone = ({
       </div>
       {attachments.length > 0 && (
         <div>
-          {attachments.map((file, index) => (
-            <Media
-              key={index}
-              media={file}
-              className="w-1/3"
-            />
-          ))}
+          {attachments.map((file, index) => {
+            switch (attachments.length) {
+              case 1:
+                return (
+                  <Media
+                    key={index}
+                    media={file}
+                    className="w-full"
+                  />
+                )
+              case 2:
+                return (
+                  <Media
+                    key={index}
+                    media={file}
+                    className="w-1/2"
+                  />
+                )
+              default:
+                return (
+                  <Media
+                    key={index}
+                    media={file}
+                    className="w-1/3"
+                  />
+                )
+            }
+          })}
         </div>
       )}
     </div>

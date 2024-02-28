@@ -20,7 +20,7 @@ import { TokenContext } from 'util/provider/AppProvider'
 
 type PleromaInstance =
   | (Entity.Instance & {
-      upload_limit: number
+      upload_limit?: number
     })
   | null
 
