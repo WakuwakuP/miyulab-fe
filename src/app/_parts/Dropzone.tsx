@@ -48,6 +48,7 @@ export const Dropzone = ({
           imageCompression(file, {
             maxSizeMB: 10,
             maxWidthOrHeight: 2560,
+            useWebWorker: true,
           }).then((compressedFile) => {
             uploadMedia(compressedFile)
           })
