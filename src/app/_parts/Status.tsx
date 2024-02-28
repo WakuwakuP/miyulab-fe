@@ -135,7 +135,7 @@ export const Status = ({
         poll={
           status.poll as
             | (Entity.Poll & {
-                own_votes: number[]
+                own_votes: number[] | undefined
               })
             | null
         }

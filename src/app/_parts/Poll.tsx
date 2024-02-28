@@ -10,7 +10,9 @@ import { TokenContext } from 'util/provider/AppProvider'
 export const Poll = ({
   poll,
 }: {
-  poll?: (Entity.Poll & { own_votes: number[] }) | null
+  poll?:
+    | (Entity.Poll & { own_votes: number[] | undefined })
+    | null
 }) => {
   const internalId = useId()
   const token = useContext(TokenContext)
