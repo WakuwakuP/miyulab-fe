@@ -16,6 +16,7 @@ import { useDropzone } from 'react-dropzone'
 
 import { GetClient } from 'util/GetClient'
 import { TokenContext } from 'util/provider/AppProvider'
+import { InstanceContext } from 'util/provider/ResourceProvider'
 
 import { Media } from './Media'
 
@@ -31,6 +32,10 @@ export const Dropzone = ({
   >
 }) => {
   const token = useContext(TokenContext)
+  const instance = useContext(InstanceContext)
+
+  const update_limit =
+    (instance?.upload_limit ?? 16000000) / 1024 / 1024
 
   const onDrop = useCallback(
     (acceptedFiles: File[]) => {
@@ -46,7 +51,7 @@ export const Dropzone = ({
       acceptedFiles.forEach((file) => {
         if (file.type.startsWith('image/')) {
           imageCompression(file, {
-            maxSizeMB: 10,
+            maxSizeMB: update_limit,
             maxWidthOrHeight: 2560,
             useWebWorker: true,
           }).then((compressedFile) => {
@@ -57,7 +62,7 @@ export const Dropzone = ({
         }
       })
     },
-    [setAttachments, token]
+    [setAttachments, token, update_limit]
   )
 
   const {
