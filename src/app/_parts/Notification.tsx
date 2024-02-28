@@ -15,6 +15,14 @@ export const Notification = ({
   const setDetail = useContext(SetDetailContext)
 
   switch (notification.type) {
+    case 'poll_expired':
+      return (
+        <div className="ml-1 mt-2 box-border border-b-4 border-l-4 border-teal-300 pl-2">
+          <Status
+            status={notification.status as Entity.Status}
+          />
+        </div>
+      )
     case 'mention':
       return (
         <div className="ml-1 mt-2 box-border border-b-4 border-l-4 border-green-500 pl-2">

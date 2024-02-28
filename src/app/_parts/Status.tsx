@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 'use client'
 
-import { useContext } from 'react'
+import { useContext, useState } from 'react'
 
 import { Entity } from 'megalodon'
 import { RiRepeatFill } from 'react-icons/ri'
@@ -10,6 +10,9 @@ import { Actions } from 'app/_parts/Actions'
 import { Media } from 'app/_parts/Media'
 import { UserInfo } from 'app/_parts/UserInfo'
 import { SetDetailContext } from 'util/provider/DetailProvider'
+import { SettingContext } from 'util/provider/SettingProvider'
+
+import { Poll } from './Poll'
 
 export const Status = ({
   status,
@@ -21,6 +24,10 @@ export const Status = ({
   small?: boolean
 }) => {
   const setDetail = useContext(SetDetailContext)
+  const setting = useContext(SettingContext)
+
+  const [isShowSensitive, setIsShowSensitive] =
+    useState<boolean>(setting.showSensitive)
 
   const getDisplayName = (account: Entity.Account) => {
     let displayName = account.display_name
@@ -123,37 +130,73 @@ export const Status = ({
           ),
         }}
       />
-      <div className="flex flex-wrap">
-        {status.media_attachments.map(
-          (media: Entity.Attachment) => {
-            switch (status.media_attachments.length) {
-              case 1:
-                return (
-                  <Media
-                    key={media.id}
-                    media={media}
-                  />
-                )
-              case 2:
-                return (
-                  <Media
-                    className="w-1/2"
-                    key={media.id}
-                    media={media}
-                  />
-                )
-              default:
-                return (
-                  <Media
-                    className="w-1/3"
-                    key={media.id}
-                    media={media}
-                  />
-                )
+
+      <Poll
+        poll={
+          status.poll as
+            | (Entity.Poll & {
+                own_votes: number[]
+              })
+            | null
+        }
+      />
+
+      {status.media_attachments.length > 0 && (
+        <div className="relative flex flex-wrap">
+          {(status.reblog?.sensitive ??
+            status.sensitive) && (
+            <>
+              {!isShowSensitive ? (
+                <div
+                  className="absolute z-10 flex h-full w-full cursor-pointer items-center justify-center bg-gray-800/50 p-2 text-gray-400 backdrop-blur-lg"
+                  onClick={() => {
+                    setIsShowSensitive(true)
+                  }}
+                >
+                  <div>Contents Warning</div>
+                </div>
+              ) : (
+                <button
+                  className="absolute left-2 top-2 z-10 rounded-md bg-gray-500/50 px-1 py-0.5"
+                  onClick={() => setIsShowSensitive(false)}
+                >
+                  <div>Hide</div>
+                </button>
+              )}
+            </>
+          )}
+
+          {status.media_attachments.map(
+            (media: Entity.Attachment) => {
+              switch (status.media_attachments.length) {
+                case 1:
+                  return (
+                    <Media
+                      key={media.id}
+                      media={media}
+                    />
+                  )
+                case 2:
+                  return (
+                    <Media
+                      className="w-1/2"
+                      key={media.id}
+                      media={media}
+                    />
+                  )
+                default:
+                  return (
+                    <Media
+                      className="w-1/3"
+                      key={media.id}
+                      media={media}
+                    />
+                  )
+              }
             }
-          }
-        )}
-      </div>
+          )}
+        </div>
+      )}
       <Actions status={status} />
     </div>
   )

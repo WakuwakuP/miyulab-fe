@@ -5,6 +5,7 @@ import { useContext, useEffect, useState } from 'react'
 import { Entity } from 'megalodon'
 import { RiArrowLeftSLine } from 'react-icons/ri'
 
+import { SettingPanel } from 'app/_components/SettingPanel'
 import { Panel } from 'app/_parts/Panel'
 import { Status } from 'app/_parts/Status'
 import { GetClient } from 'util/GetClient'
@@ -13,7 +14,7 @@ import { TokenContext } from 'util/provider/AppProvider'
 export const GettingStarted = () => {
   const token = useContext(TokenContext)
   const [selected, setSelected] = useState<
-    'bookmark' | 'dm' | null
+    'bookmark' | 'dm' | 'setting' | null
   >(null)
 
   const [title, setTitle] = useState<string>(
@@ -76,6 +77,12 @@ export const GettingStarted = () => {
             >
               Direct Message
             </button>
+            <button
+              className="w-full border-b-2 px-4 py-2 text-xl hover:bg-slate-800"
+              onClick={() => setSelected('setting')}
+            >
+              Setting
+            </button>
           </>
         )}
       </div>
@@ -96,6 +103,7 @@ export const GettingStarted = () => {
             )}
           </div>
         ))}
+      {selected === 'setting' && <SettingPanel />}
     </Panel>
   )
 }

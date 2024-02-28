@@ -22,10 +22,10 @@ export const Media = ({
               setIsModalOpen(true)
             }}
             key={media.id}
-            src={media.url}
+            src={media.preview_url ?? media.url}
             alt=""
             className={[
-              'p-0.5 object-contain max-h-48 border-1 bg-black',
+              'p-0.5 object-contain max-h-48 border-1 bg-black cursor-pointer',
               className,
             ].join(' ')}
           />

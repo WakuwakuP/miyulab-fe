@@ -6,6 +6,7 @@ import { useContext, useEffect, useState } from 'react'
 import { Entity } from 'megalodon'
 import { RiCloseCircleLine } from 'react-icons/ri'
 
+import { Dropzone } from 'app/_parts/Dropzone'
 import { Panel } from 'app/_parts/Panel'
 import { StatusRichTextarea } from 'app/_parts/StatusRichTextarea'
 import { UserInfo } from 'app/_parts/UserInfo'
@@ -31,12 +32,17 @@ export const MainPanel = () => {
   const [spoilerText, setSpoilerText] = useState('')
   const [content, setContent] = useState('')
 
+  const [attachments, setAttachments] = useState<
+    Entity.Attachment[]
+  >([])
+
   const resetForm = () => {
     setVisibility('public')
     setIsCW(false)
     setSpoilerText('')
     setContent('')
     setReplyTo(undefined)
+    setAttachments([])
   }
 
   const getContentFormatted = (status: Entity.Status) => {
@@ -62,6 +68,10 @@ export const MainPanel = () => {
       language: 'ja',
       spoiler_text: isCW ? spoilerText : undefined,
       in_reply_to_id: replyTo?.id ?? undefined,
+      media_ids:
+        attachments.length > 0
+          ? attachments.map((a) => a.id)
+          : undefined,
     })
 
     resetForm()
@@ -197,11 +207,21 @@ export const MainPanel = () => {
         </div>
         <div>
           <button
-            className="rounded-md border px-3 py-2"
+            className="rounded-md border bg-slate-500 px-3 py-2"
             onClick={clickPost}
           >
             Post
           </button>
+        </div>
+        <div>
+          <Dropzone
+            attachments={attachments}
+            setAttachments={setAttachments}
+          >
+            <div className="flex h-48 w-full cursor-pointer flex-wrap items-center justify-center border-4 border-dotted border-gray-400">
+              <p>Image Drop Area</p>
+            </div>
+          </Dropzone>
         </div>
       </div>
     </Panel>
