@@ -10,11 +10,13 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "browser-image-compression": "^2.0.2",
     "megalodon": "^9.2.2",
     "next": "14.1.0",
     "node-emoji": "^2.1.3",
     "react": "^18",
     "react-dom": "^18",
+    "react-dropzone": "^14.2.3",
     "react-hook-form": "^7.50.1",
     "react-hot-toast": "^2.4.1",
     "react-icons": "^5.0.1",

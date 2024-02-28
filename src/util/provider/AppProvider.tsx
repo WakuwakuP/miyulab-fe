@@ -48,6 +48,7 @@ export const AppProvider = ({
 
   const [tokenData, setTokenData] =
     useState<OAuth.TokenData | null>(null)
+
   const [isRequestedToken, setIsRequestedToken] =
     useState<boolean>(false)
 

@@ -4,11 +4,13 @@ import { ReactNode, Suspense } from 'react'
 
 import { Toaster } from 'react-hot-toast'
 
+import { APP_NAME } from 'util/environment'
 import { AppProvider } from 'util/provider/AppProvider'
 import { DetailProvider } from 'util/provider/DetailProvider'
 import { HomeTimelineProvider } from 'util/provider/HomeTimelineProvider'
 import { ReplyToProvider } from 'util/provider/ReplyToProvider'
 import { ResourceProvider } from 'util/provider/ResourceProvider'
+import { SettingProvider } from 'util/provider/SettingProvider'
 import { SuspenseProvider } from 'util/provider/SuspenseProvider'
 
 import './globals.css'
@@ -16,7 +18,7 @@ import './globals.css'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Miyulab-FE',
+  title: APP_NAME,
   description:
     'This is Pleroma client application for web.',
 }
@@ -31,21 +33,23 @@ export default function RootLayout({
       <body className={inter.className}>
         <SuspenseProvider>
           <AppProvider>
-            <Suspense>
-              <ResourceProvider>
-                <ReplyToProvider>
-                  <DetailProvider>
-                    <HomeTimelineProvider>
-                      <Toaster
-                        position="bottom-left"
-                        reverseOrder={false}
-                      />
-                      {children}
-                    </HomeTimelineProvider>
-                  </DetailProvider>
-                </ReplyToProvider>
-              </ResourceProvider>
-            </Suspense>
+            <SettingProvider>
+              <Suspense>
+                <ResourceProvider>
+                  <ReplyToProvider>
+                    <DetailProvider>
+                      <HomeTimelineProvider>
+                        <Toaster
+                          position="bottom-left"
+                          reverseOrder={false}
+                        />
+                        {children}
+                      </HomeTimelineProvider>
+                    </DetailProvider>
+                  </ReplyToProvider>
+                </ResourceProvider>
+              </Suspense>
+            </SettingProvider>
           </AppProvider>
         </SuspenseProvider>
       </body>
