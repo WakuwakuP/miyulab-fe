@@ -18,6 +18,15 @@ import unicodeEmojiData from 'unicode-emoji-json/data-by-emoji.json'
 import { GetClient } from 'util/GetClient'
 import { TokenContext } from 'util/provider/AppProvider'
 
+type PleromaInstance =
+  | (Entity.Instance & {
+      upload_limit: number
+    })
+  | null
+
+export const InstanceContext =
+  createContext<PleromaInstance>(null)
+
 export const EmojiContext = createContext<Entity.Emoji[]>(
   []
 )
@@ -65,6 +74,8 @@ export const ResourceProvider = ({
     )
   }, [])
 
+  const [instance, setInstance] =
+    useState<PleromaInstance>(null)
   const [emojis, setEmojis] = useState<Entity.Emoji[]>([])
   const [users, setUsers] = useState<
     Pick<
@@ -84,15 +95,21 @@ export const ResourceProvider = ({
     client.getInstanceCustomEmojis().then((res) => {
       setEmojis([...res.data, ...emojiList])
     })
+
+    client.getInstance().then((res) => {
+      setInstance(res.data as PleromaInstance)
+    })
   }, [emojiList, token])
 
   return (
-    <EmojiContext.Provider value={emojis}>
-      <UsersContext.Provider value={users}>
-        <SetUsersContext.Provider value={setUsers}>
-          {children}
-        </SetUsersContext.Provider>
-      </UsersContext.Provider>
-    </EmojiContext.Provider>
+    <InstanceContext.Provider value={instance}>
+      <EmojiContext.Provider value={emojis}>
+        <UsersContext.Provider value={users}>
+          <SetUsersContext.Provider value={setUsers}>
+            {children}
+          </SetUsersContext.Provider>
+        </UsersContext.Provider>
+      </EmojiContext.Provider>
+    </InstanceContext.Provider>
   )
 }
