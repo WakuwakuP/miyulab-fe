@@ -3,6 +3,11 @@
 
 import { useContext, useState } from 'react'
 
+import { ElementType } from 'domelementtype'
+import parse, {
+  DOMNode,
+  domToReact,
+} from 'html-react-parser'
 import { Entity } from 'megalodon'
 import { RiRepeatFill } from 'react-icons/ri'
 
@@ -52,7 +57,66 @@ export const Status = ({
         )
       })
     }
+
     return content
+  }
+  const replace = (node: DOMNode) => {
+    if (
+      node.type === ElementType.Tag &&
+      node.name === 'a'
+    ) {
+      const classNames = (node.attribs.class ?? '').split(
+        ' '
+      )
+      if (classNames.includes('mention')) {
+        return (
+          <a
+            {...node.attribs}
+            onClick={(e) => {
+              e.stopPropagation()
+              e.preventDefault()
+              setDetail({
+                type: 'SearchUser',
+                content: status.mentions.find(
+                  (mention) =>
+                    mention.url === node.attribs.href
+                )?.id as string,
+              })
+            }}
+            rel={[
+              node.attribs.rel,
+              'noopener noreferrer',
+            ].join(' ')}
+          >
+            {domToReact(node.children as DOMNode[])}
+          </a>
+        )
+      }
+      if (node.attribs.rel === 'tag') {
+        return (
+          <a
+            {...node.attribs}
+            data-testid={
+              status.tags.find((tag) => {
+                return tag.url === node.attribs.href
+              })?.name as string
+            }
+            onClick={(e) => {
+              e.stopPropagation()
+              e.preventDefault()
+              setDetail({
+                type: 'Hashtag',
+                content: status.tags.find((tag) => {
+                  return tag.url === node.attribs.href
+                })?.name as string,
+              })
+            }}
+          >
+            {domToReact(node.children as DOMNode[])}
+          </a>
+        )
+      }
+    }
   }
 
   const statusClasses = [
@@ -117,19 +181,19 @@ export const Status = ({
         </div>
       )}
       <div
+        className="content"
         onClick={() => {
           setDetail({
             type: 'Status',
             content: status,
           })
         }}
-        className="content"
-        dangerouslySetInnerHTML={{
-          __html: getContentFormatted(
-            status.reblog ?? status
-          ),
-        }}
-      />
+      >
+        {parse(
+          getContentFormatted(status.reblog ?? status),
+          { replace }
+        )}
+      </div>
 
       <Poll
         poll={
@@ -141,7 +205,7 @@ export const Status = ({
         }
       />
 
-      {status.media_attachments.length > 0 && (
+      {status.media_attachments.length > 0 ? (
         <div className="relative flex flex-wrap">
           {(status.reblog?.sensitive ??
             status.sensitive) && (
@@ -196,6 +260,28 @@ export const Status = ({
             }
           )}
         </div>
+      ) : (
+        <>
+          {status.card != null && (
+            <div className="mx-2 flex flex-col items-center justify-center rounded-lg border border-gray-500">
+              {status.card.image != null && (
+                <img
+                  className="aspect-video w-full rounded-t-lg object-cover"
+                  src={status.card.image}
+                  alt="card"
+                />
+              )}
+              <div className="w-full px-2">
+                <div className="w-full truncate text-lg">
+                  {status.card.title}
+                </div>
+                <div className="line-clamp-3 w-full text-gray-400">
+                  {status.card.description}
+                </div>
+              </div>
+            </div>
+          )}
+        </>
       )}
       <Actions status={status} />
     </div>

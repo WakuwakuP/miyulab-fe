@@ -10,7 +10,12 @@ import {
 
 import { Entity } from 'megalodon'
 
-export type DetailType = 'Account' | 'Status' | null
+export type DetailType =
+  | 'Account'
+  | 'Status'
+  | 'SearchUser'
+  | 'Hashtag'
+  | null
 
 export type SetDetailParams =
   | {
@@ -20,6 +25,14 @@ export type SetDetailParams =
   | {
       type: 'Status'
       content: Entity.Status
+    }
+  | {
+      type: 'SearchUser'
+      content: string | undefined
+    }
+  | {
+      type: 'Hashtag'
+      content: string | undefined
     }
   | {
       type: null
