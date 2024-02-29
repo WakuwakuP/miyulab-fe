@@ -3,12 +3,16 @@
 
 import {
   CSSProperties,
+  ClipboardEventHandler,
+  Dispatch,
+  SetStateAction,
   useContext,
   useMemo,
   useRef,
   useState,
 } from 'react'
 
+import imageCompression from 'browser-image-compression'
 import { Entity } from 'megalodon'
 import * as Emoji from 'node-emoji'
 import { createPortal } from 'react-dom'
@@ -18,6 +22,8 @@ import {
   createRegexRenderer,
 } from 'rich-textarea'
 
+import { GetClient } from 'util/GetClient'
+import { TokenContext } from 'util/provider/AppProvider'
 import {
   EmojiContext,
   UsersContext,
@@ -196,13 +202,20 @@ export const StatusRichTextarea = ({
   onChange,
   onSubmit,
   style,
+  setAttachments,
+  setUploading,
 }: {
   text: string
   placeholder?: string
   onChange: (text: string) => void
   onSubmit: () => void
   style: CSSProperties
+  setAttachments: Dispatch<
+    SetStateAction<Entity.Attachment[]>
+  >
+  setUploading: Dispatch<SetStateAction<number>>
 }) => {
+  const token = useContext(TokenContext)
   const users = useContext(UsersContext)
 
   const emojis = useContext(EmojiContext)
@@ -289,6 +302,46 @@ export const StatusRichTextarea = ({
   const customRenderer = createRegexRenderer([
     [MENTION_HIGHLIGHT_REG, { color: 'blue' }],
   ])
+
+  const uploadMedia = (file: File) => {
+    if (token == null) return
+    const client = GetClient(token?.access_token)
+    client
+      .uploadMedia(file)
+      .then((res) => {
+        const Attachment = res.data as Entity.Attachment
+        setAttachments((prev) => [...prev, Attachment])
+      })
+      .finally(() => {
+        setUploading((prev) => prev - 1)
+      })
+  }
+
+  const onPaste: ClipboardEventHandler<
+    HTMLTextAreaElement
+  > = (e) => {
+    if (e.clipboardData.types.includes('Files')) {
+      e.preventDefault()
+      const files = e.clipboardData.files
+      if (files.length > 0) {
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i]
+          setUploading((prev) => prev + 1)
+          if (file.type.startsWith('image/')) {
+            imageCompression(file, {
+              maxSizeMB: 10,
+              maxWidthOrHeight: 2560,
+              useWebWorker: true,
+            }).then((compressedFile) => {
+              uploadMedia(compressedFile)
+            })
+          } else {
+            uploadMedia(file)
+          }
+        }
+      }
+    }
+  }
 
   return (
     <>
@@ -436,6 +489,7 @@ export const StatusRichTextarea = ({
             setIndex(0)
           }
         }}
+        onPaste={onPaste}
       >
         {customRenderer}
       </RichTextarea>
