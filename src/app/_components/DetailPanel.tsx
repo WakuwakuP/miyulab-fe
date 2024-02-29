@@ -25,7 +25,6 @@ export const DetailPanel = () => {
   const [context, setContext] =
     useState<Entity.Context | null>(null)
 
-
   useEffect(() => {
     if (token == null || detail.content == null) return
 
@@ -38,11 +37,24 @@ export const DetailPanel = () => {
           setContext(res.data)
         })
     }
-  }, [detail.content, detail.type, token])
+
+    if (detail.type === 'SearchUser') {
+      const client = GetClient(token?.access_token)
+
+      client.getAccount(detail.content).then((res) => {
+        setDetail({
+          type: 'Account',
+          content: res.data,
+        })
+      })
+    }
+  }, [detail.content, detail.type, setDetail, token])
 
   const panelNames = {
     Status: 'Toot and Reply',
     Account: 'Profile',
+    SearchUser: 'Profile',
+    Hashtag: 'Hashtag',
   }
 
   if (detail.type === null) {
@@ -80,6 +92,7 @@ export const DetailPanel = () => {
       {detail.type === 'Account' && (
         <AccountDetail account={detail.content} />
       )}
+      {detail.type === 'Hashtag' && <div>Hashtag</div>}
     </Panel>
   )
 }
