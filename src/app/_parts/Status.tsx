@@ -17,6 +17,7 @@ import { UserInfo } from 'app/_parts/UserInfo'
 import { SetDetailContext } from 'util/provider/DetailProvider'
 import { SettingContext } from 'util/provider/SettingProvider'
 
+import { Card } from './Card'
 import { Poll } from './Poll'
 
 export const Status = ({
@@ -261,27 +262,7 @@ export const Status = ({
           )}
         </div>
       ) : (
-        <>
-          {status.card != null && (
-            <div className="mx-2 flex flex-col items-center justify-center rounded-lg border border-gray-500">
-              {status.card.image != null && (
-                <img
-                  className="aspect-video w-full rounded-t-lg object-cover"
-                  src={status.card.image}
-                  alt="card"
-                />
-              )}
-              <div className="w-full px-2">
-                <div className="w-full truncate text-lg">
-                  {status.card.title}
-                </div>
-                <div className="line-clamp-3 w-full text-gray-400">
-                  {status.card.description}
-                </div>
-              </div>
-            </div>
-          )}
-        </>
+        <Card card={status.reblog?.card ?? status.card} />
       )}
       <Actions status={status} />
     </div>
