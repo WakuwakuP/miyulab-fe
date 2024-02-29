@@ -36,6 +36,8 @@ export const MainPanel = () => {
     Entity.Attachment[]
   >([])
 
+  const [uploading, setUploading] = useState(0)
+
   const resetForm = () => {
     setVisibility('public')
     setIsCW(false)
@@ -203,6 +205,8 @@ export const MainPanel = () => {
               resize: 'none',
             }}
             onChange={setContent}
+            setAttachments={setAttachments}
+            setUploading={setUploading}
           />
         </div>
         <div>
@@ -217,6 +221,8 @@ export const MainPanel = () => {
           <Dropzone
             attachments={attachments}
             setAttachments={setAttachments}
+            uploading={uploading}
+            setUploading={setUploading}
           >
             <div className="flex h-48 w-full cursor-pointer flex-wrap items-center justify-center border-4 border-dotted border-gray-400">
               <p>Image Drop Area</p>
