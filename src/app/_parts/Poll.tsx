@@ -44,7 +44,7 @@ export const Poll = ({
           >
             {voted ? (
               <div
-                className="my-0.5 rounded-md px-2"
+                className="my-0.5 flex flex-wrap rounded-md px-2"
                 style={{
                   backgroundImage:
                     option.votes_count != null &&
@@ -62,9 +62,11 @@ export const Poll = ({
                 <span className="ml-2 text-white/50">
                   {option.votes_count != null &&
                   poll.votes_count > 0
-                    ? (option.votes_count /
-                        poll.votes_count) *
-                      100
+                    ? (
+                        (option.votes_count /
+                          poll.votes_count) *
+                        100
+                      ).toFixed(1)
                     : 0}
                   % ({option.votes_count})
                 </span>
