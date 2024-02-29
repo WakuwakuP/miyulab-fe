@@ -27,7 +27,9 @@ export const Card = ({
         <div className="line-clamp-3 w-full text-gray-400">
           {card.description}
         </div>
-        <div>{card.url}</div>
+        <div className="line-clamp-3 w-full text-gray-560">
+          {card.url}
+        </div>
       </div>
     </a>
   )
