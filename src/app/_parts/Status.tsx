@@ -108,9 +108,11 @@ export const Status = ({
               e.preventDefault()
               setDetail({
                 type: 'Hashtag',
-                content: status.tags.find((tag) => {
-                  return tag.url === node.attribs.href
-                })?.name as string,
+                content: status.tags.find(
+                  (tag) =>
+                    e.currentTarget.innerText.toLocaleLowerCase() ==
+                    `#${tag.name.toLocaleLowerCase()}`
+                )?.name as string,
               })
             }}
           >

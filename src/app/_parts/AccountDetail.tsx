@@ -19,6 +19,9 @@ export const AccountDetail = ({
   const token = useContext(TokenContext)
   const [toots, setToots] = useState<Entity.Status[]>([])
   const [media, setMedia] = useState<Entity.Status[]>([])
+  const [relationship, setRelationship] = useState<
+    Entity.Relationship | undefined
+  >(undefined)
 
   const [tab, setTab] = useState<
     'toots' | 'media' | 'favourite'
@@ -46,6 +49,11 @@ export const AccountDetail = ({
     if (token === null) return
 
     const client = GetClient(token?.access_token)
+
+    client.getRelationship(account.id).then((res) => {
+      setRelationship(res.data)
+    })
+
     client
       .getAccountStatuses(account.id, {
         limit: 100,
@@ -75,11 +83,53 @@ export const AccountDetail = ({
         />
       </div>
       <UserInfo account={account} />
+      {relationship != null && (
+        <div className="my-2">
+          <div className="my-2">
+            <span className="text-gray-400">
+              {relationship.followed_by
+                ? 'フォローされています'
+                : ''}
+            </span>
+          </div>
+          <div className="my-2">
+            <div>
+              <span className="text-gray-400">
+                {relationship.following ? (
+                  'フォロー中'
+                ) : (
+                  <button
+                    className="rounded-md border border-blue-500 px-2 py-1 text-blue-500 transition-colors duration-300 ease-in-out hover:bg-blue-500 hover:text-white"
+                    onClick={() => {
+                      if (token == null) return
+                      const client = GetClient(
+                        token.access_token
+                      )
+                      client
+                        .followAccount(account.id)
+                        .then(() => {
+                          setRelationship({
+                            ...relationship,
+                            following: true,
+                          })
+                        })
+                    }}
+                  >
+                    フォローする
+                  </button>
+                )}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
       <div
+        className="my-2"
         dangerouslySetInnerHTML={{
           __html: getNote(account),
         }}
       />
+
       <div>
         <div className="grid grid-cols-2 [&>button]:box-border">
           <button

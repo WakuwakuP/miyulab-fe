@@ -80,9 +80,6 @@ export const MainPanel = () => {
     resetForm()
   }
 
-  // TODO: media post
-  // const mediaPost = () => {}
-
   useEffect(() => {
     setVisibility(replyTo?.visibility ?? 'public')
     setContent(
