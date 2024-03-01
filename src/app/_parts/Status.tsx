@@ -6,19 +6,20 @@ import { useContext, useState } from 'react'
 import { ElementType } from 'domelementtype'
 import parse, {
   DOMNode,
+  attributesToProps,
   domToReact,
 } from 'html-react-parser'
 import { Entity } from 'megalodon'
 import { RiRepeatFill } from 'react-icons/ri'
 
 import { Actions } from 'app/_parts/Actions'
+import { Card } from 'app/_parts/Card'
+import { EditedAt } from 'app/_parts/EditedAt'
 import { Media } from 'app/_parts/Media'
+import { Poll } from 'app/_parts/Poll'
 import { UserInfo } from 'app/_parts/UserInfo'
 import { SetDetailContext } from 'util/provider/DetailProvider'
 import { SettingContext } from 'util/provider/SettingProvider'
-
-import { Card } from './Card'
-import { Poll } from './Poll'
 
 export const Status = ({
   status,
@@ -72,7 +73,7 @@ export const Status = ({
       if (classNames.includes('mention')) {
         return (
           <a
-            {...node.attribs}
+            {...attributesToProps(node.attribs)}
             onClick={(e) => {
               e.stopPropagation()
               e.preventDefault()
@@ -96,7 +97,7 @@ export const Status = ({
       if (node.attribs.rel === 'tag') {
         return (
           <a
-            {...node.attribs}
+            {...attributesToProps(node.attribs)}
             data-testid={
               status.tags.find((tag) => {
                 return tag.url === node.attribs.href
@@ -190,6 +191,7 @@ export const Status = ({
           })
         }}
       >
+        <EditedAt editedAt={status.edited_at} />
         {parse(
           getContentFormatted(status.reblog ?? status),
           { replace }
