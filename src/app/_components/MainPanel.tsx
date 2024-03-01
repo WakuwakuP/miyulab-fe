@@ -62,6 +62,7 @@ export const MainPanel = () => {
 
   const clickPost = () => {
     if (token == null) return
+    if (content === '') return
 
     const client = GetClient(token?.access_token)
 

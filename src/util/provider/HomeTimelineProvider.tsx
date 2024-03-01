@@ -148,6 +148,20 @@ export const HomeTimelineProvider = ({
       )
     })
 
+    stream.on('status_update', (status: Entity.Status) => {
+      setTimeline((prev) => {
+        const index = prev.findIndex(
+          (prevStatus) => prevStatus.id === status.id
+        )
+        if (index === -1) {
+          return ArrayLengthControl([status, ...prev])
+        }
+        const next = [...prev]
+        next[index] = status
+        return next
+      })
+    })
+
     stream.on(
       'notification',
       (notification: Entity.Notification) => {
