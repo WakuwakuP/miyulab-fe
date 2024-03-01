@@ -6,6 +6,7 @@ import { Entity } from 'megalodon'
 import { RiArrowLeftSLine } from 'react-icons/ri'
 
 import { AccountDetail } from 'app/_parts/AccountDetail'
+import { HashtagDetail } from 'app/_parts/HashtagDetail'
 import { Panel } from 'app/_parts/Panel'
 import { Status } from 'app/_parts/Status'
 import { GetClient } from 'util/GetClient'
@@ -54,7 +55,10 @@ export const DetailPanel = () => {
     Status: 'Toot and Reply',
     Account: 'Profile',
     SearchUser: 'Profile',
-    Hashtag: 'Hashtag',
+    Hashtag:
+      typeof detail.content == 'string'
+        ? `#${detail.content}`
+        : 'Hashtag',
   }
 
   if (detail.type === null) {
@@ -92,7 +96,9 @@ export const DetailPanel = () => {
       {detail.type === 'Account' && (
         <AccountDetail account={detail.content} />
       )}
-      {detail.type === 'Hashtag' && <div>Hashtag</div>}
+      {detail.type === 'Hashtag' && (
+        <HashtagDetail hashtag={detail.content} />
+      )}
     </Panel>
   )
 }

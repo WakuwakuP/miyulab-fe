@@ -21,6 +21,8 @@ export const GettingStarted = () => {
     'Getting Started'
   )
 
+  const [lists, setLists] = useState<Entity.List[]>([])
+
   const [bookmarks, setBookmarks] = useState<
     Entity.Status[]
   >([])
@@ -32,6 +34,10 @@ export const GettingStarted = () => {
   useEffect(() => {
     if (token === null) return
     const client = GetClient(token?.access_token)
+
+    client.getLists().then((res) => {
+      setLists(res.data)
+    })
 
     switch (selected) {
       case 'bookmark':
