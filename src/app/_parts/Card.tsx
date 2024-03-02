@@ -12,6 +12,8 @@ export const Card = ({
     <a
       className="mx-2 flex flex-col items-center justify-center rounded-lg border border-gray-500"
       href={card.url}
+      rel="noreferrer noopener"
+      target="_blank"
     >
       {card.image != null && (
         <img
