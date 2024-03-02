@@ -56,6 +56,24 @@ export const TagTimeline = ({ tag }: { tag: string }) => {
       // eslint-disable-next-line no-console
       console.info('connected tagSocket')
     })
+
+    stream.on('delete', (id: string) => {
+      setTimeline((prev) =>
+        prev.filter((status) => status.id !== id)
+      )
+    })
+
+    stream.on('error', (err: Error) => {
+      console.error(err)
+
+      stream.stop()
+      const timeout = setTimeout(() => {
+        stream.start()
+        // eslint-disable-next-line no-console
+        console.info('reconnected tagSocket')
+        clearTimeout(timeout)
+      }, 1000)
+    })
   }, [tag, token])
 
   return (

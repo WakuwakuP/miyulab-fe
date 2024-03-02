@@ -201,8 +201,11 @@ export const HomeTimelineProvider = ({
       console.error(err)
 
       stream.stop()
-      setTimeout(() => {
+      const timeout = setTimeout(() => {
         stream.start()
+        // eslint-disable-next-line no-console
+        console.info('reconnected userSocket')
+        clearTimeout(timeout)
       }, 1000)
     })
 

@@ -40,20 +40,38 @@ export const PublicTimeline = () => {
       .getPublicTimeline({ limit: 40, only_media: true })
       .then((res) => {
         setTimeline(res.data)
-        const stream = streamClient.publicSocket()
-
-        stream.on('update', (status) => {
-          if (status.media_attachments.length > 0) {
-            setTimeline((prev) =>
-              ArrayLengthControl([status, ...prev])
-            )
-          }
-        })
-        stream.on('connect', () => {
-          // eslint-disable-next-line no-console
-          console.info('connected publicSocket')
-        })
       })
+    const stream = streamClient.publicSocket()
+
+    stream.on('update', (status) => {
+      if (status.media_attachments.length > 0) {
+        setTimeline((prev) =>
+          ArrayLengthControl([status, ...prev])
+        )
+      }
+    })
+    stream.on('connect', () => {
+      // eslint-disable-next-line no-console
+      console.info('connected publicSocket')
+    })
+
+    stream.on('delete', (id: string) => {
+      setTimeline((prev) =>
+        prev.filter((status) => status.id !== id)
+      )
+    })
+
+    stream.on('error', (err: Error) => {
+      console.error(err)
+
+      stream.stop()
+      const timeout = setTimeout(() => {
+        stream.start()
+        // eslint-disable-next-line no-console
+        console.info('reconnected publicSocket')
+        clearTimeout(timeout)
+      }, 1000)
+    })
   }, [token])
 
   return (
