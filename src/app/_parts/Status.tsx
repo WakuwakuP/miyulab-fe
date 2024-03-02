@@ -89,6 +89,7 @@ export const Status = ({
               node.attribs.rel,
               'noopener noreferrer',
             ].join(' ')}
+            target="_blank"
           >
             {domToReact(node.children as DOMNode[])}
           </a>
@@ -98,11 +99,6 @@ export const Status = ({
         return (
           <a
             {...attributesToProps(node.attribs)}
-            data-testid={
-              status.tags.find((tag) => {
-                return tag.url === node.attribs.href
-              })?.name as string
-            }
             onClick={(e) => {
               e.stopPropagation()
               e.preventDefault()
@@ -115,11 +111,25 @@ export const Status = ({
                 )?.name as string,
               })
             }}
+            target="_blank"
           >
             {domToReact(node.children as DOMNode[])}
           </a>
         )
       }
+
+      return (
+        <a
+          {...attributesToProps(node.attribs)}
+          rel={[
+            node.attribs.rel,
+            'noopener noreferrer',
+          ].join(' ')}
+          target="_blank"
+        >
+          {domToReact(node.children as DOMNode[])}
+        </a>
+      )
     }
   }
 
