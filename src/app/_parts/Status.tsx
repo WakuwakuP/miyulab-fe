@@ -121,6 +121,8 @@ export const Status = ({
       return (
         <a
           {...attributesToProps(node.attribs)}
+          className="line-clamp-1"
+          title={node.attribs.href}
           rel={[
             node.attribs.rel,
             'noopener noreferrer',

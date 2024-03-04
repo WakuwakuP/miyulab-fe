@@ -10,6 +10,7 @@ import parse, {
   domToReact,
 } from 'html-react-parser'
 import { Entity } from 'megalodon'
+import innerText from 'react-innertext'
 
 import { UserInfo } from 'app/_parts/UserInfo'
 import { GetClient } from 'util/GetClient'
@@ -77,6 +78,7 @@ export const AccountDetail = ({
       return (
         <a
           {...attributesToProps(node.attribs)}
+          className="text-blue-500"
           rel={[
             node.attribs.rel,
             'noopener noreferrer',
@@ -172,26 +174,32 @@ export const AccountDetail = ({
           </div>
         </div>
       )}
-      <div className="my-2">
+      <div className="content my-2">
         {parse(getNote(account), { replace })}
       </div>
 
       <div className="m-1 box-border">
-        <table className="w-full border-collapse p-2 [&_*]:border-gray-500">
-          {account.fields.map((field) => (
-            <tr
-              key={field.name}
-              className="w-full"
+        {account.fields.map((field) => (
+          <dl
+            key={field.name}
+            className="flex w-full border-collapse text-center text-sm"
+          >
+            <dt
+              className="w-28 flex-[0_0_auto] truncate border px-1 py-2"
+              title={field.name}
             >
-              <td className="border p-1">{field.name}</td>
-              <td className="truncate text-wrap border p-1">
-                {parse(field.value, {
-                  replace,
-                })}
-              </td>
-            </tr>
-          ))}
-        </table>
+              {field.name}
+            </dt>
+            <dd
+              className="flex-[1_1_auto] truncate border px-1 py-2"
+              title={innerText(parse(field.value))}
+            >
+              {parse(field.value, {
+                replace,
+              })}
+            </dd>
+          </dl>
+        ))}
       </div>
 
       <div>

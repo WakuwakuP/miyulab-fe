@@ -3200,6 +3200,7 @@ __metadata:
     react-hook-form: "npm:^7.50.1"
     react-hot-toast: "npm:^2.4.1"
     react-icons: "npm:^5.0.1"
+    react-innertext: "npm:^1.1.5"
     rich-textarea: "npm:^0.24.4"
     tailwindcss: "npm:^3.3.0"
     typescript: "npm:^5"
@@ -3885,6 +3886,16 @@ __metadata:
   peerDependencies:
     react: "*"
   checksum: 10c0/717022d93a3b2b30082f86fbb3c725a94a603b3fa1c611533439cc886f691a13b1833c30446d257a177667779239eac57411fa7516d8a4787bd735e965c9f63d
+  languageName: node
+  linkType: hard
+
+"react-innertext@npm:^1.1.5":
+  version: 1.1.5
+  resolution: "react-innertext@npm:1.1.5"
+  peerDependencies:
+    "@types/react": ">=0.0.0 <=99"
+    react: ">=0.0.0 <=99"
+  checksum: 10c0/45335918ac83334133a9fa0df4ce109e0d4a45d54b783a8eaec88811b36dd5c3bbb5d9a6af2da1eed518a6f325a6ffae4be7bd30878596e0ec1760b231a8e0ee
   languageName: node
   linkType: hard
 
