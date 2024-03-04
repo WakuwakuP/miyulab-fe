@@ -3,11 +3,18 @@
 
 import { useContext, useEffect, useState } from 'react'
 
+import { ElementType } from 'domelementtype'
+import parse, {
+  DOMNode,
+  attributesToProps,
+  domToReact,
+} from 'html-react-parser'
 import { Entity } from 'megalodon'
 
 import { UserInfo } from 'app/_parts/UserInfo'
 import { GetClient } from 'util/GetClient'
 import { TokenContext } from 'util/provider/AppProvider'
+import { SetDetailContext } from 'util/provider/DetailProvider'
 
 import { Status } from './Status'
 
@@ -17,6 +24,7 @@ export const AccountDetail = ({
   account: Entity.Account
 }) => {
   const token = useContext(TokenContext)
+  const setDetail = useContext(SetDetailContext)
   const [toots, setToots] = useState<Entity.Status[]>([])
   const [media, setMedia] = useState<Entity.Status[]>([])
   const [relationship, setRelationship] = useState<
@@ -38,6 +46,47 @@ export const AccountDetail = ({
       })
     }
     return note
+  }
+
+  const replace = (node: DOMNode) => {
+    if (
+      node.type === ElementType.Tag &&
+      node.name === 'a'
+    ) {
+      if (node.attribs.rel === 'tag') {
+        return (
+          <a
+            {...attributesToProps(node.attribs)}
+            onClick={(e) => {
+              e.stopPropagation()
+              e.preventDefault()
+              setDetail({
+                type: 'Hashtag',
+                content: e.currentTarget.innerText
+                  .toLocaleLowerCase()
+                  .replace('#', ''),
+              })
+            }}
+            target="_blank"
+          >
+            {domToReact(node.children as DOMNode[])}
+          </a>
+        )
+      }
+
+      return (
+        <a
+          {...attributesToProps(node.attribs)}
+          rel={[
+            node.attribs.rel,
+            'noopener noreferrer',
+          ].join(' ')}
+          target="_blank"
+        >
+          {domToReact(node.children as DOMNode[])}
+        </a>
+      )
+    }
   }
 
   useEffect(() => {
@@ -123,15 +172,30 @@ export const AccountDetail = ({
           </div>
         </div>
       )}
-      <div
-        className="my-2"
-        dangerouslySetInnerHTML={{
-          __html: getNote(account),
-        }}
-      />
+      <div className="my-2">
+        {parse(getNote(account), { replace })}
+      </div>
+
+      <div className="m-1 box-border">
+        <table className="w-full border-collapse p-2 [&_*]:border-gray-500">
+          {account.fields.map((field) => (
+            <tr
+              key={field.name}
+              className="w-full"
+            >
+              <td className="border p-1">{field.name}</td>
+              <td className="truncate text-wrap border p-1">
+                {parse(field.value, {
+                  replace,
+                })}
+              </td>
+            </tr>
+          ))}
+        </table>
+      </div>
 
       <div>
-        <div className="grid grid-cols-2 [&>button]:box-border">
+        <div className="m-1 grid grid-cols-2 [&>button]:box-border">
           <button
             className={[
               'border',
