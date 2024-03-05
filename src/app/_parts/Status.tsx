@@ -42,7 +42,7 @@ export const Status = ({
       account.emojis.forEach((emoji) => {
         displayName = displayName.replace(
           new RegExp(`:${emoji.shortcode}:`, 'gm'),
-          `<img src="${emoji.url}" alt="${emoji.shortcode}" class="min-w-5 h-5 inline-block" />`
+          `<img src="${emoji.url}" alt="${emoji.shortcode}" class="min-w-5 h-5 inline-block" loading="lazy" />`
         )
       })
     }
@@ -55,7 +55,7 @@ export const Status = ({
       status.emojis.forEach((emoji) => {
         content = content.replace(
           new RegExp(`:${emoji.shortcode}:`, 'gm'),
-          `<img src="${emoji.url}" alt="${emoji.shortcode}" class="min-w-5 h-5 inline-block" />`
+          `<img src="${emoji.url}" alt="${emoji.shortcode}" class="min-w-5 h-5 inline-block" loading="lazy" />`
         )
       })
     }
@@ -170,6 +170,7 @@ export const Status = ({
               ].join(' ')}
               src={status.account.avatar}
               alt="avatar"
+              loading="lazy"
             />
             <span
               className="pl-2"

@@ -28,6 +28,7 @@ export const Media = ({
               'p-0.5 object-contain max-h-48 border-1 bg-black cursor-pointer',
               className,
             ].join(' ')}
+            loading="lazy"
           />
           {isModalOpen &&
             createPortal(
@@ -41,6 +42,7 @@ export const Media = ({
                   src={media.url}
                   alt=""
                   className="fixed inset-0 z-50 m-auto h-[90vh] w-[90vw] object-contain"
+                  loading="lazy"
                 />
               </div>,
               document.body
