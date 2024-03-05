@@ -83,6 +83,7 @@ const MentionMenu = ({
             className="mr-2 inline-block h-8 w-8 rounded-full"
             src={char.avatar}
             alt={char.display_name}
+            loading="lazy"
           />
           <span>{`@${char.acct}`}</span>
         </div>
@@ -140,6 +141,7 @@ const EmojiMenu = ({
               src={char.url}
               alt={char.shortcode}
               className="mr-1 h-6 w-6"
+              loading="lazy"
             />
           )}
           <div>:{char.shortcode}:</div>

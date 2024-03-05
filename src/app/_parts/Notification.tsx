@@ -48,6 +48,7 @@ export const Notification = ({
               className="h-12 w-12 flex-none rounded-lg object-contain"
               src={notification.account?.avatar ?? ''}
               alt="avatar"
+              loading="lazy"
             />
             <div className="w-[calc(100%-56px)] pl-2">
               <p className="w-full truncate">
@@ -81,6 +82,7 @@ export const Notification = ({
               className="h-12 w-12 flex-none rounded-lg object-contain"
               src={notification.account?.avatar ?? ''}
               alt="avatar"
+              loading="lazy"
             />
             <div className="w-[calc(100%-56px)] pl-2">
               <p className="w-full truncate">
@@ -118,6 +120,7 @@ export const Notification = ({
                 className="h-12 w-12 flex-none rounded-lg object-contain"
                 src={notification.account?.avatar ?? ''}
                 alt="avatar"
+                loading="lazy"
               />
               <div className="w-[calc(100%-56px)] pl-2">
                 <p className="w-full truncate">
@@ -134,6 +137,7 @@ export const Notification = ({
                   className="h-12 w-12 flex-none rounded-lg object-contain"
                   src={notification.reaction?.static_url}
                   alt="emoji"
+                  loading="lazy"
                 />
               ) : (
                 <span className="text-3xl">
@@ -166,6 +170,7 @@ export const Notification = ({
               className="h-12 w-12 flex-none rounded-lg object-contain"
               src={notification.account?.avatar ?? ''}
               alt="avatar"
+              loading="lazy"
             />
             <div className="w-[calc(100%-56px)] pl-2">
               <p className="w-full truncate">
@@ -196,6 +201,7 @@ export const Notification = ({
               className="h-12 w-12 flex-none rounded-lg object-contain"
               src={notification.account?.avatar ?? ''}
               alt="avatar"
+              loading="lazy"
             />
             <div className="w-[calc(100%-56px)] pl-2">
               <p className="w-full truncate">

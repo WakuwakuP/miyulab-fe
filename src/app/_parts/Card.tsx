@@ -20,6 +20,7 @@ export const Card = ({
           className="aspect-video w-full rounded-t-lg object-cover"
           src={card.image}
           alt="card"
+          loading="lazy"
         />
       )}
       <div className="w-full px-2">
