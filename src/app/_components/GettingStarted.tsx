@@ -66,19 +66,19 @@ export const GettingStarted = () => {
         ) : (
           <>
             <button
-              className="w-full border-b-2 px-4 py-2 text-xl hover:bg-slate-800"
+              className="w-full border-b px-4 py-2 text-xl hover:bg-slate-800"
               onClick={() => setSelected('bookmark')}
             >
               Bookmark
             </button>
             <button
-              className="w-full border-b-2 px-4 py-2 text-xl hover:bg-slate-800"
+              className="w-full border-b px-4 py-2 text-xl hover:bg-slate-800"
               onClick={() => setSelected('dm')}
             >
               Direct Message
             </button>
             <button
-              className="w-full border-b-2 px-4 py-2 text-xl hover:bg-slate-800"
+              className="w-full border-b px-4 py-2 text-xl hover:bg-slate-800"
               onClick={() => setSelected('setting')}
             >
               Setting

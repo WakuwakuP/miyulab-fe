@@ -103,7 +103,7 @@ export const MainPanel = () => {
   }
 
   return (
-    <Panel>
+    <Panel className="p-1">
       <UserInfo account={account} />
       <div className="px-2 [&>*]:mt-2">
         <div className="flex items-center space-x-2">
