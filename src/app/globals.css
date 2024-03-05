@@ -2,6 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+html {
+  font-size: 14.4px;
+}
+
 @layer components {
   .content {
     @apply pt-2 [&_*]:text-wrap [&_*]:whitespace-pre-line [&_*]:break-words [&_a]:text-blue-400 [&_blockquote]:border-l-4 [&_blockquote]:border-blue-400 [&_blockquote]:pl-2 [&_blockquote]:ml-2;

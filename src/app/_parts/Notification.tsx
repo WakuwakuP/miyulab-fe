@@ -17,7 +17,7 @@ export const Notification = ({
   switch (notification.type) {
     case 'poll_expired':
       return (
-        <div className="ml-1 mt-2 box-border border-b-4 border-l-4 border-teal-300 pl-2">
+        <div className="ml-1 mt-2 box-border border-b-2 border-l-2 border-teal-300 pl-2">
           <Status
             status={notification.status as Entity.Status}
           />
@@ -25,7 +25,7 @@ export const Notification = ({
       )
     case 'mention':
       return (
-        <div className="ml-1 mt-2 box-border border-b-4 border-l-4 border-green-500 pl-2">
+        <div className="ml-1 mt-2 box-border border-b-2 border-l-2 border-green-500 pl-2">
           <Status
             status={notification.status as Entity.Status}
           />
@@ -33,7 +33,7 @@ export const Notification = ({
       )
     case 'reblog':
       return (
-        <div className="ml-1 mt-2 box-border border-b-4 border-l-4 border-blue-500 pl-2">
+        <div className="ml-1 mt-2 box-border border-b-2 border-l-2 border-blue-500 pl-2">
           <h3
             className="flex"
             onClick={() => {
@@ -66,7 +66,7 @@ export const Notification = ({
       )
     case 'favourite':
       return (
-        <div className="ml-1 mt-2 box-border border-b-4 border-l-4 border-orange-300 pl-2">
+        <div className="ml-1 mt-2 box-border border-b-2 border-l-2 border-orange-300 pl-2">
           <h3
             className="flex"
             onClick={() => {
@@ -102,7 +102,7 @@ export const Notification = ({
       )
     case 'reaction':
       return (
-        <div className="ml-1 mt-2 box-border border-b-4 border-l-4 border-orange-300 pl-2">
+        <div className="ml-1 mt-2 box-border border-b-2 border-l-2 border-orange-300 pl-2">
           <h3>
             <div
               className="flex"
@@ -150,7 +150,7 @@ export const Notification = ({
       )
     case 'follow':
       return (
-        <div className="ml-1 mt-2 box-border border-b-4 border-l-4 border-pink-300 pl-2">
+        <div className="ml-1 mt-2 box-border border-b-2 border-l-2 border-pink-300 pl-2">
           <p>Follow</p>
           <h3
             className="flex"
@@ -180,7 +180,7 @@ export const Notification = ({
       )
     case 'follow_request':
       return (
-        <div className="ml-1 mt-2 box-border border-b-4 border-l-4 border-pink-500 pl-2">
+        <div className="ml-1 mt-2 box-border border-b-2 border-l-2 border-pink-500 pl-2">
           <p>Follow request</p>
           <h3
             className="flex"
