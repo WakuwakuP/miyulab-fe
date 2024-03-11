@@ -11,13 +11,3 @@ export const GetClient = (
     token
   )
 }
-
-export const GetStreamClient = (
-  token: OAuth.TokenData['access_token']
-) => {
-  return generator(
-    BACKEND_SNS,
-    `wss://${BACKEND_URL}`,
-    token
-  )
-}
