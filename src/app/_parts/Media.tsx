@@ -33,7 +33,7 @@ export const Media = ({
           {isModalOpen &&
             createPortal(
               <div
-                className="fixed inset-0 z-40 h-[100vh] w-[100vw] bg-black/60"
+                className="fixed inset-0 z-40 h-screen w-screen bg-black/60"
                 onClick={() => {
                   setIsModalOpen(false)
                 }}
