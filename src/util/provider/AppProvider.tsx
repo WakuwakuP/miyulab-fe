@@ -9,13 +9,10 @@ import {
   useState,
 } from 'react'
 
-import generator, { OAuth } from 'megalodon'
+import { OAuth } from 'megalodon'
 
-import {
-  APP_NAME,
-  APP_URL,
-  BACKEND_URL,
-} from 'util/environment'
+import { APP_NAME, APP_URL } from 'util/environment'
+import { GetClient } from 'util/GetClient'
 
 import bgImage from '@public/miyu.webp'
 
@@ -87,10 +84,7 @@ export const AppProvider = ({
       return
     }
 
-    const client = generator(
-      'pleroma',
-      `https://${BACKEND_URL}`
-    )
+    const client = GetClient()
 
     // codeがある場合はトークンを取得
     if (appData.id !== '' && code != null) {
@@ -178,7 +172,7 @@ export const AppProvider = ({
 
   if (finishLoading === false) {
     return (
-      <div className="relative h-[100vh] w-[100vw]">
+      <div className="relative h-screen w-screen">
         <Image
           className="h-full w-full object-contain"
           src={bgImage}

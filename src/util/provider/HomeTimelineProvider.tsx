@@ -9,10 +9,10 @@ import {
   useState,
 } from 'react'
 
-import generator, { Entity } from 'megalodon'
+import { Entity } from 'megalodon'
 
 import { ArrayLengthControl } from 'util/ArrayLengthControl'
-import { BACKEND_URL } from 'util/environment'
+import { GetClient } from 'util/GetClient'
 import { TokenContext } from 'util/provider/AppProvider'
 import { SetUsersContext } from 'util/provider/ResourceProvider'
 
@@ -48,11 +48,7 @@ export const HomeTimelineProvider = ({
       return
     }
     if (token == null) return
-    const client = generator(
-      'pleroma',
-      `https://${BACKEND_URL}`,
-      token?.access_token
-    )
+    const client = GetClient(token?.access_token)
     client.getHomeTimeline({ limit: 40 }).then((res) => {
       setUsers((prev) =>
         [
