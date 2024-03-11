@@ -1,12 +1,18 @@
 import assert from 'assert'
 
+const VERCEL_URL =
+  process.env.NEXT_PUBLIC_VERCEL_URL != null
+    ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
+    : undefined
+
 export const APP_URL =
   process.env.NEXT_PUBLIC_APP_URL ??
-  process.env.VERCEL_URL ??
+  VERCEL_URL ??
   'http://localhost:3000'
 
 export const BACKEND_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL ?? 'pl.waku.dev'
+  process.env.NEXT_PUBLIC_BACKEND_URL ??
+  'https://pl.waku.dev'
 
 export const APP_NAME = 'miyulab-fe'
 

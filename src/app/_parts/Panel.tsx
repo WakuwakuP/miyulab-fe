@@ -20,7 +20,7 @@ export const Panel = ({
     <section>
       {name === undefined ? null : (
         <h2
-          className="h-[2rem] bg-slate-800 p-1 text-center"
+          className="h-8 bg-slate-800 p-1 text-center"
           onClick={() => {
             ref.current?.scrollTo(0, 0)
           }}
