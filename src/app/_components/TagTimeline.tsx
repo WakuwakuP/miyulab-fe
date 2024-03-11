@@ -12,7 +12,7 @@ import { Entity } from 'megalodon'
 import { Panel } from 'app/_parts/Panel'
 import { Status } from 'app/_parts/Status'
 import { ArrayLengthControl } from 'util/ArrayLengthControl'
-import { GetClient, GetStreamClient } from 'util/GetClient'
+import { GetClient } from 'util/GetClient'
 import { TokenContext } from 'util/provider/AppProvider'
 
 export const TagTimeline = ({ tag }: { tag: string }) => {
@@ -33,46 +33,42 @@ export const TagTimeline = ({ tag }: { tag: string }) => {
     if (token == null) return
     const client = GetClient(token?.access_token)
 
-    const streamClient = GetStreamClient(
-      token?.access_token
-    )
-
     client
       .getTagTimeline(tag, { limit: 40 })
       .then((res) => {
         setTimeline(res.data)
       })
 
-    const stream = streamClient.tagSocket(tag)
-
-    stream.on('update', (status) => {
-      if (status.media_attachments.length > 0) {
-        setTimeline((prev) =>
-          ArrayLengthControl([status, ...prev])
-        )
-      }
-    })
-    stream.on('connect', () => {
-      // eslint-disable-next-line no-console
-      console.info('connected tagSocket')
-    })
-
-    stream.on('delete', (id: string) => {
-      setTimeline((prev) =>
-        prev.filter((status) => status.id !== id)
-      )
-    })
-
-    stream.on('error', (err: Error) => {
-      console.error(err)
-
-      stream.stop()
-      const timeout = setTimeout(() => {
-        stream.start()
+    client.tagStreaming(tag).then((stream) => {
+      stream.on('update', (status) => {
+        if (status.media_attachments.length > 0) {
+          setTimeline((prev) =>
+            ArrayLengthControl([status, ...prev])
+          )
+        }
+      })
+      stream.on('connect', () => {
         // eslint-disable-next-line no-console
-        console.info('reconnected tagSocket')
-        clearTimeout(timeout)
-      }, 1000)
+        console.info('connected tagStreaming')
+      })
+
+      stream.on('delete', (id: string) => {
+        setTimeline((prev) =>
+          prev.filter((status) => status.id !== id)
+        )
+      })
+
+      stream.on('error', (err: Error) => {
+        console.error(err)
+
+        stream.stop()
+        const timeout = setTimeout(() => {
+          stream.start()
+          // eslint-disable-next-line no-console
+          console.info('reconnected tagSocket')
+          clearTimeout(timeout)
+        }, 1000)
+      })
     })
   }, [tag, token])
 
