@@ -2,7 +2,7 @@ import assert from 'assert'
 
 export const APP_URL =
   process.env.NEXT_PUBLIC_APP_URL ??
-  process.env.VERCEL_URL ??
+  process.env.NEXT_PUBLIC_VERCEL_URL ??
   'http://localhost:3000'
 
 export const BACKEND_URL =
