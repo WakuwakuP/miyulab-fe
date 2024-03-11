@@ -8,13 +8,11 @@ Web用Pleromaフロントエンドアプリケーションです。
 
 以下の環境変数を設定してビルドしてください。
 
-デプロイURLは `https://example.com` のような形式で設定してください。
-
-バックエンドURLは `example.com` のような形式で設定してください。
+各URLは `https://example.com` のような形式で設定してください。
 
 ```env
 NEXT_PUBLIC_APP_URL=<デプロイURL> // 例 https://example.com
-NEXT_PUBLIC_BACKEND_URL=<バックエンドURL> // 例 example.com
+NEXT_PUBLIC_BACKEND_URL=<バックエンドURL> // 例 https://example.com
 ```
 
 オプション設定
