@@ -98,10 +98,14 @@ export const Actions = ({
       <button
         onClick={() => {
           if (favourited ?? false) {
-            client.unfavouriteStatus(status.id)
+            client.unfavouriteStatus(
+              status.reblog?.id ?? status.id
+            )
             setFavourited(false)
           } else {
-            client.favouriteStatus(status.id)
+            client.favouriteStatus(
+              status.reblog?.id ?? status.id
+            )
             setFavourited(true)
           }
         }}
@@ -118,10 +122,14 @@ export const Actions = ({
       <button
         onClick={() => {
           if (bookmarked ?? false) {
-            client.unbookmarkStatus(status.id)
+            client.unbookmarkStatus(
+              status.reblog?.id ?? status.id
+            )
             setBookmarked(false)
           } else {
-            client.bookmarkStatus(status.id)
+            client.bookmarkStatus(
+              status.reblog?.id ?? status.id
+            )
             setBookmarked(true)
           }
         }}

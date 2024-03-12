@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 'use client'
 
-import { useContext, useState } from 'react'
+import { useContext } from 'react'
 
 import { ElementType } from 'domelementtype'
 import parse, {
@@ -13,13 +13,11 @@ import { Entity } from 'megalodon'
 import { RiRepeatFill } from 'react-icons/ri'
 
 import { Actions } from 'app/_parts/Actions'
-import { Card } from 'app/_parts/Card'
 import { EditedAt } from 'app/_parts/EditedAt'
-import { Media } from 'app/_parts/Media'
+import { MediaAttachments } from 'app/_parts/MediaAttachments'
 import { Poll } from 'app/_parts/Poll'
 import { UserInfo } from 'app/_parts/UserInfo'
 import { SetDetailContext } from 'util/provider/DetailProvider'
-import { SettingContext } from 'util/provider/SettingProvider'
 
 export const Status = ({
   status,
@@ -31,10 +29,6 @@ export const Status = ({
   small?: boolean
 }) => {
   const setDetail = useContext(SetDetailContext)
-  const setting = useContext(SettingContext)
-
-  const [isShowSensitive, setIsShowSensitive] =
-    useState<boolean>(setting.showSensitive)
 
   const getDisplayName = (account: Entity.Account) => {
     let displayName = account.display_name
@@ -223,64 +217,12 @@ export const Status = ({
         }
       />
 
-      {status.media_attachments.length > 0 ? (
-        <div className="relative flex flex-wrap">
-          {(status.reblog?.sensitive ??
-            status.sensitive) && (
-            <>
-              {!isShowSensitive ? (
-                <div
-                  className="absolute z-10 flex h-full w-full cursor-pointer items-center justify-center bg-gray-800/50 p-2 text-gray-400 backdrop-blur-lg"
-                  onClick={() => {
-                    setIsShowSensitive(true)
-                  }}
-                >
-                  <div>Contents Warning</div>
-                </div>
-              ) : (
-                <button
-                  className="absolute left-2 top-2 z-10 rounded-md bg-gray-500/50 px-1 py-0.5"
-                  onClick={() => setIsShowSensitive(false)}
-                >
-                  <div>Hide</div>
-                </button>
-              )}
-            </>
-          )}
-
-          {status.media_attachments.map(
-            (media: Entity.Attachment) => {
-              switch (status.media_attachments.length) {
-                case 1:
-                  return (
-                    <Media
-                      key={media.id}
-                      media={media}
-                    />
-                  )
-                case 2:
-                  return (
-                    <Media
-                      className="w-1/2"
-                      key={media.id}
-                      media={media}
-                    />
-                  )
-                default:
-                  return (
-                    <Media
-                      className="w-1/3"
-                      key={media.id}
-                      media={media}
-                    />
-                  )
-              }
-            }
-          )}
-        </div>
-      ) : (
-        <Card card={status.reblog?.card ?? status.card} />
-      )}
+      <MediaAttachments
+        sensitive={
+          status.reblog?.sensitive ?? status.sensitive
+        }
+        mediaAttachments={status.media_attachments}
+      />
       <Actions status={status} />
     </div>
   )
