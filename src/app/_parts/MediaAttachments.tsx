@@ -16,6 +16,8 @@ export const MediaAttachments = ({
   const [isShowSensitive, setIsShowSensitive] =
     useState<boolean>(setting.showSensitive)
 
+  if (mediaAttachments.length === 0) return null
+
   return (
     <div className="relative flex flex-wrap">
       {sensitive && (

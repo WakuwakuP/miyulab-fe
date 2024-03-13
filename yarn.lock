@@ -3228,6 +3228,7 @@ __metadata:
     react-hot-toast: "npm:^2.4.1"
     react-icons: "npm:^5.0.1"
     react-innertext: "npm:^1.1.5"
+    react-virtuoso: "npm:^4.7.2"
     rich-textarea: "npm:^0.24.4"
     tailwindcss: "npm:^3.4.1"
     typescript: "npm:^5.4.2"
@@ -3940,6 +3941,16 @@ __metadata:
   version: 2.0.2
   resolution: "react-property@npm:2.0.2"
   checksum: 10c0/27a3dfa68d29d45fc3582552715203291d26c6f1b228fdb6775e7ca19b10753141dbe98a0aa3a4da745b39fcd7427dc2d623055e63742062231ee18692a6f0fa
+  languageName: node
+  linkType: hard
+
+"react-virtuoso@npm:^4.7.2":
+  version: 4.7.2
+  resolution: "react-virtuoso@npm:4.7.2"
+  peerDependencies:
+    react: ">=16 || >=17 || >= 18"
+    react-dom: ">=16 || >=17 || >= 18"
+  checksum: 10c0/581c40458f6653bb1de55745761013d406ffd0b11423703fe363dd93a003b0bc35a9be754c490da97511d13cf5c3b1c286aec98a86fa64aadd5524d25847e325
   languageName: node
   linkType: hard
 
