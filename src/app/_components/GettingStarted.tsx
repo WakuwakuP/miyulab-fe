@@ -4,6 +4,7 @@ import { useContext, useEffect, useState } from 'react'
 
 import { Entity } from 'megalodon'
 import { RiArrowLeftSLine } from 'react-icons/ri'
+import { Virtuoso } from 'react-virtuoso'
 
 import { SettingPanel } from 'app/_components/SettingPanel'
 import { Panel } from 'app/_parts/Panel'
@@ -54,7 +55,7 @@ export const GettingStarted = () => {
 
   return (
     <Panel name={title}>
-      <div>
+      <div className="box-border">
         {selected !== null ? (
           <button
             className="flex rounded-md border pr-4 text-xl text-blue-500"
@@ -86,24 +87,40 @@ export const GettingStarted = () => {
           </>
         )}
       </div>
-
-      {selected === 'bookmark' &&
-        bookmarks.map((status) => (
-          <Status
-            key={status.id}
-            status={status}
-          />
-        ))}
-
-      {selected === 'dm' &&
-        conversations.map((conversation) => (
-          <div key={conversation.id}>
-            {conversation.last_status != null && (
-              <Status status={conversation.last_status} />
+      {selected === 'bookmark' && (
+        <div className="h-[calc(100%-32px)]">
+          <Virtuoso
+            data={bookmarks}
+            itemContent={(_, status) => (
+              <Status
+                key={status.id}
+                status={status}
+              />
             )}
-          </div>
-        ))}
-      {selected === 'setting' && <SettingPanel />}
+          />
+        </div>
+      )}
+      {selected === 'dm' && (
+        <div className="h-[calc(100%-32px)]">
+          <Virtuoso
+            data={conversations}
+            itemContent={(_, conversation) => (
+              <div key={conversation.id}>
+                {conversation.last_status != null && (
+                  <Status
+                    status={conversation.last_status}
+                  />
+                )}
+              </div>
+            )}
+          />
+        </div>
+      )}
+      {selected === 'setting' && (
+        <div className="h-[calc(100%-32px)]">
+          <SettingPanel />
+        </div>
+      )}
     </Panel>
   )
 }
