@@ -1,6 +1,7 @@
 import { useContext, useEffect, useState } from 'react'
 
 import { Entity } from 'megalodon'
+import { Virtuoso } from 'react-virtuoso'
 
 import { Status } from 'app/_parts/Status'
 import { GetClient } from 'util/GetClient'
@@ -35,13 +36,14 @@ export const HashtagDetail = ({
   if (hashtag === undefined) return null
 
   return (
-    <div>
-      {statuses.map((status) => (
+    <Virtuoso
+      data={statuses}
+      itemContent={(_, status) => (
         <Status
           key={status.id}
           status={status}
         />
-      ))}
-    </div>
+      )}
+    />
   )
 }
