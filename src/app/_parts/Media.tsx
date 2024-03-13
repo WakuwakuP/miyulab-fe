@@ -25,7 +25,7 @@ export const Media = ({
             src={media.preview_url ?? media.url}
             alt=""
             className={[
-              'p-0.5 object-contain max-h-48 border-1 bg-black cursor-pointer',
+              'p-0.5 object-contain h-48 border-1 bg-black cursor-pointer',
               className,
             ].join(' ')}
             loading="lazy"
@@ -57,7 +57,7 @@ export const Media = ({
           controls
           muted
           className={[
-            'p-0.5 object-contain',
+            'h-48 p-0.5 object-contain',
             className,
           ].join(' ')}
         />
@@ -69,7 +69,7 @@ export const Media = ({
           src={media.url}
           controls
           className={[
-            'p-0.5 object-contain',
+            'h-48 p-0.5 object-contain',
             className,
           ].join(' ')}
         />
@@ -81,7 +81,7 @@ export const Media = ({
           src={media.url}
           controls
           className={[
-            'p-0.5 object-contain',
+            'h-20 p-0.5 object-contain',
             className,
           ].join(' ')}
         />

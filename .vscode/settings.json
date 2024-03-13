@@ -26,6 +26,7 @@
     "pleroma",
     "reblog",
     "reblogged",
+    "scroller",
     "shortcode",
     "tailwindcss",
     "textlint",
