@@ -36,17 +36,17 @@ export const AccountDetail = ({
     'toots' | 'media' | 'favourite'
   >('toots')
 
-  const getNote = (account: Entity.Account) => {
-    let note = account.note
+  const getEmojiText = (str: string) => {
+    let parseStr = str
     if (account.emojis.length > 0) {
       account.emojis.forEach((emoji) => {
-        note = note.replace(
+        parseStr = parseStr.replace(
           new RegExp(`:${emoji.shortcode}:`, 'gm'),
           `<img src="${emoji.url}" alt="${emoji.shortcode}" class="min-w-4 h-4 inline-block" loading="lazy" />`
         )
       })
     }
-    return note
+    return parseStr
   }
 
   const replace = (node: DOMNode) => {
@@ -175,7 +175,7 @@ export const AccountDetail = ({
         </div>
       )}
       <div className="content my-2">
-        {parse(getNote(account), { replace })}
+        {parse(getEmojiText(account.note), { replace })}
       </div>
 
       <div className="m-1 box-border">
@@ -188,13 +188,15 @@ export const AccountDetail = ({
               className="w-28 flex-[0_0_auto] truncate border px-1 py-2"
               title={field.name}
             >
-              {field.name}
+              {getEmojiText(field.name)}
             </dt>
             <dd
               className="flex-[1_1_auto] truncate border px-1 py-2"
-              title={innerText(parse(field.value))}
+              title={innerText(
+                parse(getEmojiText(field.value))
+              )}
             >
-              {parse(field.value, {
+              {parse(getEmojiText(field.value), {
                 replace,
               })}
             </dd>

@@ -94,10 +94,14 @@ export const DetailPanel = () => {
       )}
 
       {detail.type === 'Account' && (
-        <AccountDetail account={detail.content} />
+        <div className="h-[calc(100%-32px)] overflow-y-scroll scroll-smooth">
+          <AccountDetail account={detail.content} />
+        </div>
       )}
       {detail.type === 'Hashtag' && (
-        <HashtagDetail hashtag={detail.content} />
+        <div className="h-[calc(100%-32px)]">
+          <HashtagDetail hashtag={detail.content} />
+        </div>
       )}
     </Panel>
   )
