@@ -4,6 +4,7 @@ import { useContext, useEffect, useState } from 'react'
 
 import { Entity } from 'megalodon'
 import { RiArrowLeftSLine } from 'react-icons/ri'
+import { Virtuoso } from 'react-virtuoso'
 
 import { AccountDetail } from 'app/_parts/AccountDetail'
 import { HashtagDetail } from 'app/_parts/HashtagDetail'
@@ -23,8 +24,9 @@ export const DetailPanel = () => {
   const detail = useContext(DetailContext)
   const setDetail = useContext(SetDetailContext)
 
-  const [context, setContext] =
-    useState<Entity.Context | null>(null)
+  const [context, setContext] = useState<Entity.Status[]>(
+    []
+  )
 
   useEffect(() => {
     if (token == null || detail.content == null) return
@@ -35,7 +37,11 @@ export const DetailPanel = () => {
       client
         .getStatusContext(detail.content.id)
         .then((res) => {
-          setContext(res.data)
+          setContext([
+            ...(res.data.ancestors ?? []),
+            detail.content,
+            ...(res.data.descendants ?? []),
+          ])
         })
     }
 
@@ -82,15 +88,17 @@ export const DetailPanel = () => {
         </button>
       </div>
       {detail.type === 'Status' && (
-        <>
-          {(context?.ancestors ?? []).map((status) => (
-            <Status
-              status={status}
-              key={status.id}
-            />
-          ))}
-          <Status status={detail.content} />{' '}
-        </>
+        <div className="h-[calc(100%-32px)]">
+          <Virtuoso
+            data={context}
+            itemContent={(_, status) => (
+              <Status
+                key={status.id}
+                status={status}
+              />
+            )}
+          />
+        </div>
       )}
 
       {detail.type === 'Account' && (
