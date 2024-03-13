@@ -5,9 +5,11 @@ import { HTMLProps, ReactNode, useRef } from 'react'
 export const Panel = ({
   children,
   name,
+  onClickHeader,
   className,
 }: {
   children: ReactNode
+  onClickHeader?: () => void
   name?: string
   className?: HTMLProps<HTMLElement>['className']
 }) => {
@@ -22,7 +24,9 @@ export const Panel = ({
         <h2
           className="h-8 bg-slate-800 p-1 text-center"
           onClick={() => {
-            ref.current?.scrollTo(0, 0)
+            if (onClickHeader != null) {
+              onClickHeader()
+            }
           }}
         >
           {name}
@@ -30,12 +34,7 @@ export const Panel = ({
       )}
       <div
         ref={ref}
-        className={[
-          'scroll-smooth',
-          'overflow-y-scroll',
-          mainAreaStyle,
-          className,
-        ].join(' ')}
+        className={[mainAreaStyle, className].join(' ')}
       >
         {children}
       </div>
