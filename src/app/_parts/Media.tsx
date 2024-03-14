@@ -24,7 +24,7 @@ export const Media = ({
             src={media.preview_url ?? media.url}
             alt=""
             className={[
-              'p-0.5 object-contain h-48 border-1 bg-black cursor-pointer',
+              'p-0.5 object-contain max-h-48 border-1 bg-black cursor-pointer',
               className,
             ].join(' ')}
             loading="lazy"

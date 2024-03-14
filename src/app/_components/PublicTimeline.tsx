@@ -7,7 +7,7 @@ import {
 } from 'react'
 
 import { Entity } from 'megalodon'
-import { Virtuoso } from 'react-virtuoso'
+import { Virtuoso, VirtuosoHandle } from 'react-virtuoso'
 
 import { Panel } from 'app/_parts/Panel'
 import { Status } from 'app/_parts/Status'
@@ -17,7 +17,7 @@ import { TokenContext } from 'util/provider/AppProvider'
 
 export const PublicTimeline = () => {
   const refFirstRef = useRef(true)
-  const scrollerRef = useRef<HTMLElement | null>(null)
+  const scrollerRef = useRef<VirtuosoHandle>(null)
   const token = useContext(TokenContext)
   const [timeline, setTimeline] = useState<Entity.Status[]>(
     []
@@ -74,8 +74,8 @@ export const PublicTimeline = () => {
 
   const scrollToTop = () => {
     if (scrollerRef.current != null) {
-      scrollerRef.current.scroll({
-        top: 0,
+      scrollerRef.current.scrollToIndex({
+        index: 0,
         behavior: 'smooth',
       })
     }
@@ -90,9 +90,7 @@ export const PublicTimeline = () => {
     >
       <Virtuoso
         data={timeline}
-        scrollerRef={(ref) => {
-          scrollerRef.current = ref as HTMLElement
-        }}
+        ref={scrollerRef}
         itemContent={(_, status) => (
           <Status
             key={status.id}

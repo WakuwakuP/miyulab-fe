@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 'use client'
 
-import { useContext } from 'react'
+import { MouseEventHandler, useContext } from 'react'
 
 import {
   RiArrowLeftSLine,
@@ -20,7 +20,9 @@ export const MediaModal = () => {
   )
   const setAttachment = useContext(SetMediaModalContext)
 
-  const onClickPrev = (e) => {
+  const onClickPrev: MouseEventHandler<
+    HTMLButtonElement
+  > = (e) => {
     e.stopPropagation()
     if (index == null) return
     if (index - 1 < 0) return
@@ -29,7 +31,9 @@ export const MediaModal = () => {
       index: index - 1,
     })
   }
-  const onClickNext = (e) => {
+  const onClickNext: MouseEventHandler<
+    HTMLButtonElement
+  > = (e) => {
     e.stopPropagation()
     if (index == null) return
     if (index + 1 >= attachment.length) return
@@ -58,7 +62,7 @@ export const MediaModal = () => {
       />
 
       {index - 1 >= 0 && (
-        <div
+        <button
           className="fixed left-2 top-1/2 z-[51] -translate-y-1/2 rounded-full bg-gray-50/50"
           onClick={onClickPrev}
         >
@@ -66,11 +70,11 @@ export const MediaModal = () => {
             size={40}
             className="pr-1"
           />
-        </div>
+        </button>
       )}
 
       {index + 1 < attachment.length && (
-        <div
+        <button
           className="fixed right-2 top-1/2 z-[51] -translate-y-1/2 rounded-full bg-gray-50/50"
           onClick={onClickNext}
         >
@@ -78,7 +82,7 @@ export const MediaModal = () => {
             size={40}
             className="pl-1"
           />
-        </div>
+        </button>
       )}
     </Modal>
   )
