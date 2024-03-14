@@ -3,6 +3,7 @@ import { useContext, useState } from 'react'
 import { Entity } from 'megalodon'
 
 import { Media } from 'app/_parts/Media'
+import { SetMediaModalContext } from 'util/provider/ModalProvider'
 import { SettingContext } from 'util/provider/SettingProvider'
 
 export const MediaAttachments = ({
@@ -13,10 +14,18 @@ export const MediaAttachments = ({
   mediaAttachments: Entity.Attachment[]
 }) => {
   const setting = useContext(SettingContext)
+  const setMediaModal = useContext(SetMediaModalContext)
   const [isShowSensitive, setIsShowSensitive] =
     useState<boolean>(setting.showSensitive)
 
   if (mediaAttachments.length === 0) return null
+
+  const onClick = (index: number) => {
+    setMediaModal({
+      attachment: mediaAttachments,
+      index,
+    })
+  }
 
   return (
     <div className="relative flex flex-wrap">
@@ -41,13 +50,14 @@ export const MediaAttachments = ({
           )}
         </>
       )}
-      {mediaAttachments.map((media) => {
+      {mediaAttachments.map((media, index) => {
         switch (mediaAttachments.length) {
           case 1:
             return (
               <Media
                 key={media.id}
                 media={media}
+                onClick={() => onClick(index)}
               />
             )
           case 2:
@@ -57,6 +67,7 @@ export const MediaAttachments = ({
                 className="w-1/2"
                 key={media.id}
                 media={media}
+                onClick={() => onClick(index)}
               />
             )
           default:
@@ -65,6 +76,7 @@ export const MediaAttachments = ({
                 className="w-1/3"
                 key={media.id}
                 media={media}
+                onClick={() => onClick(index)}
               />
             )
         }

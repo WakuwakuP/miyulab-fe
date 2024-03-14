@@ -8,6 +8,7 @@ import { APP_NAME } from 'util/environment'
 import { AppProvider } from 'util/provider/AppProvider'
 import { DetailProvider } from 'util/provider/DetailProvider'
 import { HomeTimelineProvider } from 'util/provider/HomeTimelineProvider'
+import { MediaModalProvider } from 'util/provider/ModalProvider'
 import { ReplyToProvider } from 'util/provider/ReplyToProvider'
 import { ResourceProvider } from 'util/provider/ResourceProvider'
 import { SettingProvider } from 'util/provider/SettingProvider'
@@ -38,13 +39,15 @@ export default function RootLayout({
                 <ResourceProvider>
                   <ReplyToProvider>
                     <DetailProvider>
-                      <HomeTimelineProvider>
-                        <Toaster
-                          position="bottom-left"
-                          reverseOrder={false}
-                        />
-                        {children}
-                      </HomeTimelineProvider>
+                      <MediaModalProvider>
+                        <HomeTimelineProvider>
+                          <Toaster
+                            position="bottom-left"
+                            reverseOrder={false}
+                          />
+                          {children}
+                        </HomeTimelineProvider>
+                      </MediaModalProvider>
                     </DetailProvider>
                   </ReplyToProvider>
                 </ResourceProvider>
