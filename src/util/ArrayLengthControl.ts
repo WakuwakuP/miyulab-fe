@@ -1,6 +1,6 @@
 'use client'
 
-const MAX_LENGTH = 1000
+import { MAX_LENGTH } from 'util/environment'
 
 export function ArrayLengthControl<T>(data: T[]) {
   if (data.length > MAX_LENGTH) {
