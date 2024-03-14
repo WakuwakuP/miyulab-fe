@@ -29,3 +29,7 @@ assert(
 
 export const BACKEND_SNS: Sns =
   process.env.NEXT_PUBLIC_BACKEND_SNS ?? 'pleroma'
+
+export const MAX_LENGTH = Number(
+  process.env.NEXT_PUBLIC_MAX_LENGTH ?? 10000
+)

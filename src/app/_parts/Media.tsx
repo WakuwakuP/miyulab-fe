@@ -1,52 +1,34 @@
 /* eslint-disable @next/next/no-img-element */
-import { HTMLProps, useState } from 'react'
+import { HTMLProps } from 'react'
 
 import { Entity } from 'megalodon'
-import { createPortal } from 'react-dom'
 
 export const Media = ({
   media,
+  onClick,
   className = 'w-full',
 }: {
   media: Entity.Attachment
+  onClick?: () => void
   className?: HTMLProps<HTMLElement>['className']
 }) => {
-  const [isModalOpen, setIsModalOpen] = useState(false)
-
   switch (media.type) {
     case 'image':
       return (
         <>
           <img
             onClick={() => {
-              setIsModalOpen(true)
+              if (onClick != null) onClick()
             }}
             key={media.id}
             src={media.preview_url ?? media.url}
             alt=""
             className={[
-              'p-0.5 object-contain h-48 border-1 bg-black cursor-pointer',
+              'p-0.5 object-contain max-h-48 border-1 bg-black cursor-pointer',
               className,
             ].join(' ')}
             loading="lazy"
           />
-          {isModalOpen &&
-            createPortal(
-              <div
-                className="fixed inset-0 z-40 h-screen w-screen bg-black/60"
-                onClick={() => {
-                  setIsModalOpen(false)
-                }}
-              >
-                <img
-                  src={media.url}
-                  alt=""
-                  className="fixed inset-0 z-50 m-auto h-[90vh] w-[90vw] object-contain"
-                  loading="lazy"
-                />
-              </div>,
-              document.body
-            )}
         </>
       )
     case 'video':

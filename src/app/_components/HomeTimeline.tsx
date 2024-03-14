@@ -2,7 +2,7 @@
 
 import { useContext, useRef } from 'react'
 
-import { Virtuoso } from 'react-virtuoso'
+import { Virtuoso, VirtuosoHandle } from 'react-virtuoso'
 
 import { Panel } from 'app/_parts/Panel'
 import { Status } from 'app/_parts/Status'
@@ -10,12 +10,12 @@ import { HomeTimelineContext } from 'util/provider/HomeTimelineProvider'
 
 export const HomeTimeline = () => {
   const timeline = useContext(HomeTimelineContext)
-  const scrollerRef = useRef<HTMLElement | null>(null)
+  const scrollerRef = useRef<VirtuosoHandle>(null)
 
   const scrollToTop = () => {
     if (scrollerRef.current != null) {
-      scrollerRef.current.scroll({
-        top: 0,
+      scrollerRef.current.scrollToIndex({
+        index: 0,
         behavior: 'smooth',
       })
     }
@@ -30,9 +30,7 @@ export const HomeTimeline = () => {
     >
       <Virtuoso
         data={timeline}
-        scrollerRef={(ref) => {
-          scrollerRef.current = ref as HTMLElement
-        }}
+        ref={scrollerRef}
         itemContent={(_, status) => (
           <Status
             key={status.id}

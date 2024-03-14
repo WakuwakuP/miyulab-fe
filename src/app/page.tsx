@@ -1,6 +1,7 @@
 import { DetailPanel } from 'app/_components/DetailPanel'
 import { HomeTimeline } from 'app/_components/HomeTimeline'
 import { MainPanel } from 'app/_components/MainPanel'
+import { MediaModal } from 'app/_components/MediaModal'
 import { NotificationTimeline } from 'app/_components/NotificationTimeline'
 import { PublicTimeline } from 'app/_components/PublicTimeline'
 import { TagTimeline } from 'app/_components/TagTimeline'
@@ -14,6 +15,7 @@ export default function Home() {
       <TagTimeline tag="gochisou_photo" />
       <PublicTimeline />
       <DetailPanel />
+      <MediaModal />
     </main>
   )
 }
