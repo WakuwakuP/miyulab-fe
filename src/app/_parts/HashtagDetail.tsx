@@ -1,4 +1,9 @@
-import { useContext, useEffect, useState } from 'react'
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from 'react'
 
 import { Entity } from 'megalodon'
 import { Virtuoso } from 'react-virtuoso'
@@ -33,11 +38,28 @@ export const HashtagDetail = ({
       })
   }, [hashtag, token])
 
+  const moreStatus = useCallback(() => {
+    if (token === null) return
+    if (hashtag === undefined) return
+
+    const client = GetClient(token?.access_token)
+
+    client
+      .getTagTimeline(hashtag, {
+        limit: 50,
+        max_id: statuses[statuses.length - 1].id,
+      })
+      .then((res) => {
+        setStatuses((prev) => [...prev, ...res.data])
+      })
+  }, [hashtag, statuses, token])
+
   if (hashtag === undefined) return null
 
   return (
     <Virtuoso
       data={statuses}
+      endReached={moreStatus}
       itemContent={(_, status) => (
         <Status
           key={status.id}

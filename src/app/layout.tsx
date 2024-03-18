@@ -9,12 +9,16 @@ import { AppProvider } from 'util/provider/AppProvider'
 import { DetailProvider } from 'util/provider/DetailProvider'
 import { HomeTimelineProvider } from 'util/provider/HomeTimelineProvider'
 import { MediaModalProvider } from 'util/provider/ModalProvider'
+import { PlayerProvider } from 'util/provider/PlayerProvider'
 import { ReplyToProvider } from 'util/provider/ReplyToProvider'
 import { ResourceProvider } from 'util/provider/ResourceProvider'
 import { SettingProvider } from 'util/provider/SettingProvider'
 import { SuspenseProvider } from 'util/provider/SuspenseProvider'
 
 import './globals.css'
+
+import 'slick-carousel/slick/slick.css'
+import 'slick-carousel/slick/slick-theme.css'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -40,13 +44,15 @@ export default function RootLayout({
                   <ReplyToProvider>
                     <DetailProvider>
                       <MediaModalProvider>
-                        <HomeTimelineProvider>
-                          <Toaster
-                            position="bottom-left"
-                            reverseOrder={false}
-                          />
-                          {children}
-                        </HomeTimelineProvider>
+                        <PlayerProvider>
+                          <HomeTimelineProvider>
+                            <Toaster
+                              position="bottom-left"
+                              reverseOrder={false}
+                            />
+                            {children}
+                          </HomeTimelineProvider>
+                        </PlayerProvider>
                       </MediaModalProvider>
                     </DetailProvider>
                   </ReplyToProvider>
