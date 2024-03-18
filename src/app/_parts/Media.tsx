@@ -2,6 +2,7 @@
 import { HTMLProps } from 'react'
 
 import { Entity } from 'megalodon'
+import { RiPlayCircleLine } from 'react-icons/ri'
 
 export const Media = ({
   media,
@@ -24,7 +25,7 @@ export const Media = ({
             src={media.preview_url ?? media.url}
             alt=""
             className={[
-              'p-0.5 object-contain max-h-48 border-1 bg-black cursor-pointer',
+              'p-0.5 object-contain h-48 border-1 cursor-pointer',
               className,
             ].join(' ')}
             loading="lazy"
@@ -33,40 +34,86 @@ export const Media = ({
       )
     case 'video':
       return (
-        <video
-          key={media.id}
-          src={media.url}
-          controls
-          muted
+        <div
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            if (onClick != null) onClick()
+          }}
           className={[
-            'h-48 p-0.5 object-contain',
+            'relative h-48 p-0.5 object-contain',
             className,
           ].join(' ')}
-        />
+        >
+          <video
+            key={media.id}
+            src={media.url}
+            muted
+            className="h-full w-full object-contain"
+          />
+          <div className="absolute left-0 top-0 h-full w-full bg-black/50">
+            <RiPlayCircleLine
+              className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-white"
+              size={70}
+            />
+          </div>
+        </div>
       )
     case 'gifv':
       return (
-        <video
-          key={media.id}
-          src={media.url}
-          controls
+        <div
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            if (onClick != null) onClick()
+          }}
           className={[
-            'h-48 p-0.5 object-contain',
+            'relative h-48 p-0.5 object-contain',
             className,
           ].join(' ')}
-        />
+        >
+          <video
+            key={media.id}
+            src={media.url}
+            muted
+            className="h-full w-full object-contain"
+          />
+          <div className="absolute left-0 top-0 h-full w-full bg-black/50">
+            <RiPlayCircleLine
+              className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-white"
+              size={70}
+            />
+          </div>
+        </div>
       )
     case 'audio':
       return (
-        <audio
-          key={media.id}
-          src={media.url}
-          controls
+        <div
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            if (onClick != null) onClick()
+          }}
           className={[
-            'h-20 p-0.5 object-contain',
+            'h-16 p-0.5 relative',
             className,
           ].join(' ')}
-        />
+        >
+          <audio
+            key={media.id}
+            src={media.url}
+            controls
+            className="w-full"
+          />
+          <div
+            className="absolute left-0 top-0 z-[1] h-full w-full"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              if (onClick != null) onClick()
+            }}
+          />
+        </div>
       )
     case 'unknown':
     default:
