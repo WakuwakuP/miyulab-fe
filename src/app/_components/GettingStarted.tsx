@@ -1,8 +1,13 @@
 'use client'
 
-import { useContext, useEffect, useState } from 'react'
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from 'react'
 
-import { Entity } from 'megalodon'
+import { Entity, Response } from 'megalodon'
 import { RiArrowLeftSLine } from 'react-icons/ri'
 import { Virtuoso } from 'react-virtuoso'
 
@@ -30,6 +35,47 @@ export const GettingStarted = () => {
     Entity.Conversation[]
   >([])
 
+  const [maxId, setMaxId] = useState<string | null>(null)
+
+  const setMaxIdCallback = useCallback(
+    (res: Response<Entity.Status[]>) => {
+      if (res.headers.link == null) {
+        setMaxId(null)
+        return
+      }
+      const links = (res.headers.link as string)
+        .split(',')
+        .map((link: string) => {
+          const [url, rel] = link.split(';')
+          return {
+            url: url.replace(/[<>]/g, '').trim(),
+            rel: rel
+              .replace(/"/g, '')
+              .replace('rel=', '')
+              .trim(),
+          }
+        })
+      const next = links.find((link) => link.rel === 'next')
+
+      if (next == null) {
+        setMaxId(null)
+        return
+      }
+
+      const maxId = new URL(next.url).searchParams.get(
+        'max_id'
+      )
+
+      if (maxId == null) {
+        setMaxId(null)
+        return
+      }
+
+      setMaxId(maxId)
+    },
+    [setMaxId]
+  )
+
   useEffect(() => {
     if (token === null) return
     const client = GetClient(token?.access_token)
@@ -37,9 +83,14 @@ export const GettingStarted = () => {
     switch (selected) {
       case 'bookmark':
         setTitle('Bookmark')
-        client.getBookmarks().then((res) => {
-          setBookmarks(res.data)
-        })
+        client
+          .getBookmarks({
+            limit: 20,
+          })
+          .then((res) => {
+            setBookmarks(res.data)
+            setMaxIdCallback(res)
+          })
         break
       case 'dm':
         setTitle('Direct Message')
@@ -51,7 +102,36 @@ export const GettingStarted = () => {
         setTitle('Getting Started')
         break
     }
-  }, [token, selected])
+  }, [token, selected, setMaxIdCallback])
+
+  const moreBookmarks = useCallback(() => {
+    if (token === null) return
+    if (maxId === null) return
+    const client = GetClient(token?.access_token)
+
+    client
+      .getBookmarks({
+        limit: 20,
+        max_id: maxId,
+      })
+      .then((res) => {
+        setBookmarks((prev) => [...prev, ...res.data])
+        setMaxIdCallback(res)
+      })
+  }, [maxId, setMaxIdCallback, token])
+
+  const moreConversations = useCallback(() => {
+    if (token === null) return
+    const client = GetClient(token?.access_token)
+
+    client
+      .getConversationTimeline({
+        max_id: conversations[conversations.length - 1].id,
+      })
+      .then((res) => {
+        setConversations((prev) => [...prev, ...res.data])
+      })
+  }, [conversations, token])
 
   return (
     <Panel name={title}>
@@ -91,6 +171,7 @@ export const GettingStarted = () => {
         <div className="h-[calc(100%-32px)]">
           <Virtuoso
             data={bookmarks}
+            endReached={moreBookmarks}
             itemContent={(_, status) => (
               <Status
                 key={status.id}
@@ -104,6 +185,7 @@ export const GettingStarted = () => {
         <div className="h-[calc(100%-32px)]">
           <Virtuoso
             data={conversations}
+            endReached={moreConversations}
             itemContent={(_, conversation) => (
               <div key={conversation.id}>
                 {conversation.last_status != null && (

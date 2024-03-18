@@ -209,7 +209,7 @@ export const Status = ({
 
       <Poll
         poll={
-          status.poll as
+          (status.reblog?.poll ?? status.poll) as
             | (Entity.Poll & {
                 own_votes: number[] | undefined
               })

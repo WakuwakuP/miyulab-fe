@@ -38,7 +38,7 @@ export const SettingPanel = () => {
   const setSetting = useContext(SetSettingContext)
 
   return (
-    <div className="mt-2 p-2">
+    <div className="p-2 pt-4">
       <SettingCheckbox
         id="showSensitive"
         label="Default Show sensitive content"

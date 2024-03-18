@@ -1,7 +1,12 @@
 /* eslint-disable @next/next/no-img-element */
 'use client'
 
-import { useContext, useEffect, useState } from 'react'
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from 'react'
 
 import { ElementType } from 'domelementtype'
 import parse, {
@@ -31,6 +36,7 @@ export const AccountDetail = ({
   const [relationship, setRelationship] = useState<
     Entity.Relationship | undefined
   >(undefined)
+  const [isLoading, setIsLoading] = useState(false)
 
   const [tab, setTab] = useState<
     'toots' | 'media' | 'favourite'
@@ -98,6 +104,7 @@ export const AccountDetail = ({
 
   useEffect(() => {
     if (token === null) return
+    setIsLoading(true)
 
     const client = GetClient(token?.access_token)
 
@@ -111,6 +118,7 @@ export const AccountDetail = ({
       })
       .then((res) => {
         setToots(res.data)
+        setIsLoading(false)
       })
 
     client
@@ -122,6 +130,35 @@ export const AccountDetail = ({
         setMedia(res.data)
       })
   }, [account.id, token])
+
+  const moreStatus = useCallback(() => {
+    if (token === null) return
+    setIsLoading(true)
+    const client = GetClient(token.access_token)
+    client
+      .getAccountStatuses(account.id, {
+        limit: 40,
+        max_id: toots[toots.length - 1].id,
+      })
+      .then((res) => {
+        setToots((prev) => [...prev, ...res.data])
+        setIsLoading(false)
+      })
+  }, [account.id, token, toots])
+
+  const moreMedia = useCallback(() => {
+    if (token === null) return
+    const client = GetClient(token.access_token)
+    client
+      .getAccountStatuses(account.id, {
+        limit: 40,
+        max_id: media[media.length - 1].id,
+        only_media: true,
+      })
+      .then((res) => {
+        setMedia((prev) => [...prev, ...res.data])
+      })
+  }, [account.id, media, token])
 
   return (
     <>
@@ -237,6 +274,18 @@ export const AccountDetail = ({
                 key={status.id}
               />
             ))}
+            {isLoading ? (
+              <div className="box-border flex h-10 w-full items-center justify-center border-t border-t-gray-500">
+                loading...
+              </div>
+            ) : (
+              <button
+                className="box-border flex h-10 w-full items-center justify-center border-t border-t-gray-500"
+                onClick={moreStatus}
+              >
+                more
+              </button>
+            )}
           </div>
         )}
         {tab === 'media' && (
@@ -247,6 +296,18 @@ export const AccountDetail = ({
                 key={status.id}
               />
             ))}
+            {isLoading ? (
+              <div className="box-border flex h-10 w-full items-center justify-center border-t border-t-gray-500">
+                loading...
+              </div>
+            ) : (
+              <button
+                className="box-border flex h-10 w-full items-center justify-center border-t border-t-gray-500"
+                onClick={moreMedia}
+              >
+                more
+              </button>
+            )}
           </div>
         )}
       </div>
