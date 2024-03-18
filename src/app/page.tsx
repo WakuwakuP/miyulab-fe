@@ -6,6 +6,8 @@ import { NotificationTimeline } from 'app/_components/NotificationTimeline'
 import { PublicTimeline } from 'app/_components/PublicTimeline'
 import { TagTimeline } from 'app/_components/TagTimeline'
 
+import { Player } from './_parts/Player'
+
 export default function Home() {
   return (
     <main className="flex overflow-y-visible overflow-x-scroll [&>*]:w-[calc(100vw/6)] [&>*]:min-w-60 [&>*]:shrink-0">
@@ -16,6 +18,7 @@ export default function Home() {
       <PublicTimeline />
       <DetailPanel />
       <MediaModal />
+      <Player />
     </main>
   )
 }

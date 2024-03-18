@@ -4,6 +4,7 @@ import { Entity } from 'megalodon'
 
 import { Media } from 'app/_parts/Media'
 import { SetMediaModalContext } from 'util/provider/ModalProvider'
+import { SetPlayerContext } from 'util/provider/PlayerProvider'
 import { SettingContext } from 'util/provider/SettingProvider'
 
 export const MediaAttachments = ({
@@ -15,16 +16,28 @@ export const MediaAttachments = ({
 }) => {
   const setting = useContext(SettingContext)
   const setMediaModal = useContext(SetMediaModalContext)
+  const setPlayer = useContext(SetPlayerContext)
   const [isShowSensitive, setIsShowSensitive] =
     useState<boolean>(setting.showSensitive)
 
   if (mediaAttachments.length === 0) return null
 
   const onClick = (index: number) => {
-    setMediaModal({
-      attachment: mediaAttachments,
-      index,
-    })
+    if (
+      ['video', 'gifv', 'audio'].includes(
+        mediaAttachments[index].type
+      )
+    ) {
+      setPlayer({
+        attachment: mediaAttachments,
+        index,
+      })
+    } else {
+      setMediaModal({
+        attachment: mediaAttachments,
+        index,
+      })
+    }
   }
 
   return (
@@ -55,6 +68,7 @@ export const MediaAttachments = ({
           case 1:
             return (
               <Media
+                className="w-full bg-black"
                 key={media.id}
                 media={media}
                 onClick={() => onClick(index)}
@@ -64,7 +78,7 @@ export const MediaAttachments = ({
           case 4:
             return (
               <Media
-                className="w-1/2"
+                className="w-1/2 bg-black"
                 key={media.id}
                 media={media}
                 onClick={() => onClick(index)}
@@ -73,7 +87,7 @@ export const MediaAttachments = ({
           default:
             return (
               <Media
-                className="w-1/3"
+                className="w-1/3 bg-black"
                 key={media.id}
                 media={media}
                 onClick={() => onClick(index)}
