@@ -10,7 +10,8 @@ import parse, {
   domToReact,
 } from 'html-react-parser'
 import { Entity } from 'megalodon'
-import { RiRepeatFill } from 'react-icons/ri'
+import { RiRepeatFill, RiVideoLine } from 'react-icons/ri'
+import ReactPlayer from 'react-player'
 
 import { Actions } from 'app/_parts/Actions'
 import { EditedAt } from 'app/_parts/EditedAt'
@@ -18,6 +19,7 @@ import { MediaAttachments } from 'app/_parts/MediaAttachments'
 import { Poll } from 'app/_parts/Poll'
 import { UserInfo } from 'app/_parts/UserInfo'
 import { SetDetailContext } from 'util/provider/DetailProvider'
+import { SetPlayerContext } from 'util/provider/PlayerProvider'
 
 export const Status = ({
   status,
@@ -29,6 +31,7 @@ export const Status = ({
   small?: boolean
 }) => {
   const setDetail = useContext(SetDetailContext)
+  const setPlayer = useContext(SetPlayerContext)
 
   const getDisplayName = (account: Entity.Account) => {
     let displayName = account.display_name
@@ -109,6 +112,45 @@ export const Status = ({
           >
             {domToReact(node.children as DOMNode[])}
           </a>
+        )
+      }
+
+      if (ReactPlayer.canPlay(node.attribs.href)) {
+        return (
+          <>
+            <a
+              {...attributesToProps(node.attribs)}
+              className="line-clamp-2 break-all"
+              onClick={(e) => {
+                e.stopPropagation()
+                e.preventDefault()
+                setPlayer({
+                  attachment: [
+                    {
+                      id: '',
+                      url: node.attribs.href,
+                      type: 'video',
+                      blurhash: null,
+                      remote_url: null,
+                      preview_url: null,
+                      text_url: null,
+                      meta: null,
+                      description: '',
+                    },
+                  ],
+                  index: 0,
+                })
+              }}
+              rel={[
+                node.attribs.rel,
+                'noopener noreferrer',
+              ].join(' ')}
+              target="_blank"
+            >
+              <RiVideoLine className="mr-1 inline-block" />
+              {domToReact(node.children as DOMNode[])}
+            </a>
+          </>
         )
       }
 
