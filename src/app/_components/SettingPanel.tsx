@@ -1,9 +1,17 @@
-import React, { useContext } from 'react'
+import React, { ReactNode, useContext } from 'react'
 
 import {
   SetSettingContext,
   SettingContext,
 } from 'util/provider/SettingProvider'
+
+const SettingItem = ({
+  children,
+}: {
+  children: ReactNode
+}) => (
+  <div className="flex items-center py-1">{children}</div>
+)
 
 const SettingCheckbox = ({
   id,
@@ -16,7 +24,7 @@ const SettingCheckbox = ({
   checked: boolean
   onChange: (e: React.ChangeEvent<HTMLInputElement>) => void
 }) => (
-  <div>
+  <SettingItem>
     <input
       id={id}
       className="mr-1 cursor-pointer"
@@ -30,7 +38,39 @@ const SettingCheckbox = ({
     >
       {label}
     </label>
-  </div>
+  </SettingItem>
+)
+
+// eslint-disable-next-line unused-imports/no-unused-vars, @typescript-eslint/no-unused-vars
+const SettingNumberInput = ({
+  id,
+  label,
+  value,
+  step = undefined,
+  onChange,
+}: {
+  id: string
+  label: string
+  value: number
+  step?: number
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void
+}) => (
+  <SettingItem>
+    <label
+      htmlFor={id}
+      className="mr-1"
+    >
+      {label}
+    </label>
+    <input
+      id={id}
+      className="w-24"
+      type="number"
+      step={step}
+      value={value}
+      onChange={onChange}
+    />
+  </SettingItem>
 )
 
 export const SettingPanel = () => {
