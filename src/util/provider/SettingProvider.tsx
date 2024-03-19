@@ -30,9 +30,9 @@ export const SettingProvider = ({
 }: Readonly<{ children: ReactNode }>) => {
   const [storageLoading, setStorageLoading] =
     useState<boolean>(true)
-  const [setting, setSetting] = useState<{
-    showSensitive: boolean
-  }>(initialSettingData)
+  const [setting, setSetting] = useState<SettingData>(
+    initialSettingData
+  )
 
   useEffect(() => {
     const settingStr = localStorage.getItem('setting')
