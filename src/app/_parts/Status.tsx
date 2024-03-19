@@ -14,6 +14,7 @@ import { RiRepeatFill, RiVideoLine } from 'react-icons/ri'
 import ReactPlayer from 'react-player'
 
 import { Actions } from 'app/_parts/Actions'
+import { Card } from 'app/_parts/Card'
 import { EditedAt } from 'app/_parts/EditedAt'
 import { MediaAttachments } from 'app/_parts/MediaAttachments'
 import { Poll } from 'app/_parts/Poll'
@@ -258,6 +259,8 @@ export const Status = ({
             | null
         }
       />
+
+      <Card card={status.reblog?.card ?? status.card} />
 
       <MediaAttachments
         sensitive={
