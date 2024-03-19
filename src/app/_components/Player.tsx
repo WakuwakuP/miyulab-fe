@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element */
 'use client'
 
 import {
@@ -5,10 +6,12 @@ import {
   MouseEventHandler,
   useCallback,
   useContext,
+  useEffect,
   useRef,
   useState,
 } from 'react'
 
+import { Entity } from 'megalodon'
 import { createPortal } from 'react-dom'
 import {
   GrChapterNext,
@@ -28,6 +31,12 @@ import {
   SetPlayerContext,
   SetPlayerSettingContext,
 } from 'util/provider/PlayerProvider'
+
+const playableTypes = [
+  'audio',
+  'video',
+  'gifv',
+] as Readonly<Entity.Attachment['type'][]>
 
 const PlayerController = () => {
   const { attachment, index } = useContext(PlayerContext)
@@ -67,6 +76,54 @@ const PlayerController = () => {
       [setPlayed]
     )
 
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement) return
+      if (e.target instanceof HTMLSelectElement) return
+      if (e.target instanceof HTMLTextAreaElement) return
+      if (e.code === 'Space') {
+        e.preventDefault()
+        setPlaying((prev) => !prev)
+      }
+      if (e.code === 'ArrowLeft') {
+        e.preventDefault()
+        setPlayed((prev) => {
+          const seekToPlayed = Math.max(0, prev - 0.1)
+          player.current?.seekTo(seekToPlayed)
+          return seekToPlayed
+        })
+      }
+      if (e.code === 'ArrowRight') {
+        e.preventDefault()
+        setPlayed((prev) => {
+          const seekToPlayed = Math.min(
+            0.9999999,
+            prev + 0.1
+          )
+          player.current?.seekTo(seekToPlayed)
+          return seekToPlayed
+        })
+      }
+      if (e.code === 'ArrowUp') {
+        e.preventDefault()
+        setPlayerSetting((prev) => ({
+          volume: Math.min(1, prev.volume + 0.05),
+        }))
+      }
+      if (e.code === 'ArrowDown') {
+        e.preventDefault()
+        setPlayerSetting((prev) => ({
+          volume: Math.max(0, prev.volume - 0.05),
+        }))
+      }
+    }
+
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [setPlaying, setPlayed, setPlayerSetting, player])
+
   const handleSeekMouseUp: MouseEventHandler<HTMLInputElement> =
     useCallback(() => {
       setSeeking(false)
@@ -101,25 +158,38 @@ const PlayerController = () => {
 
   if (attachment.length === 0 || index == null) return null
   return (
-    <div className="fixed bottom-0 right-0 z-40">
-      <div onClick={onClickPlay}>
-        <ReactPlayer
-          ref={player}
-          url={attachment[index].url}
-          playing={playing}
-          volume={volume}
-          onProgress={handleProgress}
-          loop
-          height={
-            attachment[index].type === 'audio'
-              ? 0
-              : undefined
-          }
-        />
+    <div className="fixed bottom-0 right-0 z-40 w-[640px] max-w-full">
+      <div
+        className=" bg-black"
+        onClick={onClickPlay}
+      >
+        {playableTypes.includes(attachment[index].type) && (
+          <ReactPlayer
+            ref={player}
+            url={attachment[index].url}
+            playing={playing}
+            volume={volume}
+            onProgress={handleProgress}
+            loop
+            width={'100%'}
+            height={
+              attachment[index].type === 'audio'
+                ? 0
+                : '360px'
+            }
+          />
+        )}
+        {'image' === attachment[index].type && (
+          <img
+            className="h-full w-full object-contain"
+            src={attachment[index].url}
+            alt={attachment[index].description ?? ''}
+          />
+        )}
       </div>
-      <div className="box-border flex h-12 items-center space-x-px bg-gray-700">
+      <div className="box-border flex h-12 items-center space-x-px bg-gray-500 pt-[2px]">
         <button
-          className="flex h-12 w-12 shrink-0 items-center justify-center bg-black hover:bg-gray-800"
+          className="flex h-12 w-12 shrink-0 items-center justify-center bg-gray-800 hover:bg-gray-500"
           onClick={onClickPlay}
         >
           {playing ? (
@@ -128,19 +198,23 @@ const PlayerController = () => {
             <RiPlayFill size={30} />
           )}
         </button>
-        <button
-          className="flex h-12 w-12 shrink-0 items-center justify-center bg-black hover:bg-gray-800"
-          onClick={playPrevious}
-        >
-          <GrChapterPrevious size={30} />
-        </button>
-        <button
-          className="flex h-12 w-12 shrink-0 items-center justify-center bg-black hover:bg-gray-800"
-          onClick={playNext}
-        >
-          <GrChapterNext size={30} />
-        </button>
-        <div className="flex h-12 w-full shrink bg-black">
+        {attachment.length > 1 && (
+          <>
+            <button
+              className="flex h-12 w-12 shrink-0 items-center justify-center bg-gray-800 hover:bg-gray-500"
+              onClick={playPrevious}
+            >
+              <GrChapterPrevious size={30} />
+            </button>
+            <button
+              className="flex h-12 w-12 shrink-0 items-center justify-center bg-gray-800 hover:bg-gray-500"
+              onClick={playNext}
+            >
+              <GrChapterNext size={30} />
+            </button>
+          </>
+        )}
+        <div className="flex h-12 w-full shrink bg-gray-800">
           <input
             className="w-full"
             type="range"
@@ -153,7 +227,7 @@ const PlayerController = () => {
             onMouseUp={handleSeekMouseUp}
           />
         </div>
-        <div className="flex h-12 w-32 shrink-0 bg-black">
+        <div className="flex h-12 w-32 shrink-0 bg-gray-800">
           <input
             className="w-32"
             type="range"
@@ -168,9 +242,8 @@ const PlayerController = () => {
             }}
           />
         </div>
-
         <button
-          className="flex h-12 w-12 shrink-0 items-center justify-center bg-black hover:bg-gray-800"
+          className="flex h-12 w-12 shrink-0 items-center justify-center bg-gray-800 hover:bg-gray-500"
           onClick={onClickClose}
         >
           <RiCloseCircleLine size={30} />

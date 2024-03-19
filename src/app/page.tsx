@@ -6,7 +6,7 @@ import { NotificationTimeline } from 'app/_components/NotificationTimeline'
 import { PublicTimeline } from 'app/_components/PublicTimeline'
 import { TagTimeline } from 'app/_components/TagTimeline'
 
-import { Player } from './_parts/Player'
+import { Player } from './_components/Player'
 
 export default function Home() {
   return (
