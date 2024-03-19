@@ -4,6 +4,7 @@
 import {
   MouseEventHandler,
   useContext,
+  useEffect,
   useRef,
 } from 'react'
 
@@ -20,14 +21,26 @@ import {
   SetMediaModalContext,
 } from 'util/provider/ModalProvider'
 
-export const MediaModal = () => {
+const ModalContent = () => {
   const { attachment, index } = useContext(
     MediaModalContext
   )
 
-  const setAttachment = useContext(SetMediaModalContext)
-
   const sliderRef = useRef<Slider>(null)
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'ArrowLeft') {
+        sliderRef.current?.slickPrev()
+      } else if (e.code === 'ArrowRight') {
+        sliderRef.current?.slickNext()
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+    }
+  }, [])
 
   const onClickPrev: MouseEventHandler<
     HTMLButtonElement
@@ -52,16 +65,8 @@ export const MediaModal = () => {
   ) {
     return null
   }
-
   return (
-    <Modal
-      onClick={() =>
-        setAttachment({
-          attachment: [],
-          index: null,
-        })
-      }
-    >
+    <>
       {attachment.length > 1 ? (
         <>
           <div className="fixed inset-0 z-50 m-auto h-[90vh] w-[90vw]">
@@ -71,7 +76,6 @@ export const MediaModal = () => {
               infinite
               speed={150}
               initialSlide={index}
-              lazyLoad="ondemand"
             >
               {attachment.map((media) => {
                 return (
@@ -114,6 +118,37 @@ export const MediaModal = () => {
           )}
         </>
       )}
+    </>
+  )
+}
+
+export const MediaModal = () => {
+  const { attachment, index } = useContext(
+    MediaModalContext
+  )
+
+  const setAttachment = useContext(SetMediaModalContext)
+
+  if (attachment.length === 0 || index == null) return null
+
+  if (
+    ['video', 'gifv', 'audio'].includes(
+      attachment[index].type
+    )
+  ) {
+    return null
+  }
+
+  return (
+    <Modal
+      onClick={() =>
+        setAttachment({
+          attachment: [],
+          index: null,
+        })
+      }
+    >
+      <ModalContent />
     </Modal>
   )
 }
