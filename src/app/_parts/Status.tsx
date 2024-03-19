@@ -260,7 +260,9 @@ export const Status = ({
         }
       />
 
-      <Card card={status.reblog?.card ?? status.card} />
+      {status.media_attachments.length == 0 && (
+        <Card card={status.reblog?.card ?? status.card} />
+      )}
 
       <MediaAttachments
         sensitive={
