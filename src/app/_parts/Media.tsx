@@ -25,7 +25,7 @@ export const Media = ({
             src={media.preview_url ?? media.url}
             alt=""
             className={[
-              'p-0.5 object-contain h-48 border-1 cursor-pointer',
+              'aspect-square max-h-48 cursor-pointer object-contain p-0.5',
               className,
             ].join(' ')}
             loading="lazy"
@@ -41,7 +41,7 @@ export const Media = ({
             if (onClick != null) onClick()
           }}
           className={[
-            'relative h-48 p-0.5 object-contain',
+            'relative aspect-square max-h-48 object-contain p-0.5',
             className,
           ].join(' ')}
         >
@@ -68,7 +68,7 @@ export const Media = ({
             if (onClick != null) onClick()
           }}
           className={[
-            'relative h-48 p-0.5 object-contain',
+            'relative aspect-square max-h-48 object-contain p-0.5',
             className,
           ].join(' ')}
         >
@@ -95,7 +95,7 @@ export const Media = ({
             if (onClick != null) onClick()
           }}
           className={[
-            'h-16 p-0.5 relative',
+            'relative h-16 p-0.5',
             className,
           ].join(' ')}
         >
