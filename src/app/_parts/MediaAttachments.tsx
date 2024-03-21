@@ -85,6 +85,26 @@ export const MediaAttachments = ({
               />
             )
           default:
+            if (mediaAttachments.length > 6 && index >= 5) {
+              if (index == 5) {
+                return (
+                  <button
+                    className="flex w-1/3 items-center justify-center bg-black"
+                    onClick={() => {
+                      setMediaModal({
+                        attachment: mediaAttachments,
+                        index: 5,
+                      })
+                    }}
+                  >
+                    <div className="text-xl text-white">
+                      +{mediaAttachments.length - 5}
+                    </div>
+                  </button>
+                )
+              }
+              return null
+            }
             return (
               <Media
                 className="w-1/3 bg-black"
