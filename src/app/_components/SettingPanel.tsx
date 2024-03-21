@@ -1,4 +1,4 @@
-import React, { ReactNode, useContext } from 'react'
+import { ChangeEvent, ReactNode, useContext } from 'react'
 
 import {
   SetSettingContext,
@@ -22,7 +22,7 @@ const SettingCheckbox = ({
   id: string
   label: string
   checked: boolean
-  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void
+  onChange: (e: ChangeEvent<HTMLInputElement>) => void
 }) => (
   <SettingItem>
     <input
@@ -53,7 +53,7 @@ const SettingNumberInput = ({
   label: string
   value: number
   step?: number
-  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void
+  onChange: (e: ChangeEvent<HTMLInputElement>) => void
 }) => (
   <SettingItem>
     <label
@@ -70,6 +70,46 @@ const SettingNumberInput = ({
       value={value}
       onChange={onChange}
     />
+  </SettingItem>
+)
+const SettingSelect = ({
+  id,
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  id: string
+  label: string
+  value: string
+  options: {
+    value: string
+    name: string
+  }[]
+  onChange: (e: ChangeEvent<HTMLSelectElement>) => void
+}) => (
+  <SettingItem>
+    <label
+      htmlFor={id}
+      className="mr-1"
+    >
+      {label}
+    </label>
+    <select
+      id={id}
+      className="w-32"
+      value={value}
+      onChange={onChange}
+    >
+      {options.map((option) => (
+        <option
+          key={option.value}
+          value={option.value}
+        >
+          {option.name}
+        </option>
+      ))}
+    </select>
   </SettingItem>
 )
 
@@ -89,6 +129,31 @@ export const SettingPanel = () => {
             showSensitive: e.target.checked,
           })
         }
+      />
+      <SettingSelect
+        id="playerSize"
+        label="Player size"
+        value={setting.playerSize}
+        onChange={(e) => {
+          if (
+            ['small', 'medium', 'large'].includes(
+              e.target.value
+            )
+          ) {
+            setSetting({
+              ...setting,
+              playerSize: e.target.value as
+                | 'small'
+                | 'medium'
+                | 'large',
+            })
+          }
+        }}
+        options={[
+          { value: 'small', name: 'Small' },
+          { value: 'medium', name: 'Medium' },
+          { value: 'large', name: 'Large' },
+        ]}
       />
     </div>
   )

@@ -11,10 +11,12 @@ import {
 
 type SettingData = {
   showSensitive: boolean
+  playerSize: 'small' | 'medium' | 'large'
 }
 
 const initialSettingData: SettingData = {
   showSensitive: false,
+  playerSize: 'medium',
 } as const
 
 export const SettingContext = createContext<SettingData>(
