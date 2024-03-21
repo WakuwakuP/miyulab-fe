@@ -7,6 +7,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react'
@@ -31,6 +32,7 @@ import {
   SetPlayerContext,
   SetPlayerSettingContext,
 } from 'util/provider/PlayerProvider'
+import { SettingContext } from 'util/provider/SettingProvider'
 
 const playableTypes = [
   'audio',
@@ -45,11 +47,23 @@ const PlayerController = () => {
   const setPlayerSetting = useContext(
     SetPlayerSettingContext
   )
+  const { playerSize } = useContext(SettingContext)
 
   const player = useRef<ReactPlayer>(null)
   const [playing, setPlaying] = useState<boolean>(false)
   const [played, setPlayed] = useState<number>(0)
   const [seeking, setSeeking] = useState<boolean>(false)
+
+  const classNamePlayerSize = useMemo(() => {
+    switch (playerSize) {
+      case 'small':
+        return { w: 'w-[320px]', h: 'h-[180px]' }
+      case 'medium':
+        return { w: 'w-[640px]', h: 'h-[360px]' }
+      case 'large':
+        return { w: 'w-[820px]', h: 'h-[460px]' }
+    }
+  }, [playerSize])
 
   const onClickPlay = useCallback(() => {
     setPlaying((prev) => !prev)
@@ -158,7 +172,12 @@ const PlayerController = () => {
 
   if (attachment.length === 0 || index == null) return null
   return (
-    <div className="fixed bottom-0 right-0 z-40 w-[640px] max-w-full">
+    <div
+      className={[
+        'fixed bottom-0 right-0 z-40 max-w-full',
+        classNamePlayerSize.w,
+      ].join(' ')}
+    >
       <div
         className=" bg-black"
         onClick={onClickPlay}
@@ -175,8 +194,9 @@ const PlayerController = () => {
             height={
               attachment[index].type === 'audio'
                 ? 0
-                : '360px'
+                : classNamePlayerSize.h
             }
+            className="aspect-video"
           />
         )}
         {'image' === attachment[index].type && (
