@@ -26,6 +26,7 @@ import { GetClient } from 'util/GetClient'
 import { TokenContext } from 'util/provider/AppProvider'
 import {
   EmojiContext,
+  TagsContext,
   UsersContext,
 } from 'util/provider/ResourceProvider'
 
@@ -36,6 +37,9 @@ const MENTION_HIGHLIGHT_REG = new RegExp(
   'g'
 )
 const EMOJI_REG = /\B:([+\w].*)$/
+
+const TAG_REG = /#(\w*)$/
+const TAG_HIGHLIGHT_REG = new RegExp(/#(\w*)/, 'g')
 
 const MentionMenu = ({
   chars,
@@ -219,8 +223,9 @@ export const StatusRichTextarea = ({
 }) => {
   const token = useContext(TokenContext)
   const users = useContext(UsersContext)
-
   const emojis = useContext(EmojiContext)
+  const tags = useContext(TagsContext)
+
   const ref = useRef<RichTextareaHandle>(null)
 
   const [pos, setPos] = useState<{
@@ -233,6 +238,7 @@ export const StatusRichTextarea = ({
 
   const [isMention, setIsMention] = useState(false)
   const [isEmoji, setIsEmoji] = useState(false)
+  const [isTag, setIsTag] = useState(false)
 
   const [downLeftCtrl, setDownLeftCtrl] = useState(false)
   const [downRightCtrl, setDownRightCtrl] = useState(false)
@@ -246,10 +252,14 @@ export const StatusRichTextarea = ({
     pos != null ? targetText.match(MENTION_REG) : null
   const emojiMatch =
     pos != null ? targetText.match(EMOJI_REG) : null
+  const tagMatch =
+    pos != null ? targetText.match(/#(\w*)$/) : null
 
   const mentionName =
     mentionMatch != null ? mentionMatch[1] : ''
   const emojiName = emojiMatch != null ? emojiMatch[1] : ''
+
+  const tagName = tagMatch != null ? tagMatch[1] : ''
 
   const mentionFiltered = useMemo(
     () =>
@@ -273,6 +283,18 @@ export const StatusRichTextarea = ({
         )
         .slice(0, MAX_LIST_LENGTH),
     [emojiName, emojis]
+  )
+
+  const tagFiltered = useMemo(
+    () =>
+      tags
+        .filter((char) =>
+          char
+            .toLocaleLowerCase()
+            .startsWith(tagName.toLocaleLowerCase())
+        )
+        .slice(0, MAX_LIST_LENGTH),
+    [tagName, tags]
   )
 
   const mentionComplete = (index: number) => {
@@ -301,8 +323,24 @@ export const StatusRichTextarea = ({
     setIndex(0)
   }
 
+  const tagComplete = (index: number) => {
+    if (ref.current == null || pos == null) return
+    const selected = tagFiltered[index]
+    if (selected != null) {
+      ref.current.setRangeText(
+        `#${selected} `,
+        pos.caret - tagName.length - 1,
+        pos.caret,
+        'end'
+      )
+    }
+    setPos(null)
+    setIndex(0)
+  }
+
   const customRenderer = createRegexRenderer([
     [MENTION_HIGHLIGHT_REG, { color: 'blue' }],
+    [TAG_HIGHLIGHT_REG, { color: 'blue' }],
   ])
 
   const uploadMedia = (file: File) => {
@@ -420,6 +458,12 @@ export const StatusRichTextarea = ({
                     ? emojiFiltered.length - 1
                     : index - 1
                 )
+              if (isTag)
+                setIndex(
+                  index <= 0
+                    ? tagFiltered.length - 1
+                    : index - 1
+                )
               break
             case 'ArrowDown':
               e.preventDefault()
@@ -435,12 +479,19 @@ export const StatusRichTextarea = ({
                     ? 0
                     : index + 1
                 )
+              if (isTag)
+                setIndex(
+                  index >= tagFiltered.length - 1
+                    ? 0
+                    : index + 1
+                )
               break
             case 'Enter':
             case 'Tab':
               e.preventDefault()
               if (isMention) mentionComplete(index)
               if (isEmoji) emojiComplete(index)
+              if (isTag) tagComplete(index)
               break
             case 'Quote':
               e.preventDefault()
@@ -461,7 +512,8 @@ export const StatusRichTextarea = ({
             MENTION_REG.test(
               text.slice(0, r.selectionStart)
             ) &&
-            isEmoji === false
+            isEmoji === false &&
+            isTag === false
           ) {
             setIsMention(true)
             setPos({
@@ -475,9 +527,23 @@ export const StatusRichTextarea = ({
             EMOJI_REG.test(
               text.slice(0, r.selectionStart)
             ) &&
-            isMention === false
+            isMention === false &&
+            isTag === false
           ) {
             setIsEmoji(true)
+            setPos({
+              top: r.top + r.height,
+              left: r.left,
+              caret: r.selectionStart,
+            })
+            setIndex(0)
+          } else if (
+            r.focused &&
+            TAG_REG.test(text.slice(0, r.selectionStart)) &&
+            isMention === false &&
+            isEmoji === false
+          ) {
+            setIsTag(true)
             setPos({
               top: r.top + r.height,
               left: r.left,
@@ -487,6 +553,7 @@ export const StatusRichTextarea = ({
           } else {
             setIsEmoji(false)
             setIsMention(false)
+            setIsTag(false)
             setPos(null)
             setIndex(0)
           }
@@ -519,6 +586,19 @@ export const StatusRichTextarea = ({
             chars={emojiFiltered}
             index={index}
             complete={emojiComplete}
+          />,
+          document.body
+        )}
+      {pos != null &&
+        tagFiltered.length > 0 &&
+        isTag &&
+        createPortal(
+          <Menu
+            top={pos.top}
+            left={pos.left}
+            chars={tagFiltered}
+            index={index}
+            complete={tagComplete}
           />,
           document.body
         )}
