@@ -14,11 +14,13 @@ import { Status } from 'app/_parts/Status'
 import { ArrayLengthControl } from 'util/ArrayLengthControl'
 import { GetClient } from 'util/GetClient'
 import { TokenContext } from 'util/provider/AppProvider'
+import { SetTagsContext } from 'util/provider/ResourceProvider'
 
 export const PublicTimeline = () => {
   const refFirstRef = useRef(true)
   const scrollerRef = useRef<VirtuosoHandle>(null)
   const token = useContext(TokenContext)
+  const setTags = useContext(SetTagsContext)
   const [timeline, setTimeline] = useState<Entity.Status[]>(
     []
   )
@@ -40,7 +42,15 @@ export const PublicTimeline = () => {
         setTimeline(res.data)
       })
     client.publicStreaming().then((stream) => {
-      stream.on('update', (status) => {
+      stream.on('update', (status: Entity.Status) => {
+        setTags((prev) =>
+          Array.from(
+            new Set([
+              ...prev,
+              ...status.tags.map((tag) => tag.name),
+            ])
+          )
+        )
         if (status.media_attachments.length > 0) {
           setTimeline((prev) =>
             ArrayLengthControl([status, ...prev])
@@ -70,7 +80,7 @@ export const PublicTimeline = () => {
         }, 1000)
       })
     })
-  }, [token])
+  }, [setTags, token])
 
   const scrollToTop = () => {
     if (scrollerRef.current != null) {
