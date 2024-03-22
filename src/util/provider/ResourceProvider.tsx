@@ -48,6 +48,11 @@ export const SetUsersContext = createContext<
   >
 >(() => {})
 
+export const TagsContext = createContext<string[]>([])
+export const SetTagsContext = createContext<
+  Dispatch<SetStateAction<string[]>>
+>(() => {})
+
 export const ResourceProvider = ({
   children,
 }: Readonly<{ children: ReactNode }>) => {
@@ -84,10 +89,23 @@ export const ResourceProvider = ({
     >[]
   >(JSON.parse(localStorage.getItem('users') ?? '[]'))
 
+  const [tags, setTags] = useState<string[]>(
+    JSON.parse(localStorage.getItem('tags') ?? '[]')
+  )
+
+  const sortedTags = useMemo(() => {
+    return tags.sort((a, b) => a.length - b.length)
+  }, [tags])
+
   useEffect(() => {
     if (users.length === 0) return
     localStorage.setItem('users', JSON.stringify(users))
   }, [users])
+
+  useEffect(() => {
+    if (tags.length === 0) return
+    localStorage.setItem('tags', JSON.stringify(tags))
+  }, [tags])
 
   useEffect(() => {
     if (token == null) return
@@ -106,7 +124,11 @@ export const ResourceProvider = ({
       <EmojiContext.Provider value={emojis}>
         <UsersContext.Provider value={users}>
           <SetUsersContext.Provider value={setUsers}>
-            {children}
+            <TagsContext.Provider value={sortedTags}>
+              <SetTagsContext.Provider value={setTags}>
+                {children}
+              </SetTagsContext.Provider>
+            </TagsContext.Provider>
           </SetUsersContext.Provider>
         </UsersContext.Provider>
       </EmojiContext.Provider>
