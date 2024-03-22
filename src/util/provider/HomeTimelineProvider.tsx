@@ -14,7 +14,10 @@ import { Entity } from 'megalodon'
 import { ArrayLengthControl } from 'util/ArrayLengthControl'
 import { GetClient } from 'util/GetClient'
 import { TokenContext } from 'util/provider/AppProvider'
-import { SetUsersContext } from 'util/provider/ResourceProvider'
+import {
+  SetTagsContext,
+  SetUsersContext,
+} from 'util/provider/ResourceProvider'
 
 export const HomeTimelineContext = createContext<
   Entity.Status[]
@@ -32,6 +35,7 @@ export const HomeTimelineProvider = ({
   const refFirstRef = useRef(true)
   const token = useContext(TokenContext)
   const setUsers = useContext(SetUsersContext)
+  const setTags = useContext(SetTagsContext)
   const [timeline, setTimeline] = useState<Entity.Status[]>(
     []
   )
@@ -110,6 +114,14 @@ export const HomeTimelineProvider = ({
 
     client.userStreaming().then((stream) => {
       stream.on('update', (status: Entity.Status) => {
+        setTags((prev) =>
+          Array.from(
+            new Set([
+              ...prev,
+              ...status.tags.map((tag) => tag.name),
+            ])
+          )
+        )
         setUsers((prev) =>
           [
             ...prev,
@@ -206,7 +218,7 @@ export const HomeTimelineProvider = ({
         console.info('connected userStreaming')
       })
     })
-  }, [setUsers, token])
+  }, [setTags, setUsers, token])
 
   return (
     <HomeTimelineContext.Provider value={timeline}>
