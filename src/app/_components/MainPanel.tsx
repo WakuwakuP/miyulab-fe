@@ -281,7 +281,7 @@ export const MainPanel = () => {
           <div className="flex p-2">
             <input
               type="text"
-              className="min-w-0 bg-gray-600 text-white"
+              className="min-w-0 grow bg-gray-600 text-white"
               placeholder="media link"
               value={mediaLink}
               onChange={(e) => setMediaLink(e.target.value)}

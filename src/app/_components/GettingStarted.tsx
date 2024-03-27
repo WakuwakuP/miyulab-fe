@@ -35,6 +35,8 @@ export const GettingStarted = () => {
     Entity.Conversation[]
   >([])
 
+  const [isScrolling, setIsScrolling] = useState(false)
+
   const [maxId, setMaxId] = useState<string | null>(null)
 
   const setMaxIdCallback = useCallback(
@@ -172,10 +174,12 @@ export const GettingStarted = () => {
           <Virtuoso
             data={bookmarks}
             endReached={moreBookmarks}
+            isScrolling={setIsScrolling}
             itemContent={(_, status) => (
               <Status
                 key={status.id}
                 status={status}
+                scrolling={isScrolling}
               />
             )}
           />
@@ -186,11 +190,13 @@ export const GettingStarted = () => {
           <Virtuoso
             data={conversations}
             endReached={moreConversations}
+            isScrolling={setIsScrolling}
             itemContent={(_, conversation) => (
               <div key={conversation.id}>
                 {conversation.last_status != null && (
                   <Status
                     status={conversation.last_status}
+                    scrolling={isScrolling}
                   />
                 )}
               </div>

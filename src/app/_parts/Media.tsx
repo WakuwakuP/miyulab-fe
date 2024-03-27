@@ -7,12 +7,23 @@ import { RiPlayCircleLine } from 'react-icons/ri'
 export const Media = ({
   media,
   onClick,
+  scrolling = false,
   className = 'w-full',
 }: {
   media: Entity.Attachment
   onClick?: () => void
+  scrolling?: boolean
   className?: HTMLProps<HTMLElement>['className']
 }) => {
+  if (scrolling)
+    return (
+      <div
+        className={[
+          'aspect-square max-h-48 cursor-pointer object-contain p-0.5',
+          className,
+        ].join(' ')}
+      />
+    )
   switch (media.type) {
     case 'image':
       return (
@@ -28,7 +39,6 @@ export const Media = ({
               'aspect-square max-h-48 cursor-pointer object-contain p-0.5',
               className,
             ].join(' ')}
-            loading="lazy"
           />
         </>
       )
