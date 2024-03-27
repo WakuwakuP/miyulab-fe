@@ -7,10 +7,16 @@ import { RiStarFill } from 'react-icons/ri'
 import { Status } from 'app/_parts/Status'
 import { SetDetailContext } from 'util/provider/DetailProvider'
 
+const AvatarPlaceholder = () => (
+  <div className="h-12 w-12 flex-none rounded-lg bg-gray-600" />
+)
+
 export const Notification = ({
   notification,
+  scrolling = false,
 }: {
   notification: Entity.Notification
+  scrolling?: boolean
 }) => {
   const setDetail = useContext(SetDetailContext)
 
@@ -20,6 +26,7 @@ export const Notification = ({
         <div className="ml-1 mt-2 box-border border-b-2 border-l-2 border-teal-300 pl-2">
           <Status
             status={notification.status as Entity.Status}
+            scrolling={scrolling}
           />
         </div>
       )
@@ -28,6 +35,7 @@ export const Notification = ({
         <div className="ml-1 mt-2 box-border border-b-2 border-l-2 border-green-500 pl-2">
           <Status
             status={notification.status as Entity.Status}
+            scrolling={scrolling}
           />
         </div>
       )
@@ -44,12 +52,16 @@ export const Notification = ({
               })
             }}
           >
-            <img
-              className="h-12 w-12 flex-none rounded-lg object-contain"
-              src={notification.account?.avatar ?? ''}
-              alt="avatar"
-              loading="lazy"
-            />
+            {scrolling ? (
+              <AvatarPlaceholder />
+            ) : (
+              <img
+                className="h-12 w-12 flex-none rounded-lg object-contain"
+                src={notification.account?.avatar ?? ''}
+                alt="avatar"
+                loading="lazy"
+              />
+            )}
             <div className="w-[calc(100%-56px)] pl-2">
               <p className="w-full truncate">
                 {notification.account?.display_name ?? ''}
@@ -61,6 +73,7 @@ export const Notification = ({
           </h3>
           <Status
             status={notification.status as Entity.Status}
+            scrolling={scrolling}
             small
           />
         </div>
@@ -78,12 +91,16 @@ export const Notification = ({
               })
             }}
           >
-            <img
-              className="h-12 w-12 flex-none rounded-lg object-contain"
-              src={notification.account?.avatar ?? ''}
-              alt="avatar"
-              loading="lazy"
-            />
+            {scrolling ? (
+              <AvatarPlaceholder />
+            ) : (
+              <img
+                className="h-12 w-12 flex-none rounded-lg object-contain"
+                src={notification.account?.avatar ?? ''}
+                alt="avatar"
+                loading="lazy"
+              />
+            )}
             <div className="w-[calc(100%-56px)] pl-2">
               <p className="w-full truncate">
                 {notification.account?.display_name ?? ''}
@@ -98,6 +115,7 @@ export const Notification = ({
           </div>
           <Status
             status={notification.status as Entity.Status}
+            scrolling={scrolling}
             small
           />
         </div>
@@ -116,12 +134,16 @@ export const Notification = ({
                 })
               }}
             >
-              <img
-                className="h-12 w-12 flex-none rounded-lg object-contain"
-                src={notification.account?.avatar ?? ''}
-                alt="avatar"
-                loading="lazy"
-              />
+              {scrolling ? (
+                <AvatarPlaceholder />
+              ) : (
+                <img
+                  className="h-12 w-12 flex-none rounded-lg object-contain"
+                  src={notification.account?.avatar ?? ''}
+                  alt="avatar"
+                  loading="lazy"
+                />
+              )}
               <div className="w-[calc(100%-56px)] pl-2">
                 <p className="w-full truncate">
                   {notification.account?.display_name ?? ''}
@@ -133,12 +155,20 @@ export const Notification = ({
             </div>
             <div className="min-w-12">
               {notification.reaction?.static_url != null ? (
-                <img
-                  className="h-12 w-12 flex-none rounded-lg object-contain"
-                  src={notification.reaction?.static_url}
-                  alt="emoji"
-                  loading="lazy"
-                />
+                <>
+                  {scrolling ? (
+                    <div className="h-12 w-12 flex-none rounded-lg" />
+                  ) : (
+                    <img
+                      className="h-12 w-12 flex-none rounded-lg object-contain"
+                      src={
+                        notification.reaction?.static_url
+                      }
+                      alt="emoji"
+                      loading="lazy"
+                    />
+                  )}
+                </>
               ) : (
                 <span className="text-3xl">
                   {notification.reaction?.name ?? ''}
@@ -148,6 +178,7 @@ export const Notification = ({
           </h3>
           <Status
             status={notification.status as Entity.Status}
+            scrolling={scrolling}
             small
           />
         </div>
@@ -166,12 +197,16 @@ export const Notification = ({
               })
             }}
           >
-            <img
-              className="h-12 w-12 flex-none rounded-lg object-contain"
-              src={notification.account?.avatar ?? ''}
-              alt="avatar"
-              loading="lazy"
-            />
+            {scrolling ? (
+              <AvatarPlaceholder />
+            ) : (
+              <img
+                className="h-12 w-12 flex-none rounded-lg object-contain"
+                src={notification.account?.avatar ?? ''}
+                alt="avatar"
+                loading="lazy"
+              />
+            )}
             <div className="w-[calc(100%-56px)] pl-2">
               <p className="w-full truncate">
                 {notification.account?.display_name ?? ''}
@@ -197,12 +232,16 @@ export const Notification = ({
               })
             }}
           >
-            <img
-              className="h-12 w-12 flex-none rounded-lg object-contain"
-              src={notification.account?.avatar ?? ''}
-              alt="avatar"
-              loading="lazy"
-            />
+            {scrolling ? (
+              <AvatarPlaceholder />
+            ) : (
+              <img
+                className="h-12 w-12 flex-none rounded-lg object-contain"
+                src={notification.account?.avatar ?? ''}
+                alt="avatar"
+                loading="lazy"
+              />
+            )}
             <div className="w-[calc(100%-56px)] pl-2">
               <p className="w-full truncate">
                 {notification.account?.display_name ?? ''}
