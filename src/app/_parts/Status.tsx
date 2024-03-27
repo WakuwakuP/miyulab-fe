@@ -26,10 +26,12 @@ export const Status = ({
   status,
   className = '',
   small = false,
+  scrolling = false,
 }: {
   status: Entity.Status
   className?: string
   small?: boolean
+  scrolling?: boolean
 }) => {
   const setDetail = useContext(SetDetailContext)
   const setPlayer = useContext(SetPlayerContext)
@@ -220,6 +222,7 @@ export const Status = ({
             account={status.reblog.account}
             visibility={status.reblog.visibility}
             small={small}
+            scrolling={scrolling}
           />
         </>
       ) : (
@@ -227,6 +230,7 @@ export const Status = ({
           account={status.account}
           visibility={status.visibility}
           small={small}
+          scrolling={scrolling}
         />
       )}
       {status.spoiler_text !== '' && (
@@ -269,6 +273,7 @@ export const Status = ({
           status.reblog?.sensitive ?? status.sensitive
         }
         mediaAttachments={status.media_attachments}
+        scrolling={scrolling}
       />
       <Actions status={status} />
     </div>

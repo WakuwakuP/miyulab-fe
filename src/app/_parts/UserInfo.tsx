@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 'use client'
 
-import { useContext } from 'react'
+import { useContext, useMemo } from 'react'
 
 import { Entity } from 'megalodon'
 
@@ -12,13 +12,15 @@ export const UserInfo = ({
   account,
   visibility,
   small = false,
+  scrolling = false,
 }: {
   account: Entity.Account
   visibility?: Entity.StatusVisibility
   small?: boolean
+  scrolling?: boolean
 }) => {
   const setDetail = useContext(SetDetailContext)
-  const getDisplayName = (account: Entity.Account) => {
+  const getDisplayName = useMemo(() => {
     let displayName = account.display_name
     if (account.emojis.length > 0) {
       account.emojis.forEach((emoji) => {
@@ -29,7 +31,7 @@ export const UserInfo = ({
       })
     }
     return displayName
-  }
+  }, [account])
 
   return (
     <h3
@@ -41,22 +43,31 @@ export const UserInfo = ({
         })
       }}
     >
-      <img
-        className={[
-          'rounded-lg object-contain flex-none',
-          small ? 'w-6 h-6' : 'w-12 h-12',
-        ].join(' ')}
-        src={account.avatar}
-        alt="avatar"
-        loading="lazy"
-      />
+      {scrolling ? (
+        <div
+          className={[
+            'rounded-lg object-contain flex-none bg-gray-600',
+            small ? 'w-6 h-6' : 'w-12 h-12',
+          ].join(' ')}
+        />
+      ) : (
+        <img
+          className={[
+            'rounded-lg object-contain flex-none',
+            small ? 'w-6 h-6' : 'w-12 h-12',
+          ].join(' ')}
+          src={account.avatar}
+          alt="avatar"
+          loading="lazy"
+        />
+      )}
       {small ? (
         <div className="w-[calc(100%-24px)] pl-2">
           <div className="flex w-full justify-between truncate">
             <p>
               <span
                 dangerouslySetInnerHTML={{
-                  __html: getDisplayName(account),
+                  __html: getDisplayName,
                 }}
               />
               <span className="pl-1 text-gray-300">
@@ -72,7 +83,7 @@ export const UserInfo = ({
             <span
               className="truncate"
               dangerouslySetInnerHTML={{
-                __html: getDisplayName(account),
+                __html: getDisplayName,
               }}
             />
             <Visibility visibility={visibility} />

@@ -10,9 +10,11 @@ import { SettingContext } from 'util/provider/SettingProvider'
 export const MediaAttachments = ({
   sensitive,
   mediaAttachments,
+  scrolling = false,
 }: {
   sensitive: boolean
   mediaAttachments: Entity.Attachment[]
+  scrolling?: boolean
 }) => {
   const setting = useContext(SettingContext)
   const setMediaModal = useContext(SetMediaModalContext)
@@ -71,6 +73,7 @@ export const MediaAttachments = ({
                 className="w-full bg-black"
                 key={media.id}
                 media={media}
+                scrolling={scrolling}
                 onClick={() => onClick(index)}
               />
             )
@@ -81,6 +84,7 @@ export const MediaAttachments = ({
                 className="w-1/2 bg-black"
                 key={media.id}
                 media={media}
+                scrolling={scrolling}
                 onClick={() => onClick(index)}
               />
             )
@@ -89,6 +93,7 @@ export const MediaAttachments = ({
               if (index == 5) {
                 return (
                   <button
+                    key={media.id}
                     className="flex w-1/3 items-center justify-center bg-black"
                     onClick={() => {
                       setMediaModal({
@@ -110,6 +115,7 @@ export const MediaAttachments = ({
                 className="w-1/3 bg-black"
                 key={media.id}
                 media={media}
+                scrolling={scrolling}
                 onClick={() => onClick(index)}
               />
             )
