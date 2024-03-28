@@ -1,6 +1,7 @@
 'use client'
 
 import {
+  WheelEventHandler,
   useCallback,
   useContext,
   useEffect,
@@ -13,29 +14,36 @@ import { Virtuoso, VirtuosoHandle } from 'react-virtuoso'
 
 import { Notification } from 'app/_parts/Notification'
 import { Panel } from 'app/_parts/Panel'
+import { TimelineStreamIcon } from 'app/_parts/TimelineIcon'
 import { CENTER_INDEX } from 'util/environment'
 import { NotificationsContext } from 'util/provider/HomeTimelineProvider'
 
 export const NotificationTimeline = () => {
   const notifications = useContext(NotificationsContext)
   const scrollerRef = useRef<VirtuosoHandle>(null)
+  const timer = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null)
 
-  const [atTop, setAtTop] = useState(true)
+  const [enableScrollToTop, setEnableScrollToTop] =
+    useState(true)
   const [isScrolling, setIsScrolling] = useState(false)
 
   const internalIndex = useMemo(() => {
     return CENTER_INDEX - notifications.length
   }, [notifications.length])
 
+  const onWheel = useCallback<
+    WheelEventHandler<HTMLDivElement>
+  >((e) => {
+    if (e.deltaY > 0) {
+      setEnableScrollToTop(false)
+    }
+  }, [])
+
   const atTopStateChange = useCallback((state: boolean) => {
     if (state) {
-      setAtTop(true)
-    }
-    const timer = setTimeout(() => {
-      setAtTop(state)
-    }, 400)
-    return () => {
-      clearTimeout(timer)
+      setEnableScrollToTop(true)
     }
   }, [])
 
@@ -49,14 +57,16 @@ export const NotificationTimeline = () => {
   }, [])
 
   useEffect(() => {
-    if (!atTop) return
-    const timer = setTimeout(() => {
-      scrollToTop()
-    }, 50)
-    return () => {
-      clearTimeout(timer)
+    if (enableScrollToTop) {
+      timer.current = setTimeout(() => {
+        scrollToTop()
+      }, 50)
     }
-  }, [atTop, notifications.length, scrollToTop])
+    return () => {
+      if (timer.current == null) return
+      clearTimeout(timer.current)
+    }
+  }, [enableScrollToTop, scrollToTop, notifications.length])
 
   return (
     <Panel
@@ -64,7 +74,9 @@ export const NotificationTimeline = () => {
       onClickHeader={() => {
         scrollToTop()
       }}
+      className="relative"
     >
+      {enableScrollToTop && <TimelineStreamIcon />}
       <Virtuoso
         data={notifications}
         ref={scrollerRef}
@@ -73,11 +85,14 @@ export const NotificationTimeline = () => {
         atTopStateChange={atTopStateChange}
         atTopThreshold={20}
         isScrolling={setIsScrolling}
+        onWheel={onWheel}
         itemContent={(_, notification) => (
           <Notification
             key={notification.id}
             notification={notification}
-            scrolling={atTop ? false : isScrolling}
+            scrolling={
+              enableScrollToTop ? false : isScrolling
+            }
           />
         )}
       />
