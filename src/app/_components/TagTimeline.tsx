@@ -1,6 +1,8 @@
 'use client'
 
 import {
+  WheelEventHandler,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -13,6 +15,7 @@ import { Virtuoso, VirtuosoHandle } from 'react-virtuoso'
 
 import { Panel } from 'app/_parts/Panel'
 import { Status } from 'app/_parts/Status'
+import { TimelineStreamIcon } from 'app/_parts/TimelineIcon'
 import { ArrayLengthControl } from 'util/ArrayLengthControl'
 import { CENTER_INDEX } from 'util/environment'
 import { GetClient } from 'util/GetClient'
@@ -21,7 +24,11 @@ import { SetTagsContext } from 'util/provider/ResourceProvider'
 
 export const TagTimeline = ({ tag }: { tag: string }) => {
   const refFirstRef = useRef(true)
+
   const scrollerRef = useRef<VirtuosoHandle>(null)
+  const timer = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null)
   const token = useContext(TokenContext)
   const setTags = useContext(SetTagsContext)
 
@@ -29,7 +36,8 @@ export const TagTimeline = ({ tag }: { tag: string }) => {
     []
   )
 
-  const [atTop, setAtTop] = useState(true)
+  const [enableScrollToTop, setEnableScrollToTop] =
+    useState(true)
   const [isScrolling, setIsScrolling] = useState(false)
 
   const [moreCount, setMoreCount] = useState(0)
@@ -96,17 +104,19 @@ export const TagTimeline = ({ tag }: { tag: string }) => {
     })
   }, [setTags, tag, token])
 
-  const atTopStateChange = (state: boolean) => {
+  const onWheel = useCallback<
+    WheelEventHandler<HTMLDivElement>
+  >((e) => {
+    if (e.deltaY > 0) {
+      setEnableScrollToTop(false)
+    }
+  }, [])
+
+  const atTopStateChange = useCallback((state: boolean) => {
     if (state) {
-      setAtTop(true)
+      setEnableScrollToTop(true)
     }
-    const timer = setTimeout(() => {
-      setAtTop(state)
-    }, 400)
-    return () => {
-      clearTimeout(timer)
-    }
-  }
+  }, [])
 
   const moreLoad = () => {
     if (token == null) return
@@ -122,15 +132,18 @@ export const TagTimeline = ({ tag }: { tag: string }) => {
       })
   }
 
+  // 最新の投稿が追加されたときにスクロールする
   useEffect(() => {
-    if (!atTop) return
-    const timer = setTimeout(() => {
-      scrollToTop()
-    }, 50)
-    return () => {
-      clearTimeout(timer)
+    if (enableScrollToTop) {
+      timer.current = setTimeout(() => {
+        scrollToTop()
+      }, 50)
     }
-  }, [atTop, timeline.length])
+    return () => {
+      if (timer.current == null) return
+      clearTimeout(timer.current)
+    }
+  }, [enableScrollToTop, timeline.length])
 
   const scrollToTop = () => {
     if (scrollerRef.current != null) {
@@ -147,7 +160,9 @@ export const TagTimeline = ({ tag }: { tag: string }) => {
       onClickHeader={() => {
         scrollToTop()
       }}
+      className="relative"
     >
+      {enableScrollToTop && <TimelineStreamIcon />}
       <Virtuoso
         data={timeline}
         ref={scrollerRef}
@@ -156,12 +171,15 @@ export const TagTimeline = ({ tag }: { tag: string }) => {
         atTopStateChange={atTopStateChange}
         atTopThreshold={20}
         isScrolling={setIsScrolling}
+        onWheel={onWheel}
         endReached={moreLoad}
         itemContent={(_, status) => (
           <Status
             key={status.id}
             status={status}
-            scrolling={atTop ? false : isScrolling}
+            scrolling={
+              enableScrollToTop ? false : isScrolling
+            }
           />
         )}
       />
