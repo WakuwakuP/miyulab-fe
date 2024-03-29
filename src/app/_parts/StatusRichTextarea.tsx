@@ -38,8 +38,8 @@ const MENTION_HIGHLIGHT_REG = new RegExp(
 )
 const EMOJI_REG = /\B:([+\w].*)$/
 
-const TAG_REG = /#(\w*)$/
-const TAG_HIGHLIGHT_REG = new RegExp(/#(\w*)/, 'g')
+const TAG_REG = /#(\S*)$/
+const TAG_HIGHLIGHT_REG = new RegExp(/#(\S*)/, 'g')
 
 const MentionMenu = ({
   chars,
@@ -253,7 +253,7 @@ export const StatusRichTextarea = ({
   const emojiMatch =
     pos != null ? targetText.match(EMOJI_REG) : null
   const tagMatch =
-    pos != null ? targetText.match(/#(\w*)$/) : null
+    pos != null ? targetText.match(TAG_REG) : null
 
   const mentionName =
     mentionMatch != null ? mentionMatch[1] : ''
