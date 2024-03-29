@@ -240,11 +240,6 @@ export const StatusRichTextarea = ({
   const [isEmoji, setIsEmoji] = useState(false)
   const [isTag, setIsTag] = useState(false)
 
-  const [downLeftCtrl, setDownLeftCtrl] = useState(false)
-  const [downRightCtrl, setDownRightCtrl] = useState(false)
-
-  const downCtrl = downLeftCtrl || downRightCtrl
-
   const targetText =
     pos != null ? text.slice(0, pos.caret) : text
 
@@ -392,45 +387,11 @@ export const StatusRichTextarea = ({
         className="rounded-none"
         onChange={(e) => onChange(e.target.value)}
         value={text}
-        onKeyUp={(e) => {
-          if (
-            e.code === 'ControlLeft' &&
-            downCtrl === true
-          ) {
-            e.preventDefault()
-            setDownLeftCtrl(false)
-            return
-          }
-
-          if (
-            e.code === 'ControlRight' &&
-            downCtrl === true
-          ) {
-            e.preventDefault()
-            setDownRightCtrl(false)
-            return
-          }
-        }}
         onKeyDown={(e) => {
           if (
-            e.code === 'ControlLeft' &&
-            downCtrl === false
+            e.code === 'Enter' &&
+            (e.ctrlKey || e.metaKey)
           ) {
-            e.preventDefault()
-            setDownLeftCtrl(true)
-            return
-          }
-
-          if (
-            e.code === 'ControlRight' &&
-            downCtrl === false
-          ) {
-            e.preventDefault()
-            setDownRightCtrl(true)
-            return
-          }
-
-          if (e.code === 'Enter' && downCtrl === true) {
             e.preventDefault()
             onSubmit()
             return
