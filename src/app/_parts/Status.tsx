@@ -95,7 +95,11 @@ export const Status = ({
           </a>
         )
       }
-      if (node.attribs.rel === 'tag') {
+      if (
+        node.attribs.rel === 'tag' ||
+        (node.children[0]?.type === ElementType.Text &&
+          node.children[0]?.data?.startsWith('#'))
+      ) {
         return (
           <a
             {...attributesToProps(node.attribs)}
