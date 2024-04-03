@@ -2,6 +2,7 @@
 import { useContext } from 'react'
 
 import { Entity } from 'megalodon'
+import * as emoji from 'node-emoji'
 import { RiStarFill } from 'react-icons/ri'
 
 import { Status } from 'app/_parts/Status'
@@ -164,13 +165,19 @@ export const Notification = ({
                       src={
                         notification.reaction?.static_url
                       }
+                      title={notification.reaction?.name}
                       alt="emoji"
                       loading="lazy"
                     />
                   )}
                 </>
               ) : (
-                <span className="text-3xl">
+                <span
+                  className="text-3xl"
+                  title={emoji.which(
+                    notification.reaction?.name ?? ''
+                  )}
+                >
                   {notification.reaction?.name ?? ''}
                 </span>
               )}
