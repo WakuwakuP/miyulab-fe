@@ -42,7 +42,7 @@ export const Status = ({
       account.emojis.forEach((emoji) => {
         displayName = displayName.replace(
           new RegExp(`:${emoji.shortcode}:`, 'gm'),
-          `<img src="${emoji.url}" alt="${emoji.shortcode}" class="min-w-5 h-5 inline-block" loading="lazy" />`
+          `<img src="${emoji.url}" alt="${emoji.shortcode}" title=":${emoji.shortcode}:" class="min-w-5 h-5 inline-block" loading="lazy" />`
         )
       })
     }
@@ -55,7 +55,7 @@ export const Status = ({
       status.emojis.forEach((emoji) => {
         content = content.replace(
           new RegExp(`:${emoji.shortcode}:`, 'gm'),
-          `<img src="${emoji.url}" alt="${emoji.shortcode}" class="min-w-5 h-5 inline-block" loading="lazy" />`
+          `<img src="${emoji.url}" alt="${emoji.shortcode}" title=":${emoji.shortcode}:" class="min-w-5 h-5 inline-block" loading="lazy" />`
         )
       })
     }
@@ -115,6 +115,11 @@ export const Status = ({
                 )?.name as string,
               })
             }}
+            title={`#${node.attribs.href}`}
+            rel={[
+              node.attribs.rel,
+              'noopener noreferrer',
+            ].join(' ')}
             target="_blank"
           >
             {domToReact(node.children as DOMNode[])}
