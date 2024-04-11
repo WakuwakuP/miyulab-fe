@@ -63,7 +63,7 @@ export const Dropzone = ({
         if (file.type.startsWith('image/')) {
           imageCompression(file, {
             maxSizeMB: update_limit,
-            maxWidthOrHeight: 2560,
+            maxWidthOrHeight: 2048,
             useWebWorker: true,
           }).then((compressedFile) => {
             uploadMedia(compressedFile)

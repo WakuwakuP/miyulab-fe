@@ -26,6 +26,7 @@ import { GetClient } from 'util/GetClient'
 import { TokenContext } from 'util/provider/AppProvider'
 import {
   EmojiContext,
+  InstanceContext,
   TagsContext,
   UsersContext,
 } from 'util/provider/ResourceProvider'
@@ -225,6 +226,10 @@ export const StatusRichTextarea = ({
   const users = useContext(UsersContext)
   const emojis = useContext(EmojiContext)
   const tags = useContext(TagsContext)
+  const instance = useContext(InstanceContext)
+
+  const update_limit =
+    (instance?.upload_limit ?? 16000000) / 1024 / 1024
 
   const ref = useRef<RichTextareaHandle>(null)
 
@@ -364,8 +369,8 @@ export const StatusRichTextarea = ({
           setUploading((prev) => prev + 1)
           if (file.type.startsWith('image/')) {
             imageCompression(file, {
-              maxSizeMB: 10,
-              maxWidthOrHeight: 2560,
+              maxSizeMB: update_limit,
+              maxWidthOrHeight: 2048,
               useWebWorker: true,
             }).then((compressedFile) => {
               uploadMedia(compressedFile)
