@@ -2,16 +2,16 @@
 'use client'
 
 import React, {
-  Dispatch,
-  ReactNode,
-  SetStateAction,
+  type Dispatch,
+  type ReactNode,
+  type SetStateAction,
   useCallback,
   useContext,
   useMemo,
 } from 'react'
 
 import imageCompression from 'browser-image-compression'
-import { Entity } from 'megalodon'
+import { type Entity } from 'megalodon'
 import { useDropzone } from 'react-dropzone'
 import { CgSpinner } from 'react-icons/cg'
 

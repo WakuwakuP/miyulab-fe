@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
-import { MouseEventHandler, useContext } from 'react'
+import { type MouseEventHandler, useContext } from 'react'
 
-import { Entity } from 'megalodon'
+import { type Entity } from 'megalodon'
 import ReactPlayer from 'react-player'
 
 import { SetPlayerContext } from 'util/provider/PlayerProvider'

@@ -1,7 +1,7 @@
 'use client'
 
 import {
-  WheelEventHandler,
+  type WheelEventHandler,
   useCallback,
   useContext,
   useEffect,
@@ -10,8 +10,11 @@ import {
   useState,
 } from 'react'
 
-import { Entity } from 'megalodon'
-import { Virtuoso, VirtuosoHandle } from 'react-virtuoso'
+import { type Entity } from 'megalodon'
+import {
+  Virtuoso,
+  type VirtuosoHandle,
+} from 'react-virtuoso'
 
 import { Panel } from 'app/_parts/Panel'
 import { Status } from 'app/_parts/Status'

@@ -5,11 +5,11 @@ import { useContext } from 'react'
 
 import { ElementType } from 'domelementtype'
 import parse, {
-  DOMNode,
+  type DOMNode,
   attributesToProps,
   domToReact,
 } from 'html-react-parser'
-import { Entity } from 'megalodon'
+import { type Entity } from 'megalodon'
 import { RiRepeatFill, RiVideoLine } from 'react-icons/ri'
 import ReactPlayer from 'react-player'
 

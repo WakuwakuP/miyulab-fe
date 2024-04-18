@@ -139,6 +139,19 @@
         "newlines-between": "always"
       }
     ],
+    "import/no-duplicates": [
+      "error",
+      {
+        "prefer-inline": true
+      }
+    ],
+    "@typescript-eslint/consistent-type-imports": [
+      "error",
+      {
+        "prefer": "type-imports",
+        "fixStyle": "inline-type-imports"
+      }
+    ],
     "@typescript-eslint/strict-boolean-expressions": [
       "warn",
       {

@@ -2,7 +2,7 @@
 
 import { useContext, useId, useState } from 'react'
 
-import { Entity } from 'megalodon'
+import { type Entity } from 'megalodon'
 
 import { GetClient } from 'util/GetClient'
 import { TokenContext } from 'util/provider/AppProvider'

@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 import { useContext } from 'react'
 
-import { Entity } from 'megalodon'
+import { type Entity } from 'megalodon'
 import * as emoji from 'node-emoji'
 import { RiStarFill } from 'react-icons/ri'
 

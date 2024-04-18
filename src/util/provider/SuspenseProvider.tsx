@@ -1,6 +1,6 @@
 'use strict'
 
-import { ReactNode, Suspense } from 'react'
+import { type ReactNode, Suspense } from 'react'
 
 export const SuspenseProvider = ({
   children,

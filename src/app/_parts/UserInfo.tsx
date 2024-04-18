@@ -3,7 +3,7 @@
 
 import { useContext, useMemo } from 'react'
 
-import { Entity } from 'megalodon'
+import { type Entity } from 'megalodon'
 
 import { Visibility } from 'app/_parts/Visibility'
 import { SetDetailContext } from 'util/provider/DetailProvider'
