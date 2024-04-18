@@ -1,4 +1,4 @@
-import generator, { OAuth } from 'megalodon'
+import generator, { type OAuth } from 'megalodon'
 
 import { BACKEND_SNS, BACKEND_URL } from './environment'
 

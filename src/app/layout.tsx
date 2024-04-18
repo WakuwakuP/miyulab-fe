@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
-import { ReactNode, Suspense } from 'react'
+import { type ReactNode, Suspense } from 'react'
 
 import { Toaster } from 'react-hot-toast'
 

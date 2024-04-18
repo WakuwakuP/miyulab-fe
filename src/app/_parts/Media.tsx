@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
-import { HTMLProps } from 'react'
+import { type HTMLProps } from 'react'
 
-import { Entity } from 'megalodon'
+import { type Entity } from 'megalodon'
 import { RiPlayCircleLine } from 'react-icons/ri'
 
 export const Media = ({

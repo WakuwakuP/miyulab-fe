@@ -2,7 +2,7 @@
 
 import { useContext, useEffect, useState } from 'react'
 
-import { Entity } from 'megalodon'
+import { type Entity } from 'megalodon'
 import { RiArrowLeftSLine } from 'react-icons/ri'
 import { Virtuoso } from 'react-virtuoso'
 

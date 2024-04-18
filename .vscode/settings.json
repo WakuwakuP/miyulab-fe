@@ -48,6 +48,7 @@
   "editor.quickSuggestions": {
     "strings": true
   },
+  "eslint.runtime": "node",
   "editor.suggest.snippetsPreventQuickSuggestions": false,
   "jest.autoRevealOutput": "off",
   "tailwindCSS.includeLanguages": {

@@ -1,6 +1,6 @@
 import { useContext, useState } from 'react'
 
-import { Entity } from 'megalodon'
+import { type Entity } from 'megalodon'
 
 import { Media } from 'app/_parts/Media'
 import { SetMediaModalContext } from 'util/provider/ModalProvider'

@@ -1,4 +1,8 @@
-import { ChangeEvent, ReactNode, useContext } from 'react'
+import {
+  type ChangeEvent,
+  type ReactNode,
+  useContext,
+} from 'react'
 
 import {
   SetSettingContext,

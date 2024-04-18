@@ -1,9 +1,9 @@
 'use client'
 
 import {
-  Dispatch,
-  ReactNode,
-  SetStateAction,
+  type Dispatch,
+  type ReactNode,
+  type SetStateAction,
   createContext,
   useContext,
   useEffect,
@@ -11,7 +11,7 @@ import {
   useState,
 } from 'react'
 
-import { Entity } from 'megalodon'
+import { type Entity } from 'megalodon'
 import * as emoji from 'node-emoji'
 import unicodeEmojiData from 'unicode-emoji-json/data-by-emoji.json'
 

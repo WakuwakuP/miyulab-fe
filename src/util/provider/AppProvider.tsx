@@ -3,13 +3,13 @@
 import Image from 'next/image'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
-  ReactNode,
+  type ReactNode,
   createContext,
   useEffect,
   useState,
 } from 'react'
 
-import { OAuth } from 'megalodon'
+import { type OAuth } from 'megalodon'
 
 import { APP_NAME, APP_URL } from 'util/environment'
 import { GetClient } from 'util/GetClient'

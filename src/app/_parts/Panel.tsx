@@ -1,6 +1,10 @@
 'use client'
 
-import { HTMLProps, ReactNode, useRef } from 'react'
+import {
+  type HTMLProps,
+  type ReactNode,
+  useRef,
+} from 'react'
 
 export const Panel = ({
   children,

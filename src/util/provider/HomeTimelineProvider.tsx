@@ -1,7 +1,7 @@
 'use client'
 
 import {
-  ReactNode,
+  type ReactNode,
   createContext,
   useContext,
   useEffect,
@@ -9,7 +9,7 @@ import {
   useState,
 } from 'react'
 
-import { Entity } from 'megalodon'
+import { type Entity } from 'megalodon'
 
 import { ArrayLengthControl } from 'util/ArrayLengthControl'
 import { GetClient } from 'util/GetClient'
