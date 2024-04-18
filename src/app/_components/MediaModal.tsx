@@ -2,7 +2,7 @@
 'use client'
 
 import {
-  MouseEventHandler,
+  type MouseEventHandler,
   useContext,
   useEffect,
   useRef,

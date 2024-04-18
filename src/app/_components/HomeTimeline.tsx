@@ -1,7 +1,7 @@
 'use client'
 
 import {
-  WheelEventHandler,
+  type WheelEventHandler,
   useCallback,
   useContext,
   useEffect,
@@ -10,7 +10,10 @@ import {
   useState,
 } from 'react'
 
-import { Virtuoso, VirtuosoHandle } from 'react-virtuoso'
+import {
+  Virtuoso,
+  type VirtuosoHandle,
+} from 'react-virtuoso'
 
 import { Panel } from 'app/_parts/Panel'
 import { Status } from 'app/_parts/Status'

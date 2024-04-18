@@ -10,11 +10,11 @@ import {
 
 import { ElementType } from 'domelementtype'
 import parse, {
-  DOMNode,
+  type DOMNode,
   attributesToProps,
   domToReact,
 } from 'html-react-parser'
-import { Entity } from 'megalodon'
+import { type Entity } from 'megalodon'
 import innerText from 'react-innertext'
 
 import { UserInfo } from 'app/_parts/UserInfo'

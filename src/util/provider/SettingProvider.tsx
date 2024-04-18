@@ -1,9 +1,9 @@
 'use client'
 
 import {
-  Dispatch,
-  ReactNode,
-  SetStateAction,
+  type Dispatch,
+  type ReactNode,
+  type SetStateAction,
   createContext,
   useEffect,
   useState,

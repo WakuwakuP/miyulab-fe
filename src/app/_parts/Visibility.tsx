@@ -1,4 +1,4 @@
-import { Entity } from 'megalodon'
+import { type Entity } from 'megalodon'
 import { FaLock, FaLockOpen } from 'react-icons/fa'
 import { ImSphere } from 'react-icons/im'
 import { RiMailFill } from 'react-icons/ri'

@@ -2,10 +2,10 @@
 'use client'
 
 import {
-  CSSProperties,
-  ClipboardEventHandler,
-  Dispatch,
-  SetStateAction,
+  type CSSProperties,
+  type ClipboardEventHandler,
+  type Dispatch,
+  type SetStateAction,
   useContext,
   useMemo,
   useRef,
@@ -13,12 +13,12 @@ import {
 } from 'react'
 
 import imageCompression from 'browser-image-compression'
-import { Entity } from 'megalodon'
+import { type Entity } from 'megalodon'
 import * as Emoji from 'node-emoji'
 import { createPortal } from 'react-dom'
 import {
   RichTextarea,
-  RichTextareaHandle,
+  type RichTextareaHandle,
   createRegexRenderer,
 } from 'rich-textarea'
 

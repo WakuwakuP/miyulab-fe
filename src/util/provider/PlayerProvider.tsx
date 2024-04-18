@@ -1,15 +1,15 @@
 'use client'
 
 import {
-  Dispatch,
-  ReactNode,
-  SetStateAction,
+  type Dispatch,
+  type ReactNode,
+  type SetStateAction,
   createContext,
   useEffect,
   useState,
 } from 'react'
 
-import { Entity } from 'megalodon'
+import { type Entity } from 'megalodon'
 
 export const PlayerContext = createContext<{
   attachment: Entity.Attachment[]

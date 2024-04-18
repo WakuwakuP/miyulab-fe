@@ -2,7 +2,7 @@
 
 import { useContext, useState } from 'react'
 
-import { Entity } from 'megalodon'
+import { type Entity } from 'megalodon'
 import {
   RiBookmark2Fill,
   RiBookmarkFill,
