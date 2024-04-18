@@ -5,7 +5,7 @@ import {
   useState,
 } from 'react'
 
-import { Entity } from 'megalodon'
+import { type Entity } from 'megalodon'
 import { Virtuoso } from 'react-virtuoso'
 
 import { Status } from 'app/_parts/Status'

@@ -8,7 +8,7 @@ import {
   useState,
 } from 'react'
 
-import { Entity } from 'megalodon'
+import { type Entity } from 'megalodon'
 import {
   RiCloseCircleLine,
   RiPlayFill,

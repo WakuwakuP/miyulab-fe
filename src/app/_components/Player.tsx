@@ -2,8 +2,8 @@
 'use client'
 
 import {
-  ChangeEventHandler,
-  MouseEventHandler,
+  type ChangeEventHandler,
+  type MouseEventHandler,
   useCallback,
   useContext,
   useEffect,
@@ -12,7 +12,7 @@ import {
   useState,
 } from 'react'
 
-import { Entity } from 'megalodon'
+import { type Entity } from 'megalodon'
 import { createPortal } from 'react-dom'
 import {
   GrChapterNext,
@@ -24,7 +24,7 @@ import {
   RiPlayFill,
 } from 'react-icons/ri'
 import ReactPlayer from 'react-player'
-import { OnProgressProps } from 'react-player/base'
+import { type OnProgressProps } from 'react-player/base'
 
 import {
   PlayerContext,

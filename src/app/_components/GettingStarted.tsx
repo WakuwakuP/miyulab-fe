@@ -7,7 +7,7 @@ import {
   useState,
 } from 'react'
 
-import { Entity, Response } from 'megalodon'
+import { type Entity, type Response } from 'megalodon'
 import { RiArrowLeftSLine } from 'react-icons/ri'
 import { Virtuoso } from 'react-virtuoso'
 
