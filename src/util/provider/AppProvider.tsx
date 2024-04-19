@@ -132,7 +132,6 @@ export const AppProvider = ({
         if (tokenData?.refresh_token == null) {
           return
         } else {
-          // 有効期限が残り10日ならリフレッシュトークンを使って更新
           if (
             tokenData.expires_in != null &&
             tokenData.created_at != null
@@ -141,6 +140,13 @@ export const AppProvider = ({
             const expires =
               tokenData.created_at * 1000 +
               tokenData.expires_in
+            // 有効期限を過ぎていたらトークンを削除する
+            if (expires < now) {
+              localStorage.removeItem('token')
+              setTokenData(null)
+              return
+            }
+            // 有効期限が残り10日ならリフレッシュトークンを使って更新
             if (expires - now < 10 * 24 * 60 * 60 * 1000) {
               client
                 .refreshToken(
@@ -151,6 +157,7 @@ export const AppProvider = ({
                 .then((tokenData) => {
                   updateTokenData(tokenData)
                 })
+              return
             }
           }
         }
