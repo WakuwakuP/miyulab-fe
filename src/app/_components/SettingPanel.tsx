@@ -4,6 +4,8 @@ import {
   useContext,
 } from 'react'
 
+import { type Entity } from 'megalodon'
+
 import {
   SetSettingContext,
   SettingContext,
@@ -11,10 +13,14 @@ import {
 
 const SettingItem = ({
   children,
+  className = '',
 }: {
   children: ReactNode
+  className?: string
 }) => (
-  <div className="flex items-center py-1">{children}</div>
+  <div className={'flex items-center py-1 ' + className}>
+    {children}
+  </div>
 )
 
 const SettingCheckbox = ({
@@ -92,7 +98,7 @@ const SettingSelect = ({
   }[]
   onChange: (e: ChangeEvent<HTMLSelectElement>) => void
 }) => (
-  <SettingItem>
+  <SettingItem className="justify-between">
     <label
       htmlFor={id}
       className="mr-1"
@@ -157,6 +163,33 @@ export const SettingPanel = () => {
           { value: 'small', name: 'Small' },
           { value: 'medium', name: 'Medium' },
           { value: 'large', name: 'Large' },
+        ]}
+      />
+      <SettingSelect
+        id="defaultStatusVisibility"
+        label="Default visibility"
+        value={setting.defaultStatusVisibility}
+        onChange={(e) => {
+          if (
+            [
+              'public',
+              'unlisted',
+              'private',
+              'direct',
+            ].includes(e.target.value)
+          ) {
+            setSetting({
+              ...setting,
+              defaultStatusVisibility: e.target
+                .value as Entity.StatusVisibility,
+            })
+          }
+        }}
+        options={[
+          { value: 'public', name: 'Public' },
+          { value: 'unlisted', name: 'Unlisted' },
+          { value: 'private', name: 'Private' },
+          { value: 'direct', name: 'Direct' },
         ]}
       />
     </div>

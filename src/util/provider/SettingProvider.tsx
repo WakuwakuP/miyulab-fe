@@ -9,14 +9,18 @@ import {
   useState,
 } from 'react'
 
+import { type Entity } from 'megalodon'
+
 type SettingData = {
   showSensitive: boolean
   playerSize: 'small' | 'medium' | 'large'
+  defaultStatusVisibility: Entity.StatusVisibility
 }
 
 const initialSettingData: SettingData = {
   showSensitive: false,
   playerSize: 'medium',
+  defaultStatusVisibility: 'public',
 } as const
 
 export const SettingContext = createContext<SettingData>(
