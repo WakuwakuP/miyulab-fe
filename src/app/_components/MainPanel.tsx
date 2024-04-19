@@ -26,19 +26,23 @@ import {
   ReplyToContext,
   SetReplyToContext,
 } from 'util/provider/ReplyToProvider'
+import { SettingContext } from 'util/provider/SettingProvider'
 
 export const MainPanel = () => {
   const token = useContext(TokenContext)
   const replyTo = useContext(ReplyToContext)
   const setReplyTo = useContext(SetReplyToContext)
   const setPlayer = useContext(SetPlayerContext)
-
+  const { defaultStatusVisibility } =
+    useContext(SettingContext)
   const [account, setAccount] =
     useState<Entity.Account | null>(null)
 
   // form state
   const [visibility, setVisibility] =
-    useState<Entity.StatusVisibility>('public')
+    useState<Entity.StatusVisibility>(
+      defaultStatusVisibility
+    )
   const [isCW, setIsCW] = useState(false)
   const [spoilerText, setSpoilerText] = useState('')
   const [content, setContent] = useState('')
@@ -53,7 +57,7 @@ export const MainPanel = () => {
   const [isPlay, setIsPlay] = useState(false)
 
   const resetForm = () => {
-    setVisibility('public')
+    setVisibility(defaultStatusVisibility)
     setIsCW(false)
     setSpoilerText('')
     setContent('')
@@ -111,6 +115,10 @@ export const MainPanel = () => {
       setAccount(res.data)
     })
   }, [token])
+
+  useEffect(() => {
+    setVisibility(defaultStatusVisibility)
+  }, [defaultStatusVisibility])
 
   useEffect(() => {
     if (mediaLink === '') return
