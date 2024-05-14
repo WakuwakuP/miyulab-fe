@@ -82,7 +82,8 @@ export const AppsProvider = ({
         .fetchAccessToken(
           processingAppData.appData.client_id,
           processingAppData.appData.client_secret,
-          code
+          code,
+          APP_URL
         )
         .then((tokenData) => {
           const newApp: App = {
@@ -166,13 +167,7 @@ export const AppsProvider = ({
         findApp.appData.id === ''
       ) {
         const appData = await client.registerApp(APP_NAME, {
-          scopes: [
-            'read',
-            'write',
-            'follow',
-            'push',
-            'notifications',
-          ],
+          scopes: ['read', 'write', 'follow', 'push'],
           website: APP_URL,
           redirect_uris: APP_URL,
         })
