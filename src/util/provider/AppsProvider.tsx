@@ -166,13 +166,7 @@ export const AppsProvider = ({
         findApp.appData.id === ''
       ) {
         const appData = await client.registerApp(APP_NAME, {
-          scopes: [
-            'read',
-            'write',
-            'follow',
-            'push',
-            'notifications',
-          ],
+          scopes: ['read', 'write', 'follow', 'push'],
           website: APP_URL,
           redirect_uris: APP_URL,
         })
