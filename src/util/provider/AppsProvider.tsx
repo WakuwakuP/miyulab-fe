@@ -9,26 +9,21 @@ import {
   useState,
 } from 'react'
 
-import generator, { type OAuth } from 'megalodon'
+import generator from 'megalodon'
 
-import { APP_NAME, APP_URL } from 'util/environment'
+import {
+  type App,
+  type Backend,
+  backendList,
+} from 'types/types'
+import {
+  APP_NAME,
+  APP_URL,
+  BACKEND_SNS,
+  BACKEND_URL,
+} from 'util/environment'
 
 import bgImage from '@public/miyu.webp'
-
-const backendList = [
-  'mastodon',
-  'pleroma',
-  'friendica',
-  'firefish',
-] as const
-
-export type Backend = (typeof backendList)[number]
-export type App = {
-  backend: Backend
-  backendUrl: string
-  appData: OAuth.AppData
-  tokenData: OAuth.TokenData | null
-}
 
 export const AppsContext = createContext<App[]>([])
 
@@ -41,10 +36,9 @@ export const AppsProvider = ({
 
   const [backend, setBackend] = useState<
     'mastodon' | 'pleroma' | 'friendica' | 'firefish' | ''
-  >('pleroma')
-  const [backendUrl, setBackendUrl] = useState<string>(
-    'https://pl.waku.dev'
-  )
+  >(BACKEND_SNS)
+  const [backendUrl, setBackendUrl] =
+    useState<string>(BACKEND_URL)
   const [isRequestedToken, setIsRequestedToken] =
     useState<boolean>(false)
   const [storageLoading, setStorageLoading] =
