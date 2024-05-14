@@ -21,7 +21,7 @@ import { TimelineStreamIcon } from 'app/_parts/TimelineIcon'
 import { ArrayLengthControl } from 'util/ArrayLengthControl'
 import { CENTER_INDEX } from 'util/environment'
 import { GetClient } from 'util/GetClient'
-import { TokenContext } from 'util/provider/AppProvider'
+import { AppsContext } from 'util/provider/AppsProvider'
 import { SetTagsContext } from 'util/provider/ResourceProvider'
 
 export const PublicTimeline = () => {
@@ -30,7 +30,7 @@ export const PublicTimeline = () => {
   const timer = useRef<ReturnType<
     typeof setTimeout
   > | null>(null)
-  const token = useContext(TokenContext)
+  const apps = useContext(AppsContext)
   const setTags = useContext(SetTagsContext)
 
   const [timeline, setTimeline] = useState<Entity.Status[]>(
@@ -53,8 +53,8 @@ export const PublicTimeline = () => {
       refFirstRef.current = false
       return
     }
-    if (token == null) return
-    const client = GetClient(token?.access_token)
+    if (apps.length <= 0) return
+    const client = GetClient(apps[0])
 
     client
       .getPublicTimeline({ limit: 40, only_media: true })
@@ -100,7 +100,7 @@ export const PublicTimeline = () => {
         }, 1000)
       })
     })
-  }, [setTags, token])
+  }, [apps, setTags])
 
   const onWheel = useCallback<
     WheelEventHandler<HTMLDivElement>

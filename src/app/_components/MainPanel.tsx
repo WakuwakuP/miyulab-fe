@@ -20,7 +20,7 @@ import { Panel } from 'app/_parts/Panel'
 import { StatusRichTextarea } from 'app/_parts/StatusRichTextarea'
 import { UserInfo } from 'app/_parts/UserInfo'
 import { GetClient } from 'util/GetClient'
-import { TokenContext } from 'util/provider/AppProvider'
+import { AppsContext } from 'util/provider/AppsProvider'
 import { SetPlayerContext } from 'util/provider/PlayerProvider'
 import {
   ReplyToContext,
@@ -29,7 +29,7 @@ import {
 import { SettingContext } from 'util/provider/SettingProvider'
 
 export const MainPanel = () => {
-  const token = useContext(TokenContext)
+  const apps = useContext(AppsContext)
   const replyTo = useContext(ReplyToContext)
   const setReplyTo = useContext(SetReplyToContext)
   const setPlayer = useContext(SetPlayerContext)
@@ -79,10 +79,10 @@ export const MainPanel = () => {
   }
 
   const clickPost = () => {
-    if (token == null) return
+    if (apps.length <= 0) return
     if (content === '') return
 
-    const client = GetClient(token?.access_token)
+    const client = GetClient(apps[0])
 
     client.postStatus(content, {
       visibility: visibility,
@@ -108,13 +108,13 @@ export const MainPanel = () => {
   }, [replyTo])
 
   useEffect(() => {
-    if (token == null) return
-    const client = GetClient(token?.access_token)
+    if (apps.length <= 0) return
+    const client = GetClient(apps[0])
 
     client.verifyAccountCredentials().then((res) => {
       setAccount(res.data)
     })
-  }, [token])
+  }, [apps])
 
   useEffect(() => {
     setVisibility(defaultStatusVisibility)
@@ -146,7 +146,7 @@ export const MainPanel = () => {
     setIsPlay(false)
   }, [mediaLink, setPlayer])
 
-  if (token == null || account == null) {
+  if (apps.length <= 0 || account == null) {
     return null
   }
 

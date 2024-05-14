@@ -5,7 +5,7 @@ import { useContext, useId, useState } from 'react'
 import { type Entity } from 'megalodon'
 
 import { GetClient } from 'util/GetClient'
-import { TokenContext } from 'util/provider/AppProvider'
+import { AppsContext } from 'util/provider/AppsProvider'
 
 export const Poll = ({
   poll,
@@ -15,7 +15,7 @@ export const Poll = ({
     | null
 }) => {
   const internalId = useId()
-  const token = useContext(TokenContext)
+  const apps = useContext(AppsContext)
 
   const [selected, setSelected] = useState<number[]>(
     poll?.own_votes ?? []
@@ -26,9 +26,9 @@ export const Poll = ({
   )
 
   const vote = () => {
-    if (token == null) return
+    if (apps.length <= 0) return
     if (poll == null || selected.length == 0) return
-    const client = GetClient(token.access_token)
+    const client = GetClient(apps[0])
     client.votePoll(poll.id, selected).then(() => {
       setVoted(true)
     })

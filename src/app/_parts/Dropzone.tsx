@@ -16,7 +16,7 @@ import { useDropzone } from 'react-dropzone'
 import { CgSpinner } from 'react-icons/cg'
 
 import { GetClient } from 'util/GetClient'
-import { TokenContext } from 'util/provider/AppProvider'
+import { AppsContext } from 'util/provider/AppsProvider'
 import { InstanceContext } from 'util/provider/ResourceProvider'
 
 import { Media } from './Media'
@@ -36,7 +36,7 @@ export const Dropzone = ({
   uploading: number
   setUploading: Dispatch<SetStateAction<number>>
 }) => {
-  const token = useContext(TokenContext)
+  const apps = useContext(AppsContext)
   const instance = useContext(InstanceContext)
 
   const update_limit =
@@ -45,8 +45,8 @@ export const Dropzone = ({
   const onDrop = useCallback(
     (acceptedFiles: File[]) => {
       const uploadMedia = (file: File) => {
-        if (token == null) return
-        const client = GetClient(token?.access_token)
+        if (apps.length <= 0) return
+        const client = GetClient(apps[0])
         client
           .uploadMedia(file)
           .then((res) => {
@@ -73,7 +73,7 @@ export const Dropzone = ({
         }
       })
     },
-    [setAttachments, setUploading, token, update_limit]
+    [apps, setAttachments, setUploading, update_limit]
   )
 
   const {
