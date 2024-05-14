@@ -82,7 +82,8 @@ export const AppsProvider = ({
         .fetchAccessToken(
           processingAppData.appData.client_id,
           processingAppData.appData.client_secret,
-          code
+          code,
+          APP_URL
         )
         .then((tokenData) => {
           const newApp: App = {
