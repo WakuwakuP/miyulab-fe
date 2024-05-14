@@ -11,7 +11,7 @@ import { HashtagDetail } from 'app/_parts/HashtagDetail'
 import { Panel } from 'app/_parts/Panel'
 import { Status } from 'app/_parts/Status'
 import { GetClient } from 'util/GetClient'
-import { TokenContext } from 'util/provider/AppProvider'
+import { AppsContext } from 'util/provider/AppsProvider'
 import {
   DetailContext,
   SetDetailContext,
@@ -20,7 +20,7 @@ import {
 import { GettingStarted } from './GettingStarted'
 
 export const DetailPanel = () => {
-  const token = useContext(TokenContext)
+  const apps = useContext(AppsContext)
   const detail = useContext(DetailContext)
   const setDetail = useContext(SetDetailContext)
 
@@ -29,10 +29,10 @@ export const DetailPanel = () => {
   )
 
   useEffect(() => {
-    if (token == null || detail.content == null) return
+    if (apps.length > 0 || detail.content == null) return
 
     if (detail.type === 'Status') {
-      const client = GetClient(token?.access_token)
+      const client = GetClient(apps[0])
 
       client
         .getStatusContext(detail.content.id)
@@ -46,7 +46,7 @@ export const DetailPanel = () => {
     }
 
     if (detail.type === 'SearchUser') {
-      const client = GetClient(token?.access_token)
+      const client = GetClient(apps[0])
 
       client.getAccount(detail.content).then((res) => {
         setDetail({
@@ -55,7 +55,7 @@ export const DetailPanel = () => {
         })
       })
     }
-  }, [detail.content, detail.type, setDetail, token])
+  }, [apps, detail.content, detail.type, setDetail])
 
   const panelNames = {
     Status: 'Toot and Reply',
