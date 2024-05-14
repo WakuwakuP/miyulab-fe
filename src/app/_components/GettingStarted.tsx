@@ -15,10 +15,10 @@ import { SettingPanel } from 'app/_components/SettingPanel'
 import { Panel } from 'app/_parts/Panel'
 import { Status } from 'app/_parts/Status'
 import { GetClient } from 'util/GetClient'
-import { TokenContext } from 'util/provider/AppProvider'
+import { AppsContext } from 'util/provider/AppsProvider'
 
 export const GettingStarted = () => {
-  const token = useContext(TokenContext)
+  const apps = useContext(AppsContext)
   const [selected, setSelected] = useState<
     'bookmark' | 'dm' | 'setting' | null
   >(null)
@@ -79,8 +79,8 @@ export const GettingStarted = () => {
   )
 
   useEffect(() => {
-    if (token === null) return
-    const client = GetClient(token?.access_token)
+    if (apps.length <= 0) return
+    const client = GetClient(apps[0])
 
     switch (selected) {
       case 'bookmark':
@@ -104,12 +104,12 @@ export const GettingStarted = () => {
         setTitle('Getting Started')
         break
     }
-  }, [token, selected, setMaxIdCallback])
+  }, [apps, selected, setMaxIdCallback])
 
   const moreBookmarks = useCallback(() => {
-    if (token === null) return
+    if (apps.length <= 0) return
     if (maxId === null) return
-    const client = GetClient(token?.access_token)
+    const client = GetClient(apps[0])
 
     client
       .getBookmarks({
@@ -120,11 +120,11 @@ export const GettingStarted = () => {
         setBookmarks((prev) => [...prev, ...res.data])
         setMaxIdCallback(res)
       })
-  }, [maxId, setMaxIdCallback, token])
+  }, [apps, maxId, setMaxIdCallback])
 
   const moreConversations = useCallback(() => {
-    if (token === null) return
-    const client = GetClient(token?.access_token)
+    if (apps.length <= 0) return
+    const client = GetClient(apps[0])
 
     client
       .getConversationTimeline({
@@ -133,7 +133,7 @@ export const GettingStarted = () => {
       .then((res) => {
         setConversations((prev) => [...prev, ...res.data])
       })
-  }, [conversations, token])
+  }, [apps, conversations])
 
   return (
     <Panel name={title}>

@@ -10,23 +10,23 @@ import { Virtuoso } from 'react-virtuoso'
 
 import { Status } from 'app/_parts/Status'
 import { GetClient } from 'util/GetClient'
-import { TokenContext } from 'util/provider/AppProvider'
+import { AppsContext } from 'util/provider/AppsProvider'
 
 export const HashtagDetail = ({
   hashtag,
 }: {
   hashtag?: string
 }) => {
-  const token = useContext(TokenContext)
+  const apps = useContext(AppsContext)
   const [statuses, setStatuses] = useState<Entity.Status[]>(
     []
   )
 
   useEffect(() => {
-    if (token === null) return
+    if (apps.length <= 0) return
     if (hashtag === undefined) return
 
-    const client = GetClient(token?.access_token)
+    const client = GetClient(apps[0])
 
     setStatuses([])
     client
@@ -36,13 +36,13 @@ export const HashtagDetail = ({
       .then((res) => {
         setStatuses(res.data)
       })
-  }, [hashtag, token])
+  }, [apps, hashtag])
 
   const moreStatus = useCallback(() => {
-    if (token === null) return
+    if (apps.length <= 0) return
     if (hashtag === undefined) return
 
-    const client = GetClient(token?.access_token)
+    const client = GetClient(apps[0])
 
     client
       .getTagTimeline(hashtag, {
@@ -52,7 +52,7 @@ export const HashtagDetail = ({
       .then((res) => {
         setStatuses((prev) => [...prev, ...res.data])
       })
-  }, [hashtag, statuses, token])
+  }, [apps, hashtag, statuses])
 
   if (hashtag === undefined) return null
 

@@ -5,7 +5,7 @@ import { type ReactNode, Suspense } from 'react'
 import { Toaster } from 'react-hot-toast'
 
 import { APP_NAME } from 'util/environment'
-import { AppProvider } from 'util/provider/AppProvider'
+import { AppsProvider } from 'util/provider/AppsProvider'
 import { DetailProvider } from 'util/provider/DetailProvider'
 import { HomeTimelineProvider } from 'util/provider/HomeTimelineProvider'
 import { MediaModalProvider } from 'util/provider/ModalProvider'
@@ -37,7 +37,7 @@ export default function RootLayout({
     <html lang="ja">
       <body className={inter.className}>
         <SuspenseProvider>
-          <AppProvider>
+          <AppsProvider>
             <SettingProvider>
               <Suspense>
                 <ResourceProvider>
@@ -59,7 +59,7 @@ export default function RootLayout({
                 </ResourceProvider>
               </Suspense>
             </SettingProvider>
-          </AppProvider>
+          </AppsProvider>
         </SuspenseProvider>
       </body>
     </html>

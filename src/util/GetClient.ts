@@ -1,9 +1,12 @@
-import generator, { type OAuth } from 'megalodon'
+import generator from 'megalodon'
 
-import { BACKEND_SNS, BACKEND_URL } from './environment'
+import { type App } from 'types/types'
 
-export const GetClient = (
-  token?: OAuth.TokenData['access_token']
-) => {
-  return generator(BACKEND_SNS, BACKEND_URL, token)
+export const GetClient = (app: App) => {
+  const { backend, backendUrl, tokenData } = app
+  return generator(
+    backend,
+    backendUrl,
+    tokenData?.access_token
+  )
 }

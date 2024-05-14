@@ -23,7 +23,7 @@ import {
 } from 'rich-textarea'
 
 import { GetClient } from 'util/GetClient'
-import { TokenContext } from 'util/provider/AppProvider'
+import { AppsContext } from 'util/provider/AppsProvider'
 import {
   EmojiContext,
   InstanceContext,
@@ -222,7 +222,7 @@ export const StatusRichTextarea = ({
   >
   setUploading: Dispatch<SetStateAction<number>>
 }) => {
-  const token = useContext(TokenContext)
+  const apps = useContext(AppsContext)
   const users = useContext(UsersContext)
   const emojis = useContext(EmojiContext)
   const tags = useContext(TagsContext)
@@ -344,8 +344,8 @@ export const StatusRichTextarea = ({
   ])
 
   const uploadMedia = (file: File) => {
-    if (token == null) return
-    const client = GetClient(token?.access_token)
+    if (apps.length <= 0) return
+    const client = GetClient(apps[0])
     client
       .uploadMedia(file)
       .then((res) => {

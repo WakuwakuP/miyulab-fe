@@ -13,7 +13,7 @@ import {
 } from 'react-icons/ri'
 
 import { GetClient } from 'util/GetClient'
-import { TokenContext } from 'util/provider/AppProvider'
+import { AppsContext } from 'util/provider/AppsProvider'
 import { SetReplyToContext } from 'util/provider/ReplyToProvider'
 
 export const Actions = ({
@@ -21,7 +21,7 @@ export const Actions = ({
 }: {
   status: Entity.Status
 }) => {
-  const token = useContext(TokenContext)
+  const apps = useContext(AppsContext)
 
   const setReplyTo = useContext(SetReplyToContext)
 
@@ -57,11 +57,9 @@ export const Actions = ({
   const dateString = `${fullYear}/${month}/${date}`
   const timeString = `${hours}:${minutes}`
 
-  if (token === null) {
-    return null
-  }
+  if (apps.length <= 0) return null
 
-  const client = GetClient(token.access_token)
+  const client = GetClient(apps[0])
 
   return (
     <div className="flex justify-between pt-2 [&>button]:mx-1">

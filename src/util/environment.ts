@@ -1,5 +1,7 @@
 import assert from 'assert'
 
+import { type Backend } from 'types/types'
+
 const VERCEL_URL =
   process.env.NEXT_PUBLIC_VERCEL_URL != null
     ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
@@ -16,8 +18,6 @@ export const BACKEND_URL =
 
 export const APP_NAME = 'miyulab-fe'
 
-type Sns = 'mastodon' | 'pleroma' | 'friendica' | 'firefish'
-
 assert(
   process.env.NEXT_PUBLIC_BACKEND_SNS === 'mastodon' ||
     process.env.NEXT_PUBLIC_BACKEND_SNS === 'pleroma' ||
@@ -27,7 +27,7 @@ assert(
   'Invalid NEXT_PUBLIC_BACKEND_SNS'
 )
 
-export const BACKEND_SNS: Sns =
+export const BACKEND_SNS: Backend =
   process.env.NEXT_PUBLIC_BACKEND_SNS ?? 'pleroma'
 
 export const MAX_LENGTH = Number(
