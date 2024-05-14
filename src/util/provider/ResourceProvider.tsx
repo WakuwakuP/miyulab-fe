@@ -16,7 +16,8 @@ import * as emoji from 'node-emoji'
 import unicodeEmojiData from 'unicode-emoji-json/data-by-emoji.json'
 
 import { GetClient } from 'util/GetClient'
-import { TokenContext } from 'util/provider/AppProvider'
+
+import { AppsContext } from './AppsProvider'
 
 type PleromaInstance =
   | (Entity.Instance & {
@@ -56,7 +57,7 @@ export const SetTagsContext = createContext<
 export const ResourceProvider = ({
   children,
 }: Readonly<{ children: ReactNode }>) => {
-  const token = useContext(TokenContext)
+  const apps = useContext(AppsContext)
 
   const emojiList = useMemo(() => {
     const emojiData: {
@@ -108,8 +109,8 @@ export const ResourceProvider = ({
   }, [tags])
 
   useEffect(() => {
-    if (token == null) return
-    const client = GetClient(token?.access_token)
+    if (apps.length <= 0) return
+    const client = GetClient(apps[0])
     client.getInstanceCustomEmojis().then((res) => {
       setEmojis([...res.data, ...emojiList])
     })
@@ -117,7 +118,7 @@ export const ResourceProvider = ({
     client.getInstance().then((res) => {
       setInstance(res.data as PleromaInstance)
     })
-  }, [emojiList, token])
+  }, [apps, emojiList])
 
   return (
     <InstanceContext.Provider value={instance}>

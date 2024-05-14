@@ -19,7 +19,7 @@ import innerText from 'react-innertext'
 
 import { UserInfo } from 'app/_parts/UserInfo'
 import { GetClient } from 'util/GetClient'
-import { TokenContext } from 'util/provider/AppProvider'
+import { AppsContext } from 'util/provider/AppsProvider'
 import { SetDetailContext } from 'util/provider/DetailProvider'
 
 import { Status } from './Status'
@@ -29,7 +29,7 @@ export const AccountDetail = ({
 }: {
   account: Entity.Account
 }) => {
-  const token = useContext(TokenContext)
+  const apps = useContext(AppsContext)
   const setDetail = useContext(SetDetailContext)
   const [toots, setToots] = useState<Entity.Status[]>([])
   const [media, setMedia] = useState<Entity.Status[]>([])
@@ -103,10 +103,10 @@ export const AccountDetail = ({
   }, [account.id])
 
   useEffect(() => {
-    if (token === null) return
+    if (apps.length <= 0) return
     setIsLoading(true)
 
-    const client = GetClient(token?.access_token)
+    const client = GetClient(apps[0])
 
     client.getRelationship(account.id).then((res) => {
       setRelationship(res.data)
@@ -129,12 +129,12 @@ export const AccountDetail = ({
       .then((res) => {
         setMedia(res.data)
       })
-  }, [account.id, token])
+  }, [account.id, apps])
 
   const moreStatus = useCallback(() => {
-    if (token === null) return
+    if (apps.length <= 0) return
     setIsLoading(true)
-    const client = GetClient(token.access_token)
+    const client = GetClient(apps[0])
     client
       .getAccountStatuses(account.id, {
         limit: 40,
@@ -144,11 +144,11 @@ export const AccountDetail = ({
         setToots((prev) => [...prev, ...res.data])
         setIsLoading(false)
       })
-  }, [account.id, token, toots])
+  }, [account.id, apps, toots])
 
   const moreMedia = useCallback(() => {
-    if (token === null) return
-    const client = GetClient(token.access_token)
+    if (apps.length <= 0) return
+    const client = GetClient(apps[0])
     client
       .getAccountStatuses(account.id, {
         limit: 40,
@@ -158,7 +158,7 @@ export const AccountDetail = ({
       .then((res) => {
         setMedia((prev) => [...prev, ...res.data])
       })
-  }, [account.id, media, token])
+  }, [account.id, apps, media])
 
   return (
     <>
@@ -189,10 +189,8 @@ export const AccountDetail = ({
                   <button
                     className="rounded-md border border-blue-500 px-2 py-1 text-blue-500 transition-colors duration-300 ease-in-out hover:bg-blue-500 hover:text-white"
                     onClick={() => {
-                      if (token == null) return
-                      const client = GetClient(
-                        token.access_token
-                      )
+                      if (apps.length <= 0) return
+                      const client = GetClient(apps[0])
                       client
                         .followAccount(account.id)
                         .then(() => {

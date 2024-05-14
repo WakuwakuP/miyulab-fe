@@ -22,7 +22,7 @@ import { TimelineStreamIcon } from 'app/_parts/TimelineIcon'
 import { ArrayLengthControl } from 'util/ArrayLengthControl'
 import { CENTER_INDEX } from 'util/environment'
 import { GetClient } from 'util/GetClient'
-import { TokenContext } from 'util/provider/AppProvider'
+import { AppsContext } from 'util/provider/AppsProvider'
 import { SetTagsContext } from 'util/provider/ResourceProvider'
 
 export const TagTimeline = ({ tag }: { tag: string }) => {
@@ -32,7 +32,7 @@ export const TagTimeline = ({ tag }: { tag: string }) => {
   const timer = useRef<ReturnType<
     typeof setTimeout
   > | null>(null)
-  const token = useContext(TokenContext)
+  const apps = useContext(AppsContext)
   const setTags = useContext(SetTagsContext)
 
   const [timeline, setTimeline] = useState<Entity.Status[]>(
@@ -57,8 +57,8 @@ export const TagTimeline = ({ tag }: { tag: string }) => {
       refFirstRef.current = false
       return
     }
-    if (token == null) return
-    const client = GetClient(token?.access_token)
+    if (apps.length <= 0) return
+    const client = GetClient(apps[0])
 
     client
       .getTagTimeline(tag, { limit: 40 })
@@ -105,7 +105,7 @@ export const TagTimeline = ({ tag }: { tag: string }) => {
         }, 1000)
       })
     })
-  }, [setTags, tag, token])
+  }, [apps, setTags, tag])
 
   const onWheel = useCallback<
     WheelEventHandler<HTMLDivElement>
@@ -122,8 +122,8 @@ export const TagTimeline = ({ tag }: { tag: string }) => {
   }, [])
 
   const moreLoad = () => {
-    if (token == null) return
-    const client = GetClient(token?.access_token)
+    if (apps.length <= 0) return
+    const client = GetClient(apps[0])
     client
       .getTagTimeline(tag, {
         limit: 40,
