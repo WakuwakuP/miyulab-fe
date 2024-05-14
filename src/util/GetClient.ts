@@ -1,6 +1,6 @@
 import generator from 'megalodon'
 
-import { type App } from './provider/AppsProvider'
+import { type App } from 'types/types'
 
 export const GetClient = (app: App) => {
   const { backend, backendUrl, tokenData } = app
