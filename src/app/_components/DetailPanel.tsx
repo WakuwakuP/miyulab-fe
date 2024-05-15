@@ -29,7 +29,7 @@ export const DetailPanel = () => {
   )
 
   useEffect(() => {
-    if (apps.length > 0 || detail.content == null) return
+    if (apps.length <= 0 || detail.content == null) return
 
     if (detail.type === 'Status') {
       const client = GetClient(apps[0])
