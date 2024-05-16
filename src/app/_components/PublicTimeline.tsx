@@ -18,6 +18,7 @@ import {
 import { Panel } from 'app/_parts/Panel'
 import { Status } from 'app/_parts/Status'
 import { TimelineStreamIcon } from 'app/_parts/TimelineIcon'
+import { type StatusAddAppIndex } from 'types/types'
 import { ArrayLengthControl } from 'util/ArrayLengthControl'
 import { CENTER_INDEX } from 'util/environment'
 import { GetClient } from 'util/GetClient'
@@ -33,9 +34,9 @@ export const PublicTimeline = () => {
   const apps = useContext(AppsContext)
   const setTags = useContext(SetTagsContext)
 
-  const [timeline, setTimeline] = useState<Entity.Status[]>(
-    []
-  )
+  const [timeline, setTimeline] = useState<
+    StatusAddAppIndex[]
+  >([])
 
   const [enableScrollToTop, setEnableScrollToTop] =
     useState(true)
@@ -59,7 +60,12 @@ export const PublicTimeline = () => {
     client
       .getPublicTimeline({ limit: 40, only_media: true })
       .then((res) => {
-        setTimeline(res.data)
+        setTimeline(
+          res.data.map((status) => ({
+            ...status,
+            appIndex: 0,
+          }))
+        )
       })
     client.publicStreaming().then((stream) => {
       stream.on('update', (status: Entity.Status) => {
@@ -73,7 +79,10 @@ export const PublicTimeline = () => {
         )
         if (status.media_attachments.length > 0) {
           setTimeline((prev) =>
-            ArrayLengthControl([status, ...prev])
+            ArrayLengthControl([
+              { ...status, appIndex: 0 },
+              ...prev,
+            ])
           )
         }
       })

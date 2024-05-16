@@ -6,6 +6,7 @@ import { useContext, useMemo } from 'react'
 import { type Entity } from 'megalodon'
 
 import { Visibility } from 'app/_parts/Visibility'
+import { type AccountAddAppIndex } from 'types/types'
 import { SetDetailContext } from 'util/provider/DetailProvider'
 
 export const UserInfo = ({
@@ -14,7 +15,7 @@ export const UserInfo = ({
   small = false,
   scrolling = false,
 }: {
-  account: Entity.Account
+  account: AccountAddAppIndex
   visibility?: Entity.StatusVisibility
   small?: boolean
   scrolling?: boolean
