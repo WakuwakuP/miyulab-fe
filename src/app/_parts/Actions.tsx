@@ -2,7 +2,6 @@
 
 import { useContext, useState } from 'react'
 
-import { type Entity } from 'megalodon'
 import {
   RiBookmark2Fill,
   RiBookmarkFill,
@@ -12,6 +11,7 @@ import {
   RiStarLine,
 } from 'react-icons/ri'
 
+import { type StatusAddAppIndex } from 'types/types'
 import { GetClient } from 'util/GetClient'
 import { AppsContext } from 'util/provider/AppsProvider'
 import { SetReplyToContext } from 'util/provider/ReplyToProvider'
@@ -19,7 +19,7 @@ import { SetReplyToContext } from 'util/provider/ReplyToProvider'
 export const Actions = ({
   status,
 }: {
-  status: Entity.Status
+  status: StatusAddAppIndex
 }) => {
   const apps = useContext(AppsContext)
 
@@ -58,8 +58,9 @@ export const Actions = ({
   const timeString = `${hours}:${minutes}`
 
   if (apps.length <= 0) return null
+  if (status.appIndex == null) return null
 
-  const client = GetClient(apps[0])
+  const client = GetClient(apps[status.appIndex])
 
   return (
     <div className="flex justify-between pt-2 [&>button]:mx-1">

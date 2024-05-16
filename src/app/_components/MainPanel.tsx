@@ -153,7 +153,7 @@ export const MainPanel = () => {
   return (
     <Panel className="p-1">
       <div className="relative h-full">
-        <UserInfo account={account} />
+        <UserInfo account={{ ...account, appIndex: 0 }} />
         <div className="px-2 [&>*]:mt-2">
           <div className="flex items-center space-x-2">
             <div>

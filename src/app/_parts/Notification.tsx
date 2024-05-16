@@ -1,11 +1,14 @@
 /* eslint-disable @next/next/no-img-element */
 import { useContext } from 'react'
 
-import { type Entity } from 'megalodon'
 import * as emoji from 'node-emoji'
 import { RiStarFill } from 'react-icons/ri'
 
 import { Status } from 'app/_parts/Status'
+import {
+  type NotificationAddAppIndex,
+  type StatusAddAppIndex,
+} from 'types/types'
 import { SetDetailContext } from 'util/provider/DetailProvider'
 
 const AvatarPlaceholder = () => (
@@ -16,7 +19,7 @@ export const Notification = ({
   notification,
   scrolling = false,
 }: {
-  notification: Entity.Notification
+  notification: NotificationAddAppIndex
   scrolling?: boolean
 }) => {
   const setDetail = useContext(SetDetailContext)
@@ -26,7 +29,12 @@ export const Notification = ({
       return (
         <div className="ml-1 mt-2 box-border border-b-2 border-l-2 border-teal-300 pl-2">
           <Status
-            status={notification.status as Entity.Status}
+            status={
+              {
+                ...notification.status,
+                appIndex: notification.appIndex,
+              } as StatusAddAppIndex
+            }
             scrolling={scrolling}
           />
         </div>
@@ -35,7 +43,12 @@ export const Notification = ({
       return (
         <div className="ml-1 mt-2 box-border border-b-2 border-l-2 border-green-500 pl-2">
           <Status
-            status={notification.status as Entity.Status}
+            status={
+              {
+                ...notification.status,
+                appIndex: notification.appIndex,
+              } as StatusAddAppIndex
+            }
             scrolling={scrolling}
           />
         </div>
@@ -49,7 +62,10 @@ export const Notification = ({
               if (notification.account == null) return
               setDetail({
                 type: 'Account',
-                content: notification.account,
+                content: {
+                  ...notification.account,
+                  appIndex: notification.appIndex,
+                },
               })
             }}
           >
@@ -73,7 +89,12 @@ export const Notification = ({
             </div>
           </h3>
           <Status
-            status={notification.status as Entity.Status}
+            status={
+              {
+                ...notification.status,
+                appIndex: notification.appIndex,
+              } as StatusAddAppIndex
+            }
             scrolling={scrolling}
             small
           />
@@ -88,7 +109,10 @@ export const Notification = ({
               if (notification.account == null) return
               setDetail({
                 type: 'Account',
-                content: notification.account,
+                content: {
+                  ...notification.account,
+                  appIndex: notification.appIndex,
+                },
               })
             }}
           >
@@ -115,7 +139,12 @@ export const Notification = ({
             <RiStarFill className="text-3xl text-orange-300" />
           </div>
           <Status
-            status={notification.status as Entity.Status}
+            status={
+              {
+                ...notification.status,
+                appIndex: notification.appIndex,
+              } as StatusAddAppIndex
+            }
             scrolling={scrolling}
             small
           />
@@ -131,7 +160,10 @@ export const Notification = ({
                 if (notification.account == null) return
                 setDetail({
                   type: 'Account',
-                  content: notification.account,
+                  content: {
+                    ...notification.account,
+                    appIndex: notification.appIndex,
+                  },
                 })
               }}
             >
@@ -184,7 +216,12 @@ export const Notification = ({
             </div>
           </h3>
           <Status
-            status={notification.status as Entity.Status}
+            status={
+              {
+                ...notification.status,
+                appIndex: notification.appIndex,
+              } as StatusAddAppIndex
+            }
             scrolling={scrolling}
             small
           />
@@ -200,7 +237,10 @@ export const Notification = ({
               if (notification.account == null) return
               setDetail({
                 type: 'Account',
-                content: notification.account,
+                content: {
+                  ...notification.account,
+                  appIndex: notification.appIndex,
+                },
               })
             }}
           >
@@ -235,7 +275,10 @@ export const Notification = ({
               if (notification.account == null) return
               setDetail({
                 type: 'Account',
-                content: notification.account,
+                content: {
+                  ...notification.account,
+                  appIndex: notification.appIndex,
+                },
               })
             }}
           >
