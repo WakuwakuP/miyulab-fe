@@ -2,7 +2,6 @@
 
 import { useContext, useEffect, useState } from 'react'
 
-import { type Entity } from 'megalodon'
 import { RiArrowLeftSLine } from 'react-icons/ri'
 import { Virtuoso } from 'react-virtuoso'
 
@@ -10,6 +9,7 @@ import { AccountDetail } from 'app/_parts/AccountDetail'
 import { HashtagDetail } from 'app/_parts/HashtagDetail'
 import { Panel } from 'app/_parts/Panel'
 import { Status } from 'app/_parts/Status'
+import { type StatusAddAppIndex } from 'types/types'
 import { GetClient } from 'util/GetClient'
 import { AppsContext } from 'util/provider/AppsProvider'
 import {
@@ -24,38 +24,49 @@ export const DetailPanel = () => {
   const detail = useContext(DetailContext)
   const setDetail = useContext(SetDetailContext)
 
-  const [context, setContext] = useState<Entity.Status[]>(
-    []
-  )
+  const [context, setContext] = useState<
+    StatusAddAppIndex[]
+  >([])
 
   useEffect(() => {
     if (apps.length <= 0 || detail.content == null) return
 
     if (detail.type === 'Status') {
-      const client = GetClient(apps[0])
+      const client = GetClient(
+        apps[detail.content.appIndex]
+      )
 
       client
         .getStatusContext(detail.content.id)
         .then((res) => {
           setContext([
-            ...(res.data.ancestors ?? []),
+            ...(res.data.ancestors.map((status) => ({
+              ...status,
+              appIndex: detail.content.appIndex,
+            })) ?? []),
             detail.content,
-            ...(res.data.descendants ?? []),
+            ...(res.data.descendants.map((status) => ({
+              ...status,
+              appIndex: detail.content.appIndex,
+            })) ?? []),
           ])
         })
     }
 
     if (detail.type === 'SearchUser') {
-      const client = GetClient(apps[0])
+      const client = GetClient(apps[detail.appIndex])
 
       client.getAccount(detail.content).then((res) => {
         setDetail({
           type: 'Account',
-          content: res.data,
+          content: {
+            ...res.data,
+            appIndex: detail.appIndex,
+          },
         })
       })
     }
-  }, [apps, detail.content, detail.type, setDetail])
+  }, [apps, detail, detail.content, detail.type, setDetail])
 
   const panelNames = {
     Status: 'Toot and Reply',

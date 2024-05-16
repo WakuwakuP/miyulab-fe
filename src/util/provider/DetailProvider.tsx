@@ -8,7 +8,10 @@ import {
   useState,
 } from 'react'
 
-import { type Entity } from 'megalodon'
+import {
+  type AccountAddAppIndex,
+  type StatusAddAppIndex,
+} from 'types/types'
 
 export type DetailType =
   | 'Account'
@@ -20,15 +23,16 @@ export type DetailType =
 export type SetDetailParams =
   | {
       type: 'Account'
-      content: Entity.Account
+      content: AccountAddAppIndex
     }
   | {
       type: 'Status'
-      content: Entity.Status
+      content: StatusAddAppIndex
     }
   | {
       type: 'SearchUser'
       content: string | undefined
+      appIndex: number
     }
   | {
       type: 'Hashtag'

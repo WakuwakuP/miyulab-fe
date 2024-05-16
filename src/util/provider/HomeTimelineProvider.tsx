@@ -5,6 +5,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react'
@@ -20,12 +21,20 @@ import {
 
 import { AppsContext } from './AppsProvider'
 
+type StatusAddAppIndex = Entity.Status & {
+  appIndex: number
+}
+
+type NotificationAddAppIndex = Entity.Notification & {
+  appIndex: number
+}
+
 export const HomeTimelineContext = createContext<
-  Entity.Status[]
+  StatusAddAppIndex[]
 >([])
 
 export const NotificationsContext = createContext<
-  Entity.Notification[]
+  NotificationAddAppIndex[]
 >([])
 
 export const HomeTimelineProvider = ({
@@ -37,12 +46,45 @@ export const HomeTimelineProvider = ({
   const apps = useContext(AppsContext)
   const setUsers = useContext(SetUsersContext)
   const setTags = useContext(SetTagsContext)
-  const [timeline, setTimeline] = useState<Entity.Status[]>(
-    []
-  )
-  const [notifications, setNotifications] = useState<
-    Entity.Notification[]
-  >([])
+
+  const [timelines, setTimelines] = useState<{
+    [key: string]: StatusAddAppIndex[]
+  }>({})
+
+  const [notifications, setNotifications] = useState<{
+    [key: string]: NotificationAddAppIndex[]
+  }>({})
+
+  const margeTimeline = useMemo(() => {
+    if (Object.values(timelines).length !== apps.length) {
+      return []
+    }
+    return Object.values(timelines)
+      .reduce((prev, current) => [...prev, ...current], [])
+      .sort((a, b) => {
+        return (
+          new Date(b.created_at).getTime() -
+          new Date(a.created_at).getTime()
+        )
+      })
+  }, [apps.length, timelines])
+
+  const margeNotifications = useMemo(() => {
+    if (
+      Object.values(notifications).length !== apps.length
+    ) {
+      return []
+    }
+
+    return Object.values(notifications)
+      .reduce((prev, current) => [...prev, ...current], [])
+      .sort((a, b) => {
+        return (
+          new Date(b.created_at).getTime() -
+          new Date(a.created_at).getTime()
+        )
+      })
+  }, [apps.length, notifications])
 
   useEffect(() => {
     if (
@@ -53,177 +95,250 @@ export const HomeTimelineProvider = ({
       return
     }
     if (apps.length <= 0) return
-    const client = GetClient(apps[0])
-    client.getHomeTimeline({ limit: 40 }).then((res) => {
-      setUsers((prev) =>
-        [
-          ...prev,
-          ...res.data
-            .map((status) =>
-              status.reblog != null
-                ? status.reblog.account
-                : status.account
-            )
-            .map((account) => {
-              return {
-                id: account.id,
-                acct: account.acct,
-                avatar: account.avatar,
-                display_name: account.display_name,
-              }
-            }),
-        ].filter(
-          (element, index, self) =>
-            self.findIndex(
-              (e) => e.acct === element.acct
-            ) === index
-        )
-      )
-      setTimeline(res.data)
-    })
 
-    client.getNotifications({ limit: 40 }).then((res) => {
-      setNotifications(res.data)
-
-      const accounts = res.data
-        .map((notification) => {
-          if (notification.account == null) return null
-          return {
-            id: notification.account.id,
-            acct: notification.account.acct,
-            avatar: notification.account.avatar,
-            display_name: notification.account.display_name,
-          } as Pick<
-            Entity.Account,
-            'id' | 'acct' | 'avatar' | 'display_name'
-          >
-        })
-        .filter((account) => account != null) as Pick<
-        Entity.Account,
-        'id' | 'acct' | 'avatar' | 'display_name'
-      >[]
-
-      setUsers((prev) =>
-        [...prev, ...accounts].filter(
-          (element, index, self) =>
-            self.findIndex(
-              (e) => e.acct === element.acct
-            ) === index
-        )
-      )
-    })
-
-    client.userStreaming().then((stream) => {
-      stream.on('update', (status: Entity.Status) => {
-        setTags((prev) =>
-          Array.from(
-            new Set([
+    apps.forEach((app, index) => {
+      const client = GetClient(app)
+      const getHome = client
+        .getHomeTimeline({ limit: 40 })
+        .then((res) => {
+          setUsers((prev) =>
+            [
               ...prev,
-              ...status.tags.map((tag) => tag.name),
-            ])
-          )
-        )
-        setUsers((prev) =>
-          [
-            ...prev,
-            status.reblog != null
-              ? status.reblog.account
-              : status.account,
-          ]
-            .filter(
+              ...res.data
+                .map((status) =>
+                  status.reblog != null
+                    ? status.reblog.account
+                    : status.account
+                )
+                .map((account) => {
+                  return {
+                    id: account.id,
+                    acct: account.acct,
+                    avatar: account.avatar,
+                    display_name: account.display_name,
+                  }
+                }),
+            ].filter(
               (element, index, self) =>
                 self.findIndex(
                   (e) => e.acct === element.acct
                 ) === index
             )
-            .map((account) => {
-              return {
-                id: account.id,
-                acct: account.acct,
-                avatar: account.avatar,
-                display_name: account.display_name,
-              }
-            })
-        )
-        setTimeline((prev) =>
-          ArrayLengthControl([status, ...prev])
-        )
-      })
-
-      stream.on(
-        'status_update',
-        (status: Entity.Status) => {
-          setTimeline((prev) => {
-            const index = prev.findIndex(
-              (prevStatus) => prevStatus.id === status.id
-            )
-            if (index === -1) {
-              return ArrayLengthControl([status, ...prev])
-            }
-            const next = [...prev]
-            next[index] = status
-            return next
-          })
-        }
-      )
-
-      stream.on(
-        'notification',
-        (notification: Entity.Notification) => {
-          setNotifications((prev) =>
-            ArrayLengthControl([notification, ...prev])
           )
-          if (notification.account == null) return
+          setTimelines((prev) => {
+            return {
+              ...prev,
+              [app.backendUrl]: res.data.map((status) => ({
+                ...status,
+                appIndex: index,
+              })),
+            }
+          })
+        })
 
-          const account = {
-            id: notification.account.id,
-            acct: notification.account.acct,
-            avatar: notification.account.avatar,
-            display_name: notification.account.display_name,
-          } as Pick<
+      const getNotifications = client
+        .getNotifications({ limit: 40 })
+        .then((res) => {
+          setNotifications((prev) => {
+            return {
+              ...prev,
+              [app.backendUrl]: res.data.map(
+                (notification) => ({
+                  ...notification,
+                  appIndex: index,
+                })
+              ),
+            }
+          })
+
+          const accounts = res.data
+            .map((notification) => {
+              if (notification.account == null) return null
+              return {
+                id: notification.account.id,
+                acct: notification.account.acct,
+                avatar: notification.account.avatar,
+                display_name:
+                  notification.account.display_name,
+              } as Pick<
+                Entity.Account,
+                'id' | 'acct' | 'avatar' | 'display_name'
+              >
+            })
+            .filter((account) => account != null) as Pick<
             Entity.Account,
             'id' | 'acct' | 'avatar' | 'display_name'
-          >
+          >[]
 
           setUsers((prev) =>
-            [...prev, account].filter(
+            [...prev, ...accounts].filter(
               (element, index, self) =>
                 self.findIndex(
                   (e) => e.acct === element.acct
                 ) === index
             )
           )
-        }
-      )
+        })
 
-      stream.on('delete', (id: string) => {
-        setTimeline((prev) =>
-          prev.filter((status) => status.id !== id)
-        )
-      })
+      Promise.all([getHome, getNotifications]).then(() => {
+        client.userStreaming().then((stream) => {
+          stream.on('update', (status: Entity.Status) => {
+            setTags((prev) =>
+              Array.from(
+                new Set([
+                  ...prev,
+                  ...status.tags.map((tag) => tag.name),
+                ])
+              )
+            )
+            setUsers((prev) =>
+              [
+                ...prev,
+                status.reblog != null
+                  ? status.reblog.account
+                  : status.account,
+              ]
+                .filter(
+                  (element, index, self) =>
+                    self.findIndex(
+                      (e) => e.acct === element.acct
+                    ) === index
+                )
+                .map((account) => {
+                  return {
+                    id: account.id,
+                    acct: account.acct,
+                    avatar: account.avatar,
+                    display_name: account.display_name,
+                  }
+                })
+            )
+            const statusWithBackendUrl = {
+              ...status,
+              appIndex: index,
+            }
+            setTimelines((prev) => {
+              return {
+                ...prev,
+                [app.backendUrl]: ArrayLengthControl([
+                  statusWithBackendUrl,
+                  ...prev[app.backendUrl],
+                ]),
+              }
+            })
+          })
 
-      stream.on('error', (err: Error) => {
-        console.error(err)
+          stream.on(
+            'status_update',
+            (status: Entity.Status) => {
+              const statusWithBackendUrl = {
+                ...status,
+                appIndex: index,
+              }
+              setTimelines((prev) => {
+                const index = prev[
+                  app.backendUrl
+                ].findIndex(
+                  (prevStatus) =>
+                    prevStatus.id ===
+                    statusWithBackendUrl.id
+                )
+                if (index === -1) {
+                  return {
+                    ...prev,
+                    [app.backendUrl]: ArrayLengthControl([
+                      statusWithBackendUrl,
+                      ...prev[app.backendUrl],
+                    ]),
+                  }
+                }
+                const next = [...prev[app.backendUrl]]
+                next[index] = statusWithBackendUrl
+                return {
+                  ...prev,
+                  [app.backendUrl]: next,
+                }
+              })
+            }
+          )
 
-        stream.stop()
-        const timeout = setTimeout(() => {
-          stream.start()
-          // eslint-disable-next-line no-console
-          console.info('reconnected userSocket')
-          clearTimeout(timeout)
-        }, 1000)
-      })
+          stream.on(
+            'notification',
+            (notification: Entity.Notification) => {
+              setNotifications((prev) => {
+                const newNotification = {
+                  ...notification,
+                  appIndex: index,
+                }
+                return {
+                  ...prev,
+                  [app.backendUrl]: ArrayLengthControl([
+                    newNotification,
+                    ...prev[app.backendUrl],
+                  ]),
+                }
+              })
+              if (notification.account == null) return
 
-      stream.on('connect', () => {
-        // eslint-disable-next-line no-console
-        console.info('connected userStreaming')
+              const account = {
+                id: notification.account.id,
+                acct: notification.account.acct,
+                avatar: notification.account.avatar,
+                display_name:
+                  notification.account.display_name,
+              } as Pick<
+                Entity.Account,
+                'id' | 'acct' | 'avatar' | 'display_name'
+              >
+
+              setUsers((prev) =>
+                [...prev, account].filter(
+                  (element, index, self) =>
+                    self.findIndex(
+                      (e) => e.acct === element.acct
+                    ) === index
+                )
+              )
+            }
+          )
+
+          stream.on('delete', (id: string) => {
+            setTimelines((prev) => {
+              return {
+                ...prev,
+                [app.backendUrl]: prev[
+                  app.backendUrl
+                ].filter((status) => status.id !== id),
+              }
+            })
+          })
+
+          stream.on('error', (err: Error) => {
+            console.error(err)
+
+            stream.stop()
+            const timeout = setTimeout(() => {
+              stream.start()
+              // eslint-disable-next-line no-console
+              console.info('reconnected userSocket')
+              clearTimeout(timeout)
+            }, 1000)
+          })
+
+          stream.on('connect', () => {
+            // eslint-disable-next-line no-console
+            console.info('connected userStreaming')
+          })
+        })
       })
     })
   }, [apps, setTags, setUsers])
 
   return (
-    <HomeTimelineContext.Provider value={timeline}>
-      <NotificationsContext.Provider value={notifications}>
+    <HomeTimelineContext.Provider value={margeTimeline}>
+      <NotificationsContext.Provider
+        value={margeNotifications}
+      >
         {children}
       </NotificationsContext.Provider>
     </HomeTimelineContext.Provider>

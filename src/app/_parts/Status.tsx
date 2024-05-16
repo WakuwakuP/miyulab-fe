@@ -19,6 +19,10 @@ import { EditedAt } from 'app/_parts/EditedAt'
 import { MediaAttachments } from 'app/_parts/MediaAttachments'
 import { Poll } from 'app/_parts/Poll'
 import { UserInfo } from 'app/_parts/UserInfo'
+import {
+  type PollAddAppIndex,
+  type StatusAddAppIndex,
+} from 'types/types'
 import { SetDetailContext } from 'util/provider/DetailProvider'
 import { SetPlayerContext } from 'util/provider/PlayerProvider'
 
@@ -28,7 +32,7 @@ export const Status = ({
   small = false,
   scrolling = false,
 }: {
-  status: Entity.Status
+  status: StatusAddAppIndex
   className?: string
   small?: boolean
   scrolling?: boolean
@@ -83,6 +87,7 @@ export const Status = ({
                   (mention) =>
                     mention.url === node.attribs.href
                 )?.id as string,
+                appIndex: status.appIndex,
               })
             }}
             rel={[
@@ -194,6 +199,15 @@ export const Status = ({
       : '',
   ].join(' ')
 
+  const poll = status.reblog?.poll ?? status.poll
+  const pollAddAppIndex =
+    poll != null
+      ? {
+          ...poll,
+          appIndex: status.appIndex,
+        }
+      : null
+
   return (
     <div className={statusClasses}>
       {status.reblog != null ? (
@@ -203,7 +217,10 @@ export const Status = ({
             onClick={() => {
               setDetail({
                 type: 'Account',
-                content: status.account,
+                content: {
+                  ...status.account,
+                  appIndex: status.appIndex,
+                },
               })
             }}
           >
@@ -228,7 +245,10 @@ export const Status = ({
             />
           </div>
           <UserInfo
-            account={status.reblog.account}
+            account={{
+              ...status.reblog.account,
+              appIndex: status.appIndex,
+            }}
             visibility={status.reblog.visibility}
             small={small}
             scrolling={scrolling}
@@ -236,7 +256,10 @@ export const Status = ({
         </>
       ) : (
         <UserInfo
-          account={status.account}
+          account={{
+            ...status.account,
+            appIndex: status.appIndex,
+          }}
           visibility={status.visibility}
           small={small}
           scrolling={scrolling}
@@ -265,8 +288,8 @@ export const Status = ({
 
       <Poll
         poll={
-          (status.reblog?.poll ?? status.poll) as
-            | (Entity.Poll & {
+          pollAddAppIndex as
+            | (PollAddAppIndex & {
                 own_votes: number[] | undefined
               })
             | null

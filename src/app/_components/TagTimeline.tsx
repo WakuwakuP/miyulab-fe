@@ -19,6 +19,7 @@ import {
 import { Panel } from 'app/_parts/Panel'
 import { Status } from 'app/_parts/Status'
 import { TimelineStreamIcon } from 'app/_parts/TimelineIcon'
+import { type StatusAddAppIndex } from 'types/types'
 import { ArrayLengthControl } from 'util/ArrayLengthControl'
 import { CENTER_INDEX } from 'util/environment'
 import { GetClient } from 'util/GetClient'
@@ -35,9 +36,9 @@ export const TagTimeline = ({ tag }: { tag: string }) => {
   const apps = useContext(AppsContext)
   const setTags = useContext(SetTagsContext)
 
-  const [timeline, setTimeline] = useState<Entity.Status[]>(
-    []
-  )
+  const [timeline, setTimeline] = useState<
+    StatusAddAppIndex[]
+  >([])
 
   const [enableScrollToTop, setEnableScrollToTop] =
     useState(true)
@@ -63,7 +64,12 @@ export const TagTimeline = ({ tag }: { tag: string }) => {
     client
       .getTagTimeline(tag, { limit: 40 })
       .then((res) => {
-        setTimeline(res.data)
+        setTimeline(
+          res.data.map((status) => ({
+            ...status,
+            appIndex: 0,
+          }))
+        )
       })
 
     client.tagStreaming(tag).then((stream) => {
@@ -78,7 +84,10 @@ export const TagTimeline = ({ tag }: { tag: string }) => {
         )
         if (status.media_attachments.length > 0) {
           setTimeline((prev) =>
-            ArrayLengthControl([status, ...prev])
+            ArrayLengthControl([
+              { ...status, appIndex: 0 },
+              ...prev,
+            ])
           )
         }
       })
@@ -131,7 +140,13 @@ export const TagTimeline = ({ tag }: { tag: string }) => {
       })
       .then((res) => {
         setMoreCount((prev) => prev + res.data.length)
-        setTimeline((prev) => [...prev, ...res.data])
+        setTimeline((prev) => [
+          ...prev,
+          ...res.data.map((status) => ({
+            ...status,
+            appIndex: 0,
+          })),
+        ])
       })
   }
 

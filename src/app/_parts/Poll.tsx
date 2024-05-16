@@ -2,8 +2,7 @@
 
 import { useContext, useId, useState } from 'react'
 
-import { type Entity } from 'megalodon'
-
+import { type PollAddAppIndex } from 'types/types'
 import { GetClient } from 'util/GetClient'
 import { AppsContext } from 'util/provider/AppsProvider'
 
@@ -11,7 +10,9 @@ export const Poll = ({
   poll,
 }: {
   poll?:
-    | (Entity.Poll & { own_votes: number[] | undefined })
+    | (PollAddAppIndex & {
+        own_votes: number[] | undefined
+      })
     | null
 }) => {
   const internalId = useId()
@@ -28,7 +29,7 @@ export const Poll = ({
   const vote = () => {
     if (apps.length <= 0) return
     if (poll == null || selected.length == 0) return
-    const client = GetClient(apps[0])
+    const client = GetClient(apps[poll.appIndex])
     client.votePoll(poll.id, selected).then(() => {
       setVoted(true)
     })
