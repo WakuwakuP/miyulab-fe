@@ -1,4 +1,4 @@
-import { type OAuth } from 'megalodon'
+import { type Entity, type OAuth } from 'megalodon'
 
 export type App = {
   backend: Backend
@@ -15,3 +15,20 @@ export const backendList = [
 ] as const
 
 export type Backend = (typeof backendList)[number]
+
+export type StatusAddAppIndex = Entity.Status & {
+  appIndex: number
+}
+
+export type NotificationAddAppIndex =
+  Entity.Notification & {
+    appIndex: number
+  }
+
+export type AccountAddAppIndex = Entity.Account & {
+  appIndex: number
+}
+
+export type PollAddAppIndex = Entity.Poll & {
+  appIndex: number
+}

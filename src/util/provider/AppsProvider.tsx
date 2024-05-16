@@ -27,6 +27,12 @@ import bgImage from '@public/miyu.webp'
 
 export const AppsContext = createContext<App[]>([])
 
+/* eslint-disable indent, func-call-spacing */
+export const UpdateAppsContext = createContext<
+  (data: App[]) => void
+>(() => {})
+/* eslint-enable indent, func-call-spacing */
+
 export const AppsProvider = ({
   children,
 }: Readonly<{ children: ReactNode }>) => {
@@ -72,6 +78,11 @@ export const AppsProvider = ({
       const processingAppData = JSON.parse(
         localStorage.getItem('processingAppData') as string
       )
+
+      if (processingAppData == null) {
+        router.replace('/')
+        return
+      }
 
       const client = generator(
         processingAppData.backend,
@@ -248,7 +259,9 @@ export const AppsProvider = ({
 
   return (
     <AppsContext.Provider value={apps}>
-      {children}
+      <UpdateAppsContext.Provider value={updateApps}>
+        {children}
+      </UpdateAppsContext.Provider>
     </AppsContext.Provider>
   )
 }

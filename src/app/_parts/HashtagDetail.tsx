@@ -5,10 +5,10 @@ import {
   useState,
 } from 'react'
 
-import { type Entity } from 'megalodon'
 import { Virtuoso } from 'react-virtuoso'
 
 import { Status } from 'app/_parts/Status'
+import { type StatusAddAppIndex } from 'types/types'
 import { GetClient } from 'util/GetClient'
 import { AppsContext } from 'util/provider/AppsProvider'
 
@@ -18,9 +18,9 @@ export const HashtagDetail = ({
   hashtag?: string
 }) => {
   const apps = useContext(AppsContext)
-  const [statuses, setStatuses] = useState<Entity.Status[]>(
-    []
-  )
+  const [statuses, setStatuses] = useState<
+    StatusAddAppIndex[]
+  >([])
 
   useEffect(() => {
     if (apps.length <= 0) return
@@ -34,7 +34,12 @@ export const HashtagDetail = ({
         limit: 50,
       })
       .then((res) => {
-        setStatuses(res.data)
+        setStatuses(
+          res.data.map((status) => ({
+            ...status,
+            appIndex: 0,
+          }))
+        )
       })
   }, [apps, hashtag])
 
@@ -50,7 +55,13 @@ export const HashtagDetail = ({
         max_id: statuses[statuses.length - 1].id,
       })
       .then((res) => {
-        setStatuses((prev) => [...prev, ...res.data])
+        setStatuses((prev) => [
+          ...prev,
+          ...res.data.map((status) => ({
+            ...status,
+            appIndex: 0,
+          })),
+        ])
       })
   }, [apps, hashtag, statuses])
 

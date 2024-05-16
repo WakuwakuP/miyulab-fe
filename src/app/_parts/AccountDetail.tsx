@@ -18,6 +18,7 @@ import { type Entity } from 'megalodon'
 import innerText from 'react-innertext'
 
 import { UserInfo } from 'app/_parts/UserInfo'
+import { type AccountAddAppIndex } from 'types/types'
 import { GetClient } from 'util/GetClient'
 import { AppsContext } from 'util/provider/AppsProvider'
 import { SetDetailContext } from 'util/provider/DetailProvider'
@@ -27,7 +28,7 @@ import { Status } from './Status'
 export const AccountDetail = ({
   account,
 }: {
-  account: Entity.Account
+  account: AccountAddAppIndex
 }) => {
   const apps = useContext(AppsContext)
   const setDetail = useContext(SetDetailContext)
@@ -106,7 +107,7 @@ export const AccountDetail = ({
     if (apps.length <= 0) return
     setIsLoading(true)
 
-    const client = GetClient(apps[0])
+    const client = GetClient(apps[account.appIndex])
 
     client.getRelationship(account.id).then((res) => {
       setRelationship(res.data)
@@ -129,12 +130,12 @@ export const AccountDetail = ({
       .then((res) => {
         setMedia(res.data)
       })
-  }, [account.id, apps])
+  }, [account.appIndex, account.id, apps])
 
   const moreStatus = useCallback(() => {
     if (apps.length <= 0) return
     setIsLoading(true)
-    const client = GetClient(apps[0])
+    const client = GetClient(apps[account.appIndex])
     client
       .getAccountStatuses(account.id, {
         limit: 40,
@@ -144,11 +145,11 @@ export const AccountDetail = ({
         setToots((prev) => [...prev, ...res.data])
         setIsLoading(false)
       })
-  }, [account.id, apps, toots])
+  }, [account.appIndex, account.id, apps, toots])
 
   const moreMedia = useCallback(() => {
     if (apps.length <= 0) return
-    const client = GetClient(apps[0])
+    const client = GetClient(apps[account.appIndex])
     client
       .getAccountStatuses(account.id, {
         limit: 40,
@@ -158,7 +159,7 @@ export const AccountDetail = ({
       .then((res) => {
         setMedia((prev) => [...prev, ...res.data])
       })
-  }, [account.id, apps, media])
+  }, [account.appIndex, account.id, apps, media])
 
   return (
     <>
@@ -190,7 +191,9 @@ export const AccountDetail = ({
                     className="rounded-md border border-blue-500 px-2 py-1 text-blue-500 transition-colors duration-300 ease-in-out hover:bg-blue-500 hover:text-white"
                     onClick={() => {
                       if (apps.length <= 0) return
-                      const client = GetClient(apps[0])
+                      const client = GetClient(
+                        apps[account.appIndex]
+                      )
                       client
                         .followAccount(account.id)
                         .then(() => {
@@ -268,7 +271,10 @@ export const AccountDetail = ({
           <div>
             {toots.map((status) => (
               <Status
-                status={status}
+                status={{
+                  ...status,
+                  appIndex: account.appIndex,
+                }}
                 key={status.id}
               />
             ))}
@@ -290,7 +296,10 @@ export const AccountDetail = ({
           <div>
             {media.map((status) => (
               <Status
-                status={status}
+                status={{
+                  ...status,
+                  appIndex: account.appIndex,
+                }}
                 key={status.id}
               />
             ))}
