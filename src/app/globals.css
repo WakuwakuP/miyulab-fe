@@ -8,7 +8,7 @@ html {
 
 @layer components {
   .content {
-    @apply pt-2 [&_*]:text-wrap [&_*]:whitespace-pre-line [&_*]:break-words [&_a]:text-blue-400 [&_blockquote]:border-l-4 [&_blockquote]:border-blue-400 [&_blockquote]:pl-2 [&_blockquote]:ml-2;
+    @apply pt-2 break-words whitespace-pre-wrap [&_*]:text-wrap [&_*]:whitespace-pre-wrap [&_*]:break-all [&_*]:break-words [&_a]:text-blue-400 [&_blockquote]:border-l-4 [&_blockquote]:border-blue-400 [&_blockquote]:pl-2 [&_blockquote]:ml-2;
   }
 
   body {
