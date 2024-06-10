@@ -137,7 +137,10 @@ export const Dropzone = ({
             const list = []
             for (let i = 0; i < uploading; i++) {
               list.push(
-                <div className="flex h-32 w-1/2 items-center justify-center border bg-gray-600">
+                <div
+                  key={i}
+                  className="flex h-32 w-1/2 items-center justify-center border bg-gray-600"
+                >
                   <CgSpinner
                     size={32}
                     className="animate-spin"
