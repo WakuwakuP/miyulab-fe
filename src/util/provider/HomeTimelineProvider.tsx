@@ -193,10 +193,10 @@ export const HomeTimelineProvider = ({
             )
             setUsers((prev) =>
               [
-                ...prev,
                 status.reblog != null
                   ? status.reblog.account
                   : status.account,
+                ...prev,
               ]
                 .filter(
                   (element, index, self) =>
@@ -292,7 +292,7 @@ export const HomeTimelineProvider = ({
               >
 
               setUsers((prev) =>
-                [...prev, account].filter(
+                [account, ...prev].filter(
                   (element, index, self) =>
                     self.findIndex(
                       (e) => e.acct === element.acct
