@@ -103,7 +103,6 @@ export const HomeTimelineProvider = ({
         .then((res) => {
           setUsers((prev) =>
             [
-              ...prev,
               ...res.data
                 .map((status) =>
                   status.reblog != null
@@ -118,6 +117,7 @@ export const HomeTimelineProvider = ({
                     display_name: account.display_name,
                   }
                 }),
+              ...prev,
             ].filter(
               (element, index, self) =>
                 self.findIndex(
