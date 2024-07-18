@@ -37,6 +37,30 @@ export const NotificationsContext = createContext<
   NotificationAddAppIndex[]
 >([])
 
+type SetActions = {
+  setReblogged: (
+    appIndex: number,
+    statusId: string,
+    reblogged: boolean
+  ) => void
+  setFavourited: (
+    appIndex: number,
+    statusId: string,
+    favourited: boolean
+  ) => void
+  setBookmarked: (
+    appIndex: number,
+    statusId: string,
+    bookmarked: boolean
+  ) => void
+}
+
+export const SetActionsContext = createContext<SetActions>({
+  setReblogged: () => {},
+  setFavourited: () => {},
+  setBookmarked: () => {},
+})
+
 export const HomeTimelineProvider = ({
   children,
 }: {
@@ -85,6 +109,102 @@ export const HomeTimelineProvider = ({
         )
       })
   }, [apps.length, notifications])
+
+  const setReblogged = (
+    appIndex: number,
+    statusId: string,
+    reblogged: boolean
+  ) => {
+    setTimelines((prev) => {
+      prev[apps[appIndex].backendUrl].forEach((status) => {
+        if (status.id === statusId) {
+          status.reblogged = reblogged
+        }
+        if (
+          status.reblog != null &&
+          status.reblog.id === statusId
+        ) {
+          status.reblog.reblogged = reblogged
+        }
+      })
+      return prev
+    })
+
+    setNotifications((prev) => {
+      prev[apps[appIndex].backendUrl].forEach(
+        (notification) => {
+          if (notification.status?.id === statusId) {
+            notification.status.reblogged = reblogged
+          }
+        }
+      )
+      return prev
+    })
+  }
+
+  const setFavourited = (
+    appIndex: number,
+    statusId: string,
+    favourited: boolean
+  ) => {
+    setTimelines((prev) => {
+      prev[apps[appIndex].backendUrl].forEach((status) => {
+        if (status.id === statusId) {
+          status.favourited = favourited
+        }
+        if (
+          status.reblog != null &&
+          status.reblog.id === statusId
+        ) {
+          status.reblog.favourited = favourited
+        }
+      })
+      return prev
+    })
+
+    setNotifications((prev) => {
+      prev[apps[appIndex].backendUrl].forEach(
+        (notification) => {
+          if (notification.status?.id === statusId) {
+            notification.status.favourited = favourited
+          }
+        }
+      )
+      return prev
+    })
+  }
+
+  const setBookmarked = (
+    appIndex: number,
+    statusId: string,
+    bookmarked: boolean
+  ) => {
+    setTimelines((prev) => {
+      prev[apps[appIndex].backendUrl].forEach((status) => {
+        if (status.id === statusId) {
+          status.bookmarked = bookmarked
+        }
+        if (
+          status.reblog != null &&
+          status.reblog.id === statusId
+        ) {
+          status.reblog.bookmarked = bookmarked
+        }
+      })
+      return prev
+    })
+
+    setNotifications((prev) => {
+      prev[apps[appIndex].backendUrl].forEach(
+        (notification) => {
+          if (notification.status?.id === statusId) {
+            notification.status.bookmarked = bookmarked
+          }
+        }
+      )
+      return prev
+    })
+  }
 
   useEffect(() => {
     if (
@@ -339,7 +459,15 @@ export const HomeTimelineProvider = ({
       <NotificationsContext.Provider
         value={margeNotifications}
       >
-        {children}
+        <SetActionsContext.Provider
+          value={{
+            setReblogged,
+            setFavourited,
+            setBookmarked,
+          }}
+        >
+          {children}
+        </SetActionsContext.Provider>
       </NotificationsContext.Provider>
     </HomeTimelineContext.Provider>
   )
