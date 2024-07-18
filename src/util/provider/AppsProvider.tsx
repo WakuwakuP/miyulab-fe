@@ -104,7 +104,15 @@ export const AppsProvider = ({
             tokenData: tokenData,
           }
 
-          updateApps([...apps, newApp])
+          if (processingAppData?.index != null) {
+            const index = processingAppData.index as number
+            const newApps = [...apps]
+            newApps[index] = newApp
+            updateApps(newApps)
+          } else {
+            updateApps([...apps, newApp])
+          }
+
           setFinishLoading(true)
           router.replace('/')
           localStorage.removeItem('processingAppData')
@@ -116,7 +124,7 @@ export const AppsProvider = ({
 
     if (apps.length > 0) {
       const now = new Date().getTime()
-      apps.map(async (app) => {
+      apps.forEach(async (app) => {
         if (
           app.tokenData == null ||
           app.tokenData?.refresh_token == null

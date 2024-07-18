@@ -141,9 +141,11 @@ export const AccountsPanel = () => {
   ] = useState<{
     app: App | null
     account: Entity.Account | null
+    index: number | null
   }>({
     app: null,
     account: null,
+    index: null,
   })
 
   const [accounts, setAccounts] = useState<
@@ -171,17 +173,17 @@ export const AccountsPanel = () => {
     })()
   }, [apps])
 
-  const deleteAccount = async (backendUrl: string) => {
-    updateApps(
-      apps.filter((app) => app.backendUrl !== backendUrl)
-    )
+  const deleteAccount = async (index: number | null) => {
+    if (index == null) return
+    apps.splice(index, 1)
+    updateApps(apps)
   }
 
   return (
     <div className="pt-4">
       <div>アカウント管理</div>
       <div>
-        {accountsMemo.map(({ app, account }) => (
+        {accountsMemo.map(({ app, account }, index) => (
           <div
             key={account.id}
             className="flex items-center"
@@ -202,6 +204,7 @@ export const AccountsPanel = () => {
                   setShowDeleteAccountModal({
                     app,
                     account,
+                    index,
                   })
                 }}
               />
@@ -238,6 +241,7 @@ export const AccountsPanel = () => {
                 setShowDeleteAccountModal({
                   app: null,
                   account: null,
+                  index: null,
                 })
               }}
             ></div>
@@ -250,18 +254,19 @@ export const AccountsPanel = () => {
                 }{' '}
                 @{showDeleteAccountModal.account?.acct}
               </div>
+              <div>{showDeleteAccountModal.index}</div>
               <div className="flex justify-center space-x-2">
                 <button
                   className="rounded-md border bg-gray-900 px-4 py-2"
                   onClick={() => {
                     deleteAccount(
-                      showDeleteAccountModal.app
-                        ?.backendUrl ?? ''
+                      showDeleteAccountModal.index
                     )
 
                     setShowDeleteAccountModal({
                       app: null,
                       account: null,
+                      index: null,
                     })
                   }}
                 >
@@ -273,6 +278,7 @@ export const AccountsPanel = () => {
                     setShowDeleteAccountModal({
                       app: null,
                       account: null,
+                      index: null,
                     })
                   }}
                 >

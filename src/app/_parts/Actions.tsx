@@ -1,6 +1,6 @@
 'use client'
 
-import { useContext, useState } from 'react'
+import { useContext, useEffect, useState } from 'react'
 
 import {
   RiBookmark2Fill,
@@ -14,6 +14,7 @@ import {
 import { type StatusAddAppIndex } from 'types/types'
 import { GetClient } from 'util/GetClient'
 import { AppsContext } from 'util/provider/AppsProvider'
+import { SetActionsContext } from 'util/provider/HomeTimelineProvider'
 import { SetReplyToContext } from 'util/provider/ReplyToProvider'
 
 export const Actions = ({
@@ -23,17 +24,22 @@ export const Actions = ({
 }) => {
   const apps = useContext(AppsContext)
 
+  const setActions = useContext(SetActionsContext)
+
   const setReplyTo = useContext(SetReplyToContext)
 
   const [reblogged, setReblogged] = useState(
     status.reblogged
   )
+
   const [favourited, setFavourited] = useState(
     status.favourited
   )
   const [bookmarked, setBookmarked] = useState(
     status.bookmarked
   )
+
+  useEffect(() => {}, [])
 
   const createdAt = new Date(status.created_at)
   const fullYear = createdAt.getFullYear()
@@ -77,15 +83,29 @@ export const Actions = ({
       <button
         onClick={() => {
           if (reblogged ?? false) {
-            client.unreblogStatus(status.id)
+            client.unreblogStatus(
+              status.reblog?.id ?? status.id
+            )
+            setActions.setReblogged(
+              status.appIndex,
+              status.reblog?.id ?? status.id,
+              false
+            )
             setReblogged(false)
           } else {
-            client.reblogStatus(status.id)
+            client.reblogStatus(
+              status.reblog?.id ?? status.id
+            )
+            setActions.setReblogged(
+              status.appIndex,
+              status.reblog?.id ?? status.id,
+              true
+            )
             setReblogged(true)
           }
         }}
       >
-        {reblogged ?? false ? (
+        {(reblogged ?? false) ? (
           <RiRepeatFill
             size={24}
             className="text-blue-400"
@@ -100,16 +120,26 @@ export const Actions = ({
             client.unfavouriteStatus(
               status.reblog?.id ?? status.id
             )
+            setActions.setFavourited(
+              status.appIndex,
+              status.reblog?.id ?? status.id,
+              false
+            )
             setFavourited(false)
           } else {
             client.favouriteStatus(
               status.reblog?.id ?? status.id
             )
+            setActions.setFavourited(
+              status.appIndex,
+              status.reblog?.id ?? status.id,
+              true
+            )
             setFavourited(true)
           }
         }}
       >
-        {favourited ?? false ? (
+        {(favourited ?? false) ? (
           <RiStarFill
             size={24}
             className="text-orange-300"
@@ -124,10 +154,20 @@ export const Actions = ({
             client.unbookmarkStatus(
               status.reblog?.id ?? status.id
             )
+            setActions.setBookmarked(
+              status.appIndex,
+              status.reblog?.id ?? status.id,
+              false
+            )
             setBookmarked(false)
           } else {
             client.bookmarkStatus(
               status.reblog?.id ?? status.id
+            )
+            setActions.setBookmarked(
+              status.appIndex,
+              status.reblog?.id ?? status.id,
+              true
             )
             setBookmarked(true)
           }
