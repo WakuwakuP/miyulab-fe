@@ -9,6 +9,7 @@ import {
 } from 'react'
 
 import { type Entity, type Response } from 'megalodon'
+import { CiWarning } from 'react-icons/ci'
 import { RiArrowLeftSLine } from 'react-icons/ri'
 import { Virtuoso } from 'react-virtuoso'
 
@@ -207,8 +208,22 @@ export const GettingStarted = () => {
           <>
             {apps.map((app, index) => (
               <Fragment key={index}>
-                <div className="w-full border-b px-4 py-2 text-xl">
-                  {app.backendUrl}
+                <div className="flex w-full items-center space-x-2 border-b px-4 py-2 text-xl">
+                  {app.tokenData == null && (
+                    <button
+                      onClick={() => {
+                        localStorage.setItem(
+                          'processingAppData',
+                          JSON.stringify({ ...app, index })
+                        )
+                        window.location.href = app.appData
+                          .url as string
+                      }}
+                    >
+                      <CiWarning size={24} />
+                    </button>
+                  )}
+                  <span>{app.backendUrl}</span>
                 </div>
                 <button
                   className="w-full border-b px-4 py-2 text-xl hover:bg-slate-800"
