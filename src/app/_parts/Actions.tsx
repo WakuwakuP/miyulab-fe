@@ -105,7 +105,7 @@ export const Actions = ({
           }
         }}
       >
-        {reblogged ?? false ? (
+        {(reblogged ?? false) ? (
           <RiRepeatFill
             size={24}
             className="text-blue-400"
@@ -139,7 +139,7 @@ export const Actions = ({
           }
         }}
       >
-        {favourited ?? false ? (
+        {(favourited ?? false) ? (
           <RiStarFill
             size={24}
             className="text-orange-300"

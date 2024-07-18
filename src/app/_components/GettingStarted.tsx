@@ -211,6 +211,7 @@ export const GettingStarted = () => {
                 <div className="flex w-full items-center space-x-2 border-b px-4 py-2 text-xl">
                   {app.tokenData == null && (
                     <button
+                      className="text-orange-500 hover:text-orange-300"
                       onClick={() => {
                         localStorage.setItem(
                           'processingAppData',
