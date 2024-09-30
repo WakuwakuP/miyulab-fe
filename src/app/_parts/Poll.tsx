@@ -52,8 +52,8 @@ export const Poll = ({
                     poll.votes_count > 0
                       ? `linear-gradient(
                     to right,
-                    rgba(${selected?.some((s) => s === index) ? '255' : '59'},130,246,0.5) ${(option.votes_count / poll.votes_count ?? 1) * 100}%,
-                    rgba(255,255,255,0.1) ${(option.votes_count / poll.votes_count ?? 1) * 100 * 1.05}%,
+                    rgba(${selected?.some((s) => s === index) ? '255' : '59'},130,246,0.5) ${(option.votes_count / poll.votes_count) * 100}%,
+                    rgba(255,255,255,0.1) ${(option.votes_count / poll.votes_count) * 100 * 1.05}%,
                     rgba(255,255,255,0.1) 100%
                     )`
                       : 'linear-gradient(rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.1) 100%)',
