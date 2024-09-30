@@ -303,7 +303,21 @@ export const Notification = ({
           </h3>
         </div>
       )
+    case 'status':
+      return (
+        <div className="ml-1 mt-2 box-border border-b-2 border-l-2 border-green-500 pl-2">
+          <Status
+            status={
+              {
+                ...notification.status,
+                appIndex: notification.appIndex,
+              } as StatusAddAppIndex
+            }
+            scrolling={scrolling}
+          />
+        </div>
+      )
     default:
-      return null
+      return <div>Unknown notification type</div>
   }
 }
