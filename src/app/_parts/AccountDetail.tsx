@@ -185,7 +185,25 @@ export const AccountDetail = ({
             <div>
               <span className="text-gray-400">
                 {relationship.following ? (
-                  'フォロー中'
+                  <button
+                    className="rounded-md border border-red-500 px-2 py-1 text-red-500 transition-colors duration-300 ease-in-out hover:bg-red-500 hover:text-white"
+                    onClick={() => {
+                      if (apps.length <= 0) return
+                      const client = GetClient(
+                        apps[account.appIndex]
+                      )
+                      client
+                        .unfollowAccount(account.id)
+                        .then(() => {
+                          setRelationship({
+                            ...relationship,
+                            following: true,
+                          })
+                        })
+                    }}
+                  >
+                    フォロー解除
+                  </button>
                 ) : (
                   <button
                     className="rounded-md border border-blue-500 px-2 py-1 text-blue-500 transition-colors duration-300 ease-in-out hover:bg-blue-500 hover:text-white"
@@ -205,6 +223,51 @@ export const AccountDetail = ({
                     }}
                   >
                     フォローする
+                  </button>
+                )}
+              </span>
+              <span className="text-gray-400">
+                {relationship.notifying ? (
+                  <button
+                    className="rounded-md border border-red-500 px-2 py-1 text-red-500 transition-colors duration-300 ease-in-out hover:bg-red-500 hover:text-white"
+                    onClick={() => {
+                      if (apps.length <= 0) return
+                      const client = GetClient(
+                        apps[account.appIndex]
+                      )
+                      client
+                        .unsubscribeAccount(account.id)
+                        .then(() => {
+                          setRelationship({
+                            ...relationship,
+                            notifying: false,
+                          })
+                        })
+                    }}
+                  >
+                    購読解除
+                  </button>
+                ) : (
+                  <button
+                    className="rounded-md border border-blue-500 px-2 py-1 text-blue-500 transition-colors duration-300 ease-in-out hover:bg-blue-500 hover:text-white"
+                    onClick={() => {
+                      if (apps.length <= 0) return
+
+                      const client = GetClient(
+                        apps[account.appIndex]
+                      )
+
+                      client
+                        .subscribeAccount(account.id)
+                        .then(() => {
+                          setRelationship({
+                            ...relationship,
+                            notifying: true,
+                          })
+                        })
+                    }}
+                  >
+                    購読する
                   </button>
                 )}
               </span>
