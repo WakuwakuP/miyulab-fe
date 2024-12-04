@@ -143,7 +143,7 @@ export const GettingStarted = () => {
 
   const moreBookmarks = useCallback(() => {
     if (apps.length <= 0) return
-    if (maxId === null) return
+    if (maxId[appIndex] === null) return
     const client = GetClient(apps[appIndex])
 
     client
