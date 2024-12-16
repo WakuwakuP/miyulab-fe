@@ -33,7 +33,8 @@
     "jest.*",
     "*.config.js",
     "src/lib/hooks/swr/*.ts",
-    "public/*"
+    "public/*",
+    "src/components/ui/*"
   ],
   "plugins": [
     "@typescript-eslint",
