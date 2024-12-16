@@ -136,7 +136,7 @@ export const Notification = ({
             </div>
           </h3>
           <div>
-            <RiStarFill className="text-3xl text-orange-300" />
+            <RiStarFill className="text-4xl text-orange-300" />
           </div>
           <Status
             status={
@@ -193,7 +193,7 @@ export const Notification = ({
                     <div className="h-12 w-12 flex-none rounded-lg" />
                   ) : (
                     <img
-                      className="h-12 w-12 flex-none rounded-lg object-contain"
+                      className="h-12 max-w-full flex-none rounded-lg object-contain"
                       src={
                         notification.reaction?.static_url
                       }
