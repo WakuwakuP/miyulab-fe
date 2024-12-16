@@ -5,17 +5,22 @@ import {
   type MouseEventHandler,
   useContext,
   useEffect,
-  useRef,
+  useState,
 } from 'react'
 
 import {
   RiArrowLeftSLine,
   RiArrowRightSLine,
 } from 'react-icons/ri'
-import Slider from 'react-slick'
 
 import { Media } from 'app/_parts/Media'
 import { Modal } from 'app/_parts/Modal'
+import {
+  Carousel,
+  type CarouselApi,
+  CarouselContent,
+  CarouselItem,
+} from 'components/ui/carousel'
 import {
   MediaModalContext,
   SetMediaModalContext,
@@ -26,34 +31,35 @@ const ModalContent = () => {
     MediaModalContext
   )
 
-  const sliderRef = useRef<Slider>(null)
+  const [carouselApi, setCarouselApi] =
+    useState<CarouselApi>()
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.code === 'ArrowLeft') {
-        sliderRef.current?.slickPrev()
+        carouselApi?.scrollPrev()
       } else if (e.code === 'ArrowRight') {
-        sliderRef.current?.slickNext()
+        carouselApi?.scrollNext()
       }
     }
     document.addEventListener('keydown', onKeyDown)
     return () => {
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [])
+  }, [carouselApi])
 
   const onClickPrev: MouseEventHandler<
     HTMLButtonElement
   > = (e) => {
     e.stopPropagation()
-    sliderRef.current?.slickPrev()
+    carouselApi?.scrollPrev()
   }
 
   const onClickNext: MouseEventHandler<
     HTMLButtonElement
   > = (e) => {
     e.stopPropagation()
-    sliderRef.current?.slickNext()
+    carouselApi?.scrollNext()
   }
 
   if (attachment.length === 0 || index == null) return null
@@ -70,24 +76,28 @@ const ModalContent = () => {
       {attachment.length > 1 ? (
         <>
           <div className="fixed inset-0 z-50 m-auto h-[90vh] w-[90vw]">
-            <Slider
-              ref={sliderRef}
-              arrows={false}
-              infinite
-              speed={150}
-              initialSlide={index}
+            <Carousel
+              setApi={setCarouselApi}
+              opts={{
+                loop: true,
+                startIndex: index,
+              }}
             >
-              {attachment.map((media) => {
-                return (
-                  <div key={media.id}>
-                    <Media
-                      media={media}
-                      className="h-[90vh] max-h-none w-[90vw] max-w-none"
-                    />
-                  </div>
-                )
-              })}
-            </Slider>
+              <CarouselContent>
+                {attachment.map((media) => {
+                  return (
+                    <CarouselItem key={media.id}>
+                      <div key={media.id}>
+                        <Media
+                          media={media}
+                          className="h-[90vh] max-h-none w-[90vw] max-w-none"
+                        />
+                      </div>
+                    </CarouselItem>
+                  )
+                })}
+              </CarouselContent>
+            </Carousel>
           </div>
           <button
             className="fixed left-3 top-1/2 z-[51] -translate-y-1/2 rounded-full bg-gray-50/50"
