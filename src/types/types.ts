@@ -12,6 +12,8 @@ export const backendList = [
   'pleroma',
   'friendica',
   'firefish',
+  'gotosocial',
+  'pixelfed',
 ] as const
 
 export type Backend = (typeof backendList)[number]

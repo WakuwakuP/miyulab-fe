@@ -3,8 +3,10 @@
 
 import {
   type CSSProperties,
+  type ChangeEvent,
   type ClipboardEventHandler,
   type Dispatch,
+  type KeyboardEvent,
   type SetStateAction,
   useContext,
   useMemo,
@@ -390,9 +392,13 @@ export const StatusRichTextarea = ({
         ref={ref}
         style={style}
         className="rounded-none"
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e: ChangeEvent<HTMLTextAreaElement>) =>
+          onChange(e.target.value)
+        }
         value={text}
-        onKeyDown={(e) => {
+        onKeyDown={(
+          e: KeyboardEvent<HTMLTextAreaElement>
+        ) => {
           if (
             e.code === 'Enter' &&
             (e.ctrlKey || e.metaKey)
@@ -472,7 +478,13 @@ export const StatusRichTextarea = ({
               return
           }
         }}
-        onSelectionChange={(r) => {
+        onSelectionChange={(r: {
+          focused: boolean
+          selectionStart: number
+          top: number
+          left: number
+          height: number
+        }) => {
           if (
             r.focused &&
             MENTION_REG.test(

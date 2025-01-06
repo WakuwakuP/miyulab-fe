@@ -40,9 +40,9 @@ export const AppsProvider = ({
   const code = useSearchParams().get('code')
   const [apps, setApps] = useState<App[]>([])
 
-  const [backend, setBackend] = useState<
-    'mastodon' | 'pleroma' | 'friendica' | 'firefish' | ''
-  >(BACKEND_SNS)
+  const [backend, setBackend] = useState<Backend | ''>(
+    BACKEND_SNS
+  )
   const [backendUrl, setBackendUrl] =
     useState<string>(BACKEND_URL)
   const [isRequestedToken, setIsRequestedToken] =
