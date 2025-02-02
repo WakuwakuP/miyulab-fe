@@ -100,7 +100,7 @@ const ModalContent = () => {
             </Carousel>
           </div>
           <button
-            className="fixed left-3 top-1/2 z-[51] -translate-y-1/2 rounded-full bg-gray-50/50"
+            className="fixed left-3 top-1/2 z-51 -translate-y-1/2 rounded-full bg-gray-50/50"
             onClick={onClickPrev}
           >
             <RiArrowLeftSLine
@@ -109,7 +109,7 @@ const ModalContent = () => {
             />
           </button>
           <button
-            className="fixed right-3 top-1/2 z-[51] -translate-y-1/2 rounded-full bg-gray-50/50"
+            className="fixed right-3 top-1/2 z-51 -translate-y-1/2 rounded-full bg-gray-50/50"
             onClick={onClickNext}
           >
             <RiArrowRightSLine
