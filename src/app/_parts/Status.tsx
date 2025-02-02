@@ -46,11 +46,25 @@ export const Status = ({
       account.emojis.forEach((emoji) => {
         displayName = displayName.replace(
           new RegExp(`:${emoji.shortcode}:`, 'gm'),
-          `<img src="${emoji.url}" alt="${emoji.shortcode}" title=":${emoji.shortcode}:" class="min-w-5 h-5 inline-block" loading="lazy" />`
+          `<img src="${emoji.url}" alt="${emoji.shortcode}" title=":${emoji.shortcode}:" class="min-w-7 h-7 inline-block" loading="lazy" />`
         )
       })
     }
     return displayName
+  }
+
+  const getSpoilerText = (status: Entity.Status) => {
+    let spoiler_text = status.spoiler_text
+    if (status.emojis.length > 0) {
+      status.emojis.forEach((emoji) => {
+        spoiler_text = spoiler_text.replace(
+          new RegExp(`:${emoji.shortcode}:`, 'gm'),
+          `<img src="${emoji.url}" alt="${emoji.shortcode}" title=":${emoji.shortcode}:" class="min-w-7 h-7 inline-block" loading="lazy" />`
+        )
+      })
+    }
+
+    return spoiler_text
   }
 
   const getContentFormatted = (status: Entity.Status) => {
@@ -59,7 +73,7 @@ export const Status = ({
       status.emojis.forEach((emoji) => {
         content = content.replace(
           new RegExp(`:${emoji.shortcode}:`, 'gm'),
-          `<img src="${emoji.url}" alt="${emoji.shortcode}" title=":${emoji.shortcode}:" class="min-w-5 h-5 inline-block" loading="lazy" />`
+          `<img src="${emoji.url}" alt="${emoji.shortcode}" title=":${emoji.shortcode}:" class="min-w-7 h-7 inline-block" loading="lazy" />`
         )
       })
     }
@@ -192,6 +206,7 @@ export const Status = ({
     'box-border',
     'w-full',
     'p-2',
+    'leading-7',
     className,
     small ? 'max-h-24 overflow-clip' : '',
     status.reblog != null
@@ -267,7 +282,9 @@ export const Status = ({
       )}
       {status.spoiler_text !== '' && (
         <div className="border-b-2 border-b-gray-600 py-2 text-gray-400">
-          {status.spoiler_text}
+          {parse(getSpoilerText(status.reblog ?? status), {
+            replace,
+          })}
         </div>
       )}
       <div
