@@ -10,7 +10,7 @@ import { Player } from './_components/Player'
 
 export default function Home() {
   return (
-    <main className="flex overflow-y-visible overflow-x-scroll [&>*]:w-[calc(100vw/6)] [&>*]:min-w-60 [&>*]:shrink-0">
+    <main className="flex overflow-y-visible overflow-x-scroll *:w-[calc(100vw/6)] *:min-w-60 *:shrink-0">
       <MainPanel />
       <HomeTimeline />
       <NotificationTimeline />
