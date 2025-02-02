@@ -116,7 +116,7 @@ export const Media = ({
             className="w-full"
           />
           <div
-            className="absolute left-0 top-0 z-[1] h-full w-full"
+            className="absolute left-0 top-0 z-1 h-full w-full"
             onClick={(e) => {
               e.preventDefault()
               e.stopPropagation()
