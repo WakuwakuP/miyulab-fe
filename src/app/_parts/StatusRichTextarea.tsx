@@ -39,7 +39,9 @@ const MENTION_HIGHLIGHT_REG = new RegExp(
   /@([\\.@\-+\w]*)/,
   'g'
 )
-const EMOJI_REG = /\B:([+\w].*)$/
+const EMOJI_REG = /\B:([+\w]*)$/
+
+const EMOJI_HIGHLIGHT_REG = new RegExp(/:([+\w]*):/, 'g')
 
 const TAG_REG = /#(\S*)$/
 const TAG_HIGHLIGHT_REG = new RegExp(/#(\S*)/, 'g')
@@ -343,6 +345,7 @@ export const StatusRichTextarea = ({
   const customRenderer = createRegexRenderer([
     [MENTION_HIGHLIGHT_REG, { color: 'blue' }],
     [TAG_HIGHLIGHT_REG, { color: 'blue' }],
+    [EMOJI_HIGHLIGHT_REG, { color: 'darkorange' }],
   ])
 
   const uploadMedia = (file: File) => {
