@@ -338,12 +338,24 @@ export const HomeTimelineProvider = ({
               appIndex: index,
             }
             setTimelines((prev) => {
+              const index = prev[app.backendUrl].findIndex(
+                (s) => s.id == statusWithBackendUrl.id
+              )
+              // 同一IDのStatusが存在する場合は更新
+              if (index === -1) {
+                return {
+                  ...prev,
+                  [app.backendUrl]: ArrayLengthControl([
+                    statusWithBackendUrl,
+                    ...prev[app.backendUrl],
+                  ]),
+                }
+              }
+              const next = [...prev[app.backendUrl]]
+              next[index] = statusWithBackendUrl
               return {
                 ...prev,
-                [app.backendUrl]: ArrayLengthControl([
-                  statusWithBackendUrl,
-                  ...prev[app.backendUrl],
-                ]),
+                [app.backendUrl]: next,
               }
             })
           })
