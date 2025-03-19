@@ -1,5 +1,5 @@
 /* eslint-disable @next/next/no-img-element */
-import { useContext } from 'react'
+import { useContext, useMemo } from 'react'
 
 import * as emoji from 'node-emoji'
 import { RiStarFill } from 'react-icons/ri'
@@ -23,6 +23,20 @@ export const Notification = ({
   scrolling?: boolean
 }) => {
   const setDetail = useContext(SetDetailContext)
+
+  const displayName = useMemo(() => {
+    if (notification.account == null) return ''
+    let displayName = notification.account.display_name
+    if (notification.account.emojis.length > 0) {
+      notification.account.emojis.forEach((emoji) => {
+        displayName = displayName.replace(
+          new RegExp(`:${emoji.shortcode}:`, 'gm'),
+          `<img src="${emoji.url}" alt="${emoji.shortcode}" title=":${emoji.shortcode}:" class="min-w-7 h-7 inline-block" loading="lazy" />`
+        )
+      })
+    }
+    return displayName
+  }, [notification.account])
 
   switch (notification.type) {
     case 'poll_expired':
@@ -81,9 +95,12 @@ export const Notification = ({
             )}
             <div className="w-[calc(100%-56px)] pl-2">
               <p className="w-full truncate">
-                {notification.account?.display_name ?? ''}
+                {displayName}
               </p>
-              <p className="w-full truncate text-gray-300">
+              <p
+                className="w-full truncate text-gray-300"
+                title={`@${notification.account?.acct ?? ''}`}
+              >
                 @{notification.account?.acct ?? ''}
               </p>
             </div>
@@ -128,9 +145,12 @@ export const Notification = ({
             )}
             <div className="w-[calc(100%-56px)] pl-2">
               <p className="w-full truncate">
-                {notification.account?.display_name ?? ''}
+                {displayName}
               </p>
-              <p className="w-full truncate text-gray-300">
+              <p
+                className="w-full truncate text-gray-300"
+                title={`@${notification.account?.acct ?? ''}`}
+              >
                 @{notification.account?.acct ?? ''}
               </p>
             </div>
@@ -179,7 +199,7 @@ export const Notification = ({
               )}
               <div className="w-[calc(100%-56px)] pl-2">
                 <p className="w-full truncate">
-                  {notification.account?.display_name ?? ''}
+                  {displayName ?? ''}
                 </p>
                 <p className="w-full truncate text-gray-300">
                   @{notification.account?.acct ?? ''}
@@ -256,9 +276,12 @@ export const Notification = ({
             )}
             <div className="w-[calc(100%-56px)] pl-2">
               <p className="w-full truncate">
-                {notification.account?.display_name ?? ''}
+                {displayName ?? ''}
               </p>
-              <p className="w-full truncate text-gray-300">
+              <p
+                className="w-full truncate text-gray-300"
+                title={`@${notification.account?.acct ?? ''}`}
+              >
                 @{notification.account?.acct ?? ''}
               </p>
             </div>
@@ -294,9 +317,12 @@ export const Notification = ({
             )}
             <div className="w-[calc(100%-56px)] pl-2">
               <p className="w-full truncate">
-                {notification.account?.display_name ?? ''}
+                {displayName ?? ''}
               </p>
-              <p className="w-full truncate text-gray-300">
+              <p
+                className="w-full truncate text-gray-300"
+                title={`@${notification.account?.acct ?? ''}`}
+              >
                 @{notification.account?.acct ?? ''}
               </p>
             </div>

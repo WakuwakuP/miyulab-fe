@@ -89,7 +89,10 @@ export const UserInfo = ({
             />
             <Visibility visibility={visibility} />
           </p>
-          <p className="truncate text-gray-300">
+          <p
+            className="truncate text-gray-300"
+            title={`@${account.acct}`}
+          >
             @{account.acct}
           </p>
         </div>
