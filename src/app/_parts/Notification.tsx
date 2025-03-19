@@ -28,12 +28,14 @@ export const Notification = ({
     if (notification.account == null) return ''
     let displayName = notification.account.display_name
     if (notification.account.emojis.length > 0) {
-      notification.account.emojis.forEach((emoji) => {
-        displayName = displayName.replace(
-          new RegExp(`:${emoji.shortcode}:`, 'gm'),
-          `<img src="${emoji.url}" alt="${emoji.shortcode}" title=":${emoji.shortcode}:" class="min-w-7 h-7 inline-block" loading="lazy" />`
-        )
-      })
+      notification.account.emojis.forEach(
+        (accountEmoji) => {
+          displayName = displayName.replace(
+            new RegExp(`:${accountEmoji.shortcode}:`, 'gm'),
+            `<img src="${accountEmoji.url}" alt="${accountEmoji.shortcode}" title=":${accountEmoji.shortcode}:" class="min-w-7 h-7 inline-block" loading="lazy" />`
+          )
+        }
+      )
     }
     return displayName
   }, [notification.account])
@@ -199,7 +201,7 @@ export const Notification = ({
               )}
               <div className="w-[calc(100%-56px)] pl-2">
                 <p className="w-full truncate">
-                  {displayName ?? ''}
+                  {displayName}
                 </p>
                 <p className="w-full truncate text-gray-300">
                   @{notification.account?.acct ?? ''}
@@ -276,7 +278,7 @@ export const Notification = ({
             )}
             <div className="w-[calc(100%-56px)] pl-2">
               <p className="w-full truncate">
-                {displayName ?? ''}
+                {displayName}
               </p>
               <p
                 className="w-full truncate text-gray-300"
@@ -317,7 +319,7 @@ export const Notification = ({
             )}
             <div className="w-[calc(100%-56px)] pl-2">
               <p className="w-full truncate">
-                {displayName ?? ''}
+                {displayName}
               </p>
               <p
                 className="w-full truncate text-gray-300"
