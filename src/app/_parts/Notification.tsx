@@ -215,7 +215,10 @@ export const Notification = ({
                     }}
                   />
                 </p>
-                <p className="w-full truncate text-gray-300">
+                <p
+                  className="w-full truncate text-gray-300"
+                  title={`@${notification.account?.acct ?? ''}`}
+                >
                   @{notification.account?.acct ?? ''}
                 </p>
               </div>
