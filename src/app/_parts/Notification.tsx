@@ -97,7 +97,11 @@ export const Notification = ({
             )}
             <div className="w-[calc(100%-56px)] pl-2">
               <p className="w-full truncate">
-                {displayName}
+                <span
+                  dangerouslySetInnerHTML={{
+                    __html: displayName,
+                  }}
+                />
               </p>
               <p
                 className="w-full truncate text-gray-300"
@@ -147,7 +151,11 @@ export const Notification = ({
             )}
             <div className="w-[calc(100%-56px)] pl-2">
               <p className="w-full truncate">
-                {displayName}
+                <span
+                  dangerouslySetInnerHTML={{
+                    __html: displayName,
+                  }}
+                />
               </p>
               <p
                 className="w-full truncate text-gray-300"
@@ -201,7 +209,11 @@ export const Notification = ({
               )}
               <div className="w-[calc(100%-56px)] pl-2">
                 <p className="w-full truncate">
-                  {displayName}
+                  <span
+                    dangerouslySetInnerHTML={{
+                      __html: displayName,
+                    }}
+                  />
                 </p>
                 <p className="w-full truncate text-gray-300">
                   @{notification.account?.acct ?? ''}
@@ -278,7 +290,11 @@ export const Notification = ({
             )}
             <div className="w-[calc(100%-56px)] pl-2">
               <p className="w-full truncate">
-                {displayName}
+                <span
+                  dangerouslySetInnerHTML={{
+                    __html: displayName,
+                  }}
+                />
               </p>
               <p
                 className="w-full truncate text-gray-300"
@@ -319,7 +335,11 @@ export const Notification = ({
             )}
             <div className="w-[calc(100%-56px)] pl-2">
               <p className="w-full truncate">
-                {displayName}
+                <span
+                  dangerouslySetInnerHTML={{
+                    __html: displayName,
+                  }}
+                />
               </p>
               <p
                 className="w-full truncate text-gray-300"
