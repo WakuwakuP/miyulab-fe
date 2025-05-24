@@ -64,6 +64,7 @@ export const PublicTimeline = () => {
           res.data.map((status) => ({
             ...status,
             appIndex: 0,
+            sourceBackendUrl: apps[0].backendUrl,
           }))
         )
       })
@@ -80,7 +81,7 @@ export const PublicTimeline = () => {
         if (status.media_attachments.length > 0) {
           setTimeline((prev) =>
             ArrayLengthControl([
-              { ...status, appIndex: 0 },
+              { ...status, appIndex: 0, sourceBackendUrl: apps[0].backendUrl },
               ...prev,
             ])
           )

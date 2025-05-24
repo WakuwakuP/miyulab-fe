@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { Inter } from 'next/font/google'
+// import { Inter } from 'next/font/google'
 import { type ReactNode, Suspense } from 'react'
 
 import { Toaster } from 'react-hot-toast'
@@ -17,7 +17,7 @@ import { SuspenseProvider } from 'util/provider/SuspenseProvider'
 
 import './globals.css'
 
-const inter = Inter({ subsets: ['latin'] })
+// const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: APP_NAME,
@@ -32,7 +32,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ja">
-      <body className={inter.className}>
+      <body className="font-sans">
         <SuspenseProvider>
           <AppsProvider>
             <SettingProvider>

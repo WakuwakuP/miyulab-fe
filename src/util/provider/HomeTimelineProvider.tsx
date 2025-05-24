@@ -12,6 +12,10 @@ import {
 
 import { type Entity } from 'megalodon'
 
+import {
+  type NotificationAddAppIndex,
+  type StatusAddAppIndex,
+} from 'types/types'
 import { ArrayLengthControl } from 'util/ArrayLengthControl'
 import { GetClient } from 'util/GetClient'
 import {
@@ -21,14 +25,6 @@ import {
 
 import { AppsContext } from './AppsProvider'
 
-type StatusAddAppIndex = Entity.Status & {
-  appIndex: number
-}
-
-type NotificationAddAppIndex = Entity.Notification & {
-  appIndex: number
-}
-
 export const HomeTimelineContext = createContext<
   StatusAddAppIndex[]
 >([])
@@ -36,6 +32,14 @@ export const HomeTimelineContext = createContext<
 export const NotificationsContext = createContext<
   NotificationAddAppIndex[]
 >([])
+
+/* eslint-disable indent */
+export const TimelineFilterContext = createContext<{
+  filterByBackendUrl(backendUrl: string | null): StatusAddAppIndex[]
+}>({
+  filterByBackendUrl: () => [],
+})
+/* eslint-enable indent */
 
 type SetActions = {
   setReblogged: (
@@ -251,6 +255,7 @@ export const HomeTimelineProvider = ({
               [app.backendUrl]: res.data.map((status) => ({
                 ...status,
                 appIndex: index,
+                sourceBackendUrl: app.backendUrl,
               })),
             }
           })
@@ -266,6 +271,7 @@ export const HomeTimelineProvider = ({
                 (notification) => ({
                   ...notification,
                   appIndex: index,
+                  sourceBackendUrl: app.backendUrl,
                 })
               ),
             }
@@ -336,6 +342,7 @@ export const HomeTimelineProvider = ({
             const statusWithBackendUrl = {
               ...status,
               appIndex: index,
+              sourceBackendUrl: app.backendUrl,
             }
             setTimelines((prev) => {
               const index = prev[app.backendUrl].findIndex(
@@ -366,6 +373,7 @@ export const HomeTimelineProvider = ({
               const statusWithBackendUrl = {
                 ...status,
                 appIndex: index,
+                sourceBackendUrl: app.backendUrl,
               }
               setTimelines((prev) => {
                 const index = prev[
@@ -401,6 +409,7 @@ export const HomeTimelineProvider = ({
                 const newNotification = {
                   ...notification,
                   appIndex: index,
+                  sourceBackendUrl: app.backendUrl,
                 }
                 return {
                   ...prev,
@@ -466,20 +475,33 @@ export const HomeTimelineProvider = ({
     })
   }, [apps, setTags, setUsers])
 
+  const filterByBackendUrl = (backendUrl: string | null): StatusAddAppIndex[] => {
+    if (backendUrl === null) {
+      return margeTimeline
+    }
+    return margeTimeline.filter((status) => status.sourceBackendUrl === backendUrl)
+  }
+
   return (
     <HomeTimelineContext.Provider value={margeTimeline}>
       <NotificationsContext.Provider
         value={margeNotifications}
       >
-        <SetActionsContext.Provider
+        <TimelineFilterContext.Provider
           value={{
-            setReblogged,
-            setFavourited,
-            setBookmarked,
+            filterByBackendUrl,
           }}
         >
-          {children}
-        </SetActionsContext.Provider>
+          <SetActionsContext.Provider
+            value={{
+              setReblogged,
+              setFavourited,
+              setBookmarked,
+            }}
+          >
+            {children}
+          </SetActionsContext.Provider>
+        </TimelineFilterContext.Provider>
       </NotificationsContext.Provider>
     </HomeTimelineContext.Provider>
   )

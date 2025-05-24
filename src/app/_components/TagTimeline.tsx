@@ -68,6 +68,7 @@ export const TagTimeline = ({ tag }: { tag: string }) => {
           res.data.map((status) => ({
             ...status,
             appIndex: 0,
+            sourceBackendUrl: apps[0].backendUrl,
           }))
         )
       })
@@ -85,7 +86,7 @@ export const TagTimeline = ({ tag }: { tag: string }) => {
         if (status.media_attachments.length > 0) {
           setTimeline((prev) =>
             ArrayLengthControl([
-              { ...status, appIndex: 0 },
+              { ...status, appIndex: 0, sourceBackendUrl: apps[0].backendUrl },
               ...prev,
             ])
           )
@@ -145,6 +146,7 @@ export const TagTimeline = ({ tag }: { tag: string }) => {
           ...res.data.map((status) => ({
             ...status,
             appIndex: 0,
+            sourceBackendUrl: apps[0].backendUrl,
           })),
         ])
       })

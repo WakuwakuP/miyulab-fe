@@ -20,11 +20,13 @@ export type Backend = (typeof backendList)[number]
 
 export type StatusAddAppIndex = Entity.Status & {
   appIndex: number
+  sourceBackendUrl?: string
 }
 
 export type NotificationAddAppIndex =
   Entity.Notification & {
     appIndex: number
+    sourceBackendUrl?: string
   }
 
 export type AccountAddAppIndex = Entity.Account & {
