@@ -1,0 +1,42 @@
+name: Copilot Setup Steps
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Enable Corepack
+        run: corepack enable
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'yarn'
+          
+      - name: Install dependencies
+        run: yarn --immutable
+        
+      - name: Run linting
+        run: yarn lint
+        
+      - name: Check formatting
+        run: yarn format --check || (echo "Code formatting issues found. Run 'yarn format' to fix." && exit 1)
+        
+      - name: Build project
+        run: yarn build
+        env:
+          # Default environment variables for build
+          NEXT_PUBLIC_APP_URL: 'http://localhost:3000'
+          NEXT_PUBLIC_BACKEND_URL: 'https://pl.waku.dev'
+          NEXT_PUBLIC_BACKEND_SNS: 'pleroma'
