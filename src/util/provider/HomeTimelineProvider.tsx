@@ -53,12 +53,18 @@ type SetActions = {
     statusId: string,
     bookmarked: boolean
   ) => void
+  updateReactions: (
+    appIndex: number,
+    statusId: string,
+    reactions: Entity.Reaction[]
+  ) => void
 }
 
 export const SetActionsContext = createContext<SetActions>({
   setReblogged: () => {},
   setFavourited: () => {},
   setBookmarked: () => {},
+  updateReactions: () => {},
 })
 
 export const HomeTimelineProvider = ({
@@ -199,6 +205,38 @@ export const HomeTimelineProvider = ({
         (notification) => {
           if (notification.status?.id === statusId) {
             notification.status.bookmarked = bookmarked
+          }
+        }
+      )
+      return prev
+    })
+  }
+
+  const updateReactions = (
+    appIndex: number,
+    statusId: string,
+    reactions: Entity.Reaction[]
+  ) => {
+    setTimelines((prev) => {
+      prev[apps[appIndex].backendUrl].forEach((status) => {
+        if (status.id === statusId) {
+          status.emoji_reactions = reactions
+        }
+        if (
+          status.reblog != null &&
+          status.reblog.id === statusId
+        ) {
+          status.reblog.emoji_reactions = reactions
+        }
+      })
+      return prev
+    })
+
+    setNotifications((prev) => {
+      prev[apps[appIndex].backendUrl].forEach(
+        (notification) => {
+          if (notification.status?.id === statusId) {
+            notification.status.emoji_reactions = reactions
           }
         }
       )
@@ -476,6 +514,7 @@ export const HomeTimelineProvider = ({
             setReblogged,
             setFavourited,
             setBookmarked,
+            updateReactions,
           }}
         >
           {children}
