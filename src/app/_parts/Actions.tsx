@@ -2,6 +2,7 @@
 
 import { useContext, useEffect, useState } from 'react'
 
+import { FaLock } from 'react-icons/fa'
 import {
   RiBookmark2Fill,
   RiBookmarkFill,
@@ -68,6 +69,11 @@ export const Actions = ({
 
   const client = GetClient(apps[status.appIndex])
 
+  // Check if the status is private (either the status itself or the reblogged status)
+  const statusVisibility =
+    status.reblog?.visibility ?? status.visibility
+  const isPrivate = statusVisibility === 'private'
+
   return (
     <div className="flex justify-between pt-2 [&>button]:mx-1">
       <button
@@ -81,7 +87,13 @@ export const Actions = ({
         <div className="pl-1">{status.replies_count}</div>
       </button>
       <button
+        disabled={isPrivate}
+        className={
+          isPrivate ? 'cursor-not-allowed opacity-50' : ''
+        }
         onClick={() => {
+          if (isPrivate) return
+
           if (reblogged ?? false) {
             client.unreblogStatus(
               status.reblog?.id ?? status.id
@@ -105,7 +117,12 @@ export const Actions = ({
           }
         }}
       >
-        {(reblogged ?? false) ? (
+        {isPrivate ? (
+          <FaLock
+            size={24}
+            className="text-gray-400"
+          />
+        ) : (reblogged ?? false) ? (
           <RiRepeatFill
             size={24}
             className="text-blue-400"
