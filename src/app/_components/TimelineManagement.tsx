@@ -1,0 +1,410 @@
+'use client'
+
+import {
+  type ChangeEvent,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useState,
+} from 'react'
+
+import {
+  RiAddLine,
+  RiDeleteBinLine,
+  RiDragMove2Line,
+  RiEyeLine,
+  RiEyeOffLine,
+} from 'react-icons/ri'
+
+import { Panel } from 'app/_parts/Panel'
+import {
+  type TimelineConfig,
+  type TimelineType,
+} from 'types/types'
+import {
+  SetTimelineContext,
+  TimelineContext,
+} from 'util/provider/TimelineProvider'
+
+const TimelineItem = ({
+  children,
+  className = '',
+}: {
+  children: ReactNode
+  className?: string
+}) => (
+  <div className={'flex items-center py-1 ' + className}>
+    {children}
+  </div>
+)
+
+const TimelineConfigItem = ({
+  timeline,
+  onToggleVisibility,
+  onDelete,
+  onMoveUp,
+  onMoveDown,
+  canMoveUp,
+  canMoveDown,
+}: {
+  timeline: TimelineConfig
+  onToggleVisibility: (id: string) => void
+  onDelete?: (id: string) => void
+  onMoveUp: (id: string) => void
+  onMoveDown: (id: string) => void
+  canMoveUp: boolean
+  canMoveDown: boolean
+}) => {
+  const getTimelineName = (timeline: TimelineConfig) => {
+    switch (timeline.type) {
+      case 'home':
+        return 'Home'
+      case 'local':
+        return 'Local'
+      case 'public':
+        return 'Public'
+      case 'notification':
+        return 'Notification'
+      case 'tag':
+        return `Tag: ${timeline.tag ?? 'Unknown'}`
+      default:
+        return 'Unknown'
+    }
+  }
+
+  return (
+    <TimelineItem className="justify-between border-b border-gray-600 pb-2">
+      <div className="flex items-center space-x-2">
+        <button
+          onClick={() => onToggleVisibility(timeline.id)}
+          className="text-gray-400 hover:text-white"
+          title={
+            timeline.visible
+              ? 'Hide timeline'
+              : 'Show timeline'
+          }
+        >
+          {timeline.visible ? (
+            <RiEyeLine size={20} />
+          ) : (
+            <RiEyeOffLine size={20} />
+          )}
+        </button>
+        <span
+          className={
+            timeline.visible ? '' : 'text-gray-500'
+          }
+        >
+          {getTimelineName(timeline)}
+        </span>
+      </div>
+      <div className="flex items-center space-x-1">
+        <button
+          onClick={() => onMoveUp(timeline.id)}
+          disabled={!canMoveUp}
+          className="text-gray-400 hover:text-white disabled:text-gray-600 disabled:cursor-not-allowed"
+          title="Move up"
+        >
+          ↑
+        </button>
+        <button
+          onClick={() => onMoveDown(timeline.id)}
+          disabled={!canMoveDown}
+          className="text-gray-400 hover:text-white disabled:text-gray-600 disabled:cursor-not-allowed"
+          title="Move down"
+        >
+          ↓
+        </button>
+        <RiDragMove2Line
+          size={16}
+          className="text-gray-400"
+        />
+        {onDelete != null && timeline.type === 'tag' && (
+          <button
+            onClick={() => onDelete(timeline.id)}
+            className="text-red-400 hover:text-red-300"
+            title="Delete tag timeline"
+          >
+            <RiDeleteBinLine size={16} />
+          </button>
+        )}
+      </div>
+    </TimelineItem>
+  )
+}
+
+export const TimelineManagement = () => {
+  const timelineSettings = useContext(TimelineContext)
+  const setTimelineSettings = useContext(SetTimelineContext)
+  const [newTagName, setNewTagName] = useState('')
+
+  const sortedTimelines = [
+    ...timelineSettings.timelines,
+  ].sort((a, b) => a.order - b.order)
+
+  const onToggleVisibility = useCallback(
+    (id: string) => {
+      setTimelineSettings((prev) => ({
+        ...prev,
+        timelines: prev.timelines.map((timeline) =>
+          timeline.id === id
+            ? { ...timeline, visible: !timeline.visible }
+            : timeline
+        ),
+      }))
+    },
+    [setTimelineSettings]
+  )
+
+  const onDelete = useCallback(
+    (id: string) => {
+      setTimelineSettings((prev) => ({
+        ...prev,
+        timelines: prev.timelines.filter(
+          (timeline) => timeline.id !== id
+        ),
+      }))
+    },
+    [setTimelineSettings]
+  )
+
+  const onMoveUp = useCallback(
+    (id: string) => {
+      const timeline = timelineSettings.timelines.find(
+        (t) => t.id === id
+      )
+      if (timeline == null) return
+
+      const visibleTimelines = sortedTimelines.filter(
+        (t) => t.visible
+      )
+      const currentIndex = visibleTimelines.findIndex(
+        (t) => t.id === id
+      )
+      if (currentIndex <= 0) return
+
+      const targetTimeline =
+        visibleTimelines[currentIndex - 1]
+
+      setTimelineSettings((prev) => ({
+        ...prev,
+        timelines: prev.timelines.map((t) => {
+          if (t.id === timeline.id) {
+            return { ...t, order: targetTimeline.order }
+          }
+          if (t.id === targetTimeline.id) {
+            return { ...t, order: timeline.order }
+          }
+          return t
+        }),
+      }))
+    },
+    [
+      timelineSettings.timelines,
+      sortedTimelines,
+      setTimelineSettings,
+    ]
+  )
+
+  const onMoveDown = useCallback(
+    (id: string) => {
+      const timeline = timelineSettings.timelines.find(
+        (t) => t.id === id
+      )
+      if (timeline == null) return
+
+      const visibleTimelines = sortedTimelines.filter(
+        (t) => t.visible
+      )
+      const currentIndex = visibleTimelines.findIndex(
+        (t) => t.id === id
+      )
+      if (currentIndex >= visibleTimelines.length - 1)
+        return
+
+      const targetTimeline =
+        visibleTimelines[currentIndex + 1]
+
+      setTimelineSettings((prev) => ({
+        ...prev,
+        timelines: prev.timelines.map((t) => {
+          if (t.id === timeline.id) {
+            return { ...t, order: targetTimeline.order }
+          }
+          if (t.id === targetTimeline.id) {
+            return { ...t, order: timeline.order }
+          }
+          return t
+        }),
+      }))
+    },
+    [
+      timelineSettings.timelines,
+      sortedTimelines,
+      setTimelineSettings,
+    ]
+  )
+
+  const onAddTagTimeline = useCallback(() => {
+    if (newTagName.trim() === '') return
+
+    const newId = `tag-${newTagName.trim()}`
+
+    // Check if tag timeline already exists
+    if (
+      timelineSettings.timelines.some((t) => t.id === newId)
+    ) {
+      alert('This tag timeline already exists')
+      return
+    }
+
+    const maxOrder = Math.max(
+      ...timelineSettings.timelines.map((t) => t.order),
+      -1
+    )
+
+    setTimelineSettings((prev) => ({
+      ...prev,
+      timelines: [
+        ...prev.timelines,
+        {
+          id: newId,
+          type: 'tag' as TimelineType,
+          visible: true,
+          order: maxOrder + 1,
+          tag: newTagName.trim(),
+        },
+      ],
+    }))
+
+    setNewTagName('')
+  }, [
+    newTagName,
+    timelineSettings.timelines,
+    setTimelineSettings,
+  ])
+
+  const onAddCoreTimeline = useCallback(
+    (type: TimelineType) => {
+      const newId = type
+
+      // Check if timeline already exists
+      if (
+        timelineSettings.timelines.some(
+          (t) => t.id === newId
+        )
+      ) {
+        alert('This timeline already exists')
+        return
+      }
+
+      const maxOrder = Math.max(
+        ...timelineSettings.timelines.map((t) => t.order),
+        -1
+      )
+
+      setTimelineSettings((prev) => ({
+        ...prev,
+        timelines: [
+          ...prev.timelines,
+          {
+            id: newId,
+            type,
+            visible: true,
+            order: maxOrder + 1,
+          },
+        ],
+      }))
+    },
+    [timelineSettings.timelines, setTimelineSettings]
+  )
+
+  return (
+    <Panel
+      name="Timeline Management"
+      className="overflow-y-auto"
+    >
+      <div className="space-y-4 p-2">
+        <div>
+          <h3 className="mb-2 text-sm font-semibold">
+            Timelines
+          </h3>
+          <div className="space-y-2">
+            {sortedTimelines.map((timeline, index) => (
+              <TimelineConfigItem
+                key={timeline.id}
+                timeline={timeline}
+                onToggleVisibility={onToggleVisibility}
+                onDelete={
+                  timeline.type === 'tag'
+                    ? onDelete
+                    : undefined
+                }
+                onMoveUp={onMoveUp}
+                onMoveDown={onMoveDown}
+                canMoveUp={index > 0}
+                canMoveDown={
+                  index < sortedTimelines.length - 1
+                }
+              />
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <h3 className="mb-2 text-sm font-semibold">
+            Add Timeline
+          </h3>
+          <div className="space-y-2">
+            <div className="flex space-x-2">
+              {(
+                [
+                  'home',
+                  'local',
+                  'public',
+                  'notification',
+                ] as TimelineType[]
+              ).map((type) => (
+                <button
+                  key={type}
+                  onClick={() => onAddCoreTimeline(type)}
+                  className="rounded bg-slate-600 px-2 py-1 text-xs hover:bg-slate-500 disabled:bg-slate-700 disabled:text-gray-500"
+                  disabled={timelineSettings.timelines.some(
+                    (t) => t.id === type
+                  )}
+                >
+                  {type.charAt(0).toUpperCase() +
+                    type.slice(1)}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex space-x-2">
+              <input
+                type="text"
+                value={newTagName}
+                onChange={(
+                  e: ChangeEvent<HTMLInputElement>
+                ) => setNewTagName(e.target.value)}
+                placeholder="Tag name"
+                className="flex-1 rounded bg-gray-700 px-2 py-1 text-sm text-white"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    onAddTagTimeline()
+                  }
+                }}
+              />
+              <button
+                onClick={onAddTagTimeline}
+                className="rounded bg-blue-600 px-3 py-1 text-sm hover:bg-blue-500"
+                disabled={newTagName.trim() === ''}
+              >
+                <RiAddLine size={16} />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Panel>
+  )
+}

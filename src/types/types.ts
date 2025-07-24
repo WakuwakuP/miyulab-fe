@@ -34,3 +34,22 @@ export type AccountAddAppIndex = Entity.Account & {
 export type PollAddAppIndex = Entity.Poll & {
   appIndex: number
 }
+
+export type TimelineType =
+  | 'home'
+  | 'local'
+  | 'public'
+  | 'notification'
+  | 'tag'
+
+export type TimelineConfig = {
+  id: string
+  type: TimelineType
+  visible: boolean
+  order: number
+  tag?: string // Only used for tag timelines
+}
+
+export type TimelineSettings = {
+  timelines: TimelineConfig[]
+}
