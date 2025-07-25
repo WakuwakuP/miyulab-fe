@@ -40,8 +40,10 @@ export const MainPanel = () => {
     useContext(SettingContext)
   const [account, setAccount] =
     useState<Entity.Account | null>(null)
-  const [showTimelineManagement, setShowTimelineManagement] =
-    useState(false)
+  const [
+    showTimelineManagement,
+    setShowTimelineManagement,
+  ] = useState(false)
 
   // form state
   const [visibility, setVisibility] =
@@ -163,7 +165,9 @@ export const MainPanel = () => {
             <TimelineManagement />
             <button
               className="absolute top-2 right-2 text-white hover:text-gray-300"
-              onClick={() => setShowTimelineManagement(false)}
+              onClick={() =>
+                setShowTimelineManagement(false)
+              }
             >
               <RiCloseCircleLine size={24} />
             </button>
@@ -177,7 +181,9 @@ export const MainPanel = () => {
               account={{ ...account, appIndex: 0 }}
             />
             <button
-              onClick={() => setShowTimelineManagement(true)}
+              onClick={() =>
+                setShowTimelineManagement(true)
+              }
               className="text-gray-400 hover:text-white"
               title="Timeline Management"
             >

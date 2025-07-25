@@ -2,13 +2,24 @@
 
 import {
   type ChangeEvent,
-  type DragEvent,
-  type ReactNode,
   useCallback,
   useContext,
   useState,
 } from 'react'
 
+import {
+  DndContext,
+  type DragEndEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import {
   RiAddLine,
   RiDeleteBinLine,
@@ -26,19 +37,7 @@ import {
   TimelineContext,
 } from 'util/provider/TimelineProvider'
 
-const TimelineItem = ({
-  children,
-  className = '',
-}: {
-  children: ReactNode
-  className?: string
-}) => (
-  <div className={'flex items-center py-1 ' + className}>
-    {children}
-  </div>
-)
-
-const TimelineConfigItem = ({
+const SortableTimelineItem = ({
   timeline,
   onToggleVisibility,
   onDelete,
@@ -46,10 +45,6 @@ const TimelineConfigItem = ({
   onMoveDown,
   canMoveUp,
   canMoveDown,
-  onDragStart,
-  onDragOver,
-  onDrop,
-  isDragging,
 }: {
   timeline: TimelineConfig
   onToggleVisibility: (id: string) => void
@@ -58,11 +53,21 @@ const TimelineConfigItem = ({
   onMoveDown: (id: string) => void
   canMoveUp: boolean
   canMoveDown: boolean
-  onDragStart: (e: DragEvent, id: string) => void
-  onDragOver: (e: DragEvent) => void
-  onDrop: (e: DragEvent, id: string) => void
-  isDragging: boolean
 }) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: timeline.id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
+
   const getTimelineName = (timeline: TimelineConfig) => {
     switch (timeline.type) {
       case 'home':
@@ -81,18 +86,14 @@ const TimelineConfigItem = ({
   }
 
   return (
-    <TimelineItem
-      className={`justify-between border-b border-gray-600 pb-2 ${
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-center justify-between py-1 border-b border-gray-600 pb-2 ${
         isDragging ? 'opacity-50' : ''
       }`}
     >
-      <div
-        className="flex items-center space-x-2 flex-1 cursor-move"
-        draggable
-        onDragStart={(e) => onDragStart(e, timeline.id)}
-        onDragOver={onDragOver}
-        onDrop={(e) => onDrop(e, timeline.id)}
-      >
+      <div className="flex items-center space-x-2 flex-1">
         <button
           onClick={() => onToggleVisibility(timeline.id)}
           className="text-gray-400 hover:text-white"
@@ -108,17 +109,23 @@ const TimelineConfigItem = ({
             <RiEyeOffLine size={20} />
           )}
         </button>
-        <RiDragMove2Line
-          size={16}
-          className="text-gray-400"
-        />
-        <span
-          className={
-            timeline.visible ? '' : 'text-gray-500'
-          }
+        <div
+          className="flex items-center space-x-2 cursor-move"
+          {...attributes}
+          {...listeners}
         >
-          {getTimelineName(timeline)}
-        </span>
+          <RiDragMove2Line
+            size={16}
+            className="text-gray-400"
+          />
+          <span
+            className={
+              timeline.visible ? '' : 'text-gray-500'
+            }
+          >
+            {getTimelineName(timeline)}
+          </span>
+        </div>
       </div>
       <div className="flex items-center space-x-1">
         <button
@@ -147,7 +154,7 @@ const TimelineConfigItem = ({
           </button>
         )}
       </div>
-    </TimelineItem>
+    </div>
   )
 }
 
@@ -155,9 +162,14 @@ export const TimelineManagement = () => {
   const timelineSettings = useContext(TimelineContext)
   const setTimelineSettings = useContext(SetTimelineContext)
   const [newTagName, setNewTagName] = useState('')
-  const [draggedItem, setDraggedItem] = useState<
-    string | null
-  >(null)
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    })
+  )
 
   const sortedTimelines = [
     ...timelineSettings.timelines,
@@ -333,96 +345,85 @@ export const TimelineManagement = () => {
     [timelineSettings.timelines, setTimelineSettings]
   )
 
-  const onDragStart = useCallback(
-    (e: DragEvent, id: string) => {
-      setDraggedItem(id)
-      e.dataTransfer.effectAllowed = 'move'
-    },
-    []
-  )
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event
 
-  const onDragOver = useCallback((e: DragEvent) => {
-    e.preventDefault()
-    e.dataTransfer.dropEffect = 'move'
-  }, [])
-
-  const onDrop = useCallback(
-    (e: DragEvent, targetId: string) => {
-      e.preventDefault()
-
-      if (draggedItem == null || draggedItem === targetId) {
-        setDraggedItem(null)
+      if (over == null || active.id === over.id) {
         return
       }
 
-      const draggedTimeline =
-        timelineSettings.timelines.find(
-          (t) => t.id === draggedItem
-        )
-      const targetTimeline =
-        timelineSettings.timelines.find(
-          (t) => t.id === targetId
-        )
+      const oldIndex = sortedTimelines.findIndex(
+        (timeline) => timeline.id === active.id
+      )
+      const newIndex = sortedTimelines.findIndex(
+        (timeline) => timeline.id === over.id
+      )
 
-      if (
-        draggedTimeline == null ||
-        targetTimeline == null
-      ) {
-        setDraggedItem(null)
+      if (oldIndex === -1 || newIndex === -1) {
         return
       }
 
-      // Swap the orders
+      // Create new order values
+      const updatedTimelines = [...sortedTimelines]
+      const [movedTimeline] = updatedTimelines.splice(
+        oldIndex,
+        1
+      )
+      updatedTimelines.splice(newIndex, 0, movedTimeline)
+
+      // Update orders
+      const newTimelineSettings = updatedTimelines.map(
+        (timeline, index) => ({
+          ...timeline,
+          order: index,
+        })
+      )
+
       setTimelineSettings((prev) => ({
         ...prev,
-        timelines: prev.timelines.map((t) => {
-          if (t.id === draggedItem) {
-            return { ...t, order: targetTimeline.order }
-          }
-          if (t.id === targetId) {
-            return { ...t, order: draggedTimeline.order }
-          }
-          return t
-        }),
+        timelines: newTimelineSettings,
       }))
-
-      setDraggedItem(null)
     },
-    [
-      draggedItem,
-      timelineSettings.timelines,
-      setTimelineSettings,
-    ]
+    [sortedTimelines, setTimelineSettings]
   )
 
   return (
     <div className="p-2 pt-4 h-full overflow-y-auto">
-      <h3 className="mb-4 text-lg font-semibold">Timeline Management</h3>
+      <h3 className="mb-4 text-lg font-semibold">
+        Timeline Management
+      </h3>
       <div className="space-y-4">
         <div>
           <h4 className="mb-2 text-sm font-semibold">
             Timelines
           </h4>
-          <div className="space-y-2">
-            {sortedTimelines.map((timeline, index) => (
-              <TimelineConfigItem
-                key={timeline.id}
-                timeline={timeline}
-                onToggleVisibility={onToggleVisibility}
-                onDelete={onDelete}
-                onMoveUp={onMoveUp}
-                onMoveDown={onMoveDown}
-                canMoveUp={index > 0}
-                canMoveDown={
-                  index < sortedTimelines.length - 1
-                }
-                onDragStart={onDragStart}
-                onDragOver={onDragOver}
-                onDrop={onDrop}
-                isDragging={draggedItem === timeline.id}
-              />
-            ))}
-          </div>
+          <DndContext
+            sensors={sensors}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={sortedTimelines.map((t) => t.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <div className="space-y-2">
+                {sortedTimelines.map((timeline, index) => (
+                  <SortableTimelineItem
+                    key={timeline.id}
+                    timeline={timeline}
+                    onToggleVisibility={onToggleVisibility}
+                    onDelete={onDelete}
+                    onMoveUp={onMoveUp}
+                    onMoveDown={onMoveDown}
+                    canMoveUp={index > 0}
+                    canMoveDown={
+                      index < sortedTimelines.length - 1
+                    }
+                  />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
         </div>
 
         <div>
