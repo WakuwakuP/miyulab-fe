@@ -17,7 +17,6 @@ import {
   RiEyeOffLine,
 } from 'react-icons/ri'
 
-import { Panel } from 'app/_parts/Panel'
 import {
   type TimelineConfig,
   type TimelineType,
@@ -397,15 +396,13 @@ export const TimelineManagement = () => {
   )
 
   return (
-    <Panel
-      name="Timeline Management"
-      className="overflow-y-auto"
-    >
-      <div className="space-y-4 p-2">
+    <div className="p-2 pt-4 h-full overflow-y-auto">
+      <h3 className="mb-4 text-lg font-semibold">Timeline Management</h3>
+      <div className="space-y-4">
         <div>
-          <h3 className="mb-2 text-sm font-semibold">
+          <h4 className="mb-2 text-sm font-semibold">
             Timelines
-          </h3>
+          </h4>
           <div className="space-y-2">
             {sortedTimelines.map((timeline, index) => (
               <TimelineConfigItem
@@ -429,9 +426,9 @@ export const TimelineManagement = () => {
         </div>
 
         <div>
-          <h3 className="mb-2 text-sm font-semibold">
+          <h4 className="mb-2 text-sm font-semibold">
             Add Timeline
-          </h3>
+          </h4>
           <div className="space-y-2">
             <div className="flex space-x-2">
               {(
@@ -482,6 +479,6 @@ export const TimelineManagement = () => {
           </div>
         </div>
       </div>
-    </Panel>
+    </div>
   )
 }

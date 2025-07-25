@@ -29,7 +29,7 @@ import {
 } from 'util/provider/ReplyToProvider'
 import { SettingContext } from 'util/provider/SettingProvider'
 
-import { GettingStarted } from './GettingStarted'
+import { TimelineManagement } from './TimelineManagement'
 
 export const MainPanel = () => {
   const apps = useContext(AppsContext)
@@ -40,7 +40,7 @@ export const MainPanel = () => {
     useContext(SettingContext)
   const [account, setAccount] =
     useState<Entity.Account | null>(null)
-  const [showGettingStarted, setShowGettingStarted] =
+  const [showTimelineManagement, setShowTimelineManagement] =
     useState(false)
 
   // form state
@@ -157,13 +157,13 @@ export const MainPanel = () => {
 
   return (
     <>
-      {showGettingStarted && (
+      {showTimelineManagement && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-          <div className="w-96 h-96 bg-gray-900 rounded-lg">
-            <GettingStarted />
+          <div className="w-96 h-96 bg-gray-900 rounded-lg relative">
+            <TimelineManagement />
             <button
               className="absolute top-2 right-2 text-white hover:text-gray-300"
-              onClick={() => setShowGettingStarted(false)}
+              onClick={() => setShowTimelineManagement(false)}
             >
               <RiCloseCircleLine size={24} />
             </button>
@@ -177,9 +177,9 @@ export const MainPanel = () => {
               account={{ ...account, appIndex: 0 }}
             />
             <button
-              onClick={() => setShowGettingStarted(true)}
+              onClick={() => setShowTimelineManagement(true)}
               className="text-gray-400 hover:text-white"
-              title="Settings & Timeline Management"
+              title="Timeline Management"
             >
               <RiSettings4Line size={20} />
             </button>
