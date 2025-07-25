@@ -175,7 +175,6 @@ export const LocalTimeline = () => {
             <Status
               key={status.id}
               status={status}
-              inTimeline
             />
           )}
         />
