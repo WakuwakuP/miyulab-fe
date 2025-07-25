@@ -12,7 +12,6 @@ import { type Entity } from 'megalodon'
 import {
   RiCloseCircleLine,
   RiPlayFill,
-  RiSettings4Line,
 } from 'react-icons/ri'
 import ReactPlayer from 'react-player'
 
@@ -29,8 +28,6 @@ import {
 } from 'util/provider/ReplyToProvider'
 import { SettingContext } from 'util/provider/SettingProvider'
 
-import { TimelineManagement } from './TimelineManagement'
-
 export const MainPanel = () => {
   const apps = useContext(AppsContext)
   const replyTo = useContext(ReplyToContext)
@@ -40,10 +37,6 @@ export const MainPanel = () => {
     useContext(SettingContext)
   const [account, setAccount] =
     useState<Entity.Account | null>(null)
-  const [
-    showTimelineManagement,
-    setShowTimelineManagement,
-  ] = useState(false)
 
   // form state
   const [visibility, setVisibility] =
@@ -159,36 +152,12 @@ export const MainPanel = () => {
 
   return (
     <>
-      {showTimelineManagement && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-          <div className="w-96 h-96 bg-gray-900 rounded-lg relative">
-            <TimelineManagement />
-            <button
-              className="absolute top-2 right-2 text-white hover:text-gray-300"
-              onClick={() =>
-                setShowTimelineManagement(false)
-              }
-            >
-              <RiCloseCircleLine size={24} />
-            </button>
-          </div>
-        </div>
-      )}
       <Panel className="p-1">
         <div className="relative h-full">
           <div className="flex items-center justify-between mb-2">
             <UserInfo
               account={{ ...account, appIndex: 0 }}
             />
-            <button
-              onClick={() =>
-                setShowTimelineManagement(true)
-              }
-              className="text-gray-400 hover:text-white"
-              title="Timeline Management"
-            >
-              <RiSettings4Line size={20} />
-            </button>
           </div>
           <div className="px-2 *:mt-2">
             <div className="flex items-center space-x-2">
