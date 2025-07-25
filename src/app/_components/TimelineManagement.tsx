@@ -2,6 +2,7 @@
 
 import {
   type ChangeEvent,
+  type DragEvent,
   type ReactNode,
   useCallback,
   useContext,
@@ -46,6 +47,10 @@ const TimelineConfigItem = ({
   onMoveDown,
   canMoveUp,
   canMoveDown,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  isDragging,
 }: {
   timeline: TimelineConfig
   onToggleVisibility: (id: string) => void
@@ -54,6 +59,10 @@ const TimelineConfigItem = ({
   onMoveDown: (id: string) => void
   canMoveUp: boolean
   canMoveDown: boolean
+  onDragStart: (e: DragEvent, id: string) => void
+  onDragOver: (e: DragEvent) => void
+  onDrop: (e: DragEvent, id: string) => void
+  isDragging: boolean
 }) => {
   const getTimelineName = (timeline: TimelineConfig) => {
     switch (timeline.type) {
@@ -73,8 +82,18 @@ const TimelineConfigItem = ({
   }
 
   return (
-    <TimelineItem className="justify-between border-b border-gray-600 pb-2">
-      <div className="flex items-center space-x-2">
+    <TimelineItem
+      className={`justify-between border-b border-gray-600 pb-2 ${
+        isDragging ? 'opacity-50' : ''
+      }`}
+    >
+      <div
+        className="flex items-center space-x-2 flex-1 cursor-move"
+        draggable
+        onDragStart={(e) => onDragStart(e, timeline.id)}
+        onDragOver={onDragOver}
+        onDrop={(e) => onDrop(e, timeline.id)}
+      >
         <button
           onClick={() => onToggleVisibility(timeline.id)}
           className="text-gray-400 hover:text-white"
@@ -90,6 +109,10 @@ const TimelineConfigItem = ({
             <RiEyeOffLine size={20} />
           )}
         </button>
+        <RiDragMove2Line
+          size={16}
+          className="text-gray-400"
+        />
         <span
           className={
             timeline.visible ? '' : 'text-gray-500'
@@ -115,15 +138,11 @@ const TimelineConfigItem = ({
         >
           ↓
         </button>
-        <RiDragMove2Line
-          size={16}
-          className="text-gray-400"
-        />
-        {onDelete != null && timeline.type === 'tag' && (
+        {onDelete != null && (
           <button
             onClick={() => onDelete(timeline.id)}
             className="text-red-400 hover:text-red-300"
-            title="Delete tag timeline"
+            title="Delete timeline"
           >
             <RiDeleteBinLine size={16} />
           </button>
@@ -137,6 +156,9 @@ export const TimelineManagement = () => {
   const timelineSettings = useContext(TimelineContext)
   const setTimelineSettings = useContext(SetTimelineContext)
   const [newTagName, setNewTagName] = useState('')
+  const [draggedItem, setDraggedItem] = useState<
+    string | null
+  >(null)
 
   const sortedTimelines = [
     ...timelineSettings.timelines,
@@ -319,6 +341,68 @@ export const TimelineManagement = () => {
     [timelineSettings.timelines, setTimelineSettings]
   )
 
+  const onDragStart = useCallback(
+    (e: DragEvent, id: string) => {
+      setDraggedItem(id)
+      e.dataTransfer.effectAllowed = 'move'
+    },
+    []
+  )
+
+  const onDragOver = useCallback((e: DragEvent) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+  }, [])
+
+  const onDrop = useCallback(
+    (e: DragEvent, targetId: string) => {
+      e.preventDefault()
+
+      if (draggedItem == null || draggedItem === targetId) {
+        setDraggedItem(null)
+        return
+      }
+
+      const draggedTimeline =
+        timelineSettings.timelines.find(
+          (t) => t.id === draggedItem
+        )
+      const targetTimeline =
+        timelineSettings.timelines.find(
+          (t) => t.id === targetId
+        )
+
+      if (
+        draggedTimeline == null ||
+        targetTimeline == null
+      ) {
+        setDraggedItem(null)
+        return
+      }
+
+      // Swap the orders
+      setTimelineSettings((prev) => ({
+        ...prev,
+        timelines: prev.timelines.map((t) => {
+          if (t.id === draggedItem) {
+            return { ...t, order: targetTimeline.order }
+          }
+          if (t.id === targetId) {
+            return { ...t, order: draggedTimeline.order }
+          }
+          return t
+        }),
+      }))
+
+      setDraggedItem(null)
+    },
+    [
+      draggedItem,
+      timelineSettings.timelines,
+      setTimelineSettings,
+    ]
+  )
+
   return (
     <Panel
       name="Timeline Management"
@@ -335,17 +419,17 @@ export const TimelineManagement = () => {
                 key={timeline.id}
                 timeline={timeline}
                 onToggleVisibility={onToggleVisibility}
-                onDelete={
-                  timeline.type === 'tag'
-                    ? onDelete
-                    : undefined
-                }
+                onDelete={onDelete}
                 onMoveUp={onMoveUp}
                 onMoveDown={onMoveDown}
                 canMoveUp={index > 0}
                 canMoveDown={
                   index < sortedTimelines.length - 1
                 }
+                onDragStart={onDragStart}
+                onDragOver={onDragOver}
+                onDrop={onDrop}
+                isDragging={draggedItem === timeline.id}
               />
             ))}
           </div>

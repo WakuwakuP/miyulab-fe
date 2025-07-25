@@ -12,6 +12,7 @@ import { type Entity } from 'megalodon'
 import {
   RiCloseCircleLine,
   RiPlayFill,
+  RiSettings4Line,
 } from 'react-icons/ri'
 import ReactPlayer from 'react-player'
 
@@ -28,6 +29,8 @@ import {
 } from 'util/provider/ReplyToProvider'
 import { SettingContext } from 'util/provider/SettingProvider'
 
+import { GettingStarted } from './GettingStarted'
+
 export const MainPanel = () => {
   const apps = useContext(AppsContext)
   const replyTo = useContext(ReplyToContext)
@@ -37,6 +40,8 @@ export const MainPanel = () => {
     useContext(SettingContext)
   const [account, setAccount] =
     useState<Entity.Account | null>(null)
+  const [showGettingStarted, setShowGettingStarted] =
+    useState(false)
 
   // form state
   const [visibility, setVisibility] =
@@ -151,159 +156,187 @@ export const MainPanel = () => {
   }
 
   return (
-    <Panel className="p-1">
-      <div className="relative h-full">
-        <UserInfo account={{ ...account, appIndex: 0 }} />
-        <div className="px-2 *:mt-2">
-          <div className="flex items-center space-x-2">
-            <div>
-              <select
-                id="visibility"
-                name="visibility"
-                className="w-fit rounded-md border text-black"
-                value={visibility}
-                onChange={(e) =>
-                  setVisibility(
-                    e.target
-                      .value as Entity.StatusVisibility
-                  )
-                }
-              >
-                <option value="public">Public</option>
-                <option value="unlisted">Unlisted</option>
-                <option value="private">Private</option>
-                <option value="direct">Direct</option>
-              </select>
-            </div>
-            <div>
-              <label
-                htmlFor="is-cw"
-                className="cursor-pointer rounded-md border px-3 py-2"
-              >
-                <input
-                  id="is-cw"
-                  name="is-cw"
-                  type="checkbox"
-                  className="hidden"
-                  checked={isCW}
-                  onChange={(e) =>
-                    setIsCW(e.target.checked)
-                  }
-                />
-                <span
-                  className={isCW ? 'text-blue-400' : ''}
-                >
-                  CW
-                </span>
-              </label>
-            </div>
+    <>
+      {showGettingStarted && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+          <div className="w-96 h-96 bg-gray-900 rounded-lg">
+            <GettingStarted />
+            <button
+              className="absolute top-2 right-2 text-white hover:text-gray-300"
+              onClick={() => setShowGettingStarted(false)}
+            >
+              <RiCloseCircleLine size={24} />
+            </button>
           </div>
-
-          <div className={isCW ? 'block' : 'hidden'}>
-            <input
-              className="w-full"
-              placeholder="CW"
-              value={spoilerText}
-              onChange={(e) =>
-                setSpoilerText(e.target.value)
-              }
+        </div>
+      )}
+      <Panel className="p-1">
+        <div className="relative h-full">
+          <div className="flex items-center justify-between mb-2">
+            <UserInfo
+              account={{ ...account, appIndex: 0 }}
             />
+            <button
+              onClick={() => setShowGettingStarted(true)}
+              className="text-gray-400 hover:text-white"
+              title="Settings & Timeline Management"
+            >
+              <RiSettings4Line size={20} />
+            </button>
           </div>
-          <div>
-            {replyTo != null && (
-              <div className="rounded-md bg-gray-500 p-1">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-1">
-                    <img
-                      src={replyTo.account.avatar}
-                      alt={replyTo.account.display_name}
-                      className="h-8 w-8 rounded-md"
-                      loading="lazy"
-                    />
-                    <div>
+          <div className="px-2 *:mt-2">
+            <div className="flex items-center space-x-2">
+              <div>
+                <select
+                  id="visibility"
+                  name="visibility"
+                  className="w-fit rounded-md border text-black"
+                  value={visibility}
+                  onChange={(e) =>
+                    setVisibility(
+                      e.target
+                        .value as Entity.StatusVisibility
+                    )
+                  }
+                >
+                  <option value="public">Public</option>
+                  <option value="unlisted">Unlisted</option>
+                  <option value="private">Private</option>
+                  <option value="direct">Direct</option>
+                </select>
+              </div>
+              <div>
+                <label
+                  htmlFor="is-cw"
+                  className="cursor-pointer rounded-md border px-3 py-2"
+                >
+                  <input
+                    id="is-cw"
+                    name="is-cw"
+                    type="checkbox"
+                    className="hidden"
+                    checked={isCW}
+                    onChange={(e) =>
+                      setIsCW(e.target.checked)
+                    }
+                  />
+                  <span
+                    className={isCW ? 'text-blue-400' : ''}
+                  >
+                    CW
+                  </span>
+                </label>
+              </div>
+            </div>
+
+            <div className={isCW ? 'block' : 'hidden'}>
+              <input
+                className="w-full"
+                placeholder="CW"
+                value={spoilerText}
+                onChange={(e) =>
+                  setSpoilerText(e.target.value)
+                }
+              />
+            </div>
+            <div>
+              {replyTo != null && (
+                <div className="rounded-md bg-gray-500 p-1">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-1">
+                      <img
+                        src={replyTo.account.avatar}
+                        alt={replyTo.account.display_name}
+                        className="h-8 w-8 rounded-md"
+                        loading="lazy"
+                      />
                       <div>
-                        <span>
-                          {replyTo.account.display_name}
-                        </span>
+                        <div>
+                          <span>
+                            {replyTo.account.display_name}
+                          </span>
+                        </div>
                       </div>
                     </div>
+                    <div>
+                      <button
+                        onClick={() => {
+                          setReplyTo(undefined)
+                        }}
+                      >
+                        <RiCloseCircleLine size={32} />
+                      </button>
+                    </div>
                   </div>
-                  <div>
-                    <button
-                      onClick={() => {
-                        setReplyTo(undefined)
-                      }}
-                    >
-                      <RiCloseCircleLine size={32} />
-                    </button>
-                  </div>
+                  <div
+                    className="content p-2"
+                    dangerouslySetInnerHTML={{
+                      __html: getContentFormatted(replyTo),
+                    }}
+                  />
                 </div>
-                <div
-                  className="content p-2"
-                  dangerouslySetInnerHTML={{
-                    __html: getContentFormatted(replyTo),
-                  }}
-                />
-              </div>
-            )}
+              )}
+            </div>
+            <div className="text-black">
+              <StatusRichTextarea
+                text={content}
+                placeholder="What's happening?"
+                onSubmit={clickPost}
+                style={{
+                  width: '100%',
+                  height: '10rem',
+                  backgroundColor: 'white',
+                  overflowY: 'auto',
+                  resize: 'none',
+                }}
+                onChange={setContent}
+                setAttachments={setAttachments}
+                setUploading={setUploading}
+              />
+            </div>
+            <div>
+              <button
+                className="rounded-md border bg-slate-500 px-3 py-2"
+                onClick={clickPost}
+              >
+                Post
+              </button>
+            </div>
+            <div>
+              <Dropzone
+                attachments={attachments}
+                setAttachments={setAttachments}
+                uploading={uploading}
+                setUploading={setUploading}
+              >
+                <div className="flex h-48 w-full cursor-pointer flex-wrap items-center justify-center border-4 border-dotted border-gray-400">
+                  <p>Image Drop Area</p>
+                </div>
+              </Dropzone>
+            </div>
           </div>
-          <div className="text-black">
-            <StatusRichTextarea
-              text={content}
-              placeholder="What's happening?"
-              onSubmit={clickPost}
-              style={{
-                width: '100%',
-                height: '10rem',
-                backgroundColor: 'white',
-                overflowY: 'auto',
-                resize: 'none',
-              }}
-              onChange={setContent}
-              setAttachments={setAttachments}
-              setUploading={setUploading}
-            />
-          </div>
-          <div>
-            <button
-              className="rounded-md border bg-slate-500 px-3 py-2"
-              onClick={clickPost}
-            >
-              Post
-            </button>
-          </div>
-          <div>
-            <Dropzone
-              attachments={attachments}
-              setAttachments={setAttachments}
-              uploading={uploading}
-              setUploading={setUploading}
-            >
-              <div className="flex h-48 w-full cursor-pointer flex-wrap items-center justify-center border-4 border-dotted border-gray-400">
-                <p>Image Drop Area</p>
-              </div>
-            </Dropzone>
-          </div>
-        </div>
-        <div className="absolute bottom-0 left-0 right-0">
-          <div className="flex p-2">
-            <input
-              type="text"
-              className="min-w-0 grow bg-gray-600 text-white"
-              placeholder="media link"
-              value={mediaLink}
-              onChange={(e) => setMediaLink(e.target.value)}
-            />
-            <button
-              className="border p-2 disabled:border-gray-600 disabled:text-gray-600"
-              disabled={!isPlay}
-              onClick={onPlay}
-            >
-              <RiPlayFill size={30} />
-            </button>
+          <div className="absolute bottom-0 left-0 right-0">
+            <div className="flex p-2">
+              <input
+                type="text"
+                className="min-w-0 grow bg-gray-600 text-white"
+                placeholder="media link"
+                value={mediaLink}
+                onChange={(e) =>
+                  setMediaLink(e.target.value)
+                }
+              />
+              <button
+                className="border p-2 disabled:border-gray-600 disabled:text-gray-600"
+                disabled={!isPlay}
+                onClick={onPlay}
+              >
+                <RiPlayFill size={30} />
+              </button>
+            </div>
           </div>
         </div>
-      </div>
-    </Panel>
+      </Panel>
+    </>
   )
 }

@@ -4,7 +4,6 @@ import { useContext } from 'react'
 
 import { DetailPanel } from 'app/_components/DetailPanel'
 import { DynamicTimeline } from 'app/_components/DynamicTimeline'
-import { GettingStarted } from 'app/_components/GettingStarted'
 import { MainPanel } from 'app/_components/MainPanel'
 import { MediaModal } from 'app/_components/MediaModal'
 import { TimelineContext } from 'util/provider/TimelineProvider'
@@ -21,7 +20,6 @@ export default function Home() {
 
   return (
     <main className="flex overflow-y-visible overflow-x-scroll *:w-[calc(100vw/6)] *:min-w-60 *:shrink-0">
-      <GettingStarted />
       <MainPanel />
       {visibleTimelines.map((timelineConfig) => (
         <DynamicTimeline
