@@ -14,6 +14,7 @@ import { RiArrowLeftSLine } from 'react-icons/ri'
 import { Virtuoso } from 'react-virtuoso'
 
 import { SettingPanel } from 'app/_components/SettingPanel'
+import { TimelineManagement } from 'app/_components/TimelineManagement'
 import { Panel } from 'app/_parts/Panel'
 import { Status } from 'app/_parts/Status'
 import { type StatusAddAppIndex } from 'types/types'
@@ -26,7 +27,12 @@ export const GettingStarted = () => {
   const apps = useContext(AppsContext)
   const [appIndex, setAppIndex] = useState(0)
   const [selected, setSelected] = useState<
-    'bookmark' | 'dm' | 'setting' | 'accounts' | null
+    | 'bookmark'
+    | 'dm'
+    | 'setting'
+    | 'timeline'
+    | 'accounts'
+    | null
   >(null)
 
   const [title, setTitle] = useState<string>(
@@ -257,6 +263,12 @@ export const GettingStarted = () => {
             </button>
             <button
               className="w-full border-b px-4 py-2 text-xl hover:bg-slate-800"
+              onClick={() => setSelected('timeline')}
+            >
+              Timeline Management
+            </button>
+            <button
+              className="w-full border-b px-4 py-2 text-xl hover:bg-slate-800"
               onClick={() => setSelected('accounts')}
             >
               Accounts
@@ -315,6 +327,12 @@ export const GettingStarted = () => {
       {selected === 'setting' && (
         <div className="h-[calc(100%-32px)]">
           <SettingPanel />
+        </div>
+      )}
+
+      {selected === 'timeline' && (
+        <div className="h-[calc(100%-32px)]">
+          <TimelineManagement />
         </div>
       )}
 

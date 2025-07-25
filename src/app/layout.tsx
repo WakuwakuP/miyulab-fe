@@ -14,6 +14,7 @@ import { ReplyToProvider } from 'util/provider/ReplyToProvider'
 import { ResourceProvider } from 'util/provider/ResourceProvider'
 import { SettingProvider } from 'util/provider/SettingProvider'
 import { SuspenseProvider } from 'util/provider/SuspenseProvider'
+import { TimelineProvider } from 'util/provider/TimelineProvider'
 
 import './globals.css'
 
@@ -36,25 +37,27 @@ export default function RootLayout({
         <SuspenseProvider>
           <AppsProvider>
             <SettingProvider>
-              <Suspense>
-                <ResourceProvider>
-                  <ReplyToProvider>
-                    <DetailProvider>
-                      <MediaModalProvider>
-                        <PlayerProvider>
-                          <HomeTimelineProvider>
-                            <Toaster
-                              position="bottom-left"
-                              reverseOrder={false}
-                            />
-                            {children}
-                          </HomeTimelineProvider>
-                        </PlayerProvider>
-                      </MediaModalProvider>
-                    </DetailProvider>
-                  </ReplyToProvider>
-                </ResourceProvider>
-              </Suspense>
+              <TimelineProvider>
+                <Suspense>
+                  <ResourceProvider>
+                    <ReplyToProvider>
+                      <DetailProvider>
+                        <MediaModalProvider>
+                          <PlayerProvider>
+                            <HomeTimelineProvider>
+                              <Toaster
+                                position="bottom-left"
+                                reverseOrder={false}
+                              />
+                              {children}
+                            </HomeTimelineProvider>
+                          </PlayerProvider>
+                        </MediaModalProvider>
+                      </DetailProvider>
+                    </ReplyToProvider>
+                  </ResourceProvider>
+                </Suspense>
+              </TimelineProvider>
             </SettingProvider>
           </AppsProvider>
         </SuspenseProvider>
