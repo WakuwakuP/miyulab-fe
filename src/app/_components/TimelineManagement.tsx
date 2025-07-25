@@ -197,16 +197,13 @@ export const TimelineManagement = () => {
       )
       if (timeline == null) return
 
-      const visibleTimelines = sortedTimelines.filter(
-        (t) => t.visible
-      )
-      const currentIndex = visibleTimelines.findIndex(
+      const currentIndex = sortedTimelines.findIndex(
         (t) => t.id === id
       )
       if (currentIndex <= 0) return
 
       const targetTimeline =
-        visibleTimelines[currentIndex - 1]
+        sortedTimelines[currentIndex - 1]
 
       setTimelineSettings((prev) => ({
         ...prev,
@@ -235,17 +232,13 @@ export const TimelineManagement = () => {
       )
       if (timeline == null) return
 
-      const visibleTimelines = sortedTimelines.filter(
-        (t) => t.visible
-      )
-      const currentIndex = visibleTimelines.findIndex(
+      const currentIndex = sortedTimelines.findIndex(
         (t) => t.id === id
       )
-      if (currentIndex >= visibleTimelines.length - 1)
-        return
+      if (currentIndex >= sortedTimelines.length - 1) return
 
       const targetTimeline =
-        visibleTimelines[currentIndex + 1]
+        sortedTimelines[currentIndex + 1]
 
       setTimelineSettings((prev) => ({
         ...prev,
