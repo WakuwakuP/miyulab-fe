@@ -131,25 +131,32 @@ const SettingSelect = ({
 export const SettingPanel = () => {
   const setting = useContext(SettingContext)
   const setSetting = useContext(SetSettingContext)
-  const [showTimelineManagement, setShowTimelineManagement] = useState(false)
+  const [
+    showTimelineManagement,
+    setShowTimelineManagement,
+  ] = useState(false)
 
   return (
     <div className="p-2 pt-4">
       <SettingItem>
         <button
-          onClick={() => setShowTimelineManagement(!showTimelineManagement)}
+          onClick={() =>
+            setShowTimelineManagement(
+              !showTimelineManagement
+            )
+          }
           className="w-full text-left py-2 px-3 bg-gray-700 hover:bg-gray-600 rounded-md text-white"
         >
           Timeline Management
         </button>
       </SettingItem>
-      
+
       {showTimelineManagement && (
         <div className="mt-4 border border-gray-600 rounded-md">
           <TimelineManagement />
         </div>
       )}
-      
+
       <SettingCheckbox
         id="showSensitive"
         label="Default Show sensitive content"
