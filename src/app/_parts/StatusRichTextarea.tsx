@@ -19,6 +19,7 @@ import { type Entity } from 'megalodon'
 import * as Emoji from 'node-emoji'
 import { createPortal } from 'react-dom'
 import {
+  type CaretPosition,
   RichTextarea,
   type RichTextareaHandle,
   createRegexRenderer,
@@ -481,13 +482,7 @@ export const StatusRichTextarea = ({
               return
           }
         }}
-        onSelectionChange={(r: {
-          focused: boolean
-          selectionStart: number
-          top: number
-          left: number
-          height: number
-        }) => {
+        onSelectionChange={(r: CaretPosition) => {
           if (
             r.focused &&
             MENTION_REG.test(
@@ -496,6 +491,7 @@ export const StatusRichTextarea = ({
             isEmoji === false &&
             isTag === false
           ) {
+            // TypeScript knows r.focused is true here, so we can access position properties
             setIsMention(true)
             setPos({
               top: r.top + r.height,
