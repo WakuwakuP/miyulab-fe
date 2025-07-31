@@ -33,6 +33,20 @@ const ModalContent = () => {
 
   const [carouselApi, setCarouselApi] =
     useState<CarouselApi>()
+  const [currentSlide, setCurrentSlide] = useState(index ?? 0)
+
+  useEffect(() => {
+    if (carouselApi == null) return
+
+    const onSelect = () => {
+      setCurrentSlide(carouselApi.selectedScrollSnap())
+    }
+
+    carouselApi.on('select', onSelect)
+    return () => {
+      carouselApi.off('select', onSelect)
+    }
+  }, [carouselApi])
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -98,6 +112,9 @@ const ModalContent = () => {
                 })}
               </CarouselContent>
             </Carousel>
+          </div>
+          <div className="fixed right-4 top-4 z-51 rounded-md bg-black/70 px-2 py-1 text-sm text-white">
+            {currentSlide + 1}/{attachment.length}
           </div>
           <button
             className="fixed left-3 top-1/2 z-51 -translate-y-1/2 rounded-full bg-gray-50/50"
