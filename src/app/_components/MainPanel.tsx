@@ -154,11 +154,7 @@ export const MainPanel = () => {
     <>
       <Panel className="p-1">
         <div className="relative h-full">
-          <div className="flex items-center justify-between mb-2">
-            <UserInfo
-              account={{ ...account, appIndex: 0 }}
-            />
-          </div>
+          <UserInfo account={{ ...account, appIndex: 0 }} />
           <div className="px-2 *:mt-2">
             <div className="flex items-center space-x-2">
               <div>

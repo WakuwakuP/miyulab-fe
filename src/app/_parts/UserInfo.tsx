@@ -79,7 +79,7 @@ export const UserInfo = ({
           </div>
         </div>
       ) : (
-        <div className="w-[calc(100%-56px)] pl-2">
+        <div className="w-[calc(100%-46px)] pl-2">
           <p className="flex w-full justify-between [&>span]:inline-block">
             <span
               className="truncate"
