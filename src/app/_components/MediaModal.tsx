@@ -33,7 +33,9 @@ const ModalContent = () => {
 
   const [carouselApi, setCarouselApi] =
     useState<CarouselApi>()
-  const [currentSlide, setCurrentSlide] = useState(index ?? 0)
+  const [currentSlide, setCurrentSlide] = useState(
+    index ?? 0
+  )
 
   useEffect(() => {
     if (carouselApi == null) return
