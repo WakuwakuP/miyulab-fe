@@ -3043,16 +3043,16 @@ __metadata:
   languageName: node
   linkType: hard
 
-"eslint-plugin-unused-imports@npm:^4.1.4":
-  version: 4.1.4
-  resolution: "eslint-plugin-unused-imports@npm:4.1.4"
+"eslint-plugin-unused-imports@npm:^4.2.0":
+  version: 4.2.0
+  resolution: "eslint-plugin-unused-imports@npm:4.2.0"
   peerDependencies:
     "@typescript-eslint/eslint-plugin": ^8.0.0-0 || ^7.0.0 || ^6.0.0 || ^5.0.0
     eslint: ^9.0.0 || ^8.0.0
   peerDependenciesMeta:
     "@typescript-eslint/eslint-plugin":
       optional: true
-  checksum: 10c0/3899f64b0e8b23fa6b81e2754fc10f93d8741e051d70390a8100ca39af7878bde8625f234b76111af69562ef2512104b52c3703e986ccb3ac9adc07911896acf
+  checksum: 10c0/b6293323670dda64b0b5931ace1ab45f731e399e87da591c208da09c6bf89a84591b160b8e15e3b47f8f1f662dc80306368a60c09f833de0f6f1dbd97c247949
   languageName: node
   linkType: hard
 
@@ -4722,7 +4722,7 @@ __metadata:
     eslint-plugin-import: "npm:^2.32.0"
     eslint-plugin-jest: "npm:^29.0.1"
     eslint-plugin-tailwindcss: "npm:^4.0.0-beta.0"
-    eslint-plugin-unused-imports: "npm:^4.1.4"
+    eslint-plugin-unused-imports: "npm:^4.2.0"
     html-react-parser: "npm:^5.2.6"
     husky: "npm:^9.1.7"
     jquery: "npm:^3.7.1"
@@ -4738,7 +4738,7 @@ __metadata:
     react-dom: "npm:^19.1.1"
     react-dropzone: "npm:^14.3.8"
     react-hook-form: "npm:^7.62.0"
-    react-hot-toast: "npm:^2.5.2"
+    react-hot-toast: "npm:^2.6.0"
     react-icons: "npm:^5.5.0"
     react-innertext: "npm:^1.1.5"
     react-player: "npm:^2.16.1"
@@ -5395,16 +5395,16 @@ __metadata:
   languageName: node
   linkType: hard
 
-"react-hot-toast@npm:^2.5.2":
-  version: 2.5.2
-  resolution: "react-hot-toast@npm:2.5.2"
+"react-hot-toast@npm:^2.6.0":
+  version: 2.6.0
+  resolution: "react-hot-toast@npm:2.6.0"
   dependencies:
     csstype: "npm:^3.1.3"
     goober: "npm:^2.1.16"
   peerDependencies:
     react: ">=16"
     react-dom: ">=16"
-  checksum: 10c0/2db00b491bd1d2ec3ed04754a32b640272cdb32985f95e32ef033fcc996588a93e67d9764b005f9f391ee2bad5d0f9f343ba290dca82fcd439e08e708a161d76
+  checksum: 10c0/c25652e0a477ab501b365a6a2d20b314275a1d9963dd56a9803972d602845f0d44ade2c3345cd66ccd251d62e2e5a10001a55fd80fa183c0e41343f3780ffa9f
   languageName: node
   linkType: hard
 
