@@ -16,7 +16,6 @@
   ],
   "parserOptions": {
     "project": "./tsconfig.json",
-    "tsconfigRootDir": ".",
     "ecmaVersion": 2020,
     "sourceType": "module",
     "ecmaFeatures": {
@@ -60,15 +59,7 @@
     ],
     "computed-property-spacing": ["error", "never"],
     "func-call-spacing": ["error", "never"],
-    "indent": [
-      "error",
-      2,
-      {
-        "SwitchCase": 1,
-        "flatTernaryExpressions": true,
-        "offsetTernaryExpressions": true
-      }
-    ],
+    "indent": "off", // Disabled due to stack overflow with @typescript-eslint/eslint-plugin 8.41.0
     "key-spacing": [
       "error",
       {
