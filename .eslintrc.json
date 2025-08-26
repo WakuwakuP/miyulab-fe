@@ -59,7 +59,15 @@
     ],
     "computed-property-spacing": ["error", "never"],
     "func-call-spacing": ["error", "never"],
-    "@typescript-eslint/indent": ["error", 2], // Enforce consistent indentation using typescript-eslint
+    "indent": [
+      "error",
+      2,
+      {
+        "SwitchCase": 1,
+        "flatTernaryExpressions": true,
+        "offsetTernaryExpressions": true
+      }
+    ],
     "key-spacing": [
       "error",
       {
