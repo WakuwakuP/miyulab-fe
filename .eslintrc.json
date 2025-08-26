@@ -59,7 +59,7 @@
     ],
     "computed-property-spacing": ["error", "never"],
     "func-call-spacing": ["error", "never"],
-    "indent": "off", // Disabled due to stack overflow with @typescript-eslint/eslint-plugin 8.41.0
+    "@typescript-eslint/indent": ["error", 2], // Enforce consistent indentation using typescript-eslint
     "key-spacing": [
       "error",
       {
