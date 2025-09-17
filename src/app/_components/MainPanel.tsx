@@ -65,18 +65,21 @@ export const MainPanel = () => {
     setAttachments([])
   }
 
-  const getContentFormatted = (status: Entity.Status) => {
-    let content = status.content
-    if (status.emojis.length > 0) {
-      status.emojis.forEach((emoji) => {
-        content = content.replace(
-          new RegExp(`:${emoji.shortcode}:`, 'gm'),
-          `<img src="${emoji.url}" alt="${emoji.shortcode}" class="min-w-4 h-4 inline-block" loading="lazy" />`
-        )
-      })
-    }
-    return content
-  }
+  const getContentFormatted = useCallback(
+    (status: Entity.Status) => {
+      let content = status.content
+      if (status.emojis.length > 0) {
+        status.emojis.forEach((emoji) => {
+          content = content.replace(
+            new RegExp(`:${emoji.shortcode}:`, 'gm'),
+            `<img src="${emoji.url}" alt="${emoji.shortcode}" class="w-4 h-4 inline-block" width="16" height="16" loading="lazy" style="vertical-align: baseline;" />`
+          )
+        })
+      }
+      return content
+    },
+    []
+  )
 
   const clickPost = () => {
     if (apps.length <= 0) return

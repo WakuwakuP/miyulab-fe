@@ -43,18 +43,21 @@ export const AccountDetail = ({
     'toots' | 'media' | 'favourite'
   >('toots')
 
-  const getEmojiText = (str: string) => {
-    let parseStr = str
-    if (account.emojis.length > 0) {
-      account.emojis.forEach((emoji) => {
-        parseStr = parseStr.replace(
-          new RegExp(`:${emoji.shortcode}:`, 'gm'),
-          `<img src="${emoji.url}" alt="${emoji.shortcode}" class="min-w-4 h-4 inline-block" loading="lazy" />`
-        )
-      })
-    }
-    return parseStr
-  }
+  const getEmojiText = useCallback(
+    (str: string) => {
+      let parseStr = str
+      if (account.emojis.length > 0) {
+        account.emojis.forEach((emoji) => {
+          parseStr = parseStr.replace(
+            new RegExp(`:${emoji.shortcode}:`, 'gm'),
+            `<img src="${emoji.url}" alt="${emoji.shortcode}" class="w-4 h-4 inline-block" width="16" height="16" loading="lazy" style="vertical-align: baseline;" />`
+          )
+        })
+      }
+      return parseStr
+    },
+    [account.emojis]
+  )
 
   const replace = (node: DOMNode) => {
     if (

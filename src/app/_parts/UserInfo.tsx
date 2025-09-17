@@ -27,12 +27,12 @@ export const UserInfo = ({
       account.emojis.forEach((emoji) => {
         displayName = displayName.replace(
           new RegExp(`:${emoji.shortcode}:`, 'gm'),
-          `<img src="${emoji.url}" alt="${emoji.shortcode}" class="min-w-5 h-5 inline-block" loading="lazy" />`
+          `<img src="${emoji.url}" alt="${emoji.shortcode}" class="w-5 h-5 inline-block" width="20" height="20" loading="${scrolling ? 'eager' : 'lazy'}" style="vertical-align: baseline;" />`
         )
       })
     }
     return displayName
-  }, [account])
+  }, [account.display_name, account.emojis, scrolling])
 
   return (
     <h3

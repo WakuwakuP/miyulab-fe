@@ -32,13 +32,13 @@ export const Notification = ({
         (accountEmoji) => {
           displayName = displayName.replace(
             new RegExp(`:${accountEmoji.shortcode}:`, 'gm'),
-            `<img src="${accountEmoji.url}" alt="${accountEmoji.shortcode}" title=":${accountEmoji.shortcode}:" class="min-w-7 h-7 inline-block" loading="lazy" />`
+            `<img src="${accountEmoji.url}" alt="${accountEmoji.shortcode}" title=":${accountEmoji.shortcode}:" class="w-5 h-5 inline-block" width="20" height="20" loading="${scrolling ? 'eager' : 'lazy'}" style="vertical-align: baseline;" />`
           )
         }
       )
     }
     return displayName
-  }, [notification.account])
+  }, [notification.account, scrolling])
 
   switch (notification.type) {
     case 'poll_expired':

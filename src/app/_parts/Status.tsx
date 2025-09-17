@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 'use client'
 
-import { useContext } from 'react'
+import { useCallback, useContext } from 'react'
 
 import { ElementType } from 'domelementtype'
 import parse, {
@@ -40,46 +40,55 @@ export const Status = ({
   const setDetail = useContext(SetDetailContext)
   const setPlayer = useContext(SetPlayerContext)
 
-  const getDisplayName = (account: Entity.Account) => {
-    let displayName = account.display_name
-    if (account.emojis.length > 0) {
-      account.emojis.forEach((emoji) => {
-        displayName = displayName.replace(
-          new RegExp(`:${emoji.shortcode}:`, 'gm'),
-          `<img src="${emoji.url}" alt="${emoji.shortcode}" title=":${emoji.shortcode}:" class="min-w-7 h-7 inline-block" loading="lazy" />`
-        )
-      })
-    }
-    return displayName
-  }
+  const getDisplayName = useCallback(
+    (account: Entity.Account) => {
+      let displayName = account.display_name
+      if (account.emojis.length > 0) {
+        account.emojis.forEach((emoji) => {
+          displayName = displayName.replace(
+            new RegExp(`:${emoji.shortcode}:`, 'gm'),
+            `<img src="${emoji.url}" alt="${emoji.shortcode}" title=":${emoji.shortcode}:" class="w-5 h-5 inline-block" width="20" height="20" loading="${scrolling ? 'eager' : 'lazy'}" style="vertical-align: baseline;" />`
+          )
+        })
+      }
+      return displayName
+    },
+    [scrolling]
+  )
 
-  const getSpoilerText = (status: Entity.Status) => {
-    let spoiler_text = status.spoiler_text
-    if (status.emojis.length > 0) {
-      status.emojis.forEach((emoji) => {
-        spoiler_text = spoiler_text.replace(
-          new RegExp(`:${emoji.shortcode}:`, 'gm'),
-          `<img src="${emoji.url}" alt="${emoji.shortcode}" title=":${emoji.shortcode}:" class="min-w-7 h-7 inline-block" loading="lazy" />`
-        )
-      })
-    }
+  const getSpoilerText = useCallback(
+    (status: Entity.Status) => {
+      let spoiler_text = status.spoiler_text
+      if (status.emojis.length > 0) {
+        status.emojis.forEach((emoji) => {
+          spoiler_text = spoiler_text.replace(
+            new RegExp(`:${emoji.shortcode}:`, 'gm'),
+            `<img src="${emoji.url}" alt="${emoji.shortcode}" title=":${emoji.shortcode}:" class="w-5 h-5 inline-block" width="20" height="20" loading="${scrolling ? 'eager' : 'lazy'}" style="vertical-align: baseline;" />`
+          )
+        })
+      }
 
-    return spoiler_text
-  }
+      return spoiler_text
+    },
+    [scrolling]
+  )
 
-  const getContentFormatted = (status: Entity.Status) => {
-    let content = status.content
-    if (status.emojis.length > 0) {
-      status.emojis.forEach((emoji) => {
-        content = content.replace(
-          new RegExp(`:${emoji.shortcode}:`, 'gm'),
-          `<img src="${emoji.url}" alt="${emoji.shortcode}" title=":${emoji.shortcode}:" class="min-w-7 h-7 inline-block" loading="lazy" />`
-        )
-      })
-    }
+  const getContentFormatted = useCallback(
+    (status: Entity.Status) => {
+      let content = status.content
+      if (status.emojis.length > 0) {
+        status.emojis.forEach((emoji) => {
+          content = content.replace(
+            new RegExp(`:${emoji.shortcode}:`, 'gm'),
+            `<img src="${emoji.url}" alt="${emoji.shortcode}" title=":${emoji.shortcode}:" class="w-5 h-5 inline-block" width="20" height="20" loading="${scrolling ? 'eager' : 'lazy'}" style="vertical-align: baseline;" />`
+          )
+        })
+      }
 
-    return content
-  }
+      return content
+    },
+    [scrolling]
+  )
   const replace = (node: DOMNode) => {
     if (
       node.type === ElementType.Tag &&
