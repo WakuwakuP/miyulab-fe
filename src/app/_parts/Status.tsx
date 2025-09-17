@@ -47,7 +47,7 @@ export const Status = ({
         account.emojis.forEach((emoji) => {
           displayName = displayName.replace(
             new RegExp(`:${emoji.shortcode}:`, 'gm'),
-            `<img src="${emoji.url}" alt="${emoji.shortcode}" title=":${emoji.shortcode}:" class="w-5 h-5 inline-block" width="20" height="20" loading="${scrolling ? 'eager' : 'lazy'}" style="vertical-align: baseline;" />`
+            `<img src="${emoji.url}" alt="${emoji.shortcode}" title=":${emoji.shortcode}:" class="w-5 h-5 inline-block" loading="${scrolling ? 'eager' : 'lazy'}" style="vertical-align: baseline;" />`
           )
         })
       }
@@ -63,7 +63,7 @@ export const Status = ({
         status.emojis.forEach((emoji) => {
           spoiler_text = spoiler_text.replace(
             new RegExp(`:${emoji.shortcode}:`, 'gm'),
-            `<img src="${emoji.url}" alt="${emoji.shortcode}" title=":${emoji.shortcode}:" class="w-5 h-5 inline-block" width="20" height="20" loading="${scrolling ? 'eager' : 'lazy'}" style="vertical-align: baseline;" />`
+            `<img src="${emoji.url}" alt="${emoji.shortcode}" title=":${emoji.shortcode}:" class="w-5 h-5 inline-block" loading="${scrolling ? 'eager' : 'lazy'}" style="vertical-align: baseline;" />`
           )
         })
       }
@@ -80,7 +80,7 @@ export const Status = ({
         status.emojis.forEach((emoji) => {
           content = content.replace(
             new RegExp(`:${emoji.shortcode}:`, 'gm'),
-            `<img src="${emoji.url}" alt="${emoji.shortcode}" title=":${emoji.shortcode}:" class="w-5 h-5 inline-block" width="20" height="20" loading="${scrolling ? 'eager' : 'lazy'}" style="vertical-align: baseline;" />`
+            `<img src="${emoji.url}" alt="${emoji.shortcode}" title=":${emoji.shortcode}:" class="w-5 h-5 inline-block" loading="${scrolling ? 'eager' : 'lazy'}" style="vertical-align: baseline;" />`
           )
         })
       }

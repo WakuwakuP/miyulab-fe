@@ -50,7 +50,7 @@ export const AccountDetail = ({
         account.emojis.forEach((emoji) => {
           parseStr = parseStr.replace(
             new RegExp(`:${emoji.shortcode}:`, 'gm'),
-            `<img src="${emoji.url}" alt="${emoji.shortcode}" class="w-4 h-4 inline-block" width="16" height="16" loading="lazy" style="vertical-align: baseline;" />`
+            `<img src="${emoji.url}" alt="${emoji.shortcode}" class="w-4 h-4 inline-block" loading="lazy" style="vertical-align: baseline;" />`
           )
         })
       }
