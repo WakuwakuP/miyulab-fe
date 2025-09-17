@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 'use client'
 
-import { useContext } from 'react'
+import { useContext, useMemo } from 'react'
 
 import { ElementType } from 'domelementtype'
 import parse, {
@@ -53,6 +53,11 @@ export const Status = ({
     return displayName
   }
 
+  const displayName = useMemo(
+    () => getDisplayName(status.account),
+    [status.account]
+  )
+
   const getSpoilerText = (status: Entity.Status) => {
     let spoiler_text = status.spoiler_text
     if (status.emojis.length > 0) {
@@ -67,6 +72,11 @@ export const Status = ({
     return spoiler_text
   }
 
+  const spoilerText = useMemo(
+    () => getSpoilerText(status.reblog ?? status),
+    [status]
+  )
+
   const getContentFormatted = (status: Entity.Status) => {
     let content = status.content
     if (status.emojis.length > 0) {
@@ -80,6 +90,12 @@ export const Status = ({
 
     return content
   }
+
+  const contentFormatted = useMemo(
+    () => getContentFormatted(status.reblog ?? status),
+    [status]
+  )
+
   const replace = (node: DOMNode) => {
     if (
       node.type === ElementType.Tag &&
@@ -228,7 +244,7 @@ export const Status = ({
       {status.reblog != null ? (
         <>
           <div
-            className="mb-1"
+            className="flex mb-1"
             onClick={() => {
               setDetail({
                 type: 'Account',
@@ -241,11 +257,11 @@ export const Status = ({
           >
             <RiRepeatFill
               size={24}
-              className="mr-2 inline-block text-blue-400"
+              className="mr-2 inline-block text-blue-400 flex-none"
             />
             <img
               className={[
-                'rounded-lg object-contain flex-none inline-block',
+                'rounded-lg object-contain flex-none inline-block shrink-0',
                 small ? 'w-3 h-3' : 'w-6 h-6',
               ].join(' ')}
               src={status.account.avatar}
@@ -255,7 +271,7 @@ export const Status = ({
             <span
               className="pl-2"
               dangerouslySetInnerHTML={{
-                __html: getDisplayName(status.account),
+                __html: displayName,
               }}
             />
           </div>
@@ -282,7 +298,7 @@ export const Status = ({
       )}
       {status.spoiler_text !== '' && (
         <div className="border-b-2 border-b-gray-600 py-2 text-gray-400">
-          {parse(getSpoilerText(status.reblog ?? status), {
+          {parse(spoilerText, {
             replace,
           })}
         </div>
@@ -297,10 +313,7 @@ export const Status = ({
         }}
       >
         <EditedAt editedAt={status.edited_at} />
-        {parse(
-          getContentFormatted(status.reblog ?? status),
-          { replace }
-        )}
+        {parse(contentFormatted, { replace })}
       </div>
 
       <Poll
