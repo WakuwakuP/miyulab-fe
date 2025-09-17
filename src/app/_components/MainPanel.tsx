@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
 } from 'react'
 
@@ -77,6 +78,11 @@ export const MainPanel = () => {
     }
     return content
   }
+
+  const contentFormatted = useMemo(() => {
+    if (replyTo == null) return ''
+    return getContentFormatted(replyTo)
+  }, [replyTo])
 
   const clickPost = () => {
     if (apps.length <= 0) return
@@ -242,7 +248,7 @@ export const MainPanel = () => {
                   <div
                     className="content p-2"
                     dangerouslySetInnerHTML={{
-                      __html: getContentFormatted(replyTo),
+                      __html: contentFormatted,
                     }}
                   />
                 </div>
