@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
 } from 'react'
 
@@ -43,18 +44,26 @@ export const AccountDetail = ({
     'toots' | 'media' | 'favourite'
   >('toots')
 
-  const getEmojiText = (str: string) => {
-    let parseStr = str
-    if (account.emojis.length > 0) {
-      account.emojis.forEach((emoji) => {
-        parseStr = parseStr.replace(
-          new RegExp(`:${emoji.shortcode}:`, 'gm'),
-          `<img src="${emoji.url}" alt="${emoji.shortcode}" class="min-w-4 h-4 inline-block" loading="lazy" />`
-        )
-      })
-    }
-    return parseStr
-  }
+  const getEmojiText = useCallback(
+    (str: string) => {
+      let parseStr = str
+      if (account.emojis.length > 0) {
+        account.emojis.forEach((emoji) => {
+          parseStr = parseStr.replace(
+            new RegExp(`:${emoji.shortcode}:`, 'gm'),
+            `<img src="${emoji.url}" alt="${emoji.shortcode}" class="min-w-4 h-4 inline-block" loading="lazy" />`
+          )
+        })
+      }
+      return parseStr
+    },
+    [account.emojis]
+  )
+
+  const accountNote = useMemo(
+    () => getEmojiText(account.note),
+    [account.note, getEmojiText]
+  )
 
   const replace = (node: DOMNode) => {
     if (
@@ -276,7 +285,7 @@ export const AccountDetail = ({
         </div>
       )}
       <div className="content my-2">
-        {parse(getEmojiText(account.note), { replace })}
+        {parse(accountNote, { replace })}
       </div>
 
       <div className="m-1 box-border">
