@@ -27,7 +27,7 @@ export const UserInfo = ({
       account.emojis.forEach((emoji) => {
         displayName = displayName.replace(
           new RegExp(`:${emoji.shortcode}:`, 'gm'),
-          `<img src="${emoji.url}" alt="${emoji.shortcode}" class="w-5 h-5 inline-block" loading="${scrolling ? 'eager' : 'lazy'}" style="vertical-align: baseline;" />`
+          `<img src="${emoji.url}" alt="${emoji.shortcode}" class="min-w-5 h-5 inline-block" loading="${scrolling ? 'eager' : 'lazy'}" style="vertical-align: baseline;" />`
         )
       })
     }

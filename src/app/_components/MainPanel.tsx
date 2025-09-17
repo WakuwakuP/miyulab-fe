@@ -72,7 +72,7 @@ export const MainPanel = () => {
         status.emojis.forEach((emoji) => {
           content = content.replace(
             new RegExp(`:${emoji.shortcode}:`, 'gm'),
-            `<img src="${emoji.url}" alt="${emoji.shortcode}" class="w-4 h-4 inline-block" loading="lazy" style="vertical-align: baseline;" />`
+            `<img src="${emoji.url}" alt="${emoji.shortcode}" class="min-w-4 h-4 inline-block" loading="lazy" style="vertical-align: baseline;" />`
           )
         })
       }
