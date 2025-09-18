@@ -257,19 +257,19 @@ export const Status = ({
           >
             <RiRepeatFill
               size={24}
-              className="mr-2 inline-block text-blue-400 flex-none"
+              className="mr-2 block text-blue-400 flex-none"
             />
             <img
               className={[
-                'rounded-lg object-contain flex-none inline-block shrink-0',
+                'rounded-lg object-contain flex-none block shrink-0',
                 small ? 'w-3 h-3' : 'w-6 h-6',
               ].join(' ')}
               src={status.account.avatar}
               alt="avatar"
               loading="lazy"
             />
-            <span
-              className="pl-2"
+            <div
+              className="pl-2 whitespace-nowrap overflow-clip"
               dangerouslySetInnerHTML={{
                 __html: displayName,
               }}
