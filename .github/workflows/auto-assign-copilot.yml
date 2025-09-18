@@ -1,0 +1,18 @@
+name: Auto Assign Copilot Issues
+
+on:
+  issues:
+    types: [opened, labeled]
+
+jobs:
+  auto-assign:
+    runs-on: ubuntu-latest
+    if: |
+      (github.event.action == 'opened' && contains(github.event.issue.body, '@copilot')) ||
+      (github.event.action == 'labeled' && contains(github.event.issue.labels.*.name, 'copilot'))
+    steps:
+      - name: Assign issue to copilot
+        env:
+          GITHUB_TOKEN: ${{ secrets.ISSUE_ASSIGN_TO_COPILOT_PAT }} # NOTE: copilotの課金確認のためにPATを利用 https://github.com/cli/cli/issues/11362
+        run: |
+          gh issue edit ${{ github.event.issue.number }} --add-assignee @copilot --repo ${{ github.repository }}
