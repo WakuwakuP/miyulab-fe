@@ -244,7 +244,7 @@ export const Status = ({
       {status.reblog != null ? (
         <>
           <div
-            className="flex mb-1"
+            className="flex mb-1 overflow-clip"
             onClick={() => {
               setDetail({
                 type: 'Account',
@@ -269,7 +269,7 @@ export const Status = ({
               loading="lazy"
             />
             <div
-              className="pl-2 whitespace-nowrap overflow-clip"
+              className="pl-2 whitespace-nowrap"
               dangerouslySetInnerHTML={{
                 __html: displayName,
               }}
