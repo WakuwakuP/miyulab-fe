@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 'use client'
 
-import {
+import React, {
   type ChangeEventHandler,
   type MouseEventHandler,
   useCallback,
@@ -24,7 +24,6 @@ import {
   RiPlayFill,
 } from 'react-icons/ri'
 import ReactPlayer from 'react-player'
-import { type OnProgressProps } from 'react-player/base'
 
 import {
   PlayerContext,
@@ -49,7 +48,7 @@ const PlayerController = () => {
   )
   const { playerSize } = useContext(SettingContext)
 
-  const player = useRef<ReactPlayer>(null)
+  const player = useRef<HTMLVideoElement>(null)
   const [playing, setPlaying] = useState<boolean>(false)
   const [played, setPlayed] = useState<number>(0)
   const [seeking, setSeeking] = useState<boolean>(false)
@@ -103,7 +102,13 @@ const PlayerController = () => {
         e.preventDefault()
         setPlayed((prev) => {
           const seekToPlayed = Math.max(0, prev - 0.1)
-          player.current?.seekTo(seekToPlayed)
+          if (
+            player.current != null &&
+            player.current.duration > 0
+          ) {
+            player.current.currentTime =
+              seekToPlayed * player.current.duration
+          }
           return seekToPlayed
         })
       }
@@ -114,7 +119,13 @@ const PlayerController = () => {
             0.9999999,
             prev + 0.1
           )
-          player.current?.seekTo(seekToPlayed)
+          if (
+            player.current != null &&
+            player.current.duration > 0
+          ) {
+            player.current.currentTime =
+              seekToPlayed * player.current.duration
+          }
           return seekToPlayed
         })
       }
@@ -141,13 +152,23 @@ const PlayerController = () => {
   const handleSeekMouseUp: MouseEventHandler<HTMLInputElement> =
     useCallback(() => {
       setSeeking(false)
-      player.current?.seekTo(played)
+      if (
+        player.current != null &&
+        player.current.duration > 0
+      ) {
+        player.current.currentTime =
+          played * player.current.duration
+      }
     }, [setSeeking, played, player])
 
   const handleProgress = useCallback(
-    (state: OnProgressProps) => {
-      if (!seeking) {
-        setPlayed(state.played)
+    (event: React.SyntheticEvent<HTMLVideoElement>) => {
+      if (!seeking && event.currentTarget != null) {
+        const video = event.currentTarget
+        if (video.duration > 0) {
+          const played = video.currentTime / video.duration
+          setPlayed(played)
+        }
       }
     },
     [seeking, setPlayed]
@@ -185,10 +206,10 @@ const PlayerController = () => {
         {playableTypes.includes(attachment[index].type) && (
           <ReactPlayer
             ref={player}
-            url={attachment[index].url}
+            src={attachment[index].url}
             playing={playing}
             volume={volume}
-            onProgress={handleProgress}
+            onTimeUpdate={handleProgress}
             loop
             width={'100%'}
             height={
