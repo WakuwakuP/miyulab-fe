@@ -14,13 +14,13 @@ import {
   RiCloseCircleLine,
   RiPlayFill,
 } from 'react-icons/ri'
-import ReactPlayer from 'react-player'
 
 import { Dropzone } from 'app/_parts/Dropzone'
 import { Panel } from 'app/_parts/Panel'
 import { StatusRichTextarea } from 'app/_parts/StatusRichTextarea'
 import { UserInfo } from 'app/_parts/UserInfo'
 import { GetClient } from 'util/GetClient'
+import { canPlay } from 'util/PlayerUtils'
 import { AppsContext } from 'util/provider/AppsProvider'
 import { SetPlayerContext } from 'util/provider/PlayerProvider'
 import {
@@ -128,7 +128,7 @@ export const MainPanel = () => {
 
   useEffect(() => {
     if (mediaLink === '') return
-    setIsPlay(ReactPlayer.canPlay(mediaLink))
+    setIsPlay(canPlay(mediaLink))
   }, [mediaLink])
 
   const onPlay = useCallback(() => {

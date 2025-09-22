@@ -11,7 +11,6 @@ import parse, {
 } from 'html-react-parser'
 import { type Entity } from 'megalodon'
 import { RiRepeatFill, RiVideoLine } from 'react-icons/ri'
-import ReactPlayer from 'react-player'
 
 import { Actions } from 'app/_parts/Actions'
 import { Card } from 'app/_parts/Card'
@@ -23,6 +22,7 @@ import {
   type PollAddAppIndex,
   type StatusAddAppIndex,
 } from 'types/types'
+import { canPlay } from 'util/PlayerUtils'
 import { SetDetailContext } from 'util/provider/DetailProvider'
 import { SetPlayerContext } from 'util/provider/PlayerProvider'
 
@@ -162,7 +162,7 @@ export const Status = ({
         )
       }
 
-      if (ReactPlayer.canPlay(node.attribs.href)) {
+      if (canPlay(node.attribs.href)) {
         return (
           <>
             <a

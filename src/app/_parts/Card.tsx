@@ -2,8 +2,8 @@
 import { type MouseEventHandler, useContext } from 'react'
 
 import { type Entity } from 'megalodon'
-import ReactPlayer from 'react-player'
 
+import { canPlay } from 'util/PlayerUtils'
 import { SetPlayerContext } from 'util/provider/PlayerProvider'
 
 export const Card = ({
@@ -18,7 +18,7 @@ export const Card = ({
   const onClick: MouseEventHandler<HTMLAnchorElement> = (
     e
   ) => {
-    if (ReactPlayer.canPlay(card.url)) {
+    if (canPlay(card.url)) {
       e.preventDefault()
       e.stopPropagation()
       setPlayer({
