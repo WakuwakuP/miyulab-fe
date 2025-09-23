@@ -67,18 +67,20 @@ export const UserInfo = ({
         <div className="w-[calc(100%-24px)] pl-2">
           <div className="flex w-full justify-between truncate">
             <p>
-              {account.bot === true && (
-                <RiRobotFill
-                  className="mr-1 text-blue-400 inline-block"
-                  size={12}
-                  title="Bot"
+              <span>
+                {account.bot === true && (
+                  <RiRobotFill
+                    className="mr-1 text-blue-400 inline-block"
+                    size={12}
+                    title="Bot"
+                  />
+                )}
+                <span
+                  dangerouslySetInnerHTML={{
+                    __html: getDisplayName,
+                  }}
                 />
-              )}
-              <span
-                dangerouslySetInnerHTML={{
-                  __html: getDisplayName,
-                }}
-              />
+              </span>
               <span className="pl-1 text-gray-300">
                 @{account.acct}
               </span>
@@ -89,20 +91,19 @@ export const UserInfo = ({
       ) : (
         <div className="w-[calc(100%-46px)] pl-2">
           <p className="flex w-full justify-between [&>span]:inline-block">
-            <span className="flex items-center truncate">
-              {account.bot === true && (
+            {account.bot === true && (
                 <RiRobotFill
                   className="mr-1 text-blue-400"
                   size={16}
                   title="Bot"
                 />
               )}
-              <span
-                dangerouslySetInnerHTML={{
-                  __html: getDisplayName,
-                }}
-              />
-            </span>
+            <span
+              className="truncate"
+              dangerouslySetInnerHTML={{
+                __html: getDisplayName,
+              }}
+            />
             <Visibility visibility={visibility} />
           </p>
           <p
