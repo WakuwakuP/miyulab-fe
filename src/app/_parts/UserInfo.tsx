@@ -67,10 +67,8 @@ export const UserInfo = ({
         {account.bot === true && (
           <RiRobotFill
             className={[
-              'absolute text-blue-400 bg-gray-800 rounded-full p-0.5',
-              small
-                ? 'bottom-0 right-0 w-3 h-3'
-                : 'bottom-0 right-0 w-4 h-4',
+              'absolute text-blue-400 bg-gray-800 rounded-full p-0.5 bottom-0 right-0',
+              small ? 'w-3 h-3' : 'w-4 h-4',
             ].join(' ')}
             size={small ? 8 : 10}
             title="Bot"
