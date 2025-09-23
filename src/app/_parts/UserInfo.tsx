@@ -45,36 +45,43 @@ export const UserInfo = ({
         })
       }}
     >
-      {scrolling ? (
-        <div
-          className={[
-            'rounded-lg object-contain flex-none bg-gray-600',
-            small ? 'w-6 h-6' : 'w-12 h-12',
-          ].join(' ')}
-        />
-      ) : (
-        <img
-          className={[
-            'rounded-lg object-contain flex-none',
-            small ? 'w-6 h-6' : 'w-12 h-12',
-          ].join(' ')}
-          src={account.avatar}
-          alt="avatar"
-          loading="lazy"
-        />
-      )}
+      <div className="relative">
+        {scrolling ? (
+          <div
+            className={[
+              'rounded-lg object-contain flex-none bg-gray-600',
+              small ? 'w-6 h-6' : 'w-12 h-12',
+            ].join(' ')}
+          />
+        ) : (
+          <img
+            className={[
+              'rounded-lg object-contain flex-none',
+              small ? 'w-6 h-6' : 'w-12 h-12',
+            ].join(' ')}
+            src={account.avatar}
+            alt="avatar"
+            loading="lazy"
+          />
+        )}
+        {account.bot === true && (
+          <RiRobotFill
+            className={[
+              'absolute text-blue-400 bg-gray-800 rounded-full p-0.5',
+              small
+                ? 'bottom-0 right-0 w-3 h-3'
+                : 'bottom-0 right-0 w-4 h-4',
+            ].join(' ')}
+            size={small ? 8 : 10}
+            title="Bot"
+          />
+        )}
+      </div>
       {small ? (
         <div className="w-[calc(100%-24px)] pl-2">
           <div className="flex w-full justify-between truncate">
             <p>
               <span>
-                {account.bot === true && (
-                  <RiRobotFill
-                    className="mr-1 text-blue-400 inline-block"
-                    size={12}
-                    title="Bot"
-                  />
-                )}
                 <span
                   dangerouslySetInnerHTML={{
                     __html: getDisplayName,
@@ -91,13 +98,6 @@ export const UserInfo = ({
       ) : (
         <div className="w-[calc(100%-46px)] pl-2">
           <p className="flex w-full justify-between [&>span]:inline-block">
-            {account.bot === true && (
-                <RiRobotFill
-                  className="mr-1 text-blue-400"
-                  size={16}
-                  title="Bot"
-                />
-              )}
             <span
               className="truncate"
               dangerouslySetInnerHTML={{
