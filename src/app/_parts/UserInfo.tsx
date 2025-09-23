@@ -4,6 +4,7 @@
 import { useContext, useMemo } from 'react'
 
 import { type Entity } from 'megalodon'
+import { RiRobotFill } from 'react-icons/ri'
 
 import { Visibility } from 'app/_parts/Visibility'
 import { type AccountAddAppIndex } from 'types/types'
@@ -71,6 +72,13 @@ export const UserInfo = ({
                   __html: getDisplayName,
                 }}
               />
+              {account.bot === true && (
+                <RiRobotFill
+                  className="ml-1 text-blue-400 inline-block"
+                  size={12}
+                  title="Bot"
+                />
+              )}
               <span className="pl-1 text-gray-300">
                 @{account.acct}
               </span>
@@ -81,12 +89,20 @@ export const UserInfo = ({
       ) : (
         <div className="w-[calc(100%-46px)] pl-2">
           <p className="flex w-full justify-between [&>span]:inline-block">
-            <span
-              className="truncate"
-              dangerouslySetInnerHTML={{
-                __html: getDisplayName,
-              }}
-            />
+            <span className="flex items-center truncate">
+              <span
+                dangerouslySetInnerHTML={{
+                  __html: getDisplayName,
+                }}
+              />
+              {account.bot === true && (
+                <RiRobotFill
+                  className="ml-1 text-blue-400"
+                  size={16}
+                  title="Bot"
+                />
+              )}
+            </span>
             <Visibility visibility={visibility} />
           </p>
           <p
