@@ -1,4 +1,4 @@
-import { type Entity, type OAuth } from 'megalodon'
+import type { Entity, OAuth } from 'megalodon'
 
 export type App = {
   backend: Backend
@@ -22,10 +22,9 @@ export type StatusAddAppIndex = Entity.Status & {
   appIndex: number
 }
 
-export type NotificationAddAppIndex =
-  Entity.Notification & {
-    appIndex: number
-  }
+export type NotificationAddAppIndex = Entity.Notification & {
+  appIndex: number
+}
 
 export type AccountAddAppIndex = Entity.Account & {
   appIndex: number
@@ -35,12 +34,7 @@ export type PollAddAppIndex = Entity.Poll & {
   appIndex: number
 }
 
-export type TimelineType =
-  | 'home'
-  | 'local'
-  | 'public'
-  | 'notification'
-  | 'tag'
+export type TimelineType = 'home' | 'local' | 'public' | 'notification' | 'tag'
 
 export type TimelineConfig = {
   id: string

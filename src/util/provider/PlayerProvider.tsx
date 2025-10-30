@@ -1,15 +1,14 @@
 'use client'
 
+import type { Entity } from 'megalodon'
 import {
+  createContext,
   type Dispatch,
   type ReactNode,
   type SetStateAction,
-  createContext,
   useEffect,
   useState,
 } from 'react'
-
-import { type Entity } from 'megalodon'
 
 export const PlayerContext = createContext<{
   attachment: Entity.Attachment[]
@@ -47,8 +46,7 @@ export const PlayerProvider = ({
 }: Readonly<{
   children: ReactNode
 }>) => {
-  const [settingLoading, setSettingLoading] =
-    useState<boolean>(true)
+  const [settingLoading, setSettingLoading] = useState<boolean>(true)
   const [attachment, setAttachment] = useState<{
     attachment: Entity.Attachment[]
     index: number | null
@@ -78,21 +76,14 @@ export const PlayerProvider = ({
     if (settingLoading) {
       return
     }
-    localStorage.setItem(
-      'playerSetting',
-      JSON.stringify(playerSetting)
-    )
+    localStorage.setItem('playerSetting', JSON.stringify(playerSetting))
   }, [playerSetting, settingLoading])
 
   return (
     <PlayerContext.Provider value={attachment}>
       <SetPlayerContext.Provider value={setAttachment}>
-        <PlayerSettingContext.Provider
-          value={playerSetting}
-        >
-          <SetPlayerSettingContext.Provider
-            value={setPlayerSetting}
-          >
+        <PlayerSettingContext.Provider value={playerSetting}>
+          <SetPlayerSettingContext.Provider value={setPlayerSetting}>
             {children}
           </SetPlayerSettingContext.Provider>
         </PlayerSettingContext.Provider>

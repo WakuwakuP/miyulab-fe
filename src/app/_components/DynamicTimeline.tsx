@@ -5,13 +5,9 @@ import { LocalTimeline } from 'app/_components/LocalTimeline'
 import { NotificationTimeline } from 'app/_components/NotificationTimeline'
 import { PublicTimeline } from 'app/_components/PublicTimeline'
 import { TagTimeline } from 'app/_components/TagTimeline'
-import { type TimelineConfig } from 'types/types'
+import type { TimelineConfig } from 'types/types'
 
-export const DynamicTimeline = ({
-  config,
-}: {
-  config: TimelineConfig
-}) => {
+export const DynamicTimeline = ({ config }: { config: TimelineConfig }) => {
   if (!config.visible) {
     return null
   }

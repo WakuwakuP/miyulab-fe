@@ -41,28 +41,28 @@
     "unoptimized",
     "unreblog"
   ],
-  "editor.formatOnSave": true,
-  "editor.formatOnPaste": true,
-  "editor.formatOnType": true,
-  "editor.defaultFormatter": "esbenp.prettier-vscode",
   "editor.codeActionsOnSave": {
     "source.fixAll.eslint": "explicit"
   },
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.formatOnPaste": true,
+  "editor.formatOnSave": true,
+  "editor.formatOnType": true,
   "editor.quickSuggestions": {
     "strings": true
   },
-  "eslint.runtime": "node",
   "editor.suggest.snippetsPreventQuickSuggestions": false,
-  "jest.autoRevealOutput": "off",
-  "tailwindCSS.includeLanguages": {
-    "typescriptrreqct": "html",
-    "MDX": "html"
-  },
-  "jest.jestCommandLine": "yarn test",
-  "jest.rootPath": "./",
-  "files.autoSave": "afterDelay",
+  "eslint.runtime": "node",
   "explorer.fileNesting.enabled": true,
   "explorer.fileNesting.patterns": {
     "*.tsx": "${capture}.ts, ${dirname}.*.tsx, ${capture}.*.tsx,"
+  },
+  "files.autoSave": "afterDelay",
+  "jest.autoRevealOutput": "off",
+  "jest.jestCommandLine": "yarn test",
+  "jest.rootPath": "./",
+  "tailwindCSS.includeLanguages": {
+    "MDX": "html",
+    "typescriptrreqct": "html"
   }
 }

@@ -1,7 +1,9 @@
 /* eslint-disable @next/next/no-img-element */
 'use client'
 
-import React, {
+import imageCompression from 'browser-image-compression'
+import type { Entity } from 'megalodon'
+import {
   type Dispatch,
   type ReactNode,
   type SetStateAction,
@@ -9,9 +11,6 @@ import React, {
   useContext,
   useMemo,
 } from 'react'
-
-import imageCompression from 'browser-image-compression'
-import { type Entity } from 'megalodon'
 import { useDropzone } from 'react-dropzone'
 import { CgSpinner } from 'react-icons/cg'
 
@@ -30,17 +29,14 @@ export const Dropzone = ({
 }: {
   children?: ReactNode
   attachments: Entity.Attachment[]
-  setAttachments: Dispatch<
-    SetStateAction<Entity.Attachment[]>
-  >
+  setAttachments: Dispatch<SetStateAction<Entity.Attachment[]>>
   uploading: number
   setUploading: Dispatch<SetStateAction<number>>
 }) => {
   const apps = useContext(AppsContext)
   const instance = useContext(InstanceContext)
 
-  const update_limit =
-    (instance?.upload_limit ?? 16000000) / 1024 / 1024
+  const update_limit = (instance?.upload_limit ?? 16000000) / 1024 / 1024
 
   const onDrop = useCallback(
     (acceptedFiles: File[]) => {
@@ -73,22 +69,17 @@ export const Dropzone = ({
         }
       })
     },
-    [apps, setAttachments, setUploading, update_limit]
+    [apps, setAttachments, setUploading, update_limit],
   )
 
-  const {
-    getRootProps,
-    getInputProps,
-    isFocused,
-    isDragAccept,
-    isDragReject,
-  } = useDropzone({
-    onDrop,
-    accept: {
-      'image/*': [],
-      'video/*': [],
-    },
-  })
+  const { getRootProps, getInputProps, isFocused, isDragAccept, isDragReject } =
+    useDropzone({
+      accept: {
+        'image/*': [],
+        'video/*': [],
+      },
+      onDrop,
+    })
 
   const styleClasses = useMemo(
     () =>
@@ -98,38 +89,25 @@ export const Dropzone = ({
         isDragAccept ? 'border-green-400' : '',
         isDragReject ? 'border-red-400' : '',
       ].join(' '),
-    [isFocused, isDragAccept, isDragReject]
+    [isFocused, isDragAccept, isDragReject],
   )
 
   return (
     <div className="container">
-      <div
-        className={styleClasses}
-        {...getRootProps()}
-      >
+      <div className={styleClasses} {...getRootProps()}>
         <input {...getInputProps()} />
         {children}
       </div>
       {uploading > 0 && <div></div>}
       {(attachments.length > 0 || uploading > 0) && (
         <div className="flex flex-wrap">
-          {attachments.map((file, index) => {
+          {attachments.map((file) => {
             switch (attachments.length) {
               case 1:
-                return (
-                  <Media
-                    key={index}
-                    media={file}
-                    className="w-full"
-                  />
-                )
+                return <Media className="w-full" key={file.id} media={file} />
               default:
                 return (
-                  <Media
-                    key={index}
-                    media={file}
-                    className="h-32 w-1/2"
-                  />
+                  <Media className="h-32 w-1/2" key={file.id} media={file} />
                 )
             }
           })}
@@ -138,14 +116,11 @@ export const Dropzone = ({
             for (let i = 0; i < uploading; i++) {
               list.push(
                 <div
-                  key={i}
                   className="flex h-32 w-1/2 items-center justify-center border bg-gray-600"
+                  key={i}
                 >
-                  <CgSpinner
-                    size={32}
-                    className="animate-spin"
-                  />
-                </div>
+                  <CgSpinner className="animate-spin" size={32} />
+                </div>,
               )
             }
             return list

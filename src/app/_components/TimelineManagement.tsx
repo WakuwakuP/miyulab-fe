@@ -1,13 +1,6 @@
 'use client'
 
 import {
-  type ChangeEvent,
-  useCallback,
-  useContext,
-  useState,
-} from 'react'
-
-import {
   DndContext,
   type DragEndEvent,
   PointerSensor,
@@ -20,6 +13,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
+import { type ChangeEvent, useCallback, useContext, useState } from 'react'
 import {
   RiAddLine,
   RiDeleteBinLine,
@@ -28,10 +22,7 @@ import {
   RiEyeOffLine,
 } from 'react-icons/ri'
 
-import {
-  type TimelineConfig,
-  type TimelineType,
-} from 'types/types'
+import type { TimelineConfig, TimelineType } from 'types/types'
 import {
   SetTimelineContext,
   TimelineContext,
@@ -87,21 +78,18 @@ const SortableTimelineItem = ({
 
   return (
     <div
-      ref={setNodeRef}
-      style={style}
       className={`flex items-center justify-between py-1 border-b border-gray-600 pb-2 ${
         isDragging ? 'opacity-50' : ''
       }`}
+      ref={setNodeRef}
+      style={style}
     >
       <div className="flex items-center space-x-2 flex-1">
         <button
-          onClick={() => onToggleVisibility(timeline.id)}
           className="text-gray-400 hover:text-white"
-          title={
-            timeline.visible
-              ? 'Hide timeline'
-              : 'Show timeline'
-          }
+          onClick={() => onToggleVisibility(timeline.id)}
+          title={timeline.visible ? 'Hide timeline' : 'Show timeline'}
+          type="button"
         >
           {timeline.visible ? (
             <RiEyeLine size={20} />
@@ -114,41 +102,37 @@ const SortableTimelineItem = ({
           {...attributes}
           {...listeners}
         >
-          <RiDragMove2Line
-            size={16}
-            className="text-gray-400"
-          />
-          <span
-            className={
-              timeline.visible ? '' : 'text-gray-500'
-            }
-          >
+          <RiDragMove2Line className="text-gray-400" size={16} />
+          <span className={timeline.visible ? '' : 'text-gray-500'}>
             {getTimelineName(timeline)}
           </span>
         </div>
       </div>
       <div className="flex items-center space-x-1">
         <button
-          onClick={() => onMoveUp(timeline.id)}
-          disabled={!canMoveUp}
           className="text-gray-400 hover:text-white disabled:text-gray-600 disabled:cursor-not-allowed"
+          disabled={!canMoveUp}
+          onClick={() => onMoveUp(timeline.id)}
           title="Move up"
+          type="button"
         >
           ↑
         </button>
         <button
-          onClick={() => onMoveDown(timeline.id)}
-          disabled={!canMoveDown}
           className="text-gray-400 hover:text-white disabled:text-gray-600 disabled:cursor-not-allowed"
+          disabled={!canMoveDown}
+          onClick={() => onMoveDown(timeline.id)}
           title="Move down"
+          type="button"
         >
           ↓
         </button>
         {onDelete != null && (
           <button
-            onClick={() => onDelete(timeline.id)}
             className="text-red-400 hover:text-red-300"
+            onClick={() => onDelete(timeline.id)}
             title="Delete timeline"
+            type="button"
           >
             <RiDeleteBinLine size={16} />
           </button>
@@ -168,12 +152,12 @@ export const TimelineManagement = () => {
       activationConstraint: {
         distance: 8,
       },
-    })
+    }),
   )
 
-  const sortedTimelines = [
-    ...timelineSettings.timelines,
-  ].sort((a, b) => a.order - b.order)
+  const sortedTimelines = [...timelineSettings.timelines].sort(
+    (a, b) => a.order - b.order,
+  )
 
   const onToggleVisibility = useCallback(
     (id: string) => {
@@ -182,39 +166,32 @@ export const TimelineManagement = () => {
         timelines: prev.timelines.map((timeline) =>
           timeline.id === id
             ? { ...timeline, visible: !timeline.visible }
-            : timeline
+            : timeline,
         ),
       }))
     },
-    [setTimelineSettings]
+    [setTimelineSettings],
   )
 
   const onDelete = useCallback(
     (id: string) => {
       setTimelineSettings((prev) => ({
         ...prev,
-        timelines: prev.timelines.filter(
-          (timeline) => timeline.id !== id
-        ),
+        timelines: prev.timelines.filter((timeline) => timeline.id !== id),
       }))
     },
-    [setTimelineSettings]
+    [setTimelineSettings],
   )
 
   const onMoveUp = useCallback(
     (id: string) => {
-      const timeline = timelineSettings.timelines.find(
-        (t) => t.id === id
-      )
+      const timeline = timelineSettings.timelines.find((t) => t.id === id)
       if (timeline == null) return
 
-      const currentIndex = sortedTimelines.findIndex(
-        (t) => t.id === id
-      )
+      const currentIndex = sortedTimelines.findIndex((t) => t.id === id)
       if (currentIndex <= 0) return
 
-      const targetTimeline =
-        sortedTimelines[currentIndex - 1]
+      const targetTimeline = sortedTimelines[currentIndex - 1]
 
       setTimelineSettings((prev) => ({
         ...prev,
@@ -229,27 +206,18 @@ export const TimelineManagement = () => {
         }),
       }))
     },
-    [
-      timelineSettings.timelines,
-      sortedTimelines,
-      setTimelineSettings,
-    ]
+    [timelineSettings.timelines, sortedTimelines, setTimelineSettings],
   )
 
   const onMoveDown = useCallback(
     (id: string) => {
-      const timeline = timelineSettings.timelines.find(
-        (t) => t.id === id
-      )
+      const timeline = timelineSettings.timelines.find((t) => t.id === id)
       if (timeline == null) return
 
-      const currentIndex = sortedTimelines.findIndex(
-        (t) => t.id === id
-      )
+      const currentIndex = sortedTimelines.findIndex((t) => t.id === id)
       if (currentIndex >= sortedTimelines.length - 1) return
 
-      const targetTimeline =
-        sortedTimelines[currentIndex + 1]
+      const targetTimeline = sortedTimelines[currentIndex + 1]
 
       setTimelineSettings((prev) => ({
         ...prev,
@@ -264,11 +232,7 @@ export const TimelineManagement = () => {
         }),
       }))
     },
-    [
-      timelineSettings.timelines,
-      sortedTimelines,
-      setTimelineSettings,
-    ]
+    [timelineSettings.timelines, sortedTimelines, setTimelineSettings],
   )
 
   const onAddTagTimeline = useCallback(() => {
@@ -277,16 +241,14 @@ export const TimelineManagement = () => {
     const newId = `tag-${newTagName.trim()}`
 
     // Check if tag timeline already exists
-    if (
-      timelineSettings.timelines.some((t) => t.id === newId)
-    ) {
+    if (timelineSettings.timelines.some((t) => t.id === newId)) {
       alert('This tag timeline already exists')
       return
     }
 
     const maxOrder = Math.max(
       ...timelineSettings.timelines.map((t) => t.order),
-      -1
+      -1,
     )
 
     setTimelineSettings((prev) => ({
@@ -295,38 +257,30 @@ export const TimelineManagement = () => {
         ...prev.timelines,
         {
           id: newId,
-          type: 'tag' as TimelineType,
-          visible: true,
           order: maxOrder + 1,
           tag: newTagName.trim(),
+          type: 'tag' as TimelineType,
+          visible: true,
         },
       ],
     }))
 
     setNewTagName('')
-  }, [
-    newTagName,
-    timelineSettings.timelines,
-    setTimelineSettings,
-  ])
+  }, [newTagName, timelineSettings.timelines, setTimelineSettings])
 
   const onAddCoreTimeline = useCallback(
     (type: TimelineType) => {
       const newId = type
 
       // Check if timeline already exists
-      if (
-        timelineSettings.timelines.some(
-          (t) => t.id === newId
-        )
-      ) {
+      if (timelineSettings.timelines.some((t) => t.id === newId)) {
         alert('This timeline already exists')
         return
       }
 
       const maxOrder = Math.max(
         ...timelineSettings.timelines.map((t) => t.order),
-        -1
+        -1,
       )
 
       setTimelineSettings((prev) => ({
@@ -335,14 +289,14 @@ export const TimelineManagement = () => {
           ...prev.timelines,
           {
             id: newId,
+            order: maxOrder + 1,
             type,
             visible: true,
-            order: maxOrder + 1,
           },
         ],
       }))
     },
-    [timelineSettings.timelines, setTimelineSettings]
+    [timelineSettings.timelines, setTimelineSettings],
   )
 
   const handleDragEnd = useCallback(
@@ -354,10 +308,10 @@ export const TimelineManagement = () => {
       }
 
       const oldIndex = sortedTimelines.findIndex(
-        (timeline) => timeline.id === active.id
+        (timeline) => timeline.id === active.id,
       )
       const newIndex = sortedTimelines.findIndex(
-        (timeline) => timeline.id === over.id
+        (timeline) => timeline.id === over.id,
       )
 
       if (oldIndex === -1 || newIndex === -1) {
@@ -366,42 +320,30 @@ export const TimelineManagement = () => {
 
       // Create new order values
       const updatedTimelines = [...sortedTimelines]
-      const [movedTimeline] = updatedTimelines.splice(
-        oldIndex,
-        1
-      )
+      const [movedTimeline] = updatedTimelines.splice(oldIndex, 1)
       updatedTimelines.splice(newIndex, 0, movedTimeline)
 
       // Update orders
-      const newTimelineSettings = updatedTimelines.map(
-        (timeline, index) => ({
-          ...timeline,
-          order: index,
-        })
-      )
+      const newTimelineSettings = updatedTimelines.map((timeline, index) => ({
+        ...timeline,
+        order: index,
+      }))
 
       setTimelineSettings((prev) => ({
         ...prev,
         timelines: newTimelineSettings,
       }))
     },
-    [sortedTimelines, setTimelineSettings]
+    [sortedTimelines, setTimelineSettings],
   )
 
   return (
     <div className="p-2 pt-4 h-full overflow-y-auto">
-      <h3 className="mb-4 text-lg font-semibold">
-        Timeline Management
-      </h3>
+      <h3 className="mb-4 text-lg font-semibold">Timeline Management</h3>
       <div className="space-y-4">
         <div>
-          <h4 className="mb-2 text-sm font-semibold">
-            Timelines
-          </h4>
-          <DndContext
-            sensors={sensors}
-            onDragEnd={handleDragEnd}
-          >
+          <h4 className="mb-2 text-sm font-semibold">Timelines</h4>
+          <DndContext onDragEnd={handleDragEnd} sensors={sensors}>
             <SortableContext
               items={sortedTimelines.map((t) => t.id)}
               strategy={verticalListSortingStrategy}
@@ -409,16 +351,14 @@ export const TimelineManagement = () => {
               <div className="space-y-2">
                 {sortedTimelines.map((timeline, index) => (
                   <SortableTimelineItem
-                    key={timeline.id}
-                    timeline={timeline}
-                    onToggleVisibility={onToggleVisibility}
-                    onDelete={onDelete}
-                    onMoveUp={onMoveUp}
-                    onMoveDown={onMoveDown}
+                    canMoveDown={index < sortedTimelines.length - 1}
                     canMoveUp={index > 0}
-                    canMoveDown={
-                      index < sortedTimelines.length - 1
-                    }
+                    key={timeline.id}
+                    onDelete={onDelete}
+                    onMoveDown={onMoveDown}
+                    onMoveUp={onMoveUp}
+                    onToggleVisibility={onToggleVisibility}
+                    timeline={timeline}
                   />
                 ))}
               </div>
@@ -427,52 +367,46 @@ export const TimelineManagement = () => {
         </div>
 
         <div>
-          <h4 className="mb-2 text-sm font-semibold">
-            Add Timeline
-          </h4>
+          <h4 className="mb-2 text-sm font-semibold">Add Timeline</h4>
           <div className="space-y-2">
             <div className="flex space-x-2">
               {(
-                [
-                  'home',
-                  'local',
-                  'public',
-                  'notification',
-                ] as TimelineType[]
+                ['home', 'local', 'public', 'notification'] as TimelineType[]
               ).map((type) => (
                 <button
-                  key={type}
-                  onClick={() => onAddCoreTimeline(type)}
                   className="rounded bg-slate-600 px-2 py-1 text-xs hover:bg-slate-500 disabled:bg-slate-700 disabled:text-gray-500"
                   disabled={timelineSettings.timelines.some(
-                    (t) => t.id === type
+                    (t) => t.id === type,
                   )}
+                  key={type}
+                  onClick={() => onAddCoreTimeline(type)}
+                  type="button"
                 >
-                  {type.charAt(0).toUpperCase() +
-                    type.slice(1)}
+                  {type.charAt(0).toUpperCase() + type.slice(1)}
                 </button>
               ))}
             </div>
 
             <div className="flex space-x-2">
               <input
-                type="text"
-                value={newTagName}
-                onChange={(
-                  e: ChangeEvent<HTMLInputElement>
-                ) => setNewTagName(e.target.value)}
-                placeholder="Tag name"
                 className="flex-1 rounded bg-gray-700 px-2 py-1 text-sm text-white"
+                onChange={(e: ChangeEvent<HTMLInputElement>) =>
+                  setNewTagName(e.target.value)
+                }
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     onAddTagTimeline()
                   }
                 }}
+                placeholder="Tag name"
+                type="text"
+                value={newTagName}
               />
               <button
-                onClick={onAddTagTimeline}
                 className="rounded bg-blue-600 px-3 py-1 text-sm hover:bg-blue-500"
                 disabled={newTagName.trim() === ''}
+                onClick={onAddTagTimeline}
+                type="button"
               >
                 <RiAddLine size={16} />
               </button>
