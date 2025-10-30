@@ -55,7 +55,7 @@ const PlayerController = () => {
 
   const onClickPlay = useCallback(() => {
     setPlaying((prev) => !prev)
-  }, [setPlaying])
+  }, [])
 
   const onClickClose = useCallback(() => {
     setPlaying(false)
@@ -68,13 +68,13 @@ const PlayerController = () => {
   const handleSeekMouseDown: MouseEventHandler<HTMLInputElement> =
     useCallback(() => {
       setSeeking(true)
-    }, [setSeeking])
+    }, [])
 
   const handleSeekChange: ChangeEventHandler<HTMLInputElement> = useCallback(
     (e) => {
       setPlayed(parseFloat(e.target.value))
     },
-    [setPlayed],
+    [],
   )
 
   const onKeyDown = useEffectEvent((e: KeyboardEvent) => {
@@ -132,7 +132,7 @@ const PlayerController = () => {
       if (player.current != null && player.current.duration > 0) {
         player.current.currentTime = played * player.current.duration
       }
-    }, [setSeeking, played, player])
+    }, [played])
 
   const handleProgress = useCallback(
     (event: React.SyntheticEvent<HTMLVideoElement>) => {
@@ -144,7 +144,7 @@ const PlayerController = () => {
         }
       }
     },
-    [seeking, setPlayed],
+    [seeking],
   )
 
   const playNext = useCallback(() => {

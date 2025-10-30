@@ -91,7 +91,7 @@ export const AccountDetail = ({ account }: { account: AccountAddAppIndex }) => {
   useEffect(() => {
     setToots([])
     setMedia([])
-  }, [account.id])
+  }, [])
 
   useEffect(() => {
     if (apps.length <= 0) return

@@ -60,7 +60,7 @@ export const DetailPanel = () => {
   const panelNames = {
     Account: 'Profile',
     Hashtag:
-      typeof detail.content == 'string' ? `#${detail.content}` : 'Hashtag',
+      typeof detail.content === 'string' ? `#${detail.content}` : 'Hashtag',
     SearchUser: 'Profile',
     Status: 'Toot and Reply',
   }

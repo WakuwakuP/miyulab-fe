@@ -27,20 +27,18 @@ export const Media = ({
   switch (media.type) {
     case 'image':
       return (
-        <>
-          <img
-            alt=""
-            className={[
-              'aspect-square max-h-48 cursor-pointer object-contain p-0.5',
-              className,
-            ].join(' ')}
-            key={media.id}
-            onClick={() => {
-              if (onClick != null) onClick()
-            }}
-            src={media.preview_url ?? media.url}
-          />
-        </>
+        <img
+          alt=""
+          className={[
+            'aspect-square max-h-48 cursor-pointer object-contain p-0.5',
+            className,
+          ].join(' ')}
+          key={media.id}
+          onClick={() => {
+            if (onClick != null) onClick()
+          }}
+          src={media.preview_url ?? media.url}
+        />
       )
     case 'video':
       return (
@@ -117,7 +115,6 @@ export const Media = ({
           />
         </div>
       )
-    case 'unknown':
     default:
       return null
   }

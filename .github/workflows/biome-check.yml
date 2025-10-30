@@ -30,9 +30,4 @@ jobs:
         run: yarn install --immutable
 
       - name: Run Biome check
-        run: yarn lint
-        continue-on-error: true
-
-      - name: Run Biome format check
-        run: yarn biome format .
-        continue-on-error: true
+        run: yarn check

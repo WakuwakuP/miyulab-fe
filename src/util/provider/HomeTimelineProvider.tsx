@@ -411,7 +411,7 @@ export const HomeTimelineProvider = ({ children }: { children: ReactNode }) => {
         })
       })
     })
-  }, [apps])
+  }, [apps, setUsers])
 
   return (
     <HomeTimelineContext.Provider value={margeTimeline}>

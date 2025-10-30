@@ -81,7 +81,7 @@ export const GettingStarted = () => {
         [index]: maxId,
       }))
     },
-    [setMaxId],
+    [],
   )
 
   useEffect(() => {

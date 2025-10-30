@@ -96,7 +96,7 @@ export const AppsProvider = ({
     }
 
     if (apps.length > 0) {
-      const now = new Date().getTime()
+      const now = Date.now()
       apps.forEach(async (app) => {
         if (app.tokenData == null || app.tokenData?.refresh_token == null) {
           return
@@ -131,7 +131,7 @@ export const AppsProvider = ({
       })
       setFinishLoading(true)
     }
-  }, [apps, code, isRequestedToken, router, storageLoading])
+  }, [apps, code, isRequestedToken, router, storageLoading, updateApps])
 
   const onRegister = async () => {
     if (backend === '' || backendUrl === '') {
@@ -141,7 +141,7 @@ export const AppsProvider = ({
     const client = generator(backend, backendUrl)
 
     const findApp = apps.find(
-      (app) => app.backend === backend && app.backendUrl == backendUrl,
+      (app) => app.backend === backend && app.backendUrl === backendUrl,
     )
 
     const processingAppData = await (async () => {

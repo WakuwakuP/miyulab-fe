@@ -143,7 +143,7 @@ export const TagTimeline = ({ tag }: { tag: string }) => {
       if (timer.current == null) return
       clearTimeout(timer.current)
     }
-  }, [enableScrollToTop, timeline.length, scrollToTop])
+  }, [enableScrollToTop, scrollToTop])
 
   return (
     <Panel

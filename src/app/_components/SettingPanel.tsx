@@ -16,7 +16,7 @@ const SettingItem = ({
 }: {
   children: ReactNode
   className?: string
-}) => <div className={'flex items-center py-1 ' + className}>{children}</div>
+}) => <div className={`flex items-center py-1 ${className}`}>{children}</div>
 
 const SettingCheckbox = ({
   id,
@@ -44,7 +44,7 @@ const SettingCheckbox = ({
 )
 
 // eslint-disable-next-line unused-imports/no-unused-vars, @typescript-eslint/no-unused-vars
-const SettingNumberInput = ({
+const _SettingNumberInput = ({
   id,
   label,
   value,

@@ -24,7 +24,7 @@ const AddAccountModal = ({ onClose }: { onClose: () => void }) => {
     const client = generator(backend, backendUrl)
 
     const findApp = apps.find(
-      (app) => app.backend === backend && app.backendUrl == backendUrl,
+      (app) => app.backend === backend && app.backendUrl === backendUrl,
     )
 
     const processingAppData = await (async () => {

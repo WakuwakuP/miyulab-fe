@@ -3,7 +3,7 @@
 
 import imageCompression from 'browser-image-compression'
 import type { Entity } from 'megalodon'
-import React, {
+import {
   type Dispatch,
   type ReactNode,
   type SetStateAction,

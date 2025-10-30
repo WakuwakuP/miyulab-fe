@@ -124,7 +124,7 @@ export const LocalTimeline = () => {
   // 最新の投稿が追加されたときにスクロールする
   useEffect(() => {
     scrollToTopIfNeeded()
-  }, [timeline, enableScrollToTop, isScrolling])
+  }, [])
 
   useEffect(() => {
     if (!isScrolling) return
@@ -154,7 +154,7 @@ export const LocalTimeline = () => {
           isScrolling={(scrolling) => {
             setIsScrolling(scrolling)
           }}
-          itemContent={(index, status) => (
+          itemContent={(_index, status) => (
             <Status key={status.id} status={status} />
           )}
           ref={scrollerRef}

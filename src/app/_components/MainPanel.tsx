@@ -73,7 +73,7 @@ export const MainPanel = () => {
   const contentFormatted = useMemo(() => {
     if (replyTo == null) return ''
     return getContentFormatted(replyTo)
-  }, [replyTo])
+  }, [replyTo, getContentFormatted])
 
   const clickPost = () => {
     if (apps.length <= 0) return
@@ -118,7 +118,7 @@ export const MainPanel = () => {
 
   useEffect(() => {
     onCheckMediaLink()
-  }, [mediaLink])
+  }, [])
 
   const onPlay = useCallback(() => {
     setPlayer({
@@ -146,148 +146,146 @@ export const MainPanel = () => {
   }
 
   return (
-    <>
-      <Panel className="p-1">
-        <div className="relative h-full">
-          <UserInfo account={{ ...account, appIndex: 0 }} />
-          <div className="px-2 *:mt-2">
-            <div className="flex items-center space-x-2">
-              <div>
-                <select
-                  className="w-fit rounded-md border text-black"
-                  id="visibility"
-                  name="visibility"
-                  onChange={(e) =>
-                    setVisibility(e.target.value as Entity.StatusVisibility)
-                  }
-                  value={visibility}
-                >
-                  <option value="public">Public</option>
-                  <option value="unlisted">Unlisted</option>
-                  <option value="private">Private</option>
-                  <option value="direct">Direct</option>
-                </select>
-              </div>
-              <div>
-                <label
-                  className="cursor-pointer rounded-md border px-3 py-2"
-                  htmlFor="is-cw"
-                >
-                  <input
-                    checked={isCW}
-                    className="hidden"
-                    id="is-cw"
-                    name="is-cw"
-                    onChange={(e) => setIsCW(e.target.checked)}
-                    type="checkbox"
-                  />
-                  <span className={isCW ? 'text-blue-400' : ''}>CW</span>
-                </label>
-              </div>
-            </div>
-
-            <div className={isCW ? 'block' : 'hidden'}>
-              <input
-                className="w-full"
-                onChange={(e) => setSpoilerText(e.target.value)}
-                placeholder="CW"
-                value={spoilerText}
-              />
+    <Panel className="p-1">
+      <div className="relative h-full">
+        <UserInfo account={{ ...account, appIndex: 0 }} />
+        <div className="px-2 *:mt-2">
+          <div className="flex items-center space-x-2">
+            <div>
+              <select
+                className="w-fit rounded-md border text-black"
+                id="visibility"
+                name="visibility"
+                onChange={(e) =>
+                  setVisibility(e.target.value as Entity.StatusVisibility)
+                }
+                value={visibility}
+              >
+                <option value="public">Public</option>
+                <option value="unlisted">Unlisted</option>
+                <option value="private">Private</option>
+                <option value="direct">Direct</option>
+              </select>
             </div>
             <div>
-              {replyTo != null && (
-                <div className="rounded-md bg-gray-500 p-1">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-1">
-                      <img
-                        alt={replyTo.account.display_name}
-                        className="h-8 w-8 rounded-md"
-                        loading="lazy"
-                        src={replyTo.account.avatar}
-                      />
+              <label
+                className="cursor-pointer rounded-md border px-3 py-2"
+                htmlFor="is-cw"
+              >
+                <input
+                  checked={isCW}
+                  className="hidden"
+                  id="is-cw"
+                  name="is-cw"
+                  onChange={(e) => setIsCW(e.target.checked)}
+                  type="checkbox"
+                />
+                <span className={isCW ? 'text-blue-400' : ''}>CW</span>
+              </label>
+            </div>
+          </div>
+
+          <div className={isCW ? 'block' : 'hidden'}>
+            <input
+              className="w-full"
+              onChange={(e) => setSpoilerText(e.target.value)}
+              placeholder="CW"
+              value={spoilerText}
+            />
+          </div>
+          <div>
+            {replyTo != null && (
+              <div className="rounded-md bg-gray-500 p-1">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-1">
+                    <img
+                      alt={replyTo.account.display_name}
+                      className="h-8 w-8 rounded-md"
+                      loading="lazy"
+                      src={replyTo.account.avatar}
+                    />
+                    <div>
                       <div>
-                        <div>
-                          <span>{replyTo.account.display_name}</span>
-                        </div>
+                        <span>{replyTo.account.display_name}</span>
                       </div>
                     </div>
-                    <div>
-                      <button
-                        onClick={() => {
-                          setReplyTo(undefined)
-                        }}
-                      >
-                        <RiCloseCircleLine size={32} />
-                      </button>
-                    </div>
                   </div>
-                  <div
-                    className="content p-2"
-                    dangerouslySetInnerHTML={{
-                      __html: contentFormatted,
-                    }}
-                  />
+                  <div>
+                    <button
+                      onClick={() => {
+                        setReplyTo(undefined)
+                      }}
+                    >
+                      <RiCloseCircleLine size={32} />
+                    </button>
+                  </div>
                 </div>
-              )}
-            </div>
-            <div className="text-black">
-              <StatusRichTextarea
-                onChange={setContent}
-                onSubmit={clickPost}
-                placeholder="What's happening?"
-                setAttachments={setAttachments}
-                setUploading={setUploading}
-                style={{
-                  backgroundColor: 'white',
-                  height: '10rem',
-                  overflowY: 'auto',
-                  resize: 'none',
-                  width: '100%',
-                }}
-                text={content}
-              />
-            </div>
-            <div>
-              <button
-                className="rounded-md border bg-slate-500 px-3 py-2"
-                onClick={clickPost}
-              >
-                Post
-              </button>
-            </div>
-            <div>
-              <Dropzone
-                attachments={attachments}
-                setAttachments={setAttachments}
-                setUploading={setUploading}
-                uploading={uploading}
-              >
-                <div className="flex h-48 w-full cursor-pointer flex-wrap items-center justify-center border-4 border-dotted border-gray-400">
-                  <p>Image Drop Area</p>
-                </div>
-              </Dropzone>
-            </div>
+                <div
+                  className="content p-2"
+                  dangerouslySetInnerHTML={{
+                    __html: contentFormatted,
+                  }}
+                />
+              </div>
+            )}
           </div>
-          <div className="absolute bottom-0 left-0 right-0">
-            <div className="flex p-2">
-              <input
-                className="min-w-0 grow bg-gray-600 text-white"
-                onChange={(e) => setMediaLink(e.target.value)}
-                placeholder="media link"
-                type="text"
-                value={mediaLink}
-              />
-              <button
-                className="border p-2 disabled:border-gray-600 disabled:text-gray-600"
-                disabled={!isPlay}
-                onClick={onPlay}
-              >
-                <RiPlayFill size={30} />
-              </button>
-            </div>
+          <div className="text-black">
+            <StatusRichTextarea
+              onChange={setContent}
+              onSubmit={clickPost}
+              placeholder="What's happening?"
+              setAttachments={setAttachments}
+              setUploading={setUploading}
+              style={{
+                backgroundColor: 'white',
+                height: '10rem',
+                overflowY: 'auto',
+                resize: 'none',
+                width: '100%',
+              }}
+              text={content}
+            />
+          </div>
+          <div>
+            <button
+              className="rounded-md border bg-slate-500 px-3 py-2"
+              onClick={clickPost}
+            >
+              Post
+            </button>
+          </div>
+          <div>
+            <Dropzone
+              attachments={attachments}
+              setAttachments={setAttachments}
+              setUploading={setUploading}
+              uploading={uploading}
+            >
+              <div className="flex h-48 w-full cursor-pointer flex-wrap items-center justify-center border-4 border-dotted border-gray-400">
+                <p>Image Drop Area</p>
+              </div>
+            </Dropzone>
           </div>
         </div>
-      </Panel>
-    </>
+        <div className="absolute bottom-0 left-0 right-0">
+          <div className="flex p-2">
+            <input
+              className="min-w-0 grow bg-gray-600 text-white"
+              onChange={(e) => setMediaLink(e.target.value)}
+              placeholder="media link"
+              type="text"
+              value={mediaLink}
+            />
+            <button
+              className="border p-2 disabled:border-gray-600 disabled:text-gray-600"
+              disabled={!isPlay}
+              onClick={onPlay}
+            >
+              <RiPlayFill size={30} />
+            </button>
+          </div>
+        </div>
+      </div>
+    </Panel>
   )
 }

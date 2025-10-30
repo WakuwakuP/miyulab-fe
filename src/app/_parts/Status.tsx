@@ -50,7 +50,7 @@ export const Status = ({
 
   const displayName = useMemo(
     () => getDisplayName(status.account),
-    [status.account],
+    [status.account, getDisplayName],
   )
 
   const getSpoilerText = (status: Entity.Status) => {
@@ -69,7 +69,7 @@ export const Status = ({
 
   const spoilerText = useMemo(
     () => getSpoilerText(status.reblog ?? status),
-    [status],
+    [status, getSpoilerText],
   )
 
   const getContentFormatted = (status: Entity.Status) => {
@@ -88,7 +88,7 @@ export const Status = ({
 
   const contentFormatted = useMemo(
     () => getContentFormatted(status.reblog ?? status),
-    [status],
+    [status, getContentFormatted],
   )
 
   const replace = (node: DOMNode) => {
@@ -130,7 +130,7 @@ export const Status = ({
               setDetail({
                 content: status.tags.find(
                   (tag) =>
-                    e.currentTarget.innerText.toLocaleLowerCase() ==
+                    e.currentTarget.innerText.toLocaleLowerCase() ===
                     `#${tag.name.toLocaleLowerCase()}`,
                 )?.name as string,
                 type: 'Hashtag',
@@ -147,37 +147,35 @@ export const Status = ({
 
       if (canPlay(node.attribs.href)) {
         return (
-          <>
-            <a
-              {...attributesToProps(node.attribs)}
-              className="line-clamp-2 break-all"
-              onClick={(e) => {
-                e.stopPropagation()
-                e.preventDefault()
-                setPlayer({
-                  attachment: [
-                    {
-                      blurhash: null,
-                      description: '',
-                      id: '',
-                      meta: null,
-                      preview_url: null,
-                      remote_url: null,
-                      text_url: null,
-                      type: 'video',
-                      url: node.attribs.href,
-                    },
-                  ],
-                  index: 0,
-                })
-              }}
-              rel={[node.attribs.rel, 'noopener noreferrer'].join(' ')}
-              target="_blank"
-            >
-              <RiVideoLine className="mr-1 inline-block" />
-              {domToReact(node.children as DOMNode[])}
-            </a>
-          </>
+          <a
+            {...attributesToProps(node.attribs)}
+            className="line-clamp-2 break-all"
+            onClick={(e) => {
+              e.stopPropagation()
+              e.preventDefault()
+              setPlayer({
+                attachment: [
+                  {
+                    blurhash: null,
+                    description: '',
+                    id: '',
+                    meta: null,
+                    preview_url: null,
+                    remote_url: null,
+                    text_url: null,
+                    type: 'video',
+                    url: node.attribs.href,
+                  },
+                ],
+                index: 0,
+              })
+            }}
+            rel={[node.attribs.rel, 'noopener noreferrer'].join(' ')}
+            target="_blank"
+          >
+            <RiVideoLine className="mr-1 inline-block" />
+            {domToReact(node.children as DOMNode[])}
+          </a>
         )
       }
 
@@ -301,7 +299,7 @@ export const Status = ({
         }
       />
 
-      {status.media_attachments.length == 0 && (
+      {status.media_attachments.length === 0 && (
         <Card card={status.reblog?.card ?? status.card} />
       )}
 

@@ -220,19 +220,17 @@ export const Notification = ({
             </div>
             <div className="min-w-12">
               {notification.reaction?.static_url != null ? (
-                <>
-                  {scrolling ? (
-                    <div className="h-12 w-12 flex-none rounded-lg" />
-                  ) : (
-                    <img
-                      alt="emoji"
-                      className="h-12 max-w-full flex-none rounded-lg object-contain"
-                      loading="lazy"
-                      src={notification.reaction?.static_url}
-                      title={notification.reaction?.name}
-                    />
-                  )}
-                </>
+                scrolling ? (
+                  <div className="h-12 w-12 flex-none rounded-lg" />
+                ) : (
+                  <img
+                    alt="emoji"
+                    className="h-12 max-w-full flex-none rounded-lg object-contain"
+                    loading="lazy"
+                    src={notification.reaction?.static_url}
+                    title={notification.reaction?.name}
+                  />
+                )
               ) : (
                 <span
                   className="text-3xl"

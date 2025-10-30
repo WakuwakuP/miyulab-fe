@@ -59,7 +59,7 @@ export const NotificationTimeline = () => {
       if (timer.current == null) return
       clearTimeout(timer.current)
     }
-  }, [enableScrollToTop, scrollToTop, notifications.length])
+  }, [enableScrollToTop, scrollToTop])
 
   return (
     <Panel

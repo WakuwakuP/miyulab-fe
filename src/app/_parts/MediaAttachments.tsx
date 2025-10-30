@@ -40,27 +40,24 @@ export const MediaAttachments = ({
 
   return (
     <div className="relative flex flex-wrap">
-      {sensitive && (
-        <>
-          {!isShowSensitive ? (
-            <div
-              className="absolute z-10 flex h-full w-full cursor-pointer items-center justify-center bg-gray-800/50 p-2 text-gray-400 backdrop-blur-lg"
-              onClick={() => {
-                setIsShowSensitive(true)
-              }}
-            >
-              <div>Contents Warning</div>
-            </div>
-          ) : (
-            <button
-              className="absolute left-2 top-2 z-10 rounded-md bg-gray-500/50 px-1 py-0.5"
-              onClick={() => setIsShowSensitive(false)}
-            >
-              <div>Hide</div>
-            </button>
-          )}
-        </>
-      )}
+      {sensitive &&
+        (!isShowSensitive ? (
+          <div
+            className="absolute z-10 flex h-full w-full cursor-pointer items-center justify-center bg-gray-800/50 p-2 text-gray-400 backdrop-blur-lg"
+            onClick={() => {
+              setIsShowSensitive(true)
+            }}
+          >
+            <div>Contents Warning</div>
+          </div>
+        ) : (
+          <button
+            className="absolute left-2 top-2 z-10 rounded-md bg-gray-500/50 px-1 py-0.5"
+            onClick={() => setIsShowSensitive(false)}
+          >
+            <div>Hide</div>
+          </button>
+        ))}
       {mediaAttachments.map((media, index) => {
         switch (mediaAttachments.length) {
           case 1:
@@ -86,7 +83,7 @@ export const MediaAttachments = ({
             )
           default:
             if (mediaAttachments.length > 6 && index >= 5) {
-              if (index == 5) {
+              if (index === 5) {
                 return (
                   <button
                     className="flex w-1/3 items-center justify-center bg-black"

@@ -109,14 +109,12 @@ const ModalContent = () => {
           </button>
         </>
       ) : (
-        <>
-          {attachment[index].type === 'image' && (
-            <Media
-              className="fixed inset-0 z-50 m-auto h-[90vh] max-h-none w-[90vw] max-w-none"
-              media={attachment[index]}
-            />
-          )}
-        </>
+        attachment[index].type === 'image' && (
+          <Media
+            className="fixed inset-0 z-50 m-auto h-[90vh] max-h-none w-[90vw] max-w-none"
+            media={attachment[index]}
+          />
+        )
       )}
     </>
   )
