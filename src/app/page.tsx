@@ -1,11 +1,10 @@
 'use client'
 
-import { useContext } from 'react'
-
 import { DetailPanel } from 'app/_components/DetailPanel'
 import { DynamicTimeline } from 'app/_components/DynamicTimeline'
 import { MainPanel } from 'app/_components/MainPanel'
 import { MediaModal } from 'app/_components/MediaModal'
+import { useContext } from 'react'
 import { TimelineContext } from 'util/provider/TimelineProvider'
 
 import { Player } from './_components/Player'
@@ -22,10 +21,7 @@ export default function Home() {
     <main className="flex overflow-y-visible overflow-x-scroll *:w-[calc(100vw/6)] *:min-w-60 *:shrink-0">
       <MainPanel />
       {visibleTimelines.map((timelineConfig) => (
-        <DynamicTimeline
-          key={timelineConfig.id}
-          config={timelineConfig}
-        />
+        <DynamicTimeline config={timelineConfig} key={timelineConfig.id} />
       ))}
       <DetailPanel />
       <MediaModal />

@@ -1,6 +1,11 @@
 /* eslint-disable @next/next/no-img-element */
 'use client'
 
+import { Dropzone } from 'app/_parts/Dropzone'
+import { Panel } from 'app/_parts/Panel'
+import { StatusRichTextarea } from 'app/_parts/StatusRichTextarea'
+import { UserInfo } from 'app/_parts/UserInfo'
+import type { Entity } from 'megalodon'
 import {
   useCallback,
   useContext,
@@ -9,17 +14,7 @@ import {
   useMemo,
   useState,
 } from 'react'
-
-import { type Entity } from 'megalodon'
-import {
-  RiCloseCircleLine,
-  RiPlayFill,
-} from 'react-icons/ri'
-
-import { Dropzone } from 'app/_parts/Dropzone'
-import { Panel } from 'app/_parts/Panel'
-import { StatusRichTextarea } from 'app/_parts/StatusRichTextarea'
-import { UserInfo } from 'app/_parts/UserInfo'
+import { RiCloseCircleLine, RiPlayFill } from 'react-icons/ri'
 import { GetClient } from 'util/GetClient'
 import { canPlay } from 'util/PlayerUtils'
 import { AppsContext } from 'util/provider/AppsProvider'
@@ -35,23 +30,18 @@ export const MainPanel = () => {
   const replyTo = useContext(ReplyToContext)
   const setReplyTo = useContext(SetReplyToContext)
   const setPlayer = useContext(SetPlayerContext)
-  const { defaultStatusVisibility } =
-    useContext(SettingContext)
-  const [account, setAccount] =
-    useState<Entity.Account | null>(null)
+  const { defaultStatusVisibility } = useContext(SettingContext)
+  const [account, setAccount] = useState<Entity.Account | null>(null)
 
   // form state
-  const [visibility, setVisibility] =
-    useState<Entity.StatusVisibility>(
-      defaultStatusVisibility
-    )
+  const [visibility, setVisibility] = useState<Entity.StatusVisibility>(
+    defaultStatusVisibility,
+  )
   const [isCW, setIsCW] = useState(false)
   const [spoilerText, setSpoilerText] = useState('')
   const [content, setContent] = useState('')
 
-  const [attachments, setAttachments] = useState<
-    Entity.Attachment[]
-  >([])
+  const [attachments, setAttachments] = useState<Entity.Attachment[]>([])
 
   const [uploading, setUploading] = useState(0)
 
@@ -73,7 +63,7 @@ export const MainPanel = () => {
       status.emojis.forEach((emoji) => {
         content = content.replace(
           new RegExp(`:${emoji.shortcode}:`, 'gm'),
-          `<img src="${emoji.url}" alt="${emoji.shortcode}" class="min-w-4 h-4 inline-block" loading="lazy" />`
+          `<img src="${emoji.url}" alt="${emoji.shortcode}" class="min-w-4 h-4 inline-block" loading="lazy" />`,
         )
       })
     }
@@ -92,14 +82,12 @@ export const MainPanel = () => {
     const client = GetClient(apps[0])
 
     client.postStatus(content, {
-      visibility: visibility,
-      language: 'ja',
-      spoiler_text: isCW ? spoilerText : undefined,
       in_reply_to_id: replyTo?.id ?? undefined,
+      language: 'ja',
       media_ids:
-        attachments.length > 0
-          ? attachments.map((a) => a.id)
-          : undefined,
+        attachments.length > 0 ? attachments.map((a) => a.id) : undefined,
+      spoiler_text: isCW ? spoilerText : undefined,
+      visibility: visibility,
     })
 
     resetForm()
@@ -107,11 +95,7 @@ export const MainPanel = () => {
 
   useEffect(() => {
     setVisibility(replyTo?.visibility ?? 'public')
-    setContent(
-      replyTo?.account.acct != null
-        ? `@${replyTo.account.acct} `
-        : ''
-    )
+    setContent(replyTo?.account.acct != null ? `@${replyTo.account.acct} ` : '')
   }, [replyTo])
 
   useEffect(() => {
@@ -140,15 +124,15 @@ export const MainPanel = () => {
     setPlayer({
       attachment: [
         {
-          id: '',
-          url: mediaLink,
-          type: 'video',
           blurhash: null,
-          remote_url: null,
-          preview_url: null,
-          text_url: null,
-          meta: null,
           description: '',
+          id: '',
+          meta: null,
+          preview_url: null,
+          remote_url: null,
+          text_url: null,
+          type: 'video',
+          url: mediaLink,
         },
       ],
       index: 0,
@@ -170,16 +154,13 @@ export const MainPanel = () => {
             <div className="flex items-center space-x-2">
               <div>
                 <select
+                  className="w-fit rounded-md border text-black"
                   id="visibility"
                   name="visibility"
-                  className="w-fit rounded-md border text-black"
-                  value={visibility}
                   onChange={(e) =>
-                    setVisibility(
-                      e.target
-                        .value as Entity.StatusVisibility
-                    )
+                    setVisibility(e.target.value as Entity.StatusVisibility)
                   }
+                  value={visibility}
                 >
                   <option value="public">Public</option>
                   <option value="unlisted">Unlisted</option>
@@ -189,24 +170,18 @@ export const MainPanel = () => {
               </div>
               <div>
                 <label
-                  htmlFor="is-cw"
                   className="cursor-pointer rounded-md border px-3 py-2"
+                  htmlFor="is-cw"
                 >
                   <input
+                    checked={isCW}
+                    className="hidden"
                     id="is-cw"
                     name="is-cw"
+                    onChange={(e) => setIsCW(e.target.checked)}
                     type="checkbox"
-                    className="hidden"
-                    checked={isCW}
-                    onChange={(e) =>
-                      setIsCW(e.target.checked)
-                    }
                   />
-                  <span
-                    className={isCW ? 'text-blue-400' : ''}
-                  >
-                    CW
-                  </span>
+                  <span className={isCW ? 'text-blue-400' : ''}>CW</span>
                 </label>
               </div>
             </div>
@@ -214,11 +189,9 @@ export const MainPanel = () => {
             <div className={isCW ? 'block' : 'hidden'}>
               <input
                 className="w-full"
+                onChange={(e) => setSpoilerText(e.target.value)}
                 placeholder="CW"
                 value={spoilerText}
-                onChange={(e) =>
-                  setSpoilerText(e.target.value)
-                }
               />
             </div>
             <div>
@@ -227,16 +200,14 @@ export const MainPanel = () => {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-1">
                       <img
-                        src={replyTo.account.avatar}
                         alt={replyTo.account.display_name}
                         className="h-8 w-8 rounded-md"
                         loading="lazy"
+                        src={replyTo.account.avatar}
                       />
                       <div>
                         <div>
-                          <span>
-                            {replyTo.account.display_name}
-                          </span>
+                          <span>{replyTo.account.display_name}</span>
                         </div>
                       </div>
                     </div>
@@ -261,19 +232,19 @@ export const MainPanel = () => {
             </div>
             <div className="text-black">
               <StatusRichTextarea
-                text={content}
-                placeholder="What's happening?"
-                onSubmit={clickPost}
-                style={{
-                  width: '100%',
-                  height: '10rem',
-                  backgroundColor: 'white',
-                  overflowY: 'auto',
-                  resize: 'none',
-                }}
                 onChange={setContent}
+                onSubmit={clickPost}
+                placeholder="What's happening?"
                 setAttachments={setAttachments}
                 setUploading={setUploading}
+                style={{
+                  backgroundColor: 'white',
+                  height: '10rem',
+                  overflowY: 'auto',
+                  resize: 'none',
+                  width: '100%',
+                }}
+                text={content}
               />
             </div>
             <div>
@@ -288,8 +259,8 @@ export const MainPanel = () => {
               <Dropzone
                 attachments={attachments}
                 setAttachments={setAttachments}
-                uploading={uploading}
                 setUploading={setUploading}
+                uploading={uploading}
               >
                 <div className="flex h-48 w-full cursor-pointer flex-wrap items-center justify-center border-4 border-dotted border-gray-400">
                   <p>Image Drop Area</p>
@@ -300,13 +271,11 @@ export const MainPanel = () => {
           <div className="absolute bottom-0 left-0 right-0">
             <div className="flex p-2">
               <input
-                type="text"
                 className="min-w-0 grow bg-gray-600 text-white"
+                onChange={(e) => setMediaLink(e.target.value)}
                 placeholder="media link"
+                type="text"
                 value={mediaLink}
-                onChange={(e) =>
-                  setMediaLink(e.target.value)
-                }
               />
               <button
                 className="border p-2 disabled:border-gray-600 disabled:text-gray-600"

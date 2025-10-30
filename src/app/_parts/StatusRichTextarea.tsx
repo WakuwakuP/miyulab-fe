@@ -1,10 +1,13 @@
 /* eslint-disable @next/next/no-img-element */
 'use client'
 
+import imageCompression from 'browser-image-compression'
+import type { Entity } from 'megalodon'
+import * as Emoji from 'node-emoji'
 import {
-  type CSSProperties,
   type ChangeEvent,
   type ClipboardEventHandler,
+  type CSSProperties,
   type Dispatch,
   type KeyboardEvent,
   type SetStateAction,
@@ -13,16 +16,12 @@ import {
   useRef,
   useState,
 } from 'react'
-
-import imageCompression from 'browser-image-compression'
-import { type Entity } from 'megalodon'
-import * as Emoji from 'node-emoji'
 import { createPortal } from 'react-dom'
 import {
   type CaretPosition,
+  createRegexRenderer,
   RichTextarea,
   type RichTextareaHandle,
-  createRegexRenderer,
 } from 'rich-textarea'
 
 import { GetClient } from 'util/GetClient'
@@ -36,10 +35,7 @@ import {
 
 const MAX_LIST_LENGTH = 8
 const MENTION_REG = /\B@([\\.@\-+\w]*)$/
-const MENTION_HIGHLIGHT_REG = new RegExp(
-  /@([\\.@\-+\w]*)/,
-  'g'
-)
+const MENTION_HIGHLIGHT_REG = new RegExp(/@([\\.@\-+\w]*)/, 'g')
 const EMOJI_REG = /\B:([+\w]*)$/
 
 const EMOJI_HIGHLIGHT_REG = new RegExp(/:([+\w]*):/, 'g')
@@ -54,10 +50,7 @@ const MentionMenu = ({
   left,
   complete,
 }: {
-  chars: Pick<
-    Entity.Account,
-    'id' | 'acct' | 'avatar' | 'display_name'
-  >[]
+  chars: Pick<Entity.Account, 'id' | 'acct' | 'avatar' | 'display_name'>[]
   index: number
   top: number
   left: number
@@ -66,34 +59,34 @@ const MentionMenu = ({
   return (
     <div
       style={{
+        backgroundColor: 'white',
+        border: '1px solid black',
+        color: 'black',
+        left: left,
         position: 'fixed',
         top: top,
-        left: left,
-        backgroundColor: 'white',
-        color: 'black',
-        border: '1px solid black',
       }}
     >
       {chars.map((char, i) => (
         <div
           key={char.id}
-          style={{
-            padding: '4px',
-            ...(index === i && {
-              color: 'white',
-              backgroundColor: 'blue',
-            }),
-          }}
           onMouseDown={(e) => {
             e.preventDefault()
             complete(i)
           }}
+          style={{
+            padding: '4px',
+            ...(index === i && {
+              backgroundColor: 'blue',
+              color: 'white',
+            }),
+          }}
         >
           <img
-            className="mr-2 inline-block h-8 w-8 rounded-full"
-            src={char.avatar}
             alt={char.display_name}
+            className="mr-2 inline-block h-8 w-8 rounded-full"
             loading="lazy"
+            src={char.avatar}
           />
           <span>{`@${char.acct}`}</span>
         </div>
@@ -118,40 +111,38 @@ const EmojiMenu = ({
   return (
     <div
       style={{
+        backgroundColor: 'white',
+        border: '1px solid black',
+        color: 'black',
+        left: left,
         position: 'fixed',
         top: top,
-        left: left,
-        backgroundColor: 'white',
-        color: 'black',
-        border: '1px solid black',
       }}
     >
       {chars.map((char, i) => (
         <div
           key={char.shortcode}
-          style={{
-            display: 'flex',
-            padding: '4px',
-            ...(index === i && {
-              color: 'white',
-              backgroundColor: 'blue',
-            }),
-          }}
           onMouseDown={(e) => {
             e.preventDefault()
             complete(i)
           }}
+          style={{
+            display: 'flex',
+            padding: '4px',
+            ...(index === i && {
+              backgroundColor: 'blue',
+              color: 'white',
+            }),
+          }}
         >
           {char.url === '' ? (
-            <div>
-              {Emoji.emojify(`:${char.shortcode}:`)}
-            </div>
+            <div>{Emoji.emojify(`:${char.shortcode}:`)}</div>
           ) : (
             <img
-              src={char.url}
               alt={char.shortcode}
               className="mr-1 h-6 w-6"
               loading="lazy"
+              src={char.url}
             />
           )}
           <div>:{char.shortcode}:</div>
@@ -178,27 +169,27 @@ const Menu = ({
   return (
     <div
       style={{
+        backgroundColor: 'white',
+        border: '1px solid black',
+        color: 'black',
+        left: left,
         position: 'fixed',
         top: top,
-        left: left,
-        backgroundColor: 'white',
-        color: 'black',
-        border: '1px solid black',
       }}
     >
       {chars.map((char, i) => (
         <div
           key={char}
-          style={{
-            padding: '4px',
-            ...(index === i && {
-              color: 'white',
-              backgroundColor: 'blue',
-            }),
-          }}
           onMouseDown={(e) => {
             e.preventDefault()
             complete(i)
+          }}
+          style={{
+            padding: '4px',
+            ...(index === i && {
+              backgroundColor: 'blue',
+              color: 'white',
+            }),
           }}
         >
           {char}
@@ -222,9 +213,7 @@ export const StatusRichTextarea = ({
   onChange: (text: string) => void
   onSubmit: () => void
   style: CSSProperties
-  setAttachments: Dispatch<
-    SetStateAction<Entity.Attachment[]>
-  >
+  setAttachments: Dispatch<SetStateAction<Entity.Attachment[]>>
   setUploading: Dispatch<SetStateAction<number>>
 }) => {
   const apps = useContext(AppsContext)
@@ -233,8 +222,7 @@ export const StatusRichTextarea = ({
   const tags = useContext(TagsContext)
   const instance = useContext(InstanceContext)
 
-  const update_limit =
-    (instance?.upload_limit ?? 16000000) / 1024 / 1024
+  const update_limit = (instance?.upload_limit ?? 16000000) / 1024 / 1024
 
   const ref = useRef<RichTextareaHandle>(null)
 
@@ -250,18 +238,13 @@ export const StatusRichTextarea = ({
   const [isEmoji, setIsEmoji] = useState(false)
   const [isTag, setIsTag] = useState(false)
 
-  const targetText =
-    pos != null ? text.slice(0, pos.caret) : text
+  const targetText = pos != null ? text.slice(0, pos.caret) : text
 
-  const mentionMatch =
-    pos != null ? targetText.match(MENTION_REG) : null
-  const emojiMatch =
-    pos != null ? targetText.match(EMOJI_REG) : null
-  const tagMatch =
-    pos != null ? targetText.match(TAG_REG) : null
+  const mentionMatch = pos != null ? targetText.match(MENTION_REG) : null
+  const emojiMatch = pos != null ? targetText.match(EMOJI_REG) : null
+  const tagMatch = pos != null ? targetText.match(TAG_REG) : null
 
-  const mentionName =
-    mentionMatch != null ? mentionMatch[1] : ''
+  const mentionName = mentionMatch != null ? mentionMatch[1] : ''
   const emojiName = emojiMatch != null ? emojiMatch[1] : ''
 
   const tagName = tagMatch != null ? tagMatch[1] : ''
@@ -272,10 +255,10 @@ export const StatusRichTextarea = ({
         .filter((char) =>
           char.acct
             .toLocaleLowerCase()
-            .startsWith(mentionName.toLocaleLowerCase())
+            .startsWith(mentionName.toLocaleLowerCase()),
         )
         .slice(0, MAX_LIST_LENGTH),
-    [mentionName, users]
+    [mentionName, users],
   )
 
   const emojiFiltered = useMemo(
@@ -284,22 +267,20 @@ export const StatusRichTextarea = ({
         .filter((char) =>
           char.shortcode
             .toLocaleLowerCase()
-            .startsWith(emojiName.toLocaleLowerCase())
+            .startsWith(emojiName.toLocaleLowerCase()),
         )
         .slice(0, MAX_LIST_LENGTH),
-    [emojiName, emojis]
+    [emojiName, emojis],
   )
 
   const tagFiltered = useMemo(
     () =>
       tags
         .filter((char) =>
-          char
-            .toLocaleLowerCase()
-            .startsWith(tagName.toLocaleLowerCase())
+          char.toLocaleLowerCase().startsWith(tagName.toLocaleLowerCase()),
         )
         .slice(0, MAX_LIST_LENGTH),
-    [tagName, tags]
+    [tagName, tags],
   )
 
   const mentionComplete = (index: number) => {
@@ -309,7 +290,7 @@ export const StatusRichTextarea = ({
       `@${selected.acct} `,
       pos.caret - mentionName.length - 1,
       pos.caret,
-      'end'
+      'end',
     )
     setPos(null)
     setIndex(0)
@@ -322,7 +303,7 @@ export const StatusRichTextarea = ({
       Emoji.emojify(`:${selected}: `),
       pos.caret - emojiName.length - 1,
       pos.caret,
-      'end'
+      'end',
     )
     setPos(null)
     setIndex(0)
@@ -336,7 +317,7 @@ export const StatusRichTextarea = ({
         `#${selected} `,
         pos.caret - tagName.length - 1,
         pos.caret,
-        'end'
+        'end',
       )
     }
     setPos(null)
@@ -363,9 +344,7 @@ export const StatusRichTextarea = ({
       })
   }
 
-  const onPaste: ClipboardEventHandler<
-    HTMLTextAreaElement
-  > = (e) => {
+  const onPaste: ClipboardEventHandler<HTMLTextAreaElement> = (e) => {
     if (e.clipboardData.types.includes('Files')) {
       e.preventDefault()
       const files = e.clipboardData.files
@@ -392,21 +371,12 @@ export const StatusRichTextarea = ({
   return (
     <>
       <RichTextarea
-        placeholder={placeholder}
-        ref={ref}
-        style={style}
         className="rounded-none"
         onChange={(e: ChangeEvent<HTMLTextAreaElement>) =>
           onChange(e.target.value)
         }
-        value={text}
-        onKeyDown={(
-          e: KeyboardEvent<HTMLTextAreaElement>
-        ) => {
-          if (
-            e.code === 'Enter' &&
-            (e.ctrlKey || e.metaKey)
-          ) {
+        onKeyDown={(e: KeyboardEvent<HTMLTextAreaElement>) => {
+          if (e.code === 'Enter' && (e.ctrlKey || e.metaKey)) {
             e.preventDefault()
             onSubmit()
             return
@@ -423,44 +393,20 @@ export const StatusRichTextarea = ({
             case 'ArrowUp':
               e.preventDefault()
               if (isMention)
-                setIndex(
-                  index <= 0
-                    ? mentionFiltered.length - 1
-                    : index - 1
-                )
+                setIndex(index <= 0 ? mentionFiltered.length - 1 : index - 1)
               if (isEmoji)
-                setIndex(
-                  index <= 0
-                    ? emojiFiltered.length - 1
-                    : index - 1
-                )
+                setIndex(index <= 0 ? emojiFiltered.length - 1 : index - 1)
               if (isTag)
-                setIndex(
-                  index <= 0
-                    ? tagFiltered.length - 1
-                    : index - 1
-                )
+                setIndex(index <= 0 ? tagFiltered.length - 1 : index - 1)
               break
             case 'ArrowDown':
               e.preventDefault()
               if (isMention)
-                setIndex(
-                  index >= mentionFiltered.length - 1
-                    ? 0
-                    : index + 1
-                )
+                setIndex(index >= mentionFiltered.length - 1 ? 0 : index + 1)
               if (isEmoji)
-                setIndex(
-                  index >= emojiFiltered.length - 1
-                    ? 0
-                    : index + 1
-                )
+                setIndex(index >= emojiFiltered.length - 1 ? 0 : index + 1)
               if (isTag)
-                setIndex(
-                  index >= tagFiltered.length - 1
-                    ? 0
-                    : index + 1
-                )
+                setIndex(index >= tagFiltered.length - 1 ? 0 : index + 1)
               break
             case 'Enter':
             case 'Tab':
@@ -482,36 +428,33 @@ export const StatusRichTextarea = ({
               return
           }
         }}
+        onPaste={onPaste}
         onSelectionChange={(r: CaretPosition) => {
           if (
             r.focused &&
-            MENTION_REG.test(
-              text.slice(0, r.selectionStart)
-            ) &&
+            MENTION_REG.test(text.slice(0, r.selectionStart)) &&
             isEmoji === false &&
             isTag === false
           ) {
             // TypeScript knows r.focused is true here, so we can access position properties
             setIsMention(true)
             setPos({
-              top: r.top + r.height,
-              left: r.left,
               caret: r.selectionStart,
+              left: r.left,
+              top: r.top + r.height,
             })
             setIndex(0)
           } else if (
             r.focused &&
-            EMOJI_REG.test(
-              text.slice(0, r.selectionStart)
-            ) &&
+            EMOJI_REG.test(text.slice(0, r.selectionStart)) &&
             isMention === false &&
             isTag === false
           ) {
             setIsEmoji(true)
             setPos({
-              top: r.top + r.height,
-              left: r.left,
               caret: r.selectionStart,
+              left: r.left,
+              top: r.top + r.height,
             })
             setIndex(0)
           } else if (
@@ -522,9 +465,9 @@ export const StatusRichTextarea = ({
           ) {
             setIsTag(true)
             setPos({
-              top: r.top + r.height,
-              left: r.left,
               caret: r.selectionStart,
+              left: r.left,
+              top: r.top + r.height,
             })
             setIndex(0)
           } else {
@@ -535,7 +478,10 @@ export const StatusRichTextarea = ({
             setIndex(0)
           }
         }}
-        onPaste={onPaste}
+        placeholder={placeholder}
+        ref={ref}
+        style={style}
+        value={text}
       >
         {customRenderer}
       </RichTextarea>
@@ -544,13 +490,13 @@ export const StatusRichTextarea = ({
         isMention &&
         createPortal(
           <MentionMenu
-            top={pos.top}
-            left={pos.left}
             chars={mentionFiltered}
-            index={index}
             complete={mentionComplete}
+            index={index}
+            left={pos.left}
+            top={pos.top}
           />,
-          document.body
+          document.body,
         )}
 
       {pos != null &&
@@ -558,26 +504,26 @@ export const StatusRichTextarea = ({
         isEmoji &&
         createPortal(
           <EmojiMenu
-            top={pos.top}
-            left={pos.left}
             chars={emojiFiltered}
-            index={index}
             complete={emojiComplete}
+            index={index}
+            left={pos.left}
+            top={pos.top}
           />,
-          document.body
+          document.body,
         )}
       {pos != null &&
         tagFiltered.length > 0 &&
         isTag &&
         createPortal(
           <Menu
-            top={pos.top}
-            left={pos.left}
             chars={tagFiltered}
-            index={index}
             complete={tagComplete}
+            index={index}
+            left={pos.left}
+            top={pos.top}
           />,
-          document.body
+          document.body,
         )}
     </>
   )

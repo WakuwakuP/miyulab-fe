@@ -1,27 +1,22 @@
 /* eslint-disable @next/next/no-img-element */
 'use client'
 
-import { useContext, useMemo } from 'react'
-
-import { ElementType } from 'domelementtype'
-import parse, {
-  type DOMNode,
-  attributesToProps,
-  domToReact,
-} from 'html-react-parser'
-import { type Entity } from 'megalodon'
-import { RiRepeatFill, RiVideoLine } from 'react-icons/ri'
-
 import { Actions } from 'app/_parts/Actions'
 import { Card } from 'app/_parts/Card'
 import { EditedAt } from 'app/_parts/EditedAt'
 import { MediaAttachments } from 'app/_parts/MediaAttachments'
 import { Poll } from 'app/_parts/Poll'
 import { UserInfo } from 'app/_parts/UserInfo'
-import {
-  type PollAddAppIndex,
-  type StatusAddAppIndex,
-} from 'types/types'
+import { ElementType } from 'domelementtype'
+import parse, {
+  attributesToProps,
+  type DOMNode,
+  domToReact,
+} from 'html-react-parser'
+import type { Entity } from 'megalodon'
+import { useContext, useMemo } from 'react'
+import { RiRepeatFill, RiVideoLine } from 'react-icons/ri'
+import type { PollAddAppIndex, StatusAddAppIndex } from 'types/types'
 import { canPlay } from 'util/PlayerUtils'
 import { SetDetailContext } from 'util/provider/DetailProvider'
 import { SetPlayerContext } from 'util/provider/PlayerProvider'
@@ -46,7 +41,7 @@ export const Status = ({
       account.emojis.forEach((emoji) => {
         displayName = displayName.replace(
           new RegExp(`:${emoji.shortcode}:`, 'gm'),
-          `<img src="${emoji.url}" alt="${emoji.shortcode}" title=":${emoji.shortcode}:" class="min-w-7 h-7 inline-block" loading="lazy" />`
+          `<img src="${emoji.url}" alt="${emoji.shortcode}" title=":${emoji.shortcode}:" class="min-w-7 h-7 inline-block" loading="lazy" />`,
         )
       })
     }
@@ -55,7 +50,7 @@ export const Status = ({
 
   const displayName = useMemo(
     () => getDisplayName(status.account),
-    [status.account]
+    [status.account],
   )
 
   const getSpoilerText = (status: Entity.Status) => {
@@ -64,7 +59,7 @@ export const Status = ({
       status.emojis.forEach((emoji) => {
         spoiler_text = spoiler_text.replace(
           new RegExp(`:${emoji.shortcode}:`, 'gm'),
-          `<img src="${emoji.url}" alt="${emoji.shortcode}" title=":${emoji.shortcode}:" class="min-w-7 h-7 inline-block" loading="lazy" />`
+          `<img src="${emoji.url}" alt="${emoji.shortcode}" title=":${emoji.shortcode}:" class="min-w-7 h-7 inline-block" loading="lazy" />`,
         )
       })
     }
@@ -74,7 +69,7 @@ export const Status = ({
 
   const spoilerText = useMemo(
     () => getSpoilerText(status.reblog ?? status),
-    [status]
+    [status],
   )
 
   const getContentFormatted = (status: Entity.Status) => {
@@ -83,7 +78,7 @@ export const Status = ({
       status.emojis.forEach((emoji) => {
         content = content.replace(
           new RegExp(`:${emoji.shortcode}:`, 'gm'),
-          `<img src="${emoji.url}" alt="${emoji.shortcode}" title=":${emoji.shortcode}:" class="min-w-7 h-7 inline-block" loading="lazy" />`
+          `<img src="${emoji.url}" alt="${emoji.shortcode}" title=":${emoji.shortcode}:" class="min-w-7 h-7 inline-block" loading="lazy" />`,
         )
       })
     }
@@ -93,17 +88,12 @@ export const Status = ({
 
   const contentFormatted = useMemo(
     () => getContentFormatted(status.reblog ?? status),
-    [status]
+    [status],
   )
 
   const replace = (node: DOMNode) => {
-    if (
-      node.type === ElementType.Tag &&
-      node.name === 'a'
-    ) {
-      const classNames = (node.attribs.class ?? '').split(
-        ' '
-      )
+    if (node.type === ElementType.Tag && node.name === 'a') {
+      const classNames = (node.attribs.class ?? '').split(' ')
       if (classNames.includes('mention')) {
         return (
           <a
@@ -112,18 +102,14 @@ export const Status = ({
               e.stopPropagation()
               e.preventDefault()
               setDetail({
-                type: 'SearchUser',
-                content: status.mentions.find(
-                  (mention) =>
-                    mention.url === node.attribs.href
-                )?.id as string,
                 appIndex: status.appIndex,
+                content: status.mentions.find(
+                  (mention) => mention.url === node.attribs.href,
+                )?.id as string,
+                type: 'SearchUser',
               })
             }}
-            rel={[
-              node.attribs.rel,
-              'noopener noreferrer',
-            ].join(' ')}
+            rel={[node.attribs.rel, 'noopener noreferrer'].join(' ')}
             target="_blank"
           >
             {domToReact(node.children as DOMNode[])}
@@ -142,20 +128,17 @@ export const Status = ({
               e.stopPropagation()
               e.preventDefault()
               setDetail({
-                type: 'Hashtag',
                 content: status.tags.find(
                   (tag) =>
                     e.currentTarget.innerText.toLocaleLowerCase() ==
-                    `#${tag.name.toLocaleLowerCase()}`
+                    `#${tag.name.toLocaleLowerCase()}`,
                 )?.name as string,
+                type: 'Hashtag',
               })
             }}
-            title={`#${node.attribs.href}`}
-            rel={[
-              node.attribs.rel,
-              'noopener noreferrer',
-            ].join(' ')}
+            rel={[node.attribs.rel, 'noopener noreferrer'].join(' ')}
             target="_blank"
+            title={`#${node.attribs.href}`}
           >
             {domToReact(node.children as DOMNode[])}
           </a>
@@ -174,24 +157,21 @@ export const Status = ({
                 setPlayer({
                   attachment: [
                     {
-                      id: '',
-                      url: node.attribs.href,
-                      type: 'video',
                       blurhash: null,
-                      remote_url: null,
-                      preview_url: null,
-                      text_url: null,
-                      meta: null,
                       description: '',
+                      id: '',
+                      meta: null,
+                      preview_url: null,
+                      remote_url: null,
+                      text_url: null,
+                      type: 'video',
+                      url: node.attribs.href,
                     },
                   ],
                   index: 0,
                 })
               }}
-              rel={[
-                node.attribs.rel,
-                'noopener noreferrer',
-              ].join(' ')}
+              rel={[node.attribs.rel, 'noopener noreferrer'].join(' ')}
               target="_blank"
             >
               <RiVideoLine className="mr-1 inline-block" />
@@ -205,12 +185,9 @@ export const Status = ({
         <a
           {...attributesToProps(node.attribs)}
           className="line-clamp-1"
-          title={node.attribs.href}
-          rel={[
-            node.attribs.rel,
-            'noopener noreferrer',
-          ].join(' ')}
+          rel={[node.attribs.rel, 'noopener noreferrer'].join(' ')}
           target="_blank"
+          title={node.attribs.href}
         >
           {domToReact(node.children as DOMNode[])}
         </a>
@@ -225,9 +202,7 @@ export const Status = ({
     'leading-7',
     className,
     small ? 'max-h-24 overflow-clip' : '',
-    status.reblog != null
-      ? 'border-l-4 border-blue-400 pl-2 mb-2'
-      : '',
+    status.reblog != null ? 'border-l-4 border-blue-400 pl-2 mb-2' : '',
   ].join(' ')
 
   const poll = status.reblog?.poll ?? status.poll
@@ -247,26 +222,26 @@ export const Status = ({
             className="flex mb-1 overflow-clip"
             onClick={() => {
               setDetail({
-                type: 'Account',
                 content: {
                   ...status.account,
                   appIndex: status.appIndex,
                 },
+                type: 'Account',
               })
             }}
           >
             <RiRepeatFill
-              size={24}
               className="mr-2 block text-blue-400 flex-none"
+              size={24}
             />
             <img
+              alt="avatar"
               className={[
                 'rounded-lg object-contain flex-none block shrink-0',
                 small ? 'w-3 h-3' : 'w-6 h-6',
               ].join(' ')}
-              src={status.account.avatar}
-              alt="avatar"
               loading="lazy"
+              src={status.account.avatar}
             />
             <div
               className="pl-2 whitespace-nowrap"
@@ -280,9 +255,9 @@ export const Status = ({
               ...status.reblog.account,
               appIndex: status.appIndex,
             }}
-            visibility={status.reblog.visibility}
-            small={small}
             scrolling={scrolling}
+            small={small}
+            visibility={status.reblog.visibility}
           />
         </>
       ) : (
@@ -291,9 +266,9 @@ export const Status = ({
             ...status.account,
             appIndex: status.appIndex,
           }}
-          visibility={status.visibility}
-          small={small}
           scrolling={scrolling}
+          small={small}
+          visibility={status.visibility}
         />
       )}
       {status.spoiler_text !== '' && (
@@ -307,8 +282,8 @@ export const Status = ({
         className="content"
         onClick={() => {
           setDetail({
-            type: 'Status',
             content: status,
+            type: 'Status',
           })
         }}
       >
@@ -331,11 +306,9 @@ export const Status = ({
       )}
 
       <MediaAttachments
-        sensitive={
-          status.reblog?.sensitive ?? status.sensitive
-        }
         mediaAttachments={status.media_attachments}
         scrolling={scrolling}
+        sensitive={status.reblog?.sensitive ?? status.sensitive}
       />
       <Actions status={status} />
     </div>

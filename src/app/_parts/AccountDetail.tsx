@@ -1,36 +1,25 @@
 /* eslint-disable @next/next/no-img-element */
 'use client'
 
-import {
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-} from 'react'
+import { UserInfo } from 'app/_parts/UserInfo'
 
 import { ElementType } from 'domelementtype'
 import parse, {
-  type DOMNode,
   attributesToProps,
+  type DOMNode,
   domToReact,
 } from 'html-react-parser'
-import { type Entity } from 'megalodon'
+import type { Entity } from 'megalodon'
+import { useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import innerText from 'react-innertext'
-
-import { UserInfo } from 'app/_parts/UserInfo'
-import { type AccountAddAppIndex } from 'types/types'
+import type { AccountAddAppIndex } from 'types/types'
 import { GetClient } from 'util/GetClient'
 import { AppsContext } from 'util/provider/AppsProvider'
 import { SetDetailContext } from 'util/provider/DetailProvider'
 
 import { Status } from './Status'
 
-export const AccountDetail = ({
-  account,
-}: {
-  account: AccountAddAppIndex
-}) => {
+export const AccountDetail = ({ account }: { account: AccountAddAppIndex }) => {
   const apps = useContext(AppsContext)
   const setDetail = useContext(SetDetailContext)
   const [toots, setToots] = useState<Entity.Status[]>([])
@@ -40,9 +29,7 @@ export const AccountDetail = ({
   >(undefined)
   const [isLoading, setIsLoading] = useState(false)
 
-  const [tab, setTab] = useState<
-    'toots' | 'media' | 'favourite'
-  >('toots')
+  const [tab, setTab] = useState<'toots' | 'media' | 'favourite'>('toots')
 
   const getEmojiText = useCallback(
     (str: string) => {
@@ -51,25 +38,22 @@ export const AccountDetail = ({
         account.emojis.forEach((emoji) => {
           parseStr = parseStr.replace(
             new RegExp(`:${emoji.shortcode}:`, 'gm'),
-            `<img src="${emoji.url}" alt="${emoji.shortcode}" class="min-w-4 h-4 inline-block" loading="lazy" />`
+            `<img src="${emoji.url}" alt="${emoji.shortcode}" class="min-w-4 h-4 inline-block" loading="lazy" />`,
           )
         })
       }
       return parseStr
     },
-    [account.emojis]
+    [account.emojis],
   )
 
   const accountNote = useMemo(
     () => getEmojiText(account.note),
-    [account.note, getEmojiText]
+    [account.note, getEmojiText],
   )
 
   const replace = (node: DOMNode) => {
-    if (
-      node.type === ElementType.Tag &&
-      node.name === 'a'
-    ) {
+    if (node.type === ElementType.Tag && node.name === 'a') {
       if (node.attribs.rel === 'tag') {
         return (
           <a
@@ -78,10 +62,10 @@ export const AccountDetail = ({
               e.stopPropagation()
               e.preventDefault()
               setDetail({
-                type: 'Hashtag',
                 content: e.currentTarget.innerText
                   .toLocaleLowerCase()
                   .replace('#', ''),
+                type: 'Hashtag',
               })
             }}
             target="_blank"
@@ -95,10 +79,7 @@ export const AccountDetail = ({
         <a
           {...attributesToProps(node.attribs)}
           className="text-blue-500"
-          rel={[
-            node.attribs.rel,
-            'noopener noreferrer',
-          ].join(' ')}
+          rel={[node.attribs.rel, 'noopener noreferrer'].join(' ')}
           target="_blank"
         >
           {domToReact(node.children as DOMNode[])}
@@ -174,10 +155,10 @@ export const AccountDetail = ({
     <>
       <div className="mb-2">
         <img
-          src={account.header}
           alt="header"
           className="max-h-80 w-full object-cover"
           loading="lazy"
+          src={account.header}
         />
       </div>
       <UserInfo account={account} />
@@ -185,9 +166,7 @@ export const AccountDetail = ({
         <div className="my-2">
           <div className="my-2">
             <span className="text-gray-400">
-              {relationship.followed_by
-                ? 'フォローされています'
-                : ''}
+              {relationship.followed_by ? 'フォローされています' : ''}
             </span>
           </div>
           <div className="my-2">
@@ -198,17 +177,13 @@ export const AccountDetail = ({
                     className="rounded-md border border-red-500 px-2 py-1 text-red-500 transition-colors duration-300 ease-in-out hover:bg-red-500 hover:text-white"
                     onClick={() => {
                       if (apps.length <= 0) return
-                      const client = GetClient(
-                        apps[account.appIndex]
-                      )
-                      client
-                        .unfollowAccount(account.id)
-                        .then(() => {
-                          setRelationship({
-                            ...relationship,
-                            following: true,
-                          })
+                      const client = GetClient(apps[account.appIndex])
+                      client.unfollowAccount(account.id).then(() => {
+                        setRelationship({
+                          ...relationship,
+                          following: true,
                         })
+                      })
                     }}
                   >
                     フォロー解除
@@ -218,17 +193,13 @@ export const AccountDetail = ({
                     className="rounded-md border border-blue-500 px-2 py-1 text-blue-500 transition-colors duration-300 ease-in-out hover:bg-blue-500 hover:text-white"
                     onClick={() => {
                       if (apps.length <= 0) return
-                      const client = GetClient(
-                        apps[account.appIndex]
-                      )
-                      client
-                        .followAccount(account.id)
-                        .then(() => {
-                          setRelationship({
-                            ...relationship,
-                            following: true,
-                          })
+                      const client = GetClient(apps[account.appIndex])
+                      client.followAccount(account.id).then(() => {
+                        setRelationship({
+                          ...relationship,
+                          following: true,
                         })
+                      })
                     }}
                   >
                     フォローする
@@ -241,17 +212,13 @@ export const AccountDetail = ({
                     className="rounded-md border border-red-500 px-2 py-1 text-red-500 transition-colors duration-300 ease-in-out hover:bg-red-500 hover:text-white"
                     onClick={() => {
                       if (apps.length <= 0) return
-                      const client = GetClient(
-                        apps[account.appIndex]
-                      )
-                      client
-                        .unsubscribeAccount(account.id)
-                        .then(() => {
-                          setRelationship({
-                            ...relationship,
-                            notifying: false,
-                          })
+                      const client = GetClient(apps[account.appIndex])
+                      client.unsubscribeAccount(account.id).then(() => {
+                        setRelationship({
+                          ...relationship,
+                          notifying: false,
                         })
+                      })
                     }}
                   >
                     購読解除
@@ -262,18 +229,14 @@ export const AccountDetail = ({
                     onClick={() => {
                       if (apps.length <= 0) return
 
-                      const client = GetClient(
-                        apps[account.appIndex]
-                      )
+                      const client = GetClient(apps[account.appIndex])
 
-                      client
-                        .subscribeAccount(account.id)
-                        .then(() => {
-                          setRelationship({
-                            ...relationship,
-                            notifying: true,
-                          })
+                      client.subscribeAccount(account.id).then(() => {
+                        setRelationship({
+                          ...relationship,
+                          notifying: true,
                         })
+                      })
                     }}
                   >
                     購読する
@@ -284,15 +247,13 @@ export const AccountDetail = ({
           </div>
         </div>
       )}
-      <div className="content my-2">
-        {parse(accountNote, { replace })}
-      </div>
+      <div className="content my-2">{parse(accountNote, { replace })}</div>
 
       <div className="m-1 box-border">
         {account.fields.map((field) => (
           <dl
-            key={field.name}
             className="flex w-full border-collapse text-center text-sm"
+            key={field.name}
           >
             <dt
               className="w-28 flex-[0_0_auto] truncate border px-1 py-2"
@@ -302,9 +263,7 @@ export const AccountDetail = ({
             </dt>
             <dd
               className="flex-[1_1_auto] truncate border px-1 py-2"
-              title={innerText(
-                parse(getEmojiText(field.value))
-              )}
+              title={innerText(parse(getEmojiText(field.value)))}
             >
               {parse(getEmojiText(field.value), {
                 replace,
@@ -343,11 +302,11 @@ export const AccountDetail = ({
           <div>
             {toots.map((status) => (
               <Status
+                key={status.id}
                 status={{
                   ...status,
                   appIndex: account.appIndex,
                 }}
-                key={status.id}
               />
             ))}
             {isLoading ? (
@@ -368,11 +327,11 @@ export const AccountDetail = ({
           <div>
             {media.map((status) => (
               <Status
+                key={status.id}
                 status={{
                   ...status,
                   appIndex: account.appIndex,
                 }}
-                key={status.id}
               />
             ))}
             {isLoading ? (

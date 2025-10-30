@@ -1,15 +1,14 @@
 'use client'
 
+import type { Entity } from 'megalodon'
 import {
+  createContext,
   type Dispatch,
   type ReactNode,
   type SetStateAction,
-  createContext,
   useEffect,
   useState,
 } from 'react'
-
-import { type Entity } from 'megalodon'
 
 type SettingData = {
   showSensitive: boolean
@@ -18,14 +17,12 @@ type SettingData = {
 }
 
 const initialSettingData: SettingData = {
-  showSensitive: false,
-  playerSize: 'medium',
   defaultStatusVisibility: 'public',
+  playerSize: 'medium',
+  showSensitive: false,
 } as const
 
-export const SettingContext = createContext<SettingData>(
-  initialSettingData
-)
+export const SettingContext = createContext<SettingData>(initialSettingData)
 
 export const SetSettingContext = createContext<
   Dispatch<SetStateAction<SettingData>>
@@ -34,11 +31,8 @@ export const SetSettingContext = createContext<
 export const SettingProvider = ({
   children,
 }: Readonly<{ children: ReactNode }>) => {
-  const [storageLoading, setStorageLoading] =
-    useState<boolean>(true)
-  const [setting, setSetting] = useState<SettingData>(
-    initialSettingData
-  )
+  const [storageLoading, setStorageLoading] = useState<boolean>(true)
+  const [setting, setSetting] = useState<SettingData>(initialSettingData)
 
   useEffect(() => {
     const settingStr = localStorage.getItem('setting')

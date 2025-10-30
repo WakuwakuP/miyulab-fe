@@ -1,13 +1,7 @@
 'use client'
 
-import {
-  type ChangeEvent,
-  type ReactNode,
-  useContext,
-  useState,
-} from 'react'
-
-import { type Entity } from 'megalodon'
+import type { Entity } from 'megalodon'
+import { type ChangeEvent, type ReactNode, useContext, useState } from 'react'
 
 import {
   SetSettingContext,
@@ -22,11 +16,7 @@ const SettingItem = ({
 }: {
   children: ReactNode
   className?: string
-}) => (
-  <div className={'flex items-center py-1 ' + className}>
-    {children}
-  </div>
-)
+}) => <div className={'flex items-center py-1 ' + className}>{children}</div>
 
 const SettingCheckbox = ({
   id,
@@ -41,16 +31,13 @@ const SettingCheckbox = ({
 }) => (
   <SettingItem>
     <input
-      id={id}
-      className="mr-1 cursor-pointer"
-      type="checkbox"
       checked={checked}
+      className="mr-1 cursor-pointer"
+      id={id}
       onChange={onChange}
+      type="checkbox"
     />
-    <label
-      htmlFor={id}
-      className="cursor-pointer"
-    >
+    <label className="cursor-pointer" htmlFor={id}>
       {label}
     </label>
   </SettingItem>
@@ -71,19 +58,16 @@ const SettingNumberInput = ({
   onChange: (e: ChangeEvent<HTMLInputElement>) => void
 }) => (
   <SettingItem>
-    <label
-      htmlFor={id}
-      className="mr-1"
-    >
+    <label className="mr-1" htmlFor={id}>
       {label}
     </label>
     <input
-      id={id}
       className="w-24"
-      type="number"
-      step={step}
-      value={value}
+      id={id}
       onChange={onChange}
+      step={step}
+      type="number"
+      value={value}
     />
   </SettingItem>
 )
@@ -104,23 +88,12 @@ const SettingSelect = ({
   onChange: (e: ChangeEvent<HTMLSelectElement>) => void
 }) => (
   <SettingItem className="justify-between">
-    <label
-      htmlFor={id}
-      className="mr-1"
-    >
+    <label className="mr-1" htmlFor={id}>
       {label}
     </label>
-    <select
-      id={id}
-      className="w-32"
-      value={value}
-      onChange={onChange}
-    >
+    <select className="w-32" id={id} onChange={onChange} value={value}>
       {options.map((option) => (
-        <option
-          key={option.value}
-          value={option.value}
-        >
+        <option key={option.value} value={option.value}>
           {option.name}
         </option>
       ))}
@@ -131,21 +104,14 @@ const SettingSelect = ({
 export const SettingPanel = () => {
   const setting = useContext(SettingContext)
   const setSetting = useContext(SetSettingContext)
-  const [
-    showTimelineManagement,
-    setShowTimelineManagement,
-  ] = useState(false)
+  const [showTimelineManagement, setShowTimelineManagement] = useState(false)
 
   return (
     <div className="p-2 pt-4">
       <SettingItem>
         <button
-          onClick={() =>
-            setShowTimelineManagement(
-              !showTimelineManagement
-            )
-          }
           className="w-full text-left py-2 px-3 bg-gray-700 hover:bg-gray-600 rounded-md text-white"
+          onClick={() => setShowTimelineManagement(!showTimelineManagement)}
         >
           Timeline Management
         </button>
@@ -158,9 +124,9 @@ export const SettingPanel = () => {
       )}
 
       <SettingCheckbox
+        checked={setting.showSensitive}
         id="showSensitive"
         label="Default Show sensitive content"
-        checked={setting.showSensitive}
         onChange={(e) =>
           setSetting({
             ...setting,
@@ -171,40 +137,27 @@ export const SettingPanel = () => {
       <SettingSelect
         id="playerSize"
         label="Player size"
-        value={setting.playerSize}
         onChange={(e) => {
-          if (
-            ['small', 'medium', 'large'].includes(
-              e.target.value
-            )
-          ) {
+          if (['small', 'medium', 'large'].includes(e.target.value)) {
             setSetting({
               ...setting,
-              playerSize: e.target.value as
-                | 'small'
-                | 'medium'
-                | 'large',
+              playerSize: e.target.value as 'small' | 'medium' | 'large',
             })
           }
         }}
         options={[
-          { value: 'small', name: 'Small' },
-          { value: 'medium', name: 'Medium' },
-          { value: 'large', name: 'Large' },
+          { name: 'Small', value: 'small' },
+          { name: 'Medium', value: 'medium' },
+          { name: 'Large', value: 'large' },
         ]}
+        value={setting.playerSize}
       />
       <SettingSelect
         id="defaultStatusVisibility"
         label="Default visibility"
-        value={setting.defaultStatusVisibility}
         onChange={(e) => {
           if (
-            [
-              'public',
-              'unlisted',
-              'private',
-              'direct',
-            ].includes(e.target.value)
+            ['public', 'unlisted', 'private', 'direct'].includes(e.target.value)
           ) {
             setSetting({
               ...setting,
@@ -214,11 +167,12 @@ export const SettingPanel = () => {
           }
         }}
         options={[
-          { value: 'public', name: 'Public' },
-          { value: 'unlisted', name: 'Unlisted' },
-          { value: 'private', name: 'Private' },
-          { value: 'direct', name: 'Direct' },
+          { name: 'Public', value: 'public' },
+          { name: 'Unlisted', value: 'unlisted' },
+          { name: 'Private', value: 'private' },
+          { name: 'Direct', value: 'direct' },
         ]}
+        value={setting.defaultStatusVisibility}
       />
     </div>
   )

@@ -1,36 +1,17 @@
 'use client'
 
+import bgImage from '@public/miyu.webp'
+import generator from 'megalodon'
 import Image from 'next/image'
 import { useRouter, useSearchParams } from 'next/navigation'
-import {
-  type ReactNode,
-  createContext,
-  useEffect,
-  useState,
-} from 'react'
-
-import generator from 'megalodon'
-
-import {
-  type App,
-  type Backend,
-  backendList,
-} from 'types/types'
-import {
-  APP_NAME,
-  APP_URL,
-  BACKEND_SNS,
-  BACKEND_URL,
-} from 'util/environment'
-
-import bgImage from '@public/miyu.webp'
+import { createContext, type ReactNode, useEffect, useState } from 'react'
+import { type App, type Backend, backendList } from 'types/types'
+import { APP_NAME, APP_URL, BACKEND_SNS, BACKEND_URL } from 'util/environment'
 
 export const AppsContext = createContext<App[]>([])
 
 /* eslint-disable indent, func-call-spacing */
-export const UpdateAppsContext = createContext<
-  (data: App[]) => void
->(() => {})
+export const UpdateAppsContext = createContext<(data: App[]) => void>(() => {})
 /* eslint-enable indent, func-call-spacing */
 
 export const AppsProvider = ({
@@ -40,23 +21,15 @@ export const AppsProvider = ({
   const code = useSearchParams().get('code')
   const [apps, setApps] = useState<App[]>([])
 
-  const [backend, setBackend] = useState<Backend | ''>(
-    BACKEND_SNS
-  )
-  const [backendUrl, setBackendUrl] =
-    useState<string>(BACKEND_URL)
-  const [isRequestedToken, setIsRequestedToken] =
-    useState<boolean>(false)
-  const [storageLoading, setStorageLoading] =
-    useState<boolean>(true)
-  const [finishLoading, setFinishLoading] =
-    useState<boolean>(false)
+  const [backend, setBackend] = useState<Backend | ''>(BACKEND_SNS)
+  const [backendUrl, setBackendUrl] = useState<string>(BACKEND_URL)
+  const [isRequestedToken, setIsRequestedToken] = useState<boolean>(false)
+  const [storageLoading, setStorageLoading] = useState<boolean>(true)
+  const [finishLoading, setFinishLoading] = useState<boolean>(false)
 
   useEffect(() => {
     if (localStorage.getItem('apps') != null) {
-      setApps(
-        JSON.parse(localStorage.getItem('apps') as string)
-      )
+      setApps(JSON.parse(localStorage.getItem('apps') as string))
     }
     setStorageLoading(false)
   }, [])
@@ -76,7 +49,7 @@ export const AppsProvider = ({
         return
       }
       const processingAppData = JSON.parse(
-        localStorage.getItem('processingAppData') as string
+        localStorage.getItem('processingAppData') as string,
       )
 
       if (processingAppData == null) {
@@ -86,7 +59,7 @@ export const AppsProvider = ({
 
       const client = generator(
         processingAppData.backend,
-        processingAppData.backendUrl
+        processingAppData.backendUrl,
       )
       setIsRequestedToken(true)
       client
@@ -94,13 +67,13 @@ export const AppsProvider = ({
           processingAppData.appData.client_id,
           processingAppData.appData.client_secret,
           code,
-          APP_URL
+          APP_URL,
         )
         .then((tokenData) => {
           const newApp: App = {
+            appData: processingAppData.appData,
             backend: processingAppData.backend,
             backendUrl: processingAppData.backendUrl,
-            appData: processingAppData.appData,
             tokenData: tokenData,
           }
 
@@ -125,10 +98,7 @@ export const AppsProvider = ({
     if (apps.length > 0) {
       const now = new Date().getTime()
       apps.forEach(async (app) => {
-        if (
-          app.tokenData == null ||
-          app.tokenData?.refresh_token == null
-        ) {
+        if (app.tokenData == null || app.tokenData?.refresh_token == null) {
           return
         } else {
           if (
@@ -136,8 +106,7 @@ export const AppsProvider = ({
             app.tokenData.created_at != null
           ) {
             const expires =
-              app.tokenData.created_at * 1000 +
-              app.tokenData.expires_in
+              app.tokenData.created_at * 1000 + app.tokenData.expires_in
 
             if (expires < now) {
               app.tokenData = null
@@ -145,15 +114,12 @@ export const AppsProvider = ({
             }
 
             if (expires - now < 1000 * 60 * 60 * 24) {
-              const client = generator(
-                app.backend,
-                app.backendUrl
-              )
+              const client = generator(app.backend, app.backendUrl)
               await client
                 .refreshToken(
                   app.appData.client_id,
                   app.appData.client_secret,
-                  app.tokenData?.refresh_token
+                  app.tokenData?.refresh_token,
                 )
                 .then((tokenData) => {
                   app.tokenData = tokenData
@@ -175,26 +141,21 @@ export const AppsProvider = ({
     const client = generator(backend, backendUrl)
 
     const findApp = apps.find(
-      (app) =>
-        app.backend === backend &&
-        app.backendUrl == backendUrl
+      (app) => app.backend === backend && app.backendUrl == backendUrl,
     )
 
     const processingAppData = await (async () => {
-      if (
-        findApp === undefined ||
-        findApp.appData.id === ''
-      ) {
+      if (findApp === undefined || findApp.appData.id === '') {
         const appData = await client.registerApp(APP_NAME, {
+          redirect_uris: APP_URL,
           scopes: ['read', 'write', 'follow', 'push'],
           website: APP_URL,
-          redirect_uris: APP_URL,
         })
 
         return {
+          appData,
           backend,
           backendUrl,
-          appData,
           tokenData: null,
         }
       } else {
@@ -205,7 +166,7 @@ export const AppsProvider = ({
     if (processingAppData?.appData?.url != null) {
       localStorage.setItem(
         'processingAppData',
-        JSON.stringify(processingAppData)
+        JSON.stringify(processingAppData),
       )
 
       window.location.href = processingAppData.appData.url
@@ -216,40 +177,37 @@ export const AppsProvider = ({
     return (
       <div className="relative h-screen w-screen">
         <Image
-          className="h-full w-full object-contain"
-          src={bgImage}
           alt="Miyulab-FE"
+          className="h-full w-full object-contain"
           fill={true}
           priority={true}
+          src={bgImage}
         />
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-md border bg-gray-600 p-12 text-center">
           <h1 className="pb-8 text-4xl">Miyulab-FE</h1>
           <div className="w-72 space-y-2">
             <select
               className="w-full"
-              value={backend}
               onChange={(e) => {
                 setBackend(e.target.value as Backend | '')
               }}
+              value={backend}
             >
               <option value="">Select backend</option>
               {backendList.map((backend) => (
-                <option
-                  key={backend}
-                  value={backend}
-                >
+                <option key={backend} value={backend}>
                   {backend}
                 </option>
               ))}
             </select>
             <input
               className="w-full"
-              type="text"
-              placeholder="https://pl.waku.dev"
-              value={backendUrl}
               onChange={(e) => {
                 setBackendUrl(e.target.value)
               }}
+              placeholder="https://pl.waku.dev"
+              type="text"
+              value={backendUrl}
             />
           </div>
           <div className="pt-4">

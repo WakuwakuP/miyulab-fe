@@ -2,7 +2,7 @@
 
 import { useContext, useId, useState } from 'react'
 
-import { type PollAddAppIndex } from 'types/types'
+import type { PollAddAppIndex } from 'types/types'
 import { GetClient } from 'util/GetClient'
 import { AppsContext } from 'util/provider/AppsProvider'
 
@@ -18,13 +18,9 @@ export const Poll = ({
   const internalId = useId()
   const apps = useContext(AppsContext)
 
-  const [selected, setSelected] = useState<number[]>(
-    poll?.own_votes ?? []
-  )
+  const [selected, setSelected] = useState<number[]>(poll?.own_votes ?? [])
 
-  const [voted, setVoted] = useState<boolean>(
-    poll?.voted ?? false
-  )
+  const [voted, setVoted] = useState<boolean>(poll?.voted ?? false)
 
   const vote = () => {
     if (apps.length <= 0) return
@@ -39,17 +35,13 @@ export const Poll = ({
     <div className="p-2">
       <div>
         {poll.options.map((option, index) => (
-          <div
-            key={option.title}
-            className="w-full"
-          >
+          <div className="w-full" key={option.title}>
             {voted ? (
               <div
                 className="my-0.5 flex flex-wrap rounded-md px-2"
                 style={{
                   backgroundImage:
-                    option.votes_count != null &&
-                    poll.votes_count > 0
+                    option.votes_count != null && poll.votes_count > 0
                       ? `linear-gradient(
                     to right,
                     rgba(${selected?.some((s) => s === index) ? '255' : '59'},130,246,0.5) ${(option.votes_count / poll.votes_count) * 100}%,
@@ -61,13 +53,8 @@ export const Poll = ({
               >
                 <span>{option.title}</span>
                 <span className="ml-2 text-white/50">
-                  {option.votes_count != null &&
-                  poll.votes_count > 0
-                    ? (
-                        (option.votes_count /
-                          poll.votes_count) *
-                        100
-                      ).toFixed(1)
+                  {option.votes_count != null && poll.votes_count > 0
+                    ? ((option.votes_count / poll.votes_count) * 100).toFixed(1)
                     : 0}
                   % ({option.votes_count})
                 </span>
@@ -75,26 +62,20 @@ export const Poll = ({
             ) : (
               <label htmlFor={internalId + option.title}>
                 <input
-                  type={
-                    poll.multiple ? 'checkbox' : 'radio'
-                  }
+                  checked={selected?.some((s) => s === index)}
+                  className="mr-1"
                   id={internalId + option.title}
                   name={internalId + poll.id}
-                  value={index}
-                  className="mr-1"
-                  checked={selected?.some(
-                    (s) => s === index
-                  )}
                   onChange={() => {
                     if (poll.voted) return
                     if (selected.includes(index)) {
-                      setSelected(
-                        selected.filter((s) => s !== index)
-                      )
+                      setSelected(selected.filter((s) => s !== index))
                     } else {
                       setSelected([...selected, index])
                     }
                   }}
+                  type={poll.multiple ? 'checkbox' : 'radio'}
+                  value={index}
                 />
                 {option.title}
               </label>

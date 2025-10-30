@@ -1,23 +1,15 @@
 'use client'
 
-import {
-  Fragment,
-  useCallback,
-  useContext,
-  useEffect,
-  useState,
-} from 'react'
-
-import { type Entity, type Response } from 'megalodon'
-import { CiWarning } from 'react-icons/ci'
-import { RiArrowLeftSLine } from 'react-icons/ri'
-import { Virtuoso } from 'react-virtuoso'
-
 import { SettingPanel } from 'app/_components/SettingPanel'
 import { TimelineManagement } from 'app/_components/TimelineManagement'
 import { Panel } from 'app/_parts/Panel'
 import { Status } from 'app/_parts/Status'
-import { type StatusAddAppIndex } from 'types/types'
+import type { Entity, Response } from 'megalodon'
+import { Fragment, useCallback, useContext, useEffect, useState } from 'react'
+import { CiWarning } from 'react-icons/ci'
+import { RiArrowLeftSLine } from 'react-icons/ri'
+import { Virtuoso } from 'react-virtuoso'
+import type { StatusAddAppIndex } from 'types/types'
 import { GetClient } from 'util/GetClient'
 import { AppsContext } from 'util/provider/AppsProvider'
 
@@ -27,17 +19,10 @@ export const GettingStarted = () => {
   const apps = useContext(AppsContext)
   const [appIndex, setAppIndex] = useState(0)
   const [selected, setSelected] = useState<
-    | 'bookmark'
-    | 'dm'
-    | 'setting'
-    | 'timeline'
-    | 'accounts'
-    | null
+    'bookmark' | 'dm' | 'setting' | 'timeline' | 'accounts' | null
   >(null)
 
-  const [title, setTitle] = useState<string>(
-    'Getting Started'
-  )
+  const [title, setTitle] = useState<string>('Getting Started')
 
   const [bookmarks, setBookmarks] = useState<{
     [key: number]: StatusAddAppIndex[]
@@ -67,11 +52,8 @@ export const GettingStarted = () => {
         .map((link: string) => {
           const [url, rel] = link.split(';')
           return {
+            rel: rel.replace(/"/g, '').replace('rel=', '').trim(),
             url: url.replace(/[<>]/g, '').trim(),
-            rel: rel
-              .replace(/"/g, '')
-              .replace('rel=', '')
-              .trim(),
           }
         })
       const next = links.find((link) => link.rel === 'next')
@@ -84,9 +66,7 @@ export const GettingStarted = () => {
         return
       }
 
-      const maxId = new URL(next.url).searchParams.get(
-        'max_id'
-      )
+      const maxId = new URL(next.url).searchParams.get('max_id')
 
       if (maxId == null) {
         setMaxId((prev) => ({
@@ -101,7 +81,7 @@ export const GettingStarted = () => {
         [index]: maxId,
       }))
     },
-    [setMaxId]
+    [setMaxId],
   )
 
   useEffect(() => {
@@ -178,10 +158,7 @@ export const GettingStarted = () => {
 
     client
       .getConversationTimeline({
-        max_id:
-          conversations[appIndex][
-            conversations[appIndex].length - 1
-          ].id,
+        max_id: conversations[appIndex][conversations[appIndex].length - 1].id,
       })
       .then((res) => {
         setConversations((prev) => ({
@@ -221,10 +198,9 @@ export const GettingStarted = () => {
                       onClick={() => {
                         localStorage.setItem(
                           'processingAppData',
-                          JSON.stringify({ ...app, index })
+                          JSON.stringify({ ...app, index }),
                         )
-                        window.location.href = app.appData
-                          .url as string
+                        window.location.href = app.appData.url as string
                       }}
                     >
                       <CiWarning size={24} />
@@ -252,9 +228,7 @@ export const GettingStarted = () => {
                 </button>
               </Fragment>
             ))}
-            <div className="w-full border-b px-4 py-2 text-xl">
-              Setting
-            </div>
+            <div className="w-full border-b px-4 py-2 text-xl">Setting</div>
             <button
               className="w-full border-b px-4 py-2 text-xl hover:bg-slate-800"
               onClick={() => setSelected('setting')}
@@ -289,8 +263,8 @@ export const GettingStarted = () => {
                     itemContent={(_, status) => (
                       <Status
                         key={status.id}
-                        status={status}
                         scrolling={isScrolling}
+                        status={status}
                       />
                     )}
                   />
@@ -304,14 +278,13 @@ export const GettingStarted = () => {
                     isScrolling={setIsScrolling}
                     itemContent={(_, conversation) => (
                       <div key={conversation.id}>
-                        {conversation.last_status !=
-                          null && (
+                        {conversation.last_status != null && (
                           <Status
+                            scrolling={isScrolling}
                             status={{
                               ...conversation.last_status,
                               appIndex: index,
                             }}
-                            scrolling={isScrolling}
                           />
                         )}
                       </div>

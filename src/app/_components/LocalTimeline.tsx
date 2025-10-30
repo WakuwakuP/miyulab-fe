@@ -1,6 +1,10 @@
 'use client'
+
+import { Panel } from 'app/_parts/Panel'
+import { Status } from 'app/_parts/Status'
+import { TimelineStreamIcon } from 'app/_parts/TimelineIcon'
+import type { Entity } from 'megalodon'
 import {
-  type WheelEventHandler,
   useCallback,
   useContext,
   useEffect,
@@ -8,18 +12,10 @@ import {
   useMemo,
   useRef,
   useState,
+  type WheelEventHandler,
 } from 'react'
-
-import { type Entity } from 'megalodon'
-import {
-  Virtuoso,
-  type VirtuosoHandle,
-} from 'react-virtuoso'
-
-import { Panel } from 'app/_parts/Panel'
-import { Status } from 'app/_parts/Status'
-import { TimelineStreamIcon } from 'app/_parts/TimelineIcon'
-import { type StatusAddAppIndex } from 'types/types'
+import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
+import type { StatusAddAppIndex } from 'types/types'
 import { ArrayLengthControl } from 'util/ArrayLengthControl'
 import { CENTER_INDEX } from 'util/environment'
 import { GetClient } from 'util/GetClient'
@@ -29,59 +25,43 @@ import { SetTagsContext } from 'util/provider/ResourceProvider'
 export const LocalTimeline = () => {
   const refFirstRef = useRef(true)
   const scrollerRef = useRef<VirtuosoHandle>(null)
-  const timer = useRef<ReturnType<
-    typeof setTimeout
-  > | null>(null)
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const apps = useContext(AppsContext)
   const setTags = useContext(SetTagsContext)
 
-  const [timeline, setTimeline] = useState<
-    StatusAddAppIndex[]
-  >([])
+  const [timeline, setTimeline] = useState<StatusAddAppIndex[]>([])
 
-  const [enableScrollToTop, setEnableScrollToTop] =
-    useState(true)
+  const [enableScrollToTop, setEnableScrollToTop] = useState(true)
   const [isScrolling, setIsScrolling] = useState(false)
 
   const internalIndex = useMemo(() => {
     return CENTER_INDEX - timeline.length
   }, [timeline.length])
 
-  const onStreamUpdate = useEffectEvent(
-    (status: Entity.Status) => {
-      const statusesForHashtag = status.tags.map(
-        (tag) => tag.name
-      )
-      setTags((prev) => [...prev, ...statusesForHashtag])
+  const onStreamUpdate = useEffectEvent((status: Entity.Status) => {
+    const statusesForHashtag = status.tags.map((tag) => tag.name)
+    setTags((prev) => [...prev, ...statusesForHashtag])
 
-      setTimeline((prev) =>
-        ArrayLengthControl([
-          { ...status, appIndex: 0 },
-          ...prev,
-        ])
-      )
-    }
-  )
-
-  const onStreamDelete = useEffectEvent((id: string) => {
     setTimeline((prev) =>
-      prev.filter((status) => status.id !== id)
+      ArrayLengthControl([{ ...status, appIndex: 0 }, ...prev]),
     )
   })
 
-  const onStreamError = useEffectEvent(
-    (stream: any) => (err: Error) => {
-      console.error(err)
+  const onStreamDelete = useEffectEvent((id: string) => {
+    setTimeline((prev) => prev.filter((status) => status.id !== id))
+  })
 
-      stream.stop()
-      const timeout = setTimeout(() => {
-        stream.start()
-        // eslint-disable-next-line no-console
-        console.info('reconnected localSocket')
-        clearTimeout(timeout)
-      }, 1000)
-    }
-  )
+  const onStreamError = useEffectEvent((stream: any) => (err: Error) => {
+    console.error(err)
+
+    stream.stop()
+    const timeout = setTimeout(() => {
+      stream.start()
+      // eslint-disable-next-line no-console
+      console.info('reconnected localSocket')
+      clearTimeout(timeout)
+    }, 1000)
+  })
 
   useEffect(() => {
     if (apps.length <= 0) return
@@ -101,10 +81,7 @@ export const LocalTimeline = () => {
           setTimeline(statuses)
         })
         .catch((error) => {
-          console.error(
-            'Failed to fetch local timeline:',
-            error
-          )
+          console.error('Failed to fetch local timeline:', error)
         })
     }
 
@@ -121,9 +98,7 @@ export const LocalTimeline = () => {
     })
   }, [apps])
 
-  const onWheel = useCallback<
-    WheelEventHandler<HTMLDivElement>
-  >((e) => {
+  const onWheel = useCallback<WheelEventHandler<HTMLDivElement>>((e) => {
     if (e.deltaY > 0) {
       setEnableScrollToTop(false)
     }
@@ -139,8 +114,8 @@ export const LocalTimeline = () => {
     if (enableScrollToTop) {
       if (!isScrolling) {
         scrollerRef.current?.scrollToIndex({
-          index: 0,
           behavior: 'smooth',
+          index: 0,
         })
       }
     }
@@ -166,32 +141,23 @@ export const LocalTimeline = () => {
   }, [isScrolling])
 
   return (
-    <Panel
-      name="Local"
-      className="relative"
-    >
+    <Panel className="relative" name="Local">
       <div className="absolute right-2 top-2 z-10">
         <TimelineStreamIcon />
       </div>
-      <div
-        onWheel={onWheel}
-        className="h-full"
-      >
+      <div className="h-full" onWheel={onWheel}>
         <Virtuoso
-          ref={scrollerRef}
-          data={timeline}
-          initialTopMostItemIndex={timeline.length - 1}
-          firstItemIndex={internalIndex}
           atTopStateChange={atTopStateChange}
+          data={timeline}
+          firstItemIndex={internalIndex}
+          initialTopMostItemIndex={timeline.length - 1}
           isScrolling={(scrolling) => {
             setIsScrolling(scrolling)
           }}
           itemContent={(index, status) => (
-            <Status
-              key={status.id}
-              status={status}
-            />
+            <Status key={status.id} status={status} />
           )}
+          ref={scrollerRef}
         />
       </div>
     </Panel>
