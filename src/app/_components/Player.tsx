@@ -1,6 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 'use client'
 
+import type { Entity } from 'megalodon'
 import React, {
   type ChangeEventHandler,
   type MouseEventHandler,
@@ -12,18 +13,9 @@ import React, {
   useRef,
   useState,
 } from 'react'
-
-import { type Entity } from 'megalodon'
 import { createPortal } from 'react-dom'
-import {
-  GrChapterNext,
-  GrChapterPrevious,
-} from 'react-icons/gr'
-import {
-  RiCloseCircleLine,
-  RiPauseFill,
-  RiPlayFill,
-} from 'react-icons/ri'
+import { GrChapterNext, GrChapterPrevious } from 'react-icons/gr'
+import { RiCloseCircleLine, RiPauseFill, RiPlayFill } from 'react-icons/ri'
 import ReactPlayer from 'react-player'
 
 import {
@@ -34,19 +26,15 @@ import {
 } from 'util/provider/PlayerProvider'
 import { SettingContext } from 'util/provider/SettingProvider'
 
-const playableTypes = [
-  'audio',
-  'video',
-  'gifv',
-] as Readonly<Entity.Attachment['type'][]>
+const playableTypes = ['audio', 'video', 'gifv'] as Readonly<
+  Entity.Attachment['type'][]
+>
 
 const PlayerController = () => {
   const { attachment, index } = useContext(PlayerContext)
   const setAttachment = useContext(SetPlayerContext)
   const { volume } = useContext(PlayerSettingContext)
-  const setPlayerSetting = useContext(
-    SetPlayerSettingContext
-  )
+  const setPlayerSetting = useContext(SetPlayerSettingContext)
   const { playerSize } = useContext(SettingContext)
 
   const player = useRef<HTMLVideoElement>(null)
@@ -57,17 +45,17 @@ const PlayerController = () => {
   const classNamePlayerSize = useMemo(() => {
     switch (playerSize) {
       case 'small':
-        return { w: 'w-[320px]', h: 'h-[180px]' }
+        return { h: 'h-[180px]', w: 'w-[320px]' }
       case 'medium':
-        return { w: 'w-[640px]', h: 'h-[360px]' }
+        return { h: 'h-[360px]', w: 'w-[640px]' }
       case 'large':
-        return { w: 'w-[820px]', h: 'h-[460px]' }
+        return { h: 'h-[460px]', w: 'w-[820px]' }
     }
   }, [playerSize])
 
-  const onClickPlay = useCallback(() => {
+  const onClickPlay = () => {
     setPlaying((prev) => !prev)
-  }, [setPlaying])
+  }
 
   const onClickClose = useCallback(() => {
     setPlaying(false)
@@ -77,18 +65,13 @@ const PlayerController = () => {
     })
   }, [setAttachment])
 
-  const handleSeekMouseDown: MouseEventHandler<HTMLInputElement> =
-    useCallback(() => {
-      setSeeking(true)
-    }, [setSeeking])
+  const handleSeekMouseDown: MouseEventHandler<HTMLInputElement> = () => {
+    setSeeking(true)
+  }
 
-  const handleSeekChange: ChangeEventHandler<HTMLInputElement> =
-    useCallback(
-      (e) => {
-        setPlayed(parseFloat(e.target.value))
-      },
-      [setPlayed]
-    )
+  const handleSeekChange: ChangeEventHandler<HTMLInputElement> = (e) => {
+    setPlayed(parseFloat(e.target.value))
+  }
 
   const onKeyDown = useEffectEvent((e: KeyboardEvent) => {
     if (e.target instanceof HTMLInputElement) return
@@ -102,12 +85,8 @@ const PlayerController = () => {
       e.preventDefault()
       setPlayed((prev) => {
         const seekToPlayed = Math.max(0, prev - 0.1)
-        if (
-          player.current != null &&
-          player.current.duration > 0
-        ) {
-          player.current.currentTime =
-            seekToPlayed * player.current.duration
+        if (player.current != null && player.current.duration > 0) {
+          player.current.currentTime = seekToPlayed * player.current.duration
         }
         return seekToPlayed
       })
@@ -116,12 +95,8 @@ const PlayerController = () => {
       e.preventDefault()
       setPlayed((prev) => {
         const seekToPlayed = Math.min(0.9999999, prev + 0.1)
-        if (
-          player.current != null &&
-          player.current.duration > 0
-        ) {
-          player.current.currentTime =
-            seekToPlayed * player.current.duration
+        if (player.current != null && player.current.duration > 0) {
+          player.current.currentTime = seekToPlayed * player.current.duration
         }
         return seekToPlayed
       })
@@ -147,47 +122,38 @@ const PlayerController = () => {
     }
   }, [])
 
-  const handleSeekMouseUp: MouseEventHandler<HTMLInputElement> =
-    useCallback(() => {
-      setSeeking(false)
-      if (
-        player.current != null &&
-        player.current.duration > 0
-      ) {
-        player.current.currentTime =
-          played * player.current.duration
-      }
-    }, [setSeeking, played, player])
+  const handleSeekMouseUp: MouseEventHandler<HTMLInputElement> = () => {
+    setSeeking(false)
+    if (player.current != null && player.current.duration > 0) {
+      player.current.currentTime = played * player.current.duration
+    }
+  }
 
-  const handleProgress = useCallback(
-    (event: React.SyntheticEvent<HTMLVideoElement>) => {
-      if (!seeking && event.currentTarget != null) {
-        const video = event.currentTarget
-        if (video.duration > 0) {
-          const played = video.currentTime / video.duration
-          setPlayed(played)
-        }
+  const handleProgress = (event: React.SyntheticEvent<HTMLVideoElement>) => {
+    if (!seeking && event.currentTarget != null) {
+      const video = event.currentTarget
+      if (video.duration > 0) {
+        const played = video.currentTime / video.duration
+        setPlayed(played)
       }
-    },
-    [seeking, setPlayed]
-  )
+    }
+  }
 
-  const playNext = useCallback(() => {
+  const playNext = () => {
     if (index == null) return
     setAttachment({
       attachment,
       index: (index + 1) % attachment.length,
     })
-  }, [attachment, index, setAttachment])
+  }
 
-  const playPrevious = useCallback(() => {
+  const playPrevious = () => {
     if (index == null) return
     setAttachment({
       attachment,
-      index:
-        (index - 1 + attachment.length) % attachment.length,
+      index: (index - 1 + attachment.length) % attachment.length,
     })
-  }, [attachment, index, setAttachment])
+  }
 
   if (attachment.length === 0 || index == null) return null
   return (
@@ -197,32 +163,27 @@ const PlayerController = () => {
         classNamePlayerSize.w,
       ].join(' ')}
     >
-      <div
-        className=" bg-black"
-        onClick={onClickPlay}
-      >
+      <div className=" bg-black" onClick={onClickPlay}>
         {playableTypes.includes(attachment[index].type) && (
           <ReactPlayer
+            className="aspect-video"
+            height={
+              attachment[index].type === 'audio' ? 0 : classNamePlayerSize.h
+            }
+            loop
+            onTimeUpdate={handleProgress}
+            playing={playing}
             ref={player}
             src={attachment[index].url}
-            playing={playing}
             volume={volume}
-            onTimeUpdate={handleProgress}
-            loop
             width={'100%'}
-            height={
-              attachment[index].type === 'audio'
-                ? 0
-                : classNamePlayerSize.h
-            }
-            className="aspect-video"
           />
         )}
         {'image' === attachment[index].type && (
           <img
+            alt={attachment[index].description ?? ''}
             className="h-full w-full object-contain"
             src={attachment[index].url}
-            alt={attachment[index].description ?? ''}
           />
         )}
       </div>
@@ -230,24 +191,23 @@ const PlayerController = () => {
         <button
           className="flex h-12 w-12 shrink-0 items-center justify-center bg-gray-800 hover:bg-gray-500"
           onClick={onClickPlay}
+          type="button"
         >
-          {playing ? (
-            <RiPauseFill size={30} />
-          ) : (
-            <RiPlayFill size={30} />
-          )}
+          {playing ? <RiPauseFill size={30} /> : <RiPlayFill size={30} />}
         </button>
         {attachment.length > 1 && (
           <>
             <button
               className="flex h-12 w-12 shrink-0 items-center justify-center bg-gray-800 hover:bg-gray-500"
               onClick={playPrevious}
+              type="button"
             >
               <GrChapterPrevious size={30} />
             </button>
             <button
               className="flex h-12 w-12 shrink-0 items-center justify-center bg-gray-800 hover:bg-gray-500"
               onClick={playNext}
+              type="button"
             >
               <GrChapterNext size={30} />
             </button>
@@ -256,34 +216,35 @@ const PlayerController = () => {
         <div className="flex h-12 w-full shrink bg-gray-800">
           <input
             className="w-full"
-            type="range"
-            min="0"
             max="0.9999999"
-            step="any"
-            value={played}
-            onMouseDown={handleSeekMouseDown}
+            min="0"
             onChange={handleSeekChange}
+            onMouseDown={handleSeekMouseDown}
             onMouseUp={handleSeekMouseUp}
+            step="any"
+            type="range"
+            value={played}
           />
         </div>
         <div className="flex h-12 w-32 shrink-0 bg-gray-800">
           <input
             className="w-32"
-            type="range"
-            min="0"
             max="1"
-            step="0.01"
-            value={volume}
+            min="0"
             onChange={(e) => {
               setPlayerSetting({
                 volume: parseFloat(e.target.value),
               })
             }}
+            step="0.01"
+            type="range"
+            value={volume}
           />
         </div>
         <button
           className="flex h-12 w-12 shrink-0 items-center justify-center bg-gray-800 hover:bg-gray-500"
           onClick={onClickClose}
+          type="button"
         >
           <RiCloseCircleLine size={30} />
         </button>

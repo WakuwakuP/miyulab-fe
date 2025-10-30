@@ -42,29 +42,18 @@ export const canPlay = (url: string): boolean => {
     ]
 
     // Check for file extensions
-    if (
-      commonMediaExtensions.some((ext) =>
-        lowerUrl.includes(ext)
-      )
-    ) {
+    if (commonMediaExtensions.some((ext) => lowerUrl.includes(ext))) {
       return true
     }
 
     // Check for common video/audio domains
-    if (
-      commonDomains.some((domain) =>
-        lowerUrl.includes(domain)
-      )
-    ) {
+    if (commonDomains.some((domain) => lowerUrl.includes(domain))) {
       return true
     }
 
     return false
   } catch (error) {
-    console.warn(
-      'Error checking if ReactPlayer can play URL:',
-      error
-    )
+    console.warn('Error checking if ReactPlayer can play URL:', error)
     return false
   }
 }

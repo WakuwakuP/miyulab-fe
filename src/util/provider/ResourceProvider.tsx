@@ -1,18 +1,17 @@
 'use client'
 
+import type { Entity } from 'megalodon'
+import * as emoji from 'node-emoji'
 import {
+  createContext,
   type Dispatch,
   type ReactNode,
   type SetStateAction,
-  createContext,
   useContext,
   useEffect,
   useMemo,
   useState,
 } from 'react'
-
-import { type Entity } from 'megalodon'
-import * as emoji from 'node-emoji'
 import unicodeEmojiData from 'unicode-emoji-json/data-by-emoji.json'
 
 import { GetClient } from 'util/GetClient'
@@ -25,34 +24,25 @@ type PleromaInstance =
     })
   | null
 
-export const InstanceContext =
-  createContext<PleromaInstance>(null)
+export const InstanceContext = createContext<PleromaInstance>(null)
 
-export const EmojiContext = createContext<Entity.Emoji[]>(
-  []
-)
+export const EmojiContext = createContext<Entity.Emoji[]>([])
 export const UsersContext = createContext<
-  Pick<
-    Entity.Account,
-    'id' | 'acct' | 'avatar' | 'display_name'
-  >[]
+  Pick<Entity.Account, 'id' | 'acct' | 'avatar' | 'display_name'>[]
 >([])
 
 export const SetUsersContext = createContext<
   Dispatch<
     SetStateAction<
-      Pick<
-        Entity.Account,
-        'id' | 'acct' | 'avatar' | 'display_name'
-      >[]
+      Pick<Entity.Account, 'id' | 'acct' | 'avatar' | 'display_name'>[]
     >
   >
 >(() => {})
 
 export const TagsContext = createContext<string[]>([])
-export const SetTagsContext = createContext<
-  Dispatch<SetStateAction<string[]>>
->(() => {})
+export const SetTagsContext = createContext<Dispatch<SetStateAction<string[]>>>(
+  () => {},
+)
 
 export const ResourceProvider = ({
   children,
@@ -67,31 +57,25 @@ export const ResourceProvider = ({
     Object.keys(emojiData).forEach((key) => {
       if (emoji.which(key) == null) return
       list.push({
-        shortcode: emoji.which(key),
-        url: '',
-        static_url: '',
         category: emojiData[key].group,
+        shortcode: emoji.which(key),
+        static_url: '',
+        url: '',
         visible_in_picker: false,
       } as Entity.Emoji)
     })
 
-    return list.sort(
-      (a, b) => a.shortcode.length - b.shortcode.length
-    )
+    return list.sort((a, b) => a.shortcode.length - b.shortcode.length)
   }, [])
 
-  const [instance, setInstance] =
-    useState<PleromaInstance>(null)
+  const [instance, setInstance] = useState<PleromaInstance>(null)
   const [emojis, setEmojis] = useState<Entity.Emoji[]>([])
   const [users, setUsers] = useState<
-    Pick<
-      Entity.Account,
-      'id' | 'acct' | 'avatar' | 'display_name'
-    >[]
+    Pick<Entity.Account, 'id' | 'acct' | 'avatar' | 'display_name'>[]
   >(JSON.parse(localStorage.getItem('users') ?? '[]'))
 
   const [tags, setTags] = useState<string[]>(
-    JSON.parse(localStorage.getItem('tags') ?? '[]')
+    JSON.parse(localStorage.getItem('tags') ?? '[]'),
   )
 
   const sortedTags = useMemo(() => {

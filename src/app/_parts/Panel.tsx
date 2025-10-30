@@ -1,10 +1,6 @@
 'use client'
 
-import {
-  type HTMLProps,
-  type ReactNode,
-  useRef,
-} from 'react'
+import { type HTMLProps, type ReactNode, useRef } from 'react'
 
 export const Panel = ({
   children,
@@ -36,10 +32,7 @@ export const Panel = ({
           {name}
         </h2>
       )}
-      <div
-        ref={ref}
-        className={[mainAreaStyle, className].join(' ')}
-      >
+      <div className={[mainAreaStyle, className].join(' ')} ref={ref}>
         {children}
       </div>
     </section>
