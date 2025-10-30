@@ -55,18 +55,17 @@ export const Actions = ({ status }: { status: StatusAddAppIndex }) => {
   return (
     <div className="flex justify-between pt-2 [&>button]:mx-1">
       <button
-        type="button"
         className="flex items-center"
         onClick={() => {
           setReplyTo(status)
         }}
+        type="button"
       >
         <RiReplyFill size={24} />
 
         <div className="pl-1">{status.replies_count}</div>
       </button>
       <button
-        type="button"
         className={isPrivate ? 'cursor-not-allowed opacity-50' : ''}
         disabled={isPrivate}
         onClick={() => {
@@ -90,6 +89,7 @@ export const Actions = ({ status }: { status: StatusAddAppIndex }) => {
             setReblogged(true)
           }
         }}
+        type="button"
       >
         {isPrivate ? (
           <FaLock className="text-gray-400" size={24} />
@@ -100,7 +100,6 @@ export const Actions = ({ status }: { status: StatusAddAppIndex }) => {
         )}
       </button>
       <button
-        type="button"
         onClick={() => {
           if (favourited ?? false) {
             client.unfavouriteStatus(status.reblog?.id ?? status.id)
@@ -120,6 +119,7 @@ export const Actions = ({ status }: { status: StatusAddAppIndex }) => {
             setFavourited(true)
           }
         }}
+        type="button"
       >
         {(favourited ?? false) ? (
           <RiStarFill className="text-orange-300" size={24} />
@@ -128,7 +128,6 @@ export const Actions = ({ status }: { status: StatusAddAppIndex }) => {
         )}
       </button>
       <button
-        type="button"
         onClick={() => {
           if (bookmarked ?? false) {
             client.unbookmarkStatus(status.reblog?.id ?? status.id)
@@ -148,6 +147,7 @@ export const Actions = ({ status }: { status: StatusAddAppIndex }) => {
             setBookmarked(true)
           }
         }}
+        type="button"
       >
         {bookmarked ? (
           <RiBookmark2Fill className="text-red-400" size={24} />

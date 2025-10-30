@@ -63,6 +63,14 @@ const AddAccountModal = ({ onClose }: { onClose: () => void }) => {
         onClick={() => {
           onClose()
         }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            onClose()
+          }
+        }}
+        role="button"
+        tabIndex={0}
       ></div>
       <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-md border bg-gray-600 p-12 text-center">
         <h1 className="pb-8 text-4xl">Miyulab-FE</h1>
@@ -93,9 +101,9 @@ const AddAccountModal = ({ onClose }: { onClose: () => void }) => {
         </div>
         <div className="pt-4">
           <button
-            type="button"
             className="rounded-md border bg-gray-900 px-4 py-2"
             onClick={onRegister}
+            type="button"
           >
             Login
           </button>
@@ -181,11 +189,11 @@ export const AccountsPanel = () => {
       </div>
       <div className="pt-2">
         <button
-          type="button"
           className="rounded-md border bg-gray-900 px-4 py-2"
           onClick={() => {
             setShowAddAccountModal(true)
           }}
+          type="button"
         >
           アカウント追加
         </button>
@@ -212,6 +220,18 @@ export const AccountsPanel = () => {
                   index: null,
                 })
               }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  setShowDeleteAccountModal({
+                    account: null,
+                    app: null,
+                    index: null,
+                  })
+                }
+              }}
+              role="button"
+              tabIndex={0}
             ></div>
             <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-md border bg-gray-600 p-12 text-center">
               <div>アカウントを削除しますか？</div>
@@ -222,7 +242,6 @@ export const AccountsPanel = () => {
               <div>{showDeleteAccountModal.index}</div>
               <div className="flex justify-center space-x-2">
                 <button
-                  type="button"
                   className="rounded-md border bg-gray-900 px-4 py-2"
                   onClick={() => {
                     deleteAccount(showDeleteAccountModal.index)
@@ -233,11 +252,11 @@ export const AccountsPanel = () => {
                       index: null,
                     })
                   }}
+                  type="button"
                 >
                   はい
                 </button>
                 <button
-                  type="button"
                   className="rounded-md border bg-gray-900 px-4 py-2"
                   onClick={() => {
                     setShowDeleteAccountModal({
@@ -246,6 +265,7 @@ export const AccountsPanel = () => {
                       index: null,
                     })
                   }}
+                  type="button"
                 >
                   いいえ
                 </button>

@@ -181,9 +181,9 @@ export const GettingStarted = () => {
       <div className="box-border">
         {selected !== null ? (
           <button
-            type="button"
             className="flex rounded-md border pr-4 text-xl text-blue-500"
             onClick={() => setSelected(null)}
+            type="button"
           >
             <RiArrowLeftSLine size={30} />
             <span>戻る</span>
@@ -195,7 +195,6 @@ export const GettingStarted = () => {
                 <div className="flex w-full items-center space-x-2 border-b px-4 py-2 text-xl">
                   {app.tokenData == null && (
                     <button
-                      type="button"
                       className="text-orange-500 hover:text-orange-300"
                       onClick={() => {
                         localStorage.setItem(
@@ -204,6 +203,7 @@ export const GettingStarted = () => {
                         )
                         window.location.href = app.appData.url as string
                       }}
+                      type="button"
                     >
                       <CiWarning size={24} />
                     </button>
@@ -211,22 +211,22 @@ export const GettingStarted = () => {
                   <span>{app.backendUrl}</span>
                 </div>
                 <button
-                  type="button"
                   className="w-full border-b px-4 py-2 text-xl hover:bg-slate-800"
                   onClick={() => {
                     setAppIndex(index)
                     setSelected('bookmark')
                   }}
+                  type="button"
                 >
                   Bookmark
                 </button>
                 <button
-                  type="button"
                   className="w-full border-b px-4 py-2 text-xl hover:bg-slate-800"
                   onClick={() => {
                     setAppIndex(index)
                     setSelected('dm')
                   }}
+                  type="button"
                 >
                   Direct Message
                 </button>
@@ -234,23 +234,23 @@ export const GettingStarted = () => {
             ))}
             <div className="w-full border-b px-4 py-2 text-xl">Setting</div>
             <button
-              type="button"
               className="w-full border-b px-4 py-2 text-xl hover:bg-slate-800"
               onClick={() => setSelected('setting')}
+              type="button"
             >
               Setting
             </button>
             <button
-              type="button"
               className="w-full border-b px-4 py-2 text-xl hover:bg-slate-800"
               onClick={() => setSelected('timeline')}
+              type="button"
             >
               Timeline Management
             </button>
             <button
-              type="button"
               className="w-full border-b px-4 py-2 text-xl hover:bg-slate-800"
               onClick={() => setSelected('accounts')}
+              type="button"
             >
               Accounts
             </button>

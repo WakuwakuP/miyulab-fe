@@ -52,9 +52,9 @@ export const MediaAttachments = ({
           </div>
         ) : (
           <button
-            type="button"
             className="absolute left-2 top-2 z-10 rounded-md bg-gray-500/50 px-1 py-0.5"
             onClick={() => setIsShowSensitive(false)}
+            type="button"
           >
             <div>Hide</div>
           </button>
@@ -87,7 +87,6 @@ export const MediaAttachments = ({
               if (index === 5) {
                 return (
                   <button
-                    type="button"
                     className="flex w-1/3 items-center justify-center bg-black"
                     key={media.id}
                     onClick={() => {
@@ -96,6 +95,7 @@ export const MediaAttachments = ({
                         index: 5,
                       })
                     }}
+                    type="button"
                   >
                     <div className="text-xl text-white">
                       +{mediaAttachments.length - 5}

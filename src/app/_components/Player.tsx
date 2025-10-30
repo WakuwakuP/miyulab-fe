@@ -197,25 +197,25 @@ const PlayerController = () => {
       </div>
       <div className="box-border flex h-12 items-center space-x-px bg-gray-500 pt-[2px]">
         <button
-          type="button"
           className="flex h-12 w-12 shrink-0 items-center justify-center bg-gray-800 hover:bg-gray-500"
           onClick={onClickPlay}
+          type="button"
         >
           {playing ? <RiPauseFill size={30} /> : <RiPlayFill size={30} />}
         </button>
         {attachment.length > 1 && (
           <>
             <button
-              type="button"
               className="flex h-12 w-12 shrink-0 items-center justify-center bg-gray-800 hover:bg-gray-500"
               onClick={playPrevious}
+              type="button"
             >
               <GrChapterPrevious size={30} />
             </button>
             <button
-              type="button"
               className="flex h-12 w-12 shrink-0 items-center justify-center bg-gray-800 hover:bg-gray-500"
               onClick={playNext}
+              type="button"
             >
               <GrChapterNext size={30} />
             </button>
@@ -250,9 +250,9 @@ const PlayerController = () => {
           />
         </div>
         <button
-          type="button"
           className="flex h-12 w-12 shrink-0 items-center justify-center bg-gray-800 hover:bg-gray-500"
           onClick={onClickClose}
+          type="button"
         >
           <RiCloseCircleLine size={30} />
         </button>

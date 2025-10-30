@@ -110,9 +110,9 @@ export const SettingPanel = () => {
     <div className="p-2 pt-4">
       <SettingItem>
         <button
-          type="button"
           className="w-full text-left py-2 px-3 bg-gray-700 hover:bg-gray-600 rounded-md text-white"
           onClick={() => setShowTimelineManagement(!showTimelineManagement)}
+          type="button"
         >
           Timeline Management
         </button>

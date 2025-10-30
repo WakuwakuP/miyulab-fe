@@ -212,10 +212,10 @@ export const MainPanel = () => {
                   </div>
                   <div>
                     <button
-                      type="button"
                       onClick={() => {
                         setReplyTo(undefined)
                       }}
+                      type="button"
                     >
                       <RiCloseCircleLine size={32} />
                     </button>
@@ -249,9 +249,9 @@ export const MainPanel = () => {
           </div>
           <div>
             <button
-              type="button"
               className="rounded-md border bg-slate-500 px-3 py-2"
               onClick={clickPost}
+              type="button"
             >
               Post
             </button>
@@ -279,10 +279,10 @@ export const MainPanel = () => {
               value={mediaLink}
             />
             <button
-              type="button"
               className="border p-2 disabled:border-gray-600 disabled:text-gray-600"
               disabled={!isPlay}
               onClick={onPlay}
+              type="button"
             >
               <RiPlayFill size={30} />
             </button>

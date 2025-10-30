@@ -86,10 +86,10 @@ const SortableTimelineItem = ({
     >
       <div className="flex items-center space-x-2 flex-1">
         <button
-          type="button"
           className="text-gray-400 hover:text-white"
           onClick={() => onToggleVisibility(timeline.id)}
           title={timeline.visible ? 'Hide timeline' : 'Show timeline'}
+          type="button"
         >
           {timeline.visible ? (
             <RiEyeLine size={20} />
@@ -110,29 +110,29 @@ const SortableTimelineItem = ({
       </div>
       <div className="flex items-center space-x-1">
         <button
-          type="button"
           className="text-gray-400 hover:text-white disabled:text-gray-600 disabled:cursor-not-allowed"
           disabled={!canMoveUp}
           onClick={() => onMoveUp(timeline.id)}
           title="Move up"
+          type="button"
         >
           ↑
         </button>
         <button
-          type="button"
           className="text-gray-400 hover:text-white disabled:text-gray-600 disabled:cursor-not-allowed"
           disabled={!canMoveDown}
           onClick={() => onMoveDown(timeline.id)}
           title="Move down"
+          type="button"
         >
           ↓
         </button>
         {onDelete != null && (
           <button
-            type="button"
             className="text-red-400 hover:text-red-300"
             onClick={() => onDelete(timeline.id)}
             title="Delete timeline"
+            type="button"
           >
             <RiDeleteBinLine size={16} />
           </button>
@@ -374,13 +374,13 @@ export const TimelineManagement = () => {
                 ['home', 'local', 'public', 'notification'] as TimelineType[]
               ).map((type) => (
                 <button
-                  type="button"
                   className="rounded bg-slate-600 px-2 py-1 text-xs hover:bg-slate-500 disabled:bg-slate-700 disabled:text-gray-500"
                   disabled={timelineSettings.timelines.some(
                     (t) => t.id === type,
                   )}
                   key={type}
                   onClick={() => onAddCoreTimeline(type)}
+                  type="button"
                 >
                   {type.charAt(0).toUpperCase() + type.slice(1)}
                 </button>
@@ -403,10 +403,10 @@ export const TimelineManagement = () => {
                 value={newTagName}
               />
               <button
-                type="button"
                 className="rounded bg-blue-600 px-3 py-1 text-sm hover:bg-blue-500"
                 disabled={newTagName.trim() === ''}
                 onClick={onAddTagTimeline}
+                type="button"
               >
                 <RiAddLine size={16} />
               </button>

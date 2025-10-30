@@ -87,9 +87,9 @@ export const Poll = ({
         <div>
           {!voted && (
             <button
-              type="button"
               className="rounded-md border-2 border-gray-600 p-1"
               onClick={vote}
+              type="button"
             >
               Vote
             </button>

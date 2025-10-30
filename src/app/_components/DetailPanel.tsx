@@ -73,7 +73,6 @@ export const DetailPanel = () => {
     <Panel name={panelNames[detail.type]}>
       <div>
         <button
-          type="button"
           className="flex rounded-md border pr-4 text-xl text-blue-500"
           onClick={() =>
             setDetail({
@@ -81,6 +80,7 @@ export const DetailPanel = () => {
               type: null,
             })
           }
+          type="button"
         >
           <RiArrowLeftSLine size={30} />
           <span>戻る</span>
