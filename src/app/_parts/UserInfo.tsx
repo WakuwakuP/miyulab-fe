@@ -43,6 +43,15 @@ export const UserInfo = ({
           type: 'Account',
         })
       }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          setDetail({
+            content: account,
+            type: 'Account',
+          })
+        }
+      }}
     >
       <div className="relative">
         {scrolling ? (

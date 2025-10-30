@@ -173,8 +173,6 @@ const PlayerController = () => {
     >
       <div
         className=" bg-black"
-        role="button"
-        tabIndex={0}
         onClick={onClickPlay}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
@@ -182,6 +180,8 @@ const PlayerController = () => {
             onClickPlay()
           }
         }}
+        role="button"
+        tabIndex={0}
       >
         {playableTypes.includes(attachment[index].type) && (
           <ReactPlayer

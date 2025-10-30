@@ -13,8 +13,6 @@ export const Modal = ({
 }) => {
   return createPortal(
     <div
-      role="button"
-      tabIndex={0}
       className="fixed inset-0 z-40 h-screen w-screen bg-black/60"
       onClick={onClick}
       onKeyDown={(e) => {
@@ -23,6 +21,8 @@ export const Modal = ({
           onClick()
         }
       }}
+      role="button"
+      tabIndex={0}
     >
       {children}
     </div>,

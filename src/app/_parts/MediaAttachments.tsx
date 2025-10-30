@@ -43,8 +43,6 @@ export const MediaAttachments = ({
       {sensitive &&
         (!isShowSensitive ? (
           <div
-            role="button"
-            tabIndex={0}
             className="absolute z-10 flex h-full w-full cursor-pointer items-center justify-center bg-gray-800/50 p-2 text-gray-400 backdrop-blur-lg"
             onClick={() => {
               setIsShowSensitive(true)
@@ -55,6 +53,8 @@ export const MediaAttachments = ({
                 setIsShowSensitive(true)
               }
             }}
+            role="button"
+            tabIndex={0}
           >
             <div>Contents Warning</div>
           </div>
