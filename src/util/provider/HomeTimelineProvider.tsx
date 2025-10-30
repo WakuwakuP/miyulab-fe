@@ -5,6 +5,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useEffectEvent,
   useMemo,
   useRef,
   useState,
@@ -206,6 +207,171 @@ export const HomeTimelineProvider = ({
     })
   }
 
+  const createStreamHandlers = useEffectEvent(
+    (app: any, index: number) => {
+      const onUpdate = (status: Entity.Status) => {
+        setTags((prev) =>
+          Array.from(
+            new Set([
+              ...prev,
+              ...status.tags.map((tag) => tag.name),
+            ])
+          )
+        )
+        setUsers((prev) =>
+          [
+            status.reblog != null
+              ? status.reblog.account
+              : status.account,
+            ...prev,
+          ]
+            .filter(
+              (element, idx, self) =>
+                self.findIndex(
+                  (e) => e.acct === element.acct
+                ) === idx
+            )
+            .map((account) => {
+              return {
+                id: account.id,
+                acct: account.acct,
+                avatar: account.avatar,
+                display_name: account.display_name,
+              }
+            })
+        )
+        const statusWithBackendUrl = {
+          ...status,
+          appIndex: index,
+        }
+        setTimelines((prev) => {
+          const idx = prev[app.backendUrl].findIndex(
+            (s) => s.id == statusWithBackendUrl.id
+          )
+          // 同一IDのStatusが存在する場合は更新
+          if (idx === -1) {
+            return {
+              ...prev,
+              [app.backendUrl]: ArrayLengthControl([
+                statusWithBackendUrl,
+                ...prev[app.backendUrl],
+              ]),
+            }
+          }
+          const next = [...prev[app.backendUrl]]
+          next[idx] = statusWithBackendUrl
+          return {
+            ...prev,
+            [app.backendUrl]: next,
+          }
+        })
+      }
+
+      const onStatusUpdate = (status: Entity.Status) => {
+        const statusWithBackendUrl = {
+          ...status,
+          appIndex: index,
+        }
+        setTimelines((prev) => {
+          const idx = prev[app.backendUrl].findIndex(
+            (prevStatus) =>
+              prevStatus.id === statusWithBackendUrl.id
+          )
+          if (idx === -1) {
+            return {
+              ...prev,
+              [app.backendUrl]: ArrayLengthControl([
+                statusWithBackendUrl,
+                ...prev[app.backendUrl],
+              ]),
+            }
+          }
+          const next = [...prev[app.backendUrl]]
+          next[idx] = statusWithBackendUrl
+          return {
+            ...prev,
+            [app.backendUrl]: next,
+          }
+        })
+      }
+
+      const onNotification = (
+        notification: Entity.Notification
+      ) => {
+        setNotifications((prev) => {
+          const newNotification = {
+            ...notification,
+            appIndex: index,
+          }
+          return {
+            ...prev,
+            [app.backendUrl]: ArrayLengthControl([
+              newNotification,
+              ...prev[app.backendUrl],
+            ]),
+          }
+        })
+        if (notification.account == null) return
+
+        const account = {
+          id: notification.account.id,
+          acct: notification.account.acct,
+          avatar: notification.account.avatar,
+          display_name: notification.account.display_name,
+        } as Pick<
+          Entity.Account,
+          'id' | 'acct' | 'avatar' | 'display_name'
+        >
+
+        setUsers((prev) =>
+          [account, ...prev].filter(
+            (element, idx, self) =>
+              self.findIndex(
+                (e) => e.acct === element.acct
+              ) === idx
+          )
+        )
+      }
+
+      const onDelete = (id: string) => {
+        setTimelines((prev) => {
+          return {
+            ...prev,
+            [app.backendUrl]: prev[app.backendUrl].filter(
+              (status) => status.id !== id
+            ),
+          }
+        })
+      }
+
+      const onError = (stream: any) => (err: Error) => {
+        console.error(err)
+
+        stream.stop()
+        const timeout = setTimeout(() => {
+          stream.start()
+          // eslint-disable-next-line no-console
+          console.info('reconnected userSocket')
+          clearTimeout(timeout)
+        }, 1000)
+      }
+
+      const onConnect = () => {
+        // eslint-disable-next-line no-console
+        console.info('connected userStreaming')
+      }
+
+      return {
+        onUpdate,
+        onStatusUpdate,
+        onNotification,
+        onDelete,
+        onError,
+        onConnect,
+      }
+    }
+  )
+
   useEffect(() => {
     if (
       process.env.NODE_ENV === 'development' &&
@@ -302,169 +468,18 @@ export const HomeTimelineProvider = ({
 
       Promise.all([getHome, getNotifications]).then(() => {
         client.userStreaming().then((stream) => {
-          stream.on('update', (status: Entity.Status) => {
-            setTags((prev) =>
-              Array.from(
-                new Set([
-                  ...prev,
-                  ...status.tags.map((tag) => tag.name),
-                ])
-              )
-            )
-            setUsers((prev) =>
-              [
-                status.reblog != null
-                  ? status.reblog.account
-                  : status.account,
-                ...prev,
-              ]
-                .filter(
-                  (element, index, self) =>
-                    self.findIndex(
-                      (e) => e.acct === element.acct
-                    ) === index
-                )
-                .map((account) => {
-                  return {
-                    id: account.id,
-                    acct: account.acct,
-                    avatar: account.avatar,
-                    display_name: account.display_name,
-                  }
-                })
-            )
-            const statusWithBackendUrl = {
-              ...status,
-              appIndex: index,
-            }
-            setTimelines((prev) => {
-              const index = prev[app.backendUrl].findIndex(
-                (s) => s.id == statusWithBackendUrl.id
-              )
-              // 同一IDのStatusが存在する場合は更新
-              if (index === -1) {
-                return {
-                  ...prev,
-                  [app.backendUrl]: ArrayLengthControl([
-                    statusWithBackendUrl,
-                    ...prev[app.backendUrl],
-                  ]),
-                }
-              }
-              const next = [...prev[app.backendUrl]]
-              next[index] = statusWithBackendUrl
-              return {
-                ...prev,
-                [app.backendUrl]: next,
-              }
-            })
-          })
+          const handlers = createStreamHandlers(app, index)
 
-          stream.on(
-            'status_update',
-            (status: Entity.Status) => {
-              const statusWithBackendUrl = {
-                ...status,
-                appIndex: index,
-              }
-              setTimelines((prev) => {
-                const index = prev[
-                  app.backendUrl
-                ].findIndex(
-                  (prevStatus) =>
-                    prevStatus.id ===
-                    statusWithBackendUrl.id
-                )
-                if (index === -1) {
-                  return {
-                    ...prev,
-                    [app.backendUrl]: ArrayLengthControl([
-                      statusWithBackendUrl,
-                      ...prev[app.backendUrl],
-                    ]),
-                  }
-                }
-                const next = [...prev[app.backendUrl]]
-                next[index] = statusWithBackendUrl
-                return {
-                  ...prev,
-                  [app.backendUrl]: next,
-                }
-              })
-            }
-          )
-
-          stream.on(
-            'notification',
-            (notification: Entity.Notification) => {
-              setNotifications((prev) => {
-                const newNotification = {
-                  ...notification,
-                  appIndex: index,
-                }
-                return {
-                  ...prev,
-                  [app.backendUrl]: ArrayLengthControl([
-                    newNotification,
-                    ...prev[app.backendUrl],
-                  ]),
-                }
-              })
-              if (notification.account == null) return
-
-              const account = {
-                id: notification.account.id,
-                acct: notification.account.acct,
-                avatar: notification.account.avatar,
-                display_name:
-                  notification.account.display_name,
-              } as Pick<
-                Entity.Account,
-                'id' | 'acct' | 'avatar' | 'display_name'
-              >
-
-              setUsers((prev) =>
-                [account, ...prev].filter(
-                  (element, index, self) =>
-                    self.findIndex(
-                      (e) => e.acct === element.acct
-                    ) === index
-                )
-              )
-            }
-          )
-
-          stream.on('delete', (id: string) => {
-            setTimelines((prev) => {
-              return {
-                ...prev,
-                [app.backendUrl]: prev[
-                  app.backendUrl
-                ].filter((status) => status.id !== id),
-              }
-            })
-          })
-
-          stream.on('error', (err: Error) => {
-            console.error(err)
-
-            stream.stop()
-            const timeout = setTimeout(() => {
-              stream.start()
-              // eslint-disable-next-line no-console
-              console.info('reconnected userSocket')
-              clearTimeout(timeout)
-            }, 1000)
-          })
-
-          stream.on('connect', () => {
-            // eslint-disable-next-line no-console
-            console.info('connected userStreaming')
-          })
+          stream.on('update', handlers.onUpdate)
+          stream.on('status_update', handlers.onStatusUpdate)
+          stream.on('notification', handlers.onNotification)
+          stream.on('delete', handlers.onDelete)
+          stream.on('error', handlers.onError(stream))
+          stream.on('connect', handlers.onConnect)
         })
       })
     })
-  }, [apps, setTags, setUsers])
+  }, [apps])
 
   return (
     <HomeTimelineContext.Provider value={margeTimeline}>

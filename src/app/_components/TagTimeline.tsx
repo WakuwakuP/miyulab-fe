@@ -150,6 +150,15 @@ export const TagTimeline = ({ tag }: { tag: string }) => {
       })
   }
 
+  const scrollToTop = useCallback(() => {
+    if (scrollerRef.current != null) {
+      scrollerRef.current.scrollToIndex({
+        index: 0,
+        behavior: 'smooth',
+      })
+    }
+  }, [])
+
   // 最新の投稿が追加されたときにスクロールする
   useEffect(() => {
     if (enableScrollToTop) {
@@ -161,16 +170,7 @@ export const TagTimeline = ({ tag }: { tag: string }) => {
       if (timer.current == null) return
       clearTimeout(timer.current)
     }
-  }, [enableScrollToTop, timeline.length])
-
-  const scrollToTop = () => {
-    if (scrollerRef.current != null) {
-      scrollerRef.current.scrollToIndex({
-        index: 0,
-        behavior: 'smooth',
-      })
-    }
-  }
+  }, [enableScrollToTop, timeline.length, scrollToTop])
 
   return (
     <Panel

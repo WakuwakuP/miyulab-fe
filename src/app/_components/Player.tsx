@@ -7,6 +7,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useEffectEvent,
   useMemo,
   useRef,
   useState,
@@ -89,65 +90,65 @@ const PlayerController = () => {
       [setPlayed]
     )
 
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement) return
-      if (e.target instanceof HTMLSelectElement) return
-      if (e.target instanceof HTMLTextAreaElement) return
-      if (e.code === 'Space') {
-        e.preventDefault()
-        setPlaying((prev) => !prev)
-      }
-      if (e.code === 'ArrowLeft') {
-        e.preventDefault()
-        setPlayed((prev) => {
-          const seekToPlayed = Math.max(0, prev - 0.1)
-          if (
-            player.current != null &&
-            player.current.duration > 0
-          ) {
-            player.current.currentTime =
-              seekToPlayed * player.current.duration
-          }
-          return seekToPlayed
-        })
-      }
-      if (e.code === 'ArrowRight') {
-        e.preventDefault()
-        setPlayed((prev) => {
-          const seekToPlayed = Math.min(
-            0.9999999,
-            prev + 0.1
-          )
-          if (
-            player.current != null &&
-            player.current.duration > 0
-          ) {
-            player.current.currentTime =
-              seekToPlayed * player.current.duration
-          }
-          return seekToPlayed
-        })
-      }
-      if (e.code === 'ArrowUp') {
-        e.preventDefault()
-        setPlayerSetting((prev) => ({
-          volume: Math.min(1, prev.volume + 0.05),
-        }))
-      }
-      if (e.code === 'ArrowDown') {
-        e.preventDefault()
-        setPlayerSetting((prev) => ({
-          volume: Math.max(0, prev.volume - 0.05),
-        }))
-      }
+  const onKeyDown = useEffectEvent((e: KeyboardEvent) => {
+    if (e.target instanceof HTMLInputElement) return
+    if (e.target instanceof HTMLSelectElement) return
+    if (e.target instanceof HTMLTextAreaElement) return
+    if (e.code === 'Space') {
+      e.preventDefault()
+      setPlaying((prev) => !prev)
     }
+    if (e.code === 'ArrowLeft') {
+      e.preventDefault()
+      setPlayed((prev) => {
+        const seekToPlayed = Math.max(0, prev - 0.1)
+        if (
+          player.current != null &&
+          player.current.duration > 0
+        ) {
+          player.current.currentTime =
+            seekToPlayed * player.current.duration
+        }
+        return seekToPlayed
+      })
+    }
+    if (e.code === 'ArrowRight') {
+      e.preventDefault()
+      setPlayed((prev) => {
+        const seekToPlayed = Math.min(
+          0.9999999,
+          prev + 0.1
+        )
+        if (
+          player.current != null &&
+          player.current.duration > 0
+        ) {
+          player.current.currentTime =
+            seekToPlayed * player.current.duration
+        }
+        return seekToPlayed
+      })
+    }
+    if (e.code === 'ArrowUp') {
+      e.preventDefault()
+      setPlayerSetting((prev) => ({
+        volume: Math.min(1, prev.volume + 0.05),
+      }))
+    }
+    if (e.code === 'ArrowDown') {
+      e.preventDefault()
+      setPlayerSetting((prev) => ({
+        volume: Math.max(0, prev.volume - 0.05),
+      }))
+    }
+  })
 
+  useEffect(() => {
     document.addEventListener('keydown', onKeyDown)
     return () => {
       document.removeEventListener('keydown', onKeyDown)
     }
-  }, [setPlaying, setPlayed, setPlayerSetting, player])
+  }, [])
 
   const handleSeekMouseUp: MouseEventHandler<HTMLInputElement> =
     useCallback(() => {

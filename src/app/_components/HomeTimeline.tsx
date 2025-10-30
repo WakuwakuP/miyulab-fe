@@ -50,6 +50,15 @@ export const HomeTimeline = () => {
     }
   }, [])
 
+  const scrollToTop = useCallback(() => {
+    if (scrollerRef.current != null) {
+      scrollerRef.current.scrollToIndex({
+        index: 0,
+        behavior: 'smooth',
+      })
+    }
+  }, [])
+
   useEffect(() => {
     if (enableScrollToTop) {
       timer.current = setTimeout(() => {
@@ -60,16 +69,7 @@ export const HomeTimeline = () => {
       if (timer.current == null) return
       clearTimeout(timer.current)
     }
-  }, [enableScrollToTop, timeline.length])
-
-  const scrollToTop = () => {
-    if (scrollerRef.current != null) {
-      scrollerRef.current.scrollToIndex({
-        index: 0,
-        behavior: 'smooth',
-      })
-    }
-  }
+  }, [enableScrollToTop, timeline.length, scrollToTop])
 
   return (
     <Panel
