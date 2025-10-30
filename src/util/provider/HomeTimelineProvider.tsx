@@ -471,7 +471,10 @@ export const HomeTimelineProvider = ({
           const handlers = createStreamHandlers(app, index)
 
           stream.on('update', handlers.onUpdate)
-          stream.on('status_update', handlers.onStatusUpdate)
+          stream.on(
+            'status_update',
+            handlers.onStatusUpdate
+          )
           stream.on('notification', handlers.onNotification)
           stream.on('delete', handlers.onDelete)
           stream.on('error', handlers.onError(stream))

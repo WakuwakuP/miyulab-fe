@@ -115,10 +115,7 @@ const PlayerController = () => {
     if (e.code === 'ArrowRight') {
       e.preventDefault()
       setPlayed((prev) => {
-        const seekToPlayed = Math.min(
-          0.9999999,
-          prev + 0.1
-        )
+        const seekToPlayed = Math.min(0.9999999, prev + 0.1)
         if (
           player.current != null &&
           player.current.duration > 0

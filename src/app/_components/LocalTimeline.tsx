@@ -47,19 +47,21 @@ export const LocalTimeline = () => {
     return CENTER_INDEX - timeline.length
   }, [timeline.length])
 
-  const onStreamUpdate = useEffectEvent((status: Entity.Status) => {
-    const statusesForHashtag = status.tags.map(
-      (tag) => tag.name
-    )
-    setTags((prev) => [...prev, ...statusesForHashtag])
+  const onStreamUpdate = useEffectEvent(
+    (status: Entity.Status) => {
+      const statusesForHashtag = status.tags.map(
+        (tag) => tag.name
+      )
+      setTags((prev) => [...prev, ...statusesForHashtag])
 
-    setTimeline((prev) =>
-      ArrayLengthControl([
-        { ...status, appIndex: 0 },
-        ...prev,
-      ])
-    )
-  })
+      setTimeline((prev) =>
+        ArrayLengthControl([
+          { ...status, appIndex: 0 },
+          ...prev,
+        ])
+      )
+    }
+  )
 
   const onStreamDelete = useEffectEvent((id: string) => {
     setTimeline((prev) =>
@@ -67,17 +69,19 @@ export const LocalTimeline = () => {
     )
   })
 
-  const onStreamError = useEffectEvent((stream: any) => (err: Error) => {
-    console.error(err)
+  const onStreamError = useEffectEvent(
+    (stream: any) => (err: Error) => {
+      console.error(err)
 
-    stream.stop()
-    const timeout = setTimeout(() => {
-      stream.start()
-      // eslint-disable-next-line no-console
-      console.info('reconnected localSocket')
-      clearTimeout(timeout)
-    }, 1000)
-  })
+      stream.stop()
+      const timeout = setTimeout(() => {
+        stream.start()
+        // eslint-disable-next-line no-console
+        console.info('reconnected localSocket')
+        clearTimeout(timeout)
+      }, 1000)
+    }
+  )
 
   useEffect(() => {
     if (apps.length <= 0) return
