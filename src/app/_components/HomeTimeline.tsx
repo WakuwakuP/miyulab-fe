@@ -17,12 +17,17 @@ import {
 
 import { Panel } from 'app/_parts/Panel'
 import { Status } from 'app/_parts/Status'
+import { StreamPauseIndicator } from 'app/_parts/StreamPauseIndicator'
 import { TimelineStreamIcon } from 'app/_parts/TimelineIcon'
 import { CENTER_INDEX } from 'util/environment'
-import { HomeTimelineContext } from 'util/provider/HomeTimelineProvider'
+import {
+  HomeTimelineContext,
+  PageLifecycleContext,
+} from 'util/provider/HomeTimelineProvider'
 
 export const HomeTimeline = () => {
   const timeline = useContext(HomeTimelineContext)
+  const lifecycle = useContext(PageLifecycleContext)
   const scrollerRef = useRef<VirtuosoHandle>(null)
   const timer = useRef<ReturnType<
     typeof setTimeout
@@ -79,6 +84,21 @@ export const HomeTimeline = () => {
       }}
       className="relative"
     >
+      <StreamPauseIndicator
+        isPaused={
+          !lifecycle.isVisible || lifecycle.isFrozen
+        }
+        pausedAt={
+          lifecycle.lastHiddenAt ?? lifecycle.lastFrozenAt
+        }
+        reason={
+          lifecycle.isFrozen
+            ? 'frozen'
+            : !lifecycle.isVisible
+              ? 'hidden'
+              : null
+        }
+      />
       {enableScrollToTop && <TimelineStreamIcon />}
       <Virtuoso
         data={timeline}

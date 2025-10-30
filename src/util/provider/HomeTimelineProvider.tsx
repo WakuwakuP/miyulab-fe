@@ -18,7 +18,10 @@ import {
   SetTagsContext,
   SetUsersContext,
 } from 'util/provider/ResourceProvider'
-import { usePageLifecycle } from 'util/usePageLifecycle'
+import {
+  type PageLifecycleInfo,
+  usePageLifecycle,
+} from 'util/usePageLifecycle'
 
 import { AppsContext } from './AppsProvider'
 
@@ -62,6 +65,15 @@ export const SetActionsContext = createContext<SetActions>({
   setBookmarked: () => {},
 })
 
+export const PageLifecycleContext =
+  createContext<PageLifecycleInfo>({
+    state: 'active',
+    isVisible: true,
+    isFrozen: false,
+    lastHiddenAt: null,
+    lastFrozenAt: null,
+  })
+
 export const HomeTimelineProvider = ({
   children,
 }: {
@@ -71,7 +83,7 @@ export const HomeTimelineProvider = ({
   const apps = useContext(AppsContext)
   const setUsers = useContext(SetUsersContext)
   const setTags = useContext(SetTagsContext)
-  const isVisible = usePageLifecycle()
+  const lifecycle = usePageLifecycle()
   const streamsRef = useRef<{
     [key: string]: Awaited<
       ReturnType<
@@ -315,7 +327,7 @@ export const HomeTimelineProvider = ({
           streamsRef.current[app.backendUrl] = stream
 
           // If page is hidden when stream is created, stop it immediately
-          if (!isVisible) {
+          if (!lifecycle.isVisible) {
             stream.stop()
           }
 
@@ -492,40 +504,52 @@ export const HomeTimelineProvider = ({
 
     if (streams.length === 0) return
 
-    if (isVisible) {
+    // Pause stream when page is hidden or frozen
+    const shouldPause =
+      !lifecycle.isVisible || lifecycle.isFrozen
+
+    if (shouldPause) {
+      // Pause all streams when page becomes hidden or frozen
+      streams.forEach((stream) => {
+        stream.stop()
+      })
+      // eslint-disable-next-line no-console
+      console.info(
+        `Paused WebSocket streams (${lifecycle.state})`
+      )
+    } else {
       // Resume all streams when page becomes visible
       streams.forEach((stream) => {
         stream.start()
       })
       // eslint-disable-next-line no-console
       console.info(
-        'Resumed WebSocket streams (page visible)'
+        `Resumed WebSocket streams (${lifecycle.state})`
       )
-    } else {
-      // Pause all streams when page becomes hidden
-      streams.forEach((stream) => {
-        stream.stop()
-      })
-      // eslint-disable-next-line no-console
-      console.info('Paused WebSocket streams (page hidden)')
     }
-  }, [isVisible])
+  }, [
+    lifecycle.isVisible,
+    lifecycle.isFrozen,
+    lifecycle.state,
+  ])
 
   return (
-    <HomeTimelineContext.Provider value={margeTimeline}>
-      <NotificationsContext.Provider
-        value={margeNotifications}
-      >
-        <SetActionsContext.Provider
-          value={{
-            setReblogged,
-            setFavourited,
-            setBookmarked,
-          }}
+    <PageLifecycleContext.Provider value={lifecycle}>
+      <HomeTimelineContext.Provider value={margeTimeline}>
+        <NotificationsContext.Provider
+          value={margeNotifications}
         >
-          {children}
-        </SetActionsContext.Provider>
-      </NotificationsContext.Provider>
-    </HomeTimelineContext.Provider>
+          <SetActionsContext.Provider
+            value={{
+              setReblogged,
+              setFavourited,
+              setBookmarked,
+            }}
+          >
+            {children}
+          </SetActionsContext.Provider>
+        </NotificationsContext.Provider>
+      </HomeTimelineContext.Provider>
+    </PageLifecycleContext.Provider>
   )
 }

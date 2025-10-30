@@ -17,12 +17,17 @@ import {
 
 import { Notification } from 'app/_parts/Notification'
 import { Panel } from 'app/_parts/Panel'
+import { StreamPauseIndicator } from 'app/_parts/StreamPauseIndicator'
 import { TimelineStreamIcon } from 'app/_parts/TimelineIcon'
 import { CENTER_INDEX } from 'util/environment'
-import { NotificationsContext } from 'util/provider/HomeTimelineProvider'
+import {
+  NotificationsContext,
+  PageLifecycleContext,
+} from 'util/provider/HomeTimelineProvider'
 
 export const NotificationTimeline = () => {
   const notifications = useContext(NotificationsContext)
+  const lifecycle = useContext(PageLifecycleContext)
   const scrollerRef = useRef<VirtuosoHandle>(null)
   const timer = useRef<ReturnType<
     typeof setTimeout
@@ -79,6 +84,21 @@ export const NotificationTimeline = () => {
       }}
       className="relative"
     >
+      <StreamPauseIndicator
+        isPaused={
+          !lifecycle.isVisible || lifecycle.isFrozen
+        }
+        pausedAt={
+          lifecycle.lastHiddenAt ?? lifecycle.lastFrozenAt
+        }
+        reason={
+          lifecycle.isFrozen
+            ? 'frozen'
+            : !lifecycle.isVisible
+              ? 'hidden'
+              : null
+        }
+      />
       {enableScrollToTop && <TimelineStreamIcon />}
       <Virtuoso
         data={notifications}

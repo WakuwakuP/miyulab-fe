@@ -17,6 +17,7 @@ import {
 
 import { Panel } from 'app/_parts/Panel'
 import { Status } from 'app/_parts/Status'
+import { StreamPauseIndicator } from 'app/_parts/StreamPauseIndicator'
 import { TimelineStreamIcon } from 'app/_parts/TimelineIcon'
 import { type StatusAddAppIndex } from 'types/types'
 import { ArrayLengthControl } from 'util/ArrayLengthControl'
@@ -34,7 +35,7 @@ export const PublicTimeline = () => {
   > | null>(null)
   const apps = useContext(AppsContext)
   const setTags = useContext(SetTagsContext)
-  const isVisible = usePageLifecycle()
+  const lifecycle = usePageLifecycle()
   const streamRef = useRef<Awaited<
     ReturnType<
       ReturnType<typeof GetClient>['publicStreaming']
@@ -79,7 +80,7 @@ export const PublicTimeline = () => {
       streamRef.current = stream
 
       // If page is hidden when stream is created, stop it immediately
-      if (!isVisible) {
+      if (!lifecycle.isVisible) {
         stream.stop()
       }
 
@@ -133,22 +134,28 @@ export const PublicTimeline = () => {
   useEffect(() => {
     if (streamRef.current == null) return
 
-    if (isVisible) {
-      // Resume stream when page becomes visible
-      streamRef.current.start()
-      // eslint-disable-next-line no-console
-      console.info(
-        'Resumed public WebSocket stream (page visible)'
-      )
-    } else {
-      // Pause stream when page becomes hidden
+    // Pause stream when page is hidden or frozen
+    const shouldPause =
+      !lifecycle.isVisible || lifecycle.isFrozen
+
+    if (shouldPause) {
       streamRef.current.stop()
       // eslint-disable-next-line no-console
       console.info(
-        'Paused public WebSocket stream (page hidden)'
+        `Paused public WebSocket stream (${lifecycle.state})`
+      )
+    } else {
+      streamRef.current.start()
+      // eslint-disable-next-line no-console
+      console.info(
+        `Resumed public WebSocket stream (${lifecycle.state})`
       )
     }
-  }, [isVisible])
+  }, [
+    lifecycle.isVisible,
+    lifecycle.isFrozen,
+    lifecycle.state,
+  ])
 
   const onWheel = useCallback<
     WheelEventHandler<HTMLDivElement>
@@ -194,6 +201,21 @@ export const PublicTimeline = () => {
       }}
       className="relative"
     >
+      <StreamPauseIndicator
+        isPaused={
+          !lifecycle.isVisible || lifecycle.isFrozen
+        }
+        pausedAt={
+          lifecycle.lastHiddenAt ?? lifecycle.lastFrozenAt
+        }
+        reason={
+          lifecycle.isFrozen
+            ? 'frozen'
+            : !lifecycle.isVisible
+              ? 'hidden'
+              : null
+        }
+      />
       {enableScrollToTop && <TimelineStreamIcon />}
       <Virtuoso
         data={timeline}
