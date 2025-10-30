@@ -4,6 +4,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useEffectEvent,
   useMemo,
   useRef,
   useState,
@@ -46,6 +47,42 @@ export const LocalTimeline = () => {
     return CENTER_INDEX - timeline.length
   }, [timeline.length])
 
+  const onStreamUpdate = useEffectEvent(
+    (status: Entity.Status) => {
+      const statusesForHashtag = status.tags.map(
+        (tag) => tag.name
+      )
+      setTags((prev) => [...prev, ...statusesForHashtag])
+
+      setTimeline((prev) =>
+        ArrayLengthControl([
+          { ...status, appIndex: 0 },
+          ...prev,
+        ])
+      )
+    }
+  )
+
+  const onStreamDelete = useEffectEvent((id: string) => {
+    setTimeline((prev) =>
+      prev.filter((status) => status.id !== id)
+    )
+  })
+
+  const onStreamError = useEffectEvent(
+    (stream: any) => (err: Error) => {
+      console.error(err)
+
+      stream.stop()
+      const timeout = setTimeout(() => {
+        stream.start()
+        // eslint-disable-next-line no-console
+        console.info('reconnected localSocket')
+        clearTimeout(timeout)
+      }, 1000)
+    }
+  )
+
   useEffect(() => {
     if (apps.length <= 0) return
 
@@ -72,43 +109,17 @@ export const LocalTimeline = () => {
     }
 
     client.localStreaming().then((stream) => {
-      stream.on('update', (status: Entity.Status) => {
-        const statusesForHashtag = status.tags.map(
-          (tag) => tag.name
-        )
-        setTags((prev) => [...prev, ...statusesForHashtag])
-
-        setTimeline((prev) =>
-          ArrayLengthControl([
-            { ...status, appIndex: 0 },
-            ...prev,
-          ])
-        )
-      })
+      stream.on('update', onStreamUpdate)
       stream.on('connect', () => {
         // eslint-disable-next-line no-console
         console.info('connected localStreaming')
       })
 
-      stream.on('delete', (id: string) => {
-        setTimeline((prev) =>
-          prev.filter((status) => status.id !== id)
-        )
-      })
+      stream.on('delete', onStreamDelete)
 
-      stream.on('error', (err: Error) => {
-        console.error(err)
-
-        stream.stop()
-        const timeout = setTimeout(() => {
-          stream.start()
-          // eslint-disable-next-line no-console
-          console.info('reconnected localSocket')
-          clearTimeout(timeout)
-        }, 1000)
-      })
+      stream.on('error', onStreamError(stream))
     })
-  }, [apps, setTags])
+  }, [apps])
 
   const onWheel = useCallback<
     WheelEventHandler<HTMLDivElement>
@@ -124,8 +135,7 @@ export const LocalTimeline = () => {
     }
   }, [])
 
-  // 最新の投稿が追加されたときにスクロールする
-  useEffect(() => {
+  const scrollToTopIfNeeded = useEffectEvent(() => {
     if (enableScrollToTop) {
       if (!isScrolling) {
         scrollerRef.current?.scrollToIndex({
@@ -134,6 +144,11 @@ export const LocalTimeline = () => {
         })
       }
     }
+  })
+
+  // 最新の投稿が追加されたときにスクロールする
+  useEffect(() => {
+    scrollToTopIfNeeded()
   }, [timeline, enableScrollToTop, isScrolling])
 
   useEffect(() => {
