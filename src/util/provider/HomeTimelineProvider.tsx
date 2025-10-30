@@ -314,6 +314,11 @@ export const HomeTimelineProvider = ({
           // Store stream reference for lifecycle management
           streamsRef.current[app.backendUrl] = stream
 
+          // If page is hidden when stream is created, stop it immediately
+          if (!isVisible) {
+            stream.stop()
+          }
+
           stream.on('update', (status: Entity.Status) => {
             setTags((prev) =>
               Array.from(
@@ -476,6 +481,7 @@ export const HomeTimelineProvider = ({
         })
       })
     })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apps, setTags, setUsers])
 
   // Handle page visibility changes using Page Lifecycle API

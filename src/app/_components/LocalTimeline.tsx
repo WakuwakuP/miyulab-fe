@@ -82,6 +82,11 @@ export const LocalTimeline = () => {
       // Store stream reference for lifecycle management
       streamRef.current = stream
 
+      // If page is hidden when stream is created, stop it immediately
+      if (!isVisible) {
+        stream.stop()
+      }
+
       stream.on('update', (status: Entity.Status) => {
         const statusesForHashtag = status.tags.map(
           (tag) => tag.name
@@ -118,6 +123,7 @@ export const LocalTimeline = () => {
         }, 1000)
       })
     })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apps, setTags])
 
   // Handle page visibility changes using Page Lifecycle API

@@ -17,6 +17,9 @@ export const usePageLifecycle = () => {
   )
 
   useEffect(() => {
+    // Check if we're in a browser environment
+    if (typeof document === 'undefined') return
+
     const handleVisibilityChange = () => {
       setIsVisible(document.visibilityState === 'visible')
     }
