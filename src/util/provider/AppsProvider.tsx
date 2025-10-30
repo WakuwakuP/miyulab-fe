@@ -4,7 +4,7 @@ import bgImage from '@public/miyu.webp'
 import generator from 'megalodon'
 import Image from 'next/image'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { createContext, type ReactNode, useEffect, useState } from 'react'
+import { createContext, type ReactNode, useCallback, useEffect, useState } from 'react'
 import { type App, type Backend, backendList } from 'types/types'
 import { APP_NAME, APP_URL, BACKEND_SNS, BACKEND_URL } from 'util/environment'
 
@@ -34,10 +34,10 @@ export const AppsProvider = ({
     setStorageLoading(false)
   }, [])
 
-  const updateApps = (data: App[]) => {
+  const updateApps = useCallback((data: App[]) => {
     setApps(data)
     localStorage.setItem('apps', JSON.stringify(data))
-  }
+  }, [])
 
   useEffect(() => {
     if (storageLoading) {
@@ -212,6 +212,7 @@ export const AppsProvider = ({
           </div>
           <div className="pt-4">
             <button
+              type="button"
               className="rounded-md border bg-gray-900 px-4 py-2"
               onClick={onRegister}
             >
