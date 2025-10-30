@@ -217,8 +217,6 @@ export const Status = ({
       {status.reblog != null ? (
         <>
           <div
-            role="button"
-            tabIndex={0}
             className="flex mb-1 overflow-clip"
             onClick={() => {
               setDetail({
@@ -241,6 +239,8 @@ export const Status = ({
                 })
               }
             }}
+            role="button"
+            tabIndex={0}
           >
             <RiRepeatFill
               className="mr-2 block text-blue-400 flex-none"
@@ -291,8 +291,6 @@ export const Status = ({
         </div>
       )}
       <div
-        role="button"
-        tabIndex={0}
         className="content"
         onClick={() => {
           setDetail({
@@ -309,6 +307,8 @@ export const Status = ({
             })
           }
         }}
+        role="button"
+        tabIndex={0}
       >
         <EditedAt editedAt={status.edited_at} />
         {parse(contentFormatted, { replace })}

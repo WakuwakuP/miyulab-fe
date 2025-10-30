@@ -70,18 +70,17 @@ const MentionMenu = ({
       {chars.map((char, i) => (
         <div
           key={char.id}
-          role="button"
-          tabIndex={0}
-          onMouseDown={(e) => {
-            e.preventDefault()
-            complete(i)
-          }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault()
               complete(i)
             }
           }}
+          onMouseDown={(e) => {
+            e.preventDefault()
+            complete(i)
+          }}
+          role="button"
           style={{
             padding: '4px',
             ...(index === i && {
@@ -89,6 +88,7 @@ const MentionMenu = ({
               color: 'white',
             }),
           }}
+          tabIndex={0}
         >
           <img
             alt={char.display_name}
@@ -130,18 +130,17 @@ const EmojiMenu = ({
       {chars.map((char, i) => (
         <div
           key={char.shortcode}
-          role="button"
-          tabIndex={0}
-          onMouseDown={(e) => {
-            e.preventDefault()
-            complete(i)
-          }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault()
               complete(i)
             }
           }}
+          onMouseDown={(e) => {
+            e.preventDefault()
+            complete(i)
+          }}
+          role="button"
           style={{
             display: 'flex',
             padding: '4px',
@@ -150,6 +149,7 @@ const EmojiMenu = ({
               color: 'white',
             }),
           }}
+          tabIndex={0}
         >
           {char.url === '' ? (
             <div>{Emoji.emojify(`:${char.shortcode}:`)}</div>
@@ -196,18 +196,17 @@ const Menu = ({
       {chars.map((char, i) => (
         <div
           key={char}
-          role="button"
-          tabIndex={0}
-          onMouseDown={(e) => {
-            e.preventDefault()
-            complete(i)
-          }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
               e.preventDefault()
               complete(i)
             }
           }}
+          onMouseDown={(e) => {
+            e.preventDefault()
+            complete(i)
+          }}
+          role="button"
           style={{
             padding: '4px',
             ...(index === i && {
@@ -215,6 +214,7 @@ const Menu = ({
               color: 'white',
             }),
           }}
+          tabIndex={0}
         >
           {char}
         </div>
