@@ -124,6 +124,8 @@ export const PublicTimeline = () => {
         }, 1000)
       })
     })
+    // isVisible is intentionally not in deps - we only check it once when stream is created
+    // to determine initial state. Visibility changes are handled by separate useEffect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apps, setTags])
 
