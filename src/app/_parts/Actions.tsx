@@ -12,54 +12,33 @@ import {
   RiStarLine,
 } from 'react-icons/ri'
 
-import { type StatusAddAppIndex } from 'types/types'
+import type { StatusAddAppIndex } from 'types/types'
 import { GetClient } from 'util/GetClient'
 import { AppsContext } from 'util/provider/AppsProvider'
 import { SetActionsContext } from 'util/provider/HomeTimelineProvider'
 import { SetReplyToContext } from 'util/provider/ReplyToProvider'
 
-export const Actions = ({
-  status,
-}: {
-  status: StatusAddAppIndex
-}) => {
+export const Actions = ({ status }: { status: StatusAddAppIndex }) => {
   const apps = useContext(AppsContext)
 
   const setActions = useContext(SetActionsContext)
 
   const setReplyTo = useContext(SetReplyToContext)
 
-  const [reblogged, setReblogged] = useState(
-    status.reblogged
-  )
+  const [reblogged, setReblogged] = useState(status.reblogged)
 
-  const [favourited, setFavourited] = useState(
-    status.favourited
-  )
-  const [bookmarked, setBookmarked] = useState(
-    status.bookmarked
-  )
+  const [favourited, setFavourited] = useState(status.favourited)
+  const [bookmarked, setBookmarked] = useState(status.bookmarked)
 
   useEffect(() => {}, [])
 
   const createdAt = new Date(status.created_at)
   const fullYear = createdAt.getFullYear()
-  const month = (createdAt.getMonth() + 1)
-    .toString()
-    .padStart(2, '0')
-  const date = createdAt
-    .getDate()
-    .toString()
-    .padStart(2, '0')
-  const hours = createdAt
-    .getHours()
-    .toString()
-    .padStart(2, '0')
+  const month = (createdAt.getMonth() + 1).toString().padStart(2, '0')
+  const date = createdAt.getDate().toString().padStart(2, '0')
+  const hours = createdAt.getHours().toString().padStart(2, '0')
 
-  const minutes = createdAt
-    .getMinutes()
-    .toString()
-    .padStart(2, '0')
+  const minutes = createdAt.getMinutes().toString().padStart(2, '0')
 
   const dateString = `${fullYear}/${month}/${date}`
   const timeString = `${hours}:${minutes}`
@@ -70,8 +49,7 @@ export const Actions = ({
   const client = GetClient(apps[status.appIndex])
 
   // Check if the status is private (either the status itself or the reblogged status)
-  const statusVisibility =
-    status.reblog?.visibility ?? status.visibility
+  const statusVisibility = status.reblog?.visibility ?? status.visibility
   const isPrivate = statusVisibility === 'private'
 
   return (
@@ -81,52 +59,42 @@ export const Actions = ({
         onClick={() => {
           setReplyTo(status)
         }}
+        type="button"
       >
         <RiReplyFill size={24} />
 
         <div className="pl-1">{status.replies_count}</div>
       </button>
       <button
+        className={isPrivate ? 'cursor-not-allowed opacity-50' : ''}
         disabled={isPrivate}
-        className={
-          isPrivate ? 'cursor-not-allowed opacity-50' : ''
-        }
         onClick={() => {
           if (isPrivate) return
 
           if (reblogged ?? false) {
-            client.unreblogStatus(
-              status.reblog?.id ?? status.id
-            )
+            client.unreblogStatus(status.reblog?.id ?? status.id)
             setActions.setReblogged(
               status.appIndex,
               status.reblog?.id ?? status.id,
-              false
+              false,
             )
             setReblogged(false)
           } else {
-            client.reblogStatus(
-              status.reblog?.id ?? status.id
-            )
+            client.reblogStatus(status.reblog?.id ?? status.id)
             setActions.setReblogged(
               status.appIndex,
               status.reblog?.id ?? status.id,
-              true
+              true,
             )
             setReblogged(true)
           }
         }}
+        type="button"
       >
         {isPrivate ? (
-          <FaLock
-            size={24}
-            className="text-gray-400"
-          />
+          <FaLock className="text-gray-400" size={24} />
         ) : (reblogged ?? false) ? (
-          <RiRepeatFill
-            size={24}
-            className="text-blue-400"
-          />
+          <RiRepeatFill className="text-blue-400" size={24} />
         ) : (
           <RiRepeatFill size={24} />
         )}
@@ -134,33 +102,27 @@ export const Actions = ({
       <button
         onClick={() => {
           if (favourited ?? false) {
-            client.unfavouriteStatus(
-              status.reblog?.id ?? status.id
-            )
+            client.unfavouriteStatus(status.reblog?.id ?? status.id)
             setActions.setFavourited(
               status.appIndex,
               status.reblog?.id ?? status.id,
-              false
+              false,
             )
             setFavourited(false)
           } else {
-            client.favouriteStatus(
-              status.reblog?.id ?? status.id
-            )
+            client.favouriteStatus(status.reblog?.id ?? status.id)
             setActions.setFavourited(
               status.appIndex,
               status.reblog?.id ?? status.id,
-              true
+              true,
             )
             setFavourited(true)
           }
         }}
+        type="button"
       >
         {(favourited ?? false) ? (
-          <RiStarFill
-            size={24}
-            className="text-orange-300"
-          />
+          <RiStarFill className="text-orange-300" size={24} />
         ) : (
           <RiStarLine size={24} />
         )}
@@ -168,33 +130,27 @@ export const Actions = ({
       <button
         onClick={() => {
           if (bookmarked ?? false) {
-            client.unbookmarkStatus(
-              status.reblog?.id ?? status.id
-            )
+            client.unbookmarkStatus(status.reblog?.id ?? status.id)
             setActions.setBookmarked(
               status.appIndex,
               status.reblog?.id ?? status.id,
-              false
+              false,
             )
             setBookmarked(false)
           } else {
-            client.bookmarkStatus(
-              status.reblog?.id ?? status.id
-            )
+            client.bookmarkStatus(status.reblog?.id ?? status.id)
             setActions.setBookmarked(
               status.appIndex,
               status.reblog?.id ?? status.id,
-              true
+              true,
             )
             setBookmarked(true)
           }
         }}
+        type="button"
       >
         {bookmarked ? (
-          <RiBookmark2Fill
-            size={24}
-            className="text-red-400"
-          />
+          <RiBookmark2Fill className="text-red-400" size={24} />
         ) : (
           <RiBookmarkFill size={24} />
         )}

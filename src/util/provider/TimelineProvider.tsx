@@ -1,43 +1,44 @@
 'use client'
 
 import {
+  createContext,
   type Dispatch,
   type ReactNode,
   type SetStateAction,
-  createContext,
   useEffect,
   useState,
 } from 'react'
 
-import { type TimelineSettings } from 'types/types'
+import type { TimelineSettings } from 'types/types'
 
 const initialTimelineSettings: TimelineSettings = {
   timelines: [
-    { id: 'home', type: 'home', visible: true, order: 0 },
+    { id: 'home', order: 0, type: 'home', visible: true },
     {
       id: 'notification',
+      order: 1,
       type: 'notification',
       visible: true,
-      order: 1,
     },
     {
       id: 'tag-gochisou_photo',
-      type: 'tag',
-      visible: true,
       order: 2,
       tag: 'gochisou_photo',
+      type: 'tag',
+      visible: true,
     },
     {
       id: 'public',
+      order: 3,
       type: 'public',
       visible: true,
-      order: 3,
     },
   ],
 } as const
 
-export const TimelineContext =
-  createContext<TimelineSettings>(initialTimelineSettings)
+export const TimelineContext = createContext<TimelineSettings>(
+  initialTimelineSettings,
+)
 
 export const SetTimelineContext = createContext<
   Dispatch<SetStateAction<TimelineSettings>>
@@ -46,25 +47,21 @@ export const SetTimelineContext = createContext<
 export const TimelineProvider = ({
   children,
 }: Readonly<{ children: ReactNode }>) => {
-  const [storageLoading, setStorageLoading] =
-    useState<boolean>(true)
-  const [timelineSettings, setTimelineSettings] =
-    useState<TimelineSettings>(initialTimelineSettings)
+  const [storageLoading, setStorageLoading] = useState<boolean>(true)
+  const [timelineSettings, setTimelineSettings] = useState<TimelineSettings>(
+    initialTimelineSettings,
+  )
 
   useEffect(() => {
-    const timelineStr = localStorage.getItem(
-      'timelineSettings'
-    )
+    const timelineStr = localStorage.getItem('timelineSettings')
     if (timelineStr != null) {
       try {
-        const stored = JSON.parse(
-          timelineStr
-        ) as TimelineSettings
+        const stored = JSON.parse(timelineStr) as TimelineSettings
         setTimelineSettings(stored)
       } catch (error) {
         console.warn(
           'Failed to parse timeline settings from localStorage:',
-          error
+          error,
         )
       }
     }
@@ -76,17 +73,12 @@ export const TimelineProvider = ({
     if (storageLoading) {
       return
     }
-    localStorage.setItem(
-      'timelineSettings',
-      JSON.stringify(timelineSettings)
-    )
+    localStorage.setItem('timelineSettings', JSON.stringify(timelineSettings))
   }, [timelineSettings, storageLoading])
 
   return (
     <TimelineContext.Provider value={timelineSettings}>
-      <SetTimelineContext.Provider
-        value={setTimelineSettings}
-      >
+      <SetTimelineContext.Provider value={setTimelineSettings}>
         {children}
       </SetTimelineContext.Provider>
     </TimelineContext.Provider>

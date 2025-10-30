@@ -1,24 +1,16 @@
 'use client'
 
 import {
+  createContext,
   type Dispatch,
   type ReactNode,
   type SetStateAction,
-  createContext,
   useState,
 } from 'react'
 
-import {
-  type AccountAddAppIndex,
-  type StatusAddAppIndex,
-} from 'types/types'
+import type { AccountAddAppIndex, StatusAddAppIndex } from 'types/types'
 
-export type DetailType =
-  | 'Account'
-  | 'Status'
-  | 'SearchUser'
-  | 'Hashtag'
-  | null
+export type DetailType = 'Account' | 'Status' | 'SearchUser' | 'Hashtag' | null
 
 export type SetDetailParams =
   | {
@@ -43,25 +35,19 @@ export type SetDetailParams =
       content: null
     }
 
-export const DetailContext = createContext<SetDetailParams>(
-  {
-    type: null,
-    content: null,
-  }
-)
+export const DetailContext = createContext<SetDetailParams>({
+  content: null,
+  type: null,
+})
 
 export const SetDetailContext = createContext<
   Dispatch<SetStateAction<SetDetailParams>>
 >(() => {})
 
-export const DetailProvider = ({
-  children,
-}: {
-  children: ReactNode
-}) => {
+export const DetailProvider = ({ children }: { children: ReactNode }) => {
   const [detail, setDetail] = useState<SetDetailParams>({
-    type: null,
     content: null,
+    type: null,
   })
 
   return (

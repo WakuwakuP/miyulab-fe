@@ -21,9 +21,8 @@ import './globals.css'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
+  description: 'This is Pleroma client application for web.',
   title: APP_NAME,
-  description:
-    'This is Pleroma client application for web.',
 }
 
 export default function RootLayout({

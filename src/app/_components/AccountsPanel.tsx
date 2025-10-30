@@ -1,34 +1,17 @@
 /* eslint-disable @next/next/no-img-element */
 'use client'
 
-import {
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-} from 'react'
-
 import generator, { type Entity } from 'megalodon'
+import { useContext, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { RiCloseCircleFill } from 'react-icons/ri'
 
-import {
-  type App,
-  type Backend,
-  backendList,
-} from 'types/types'
+import { type App, type Backend, backendList } from 'types/types'
 import { APP_NAME, APP_URL } from 'util/environment'
 import { GetClient } from 'util/GetClient'
-import {
-  AppsContext,
-  UpdateAppsContext,
-} from 'util/provider/AppsProvider'
+import { AppsContext, UpdateAppsContext } from 'util/provider/AppsProvider'
 
-const AddAccountModal = ({
-  onClose,
-}: {
-  onClose: () => void
-}) => {
+const AddAccountModal = ({ onClose }: { onClose: () => void }) => {
   const apps = useContext(AppsContext)
   const [backend, setBackend] = useState<Backend | ''>('')
   const [backendUrl, setBackendUrl] = useState('')
@@ -41,26 +24,21 @@ const AddAccountModal = ({
     const client = generator(backend, backendUrl)
 
     const findApp = apps.find(
-      (app) =>
-        app.backend === backend &&
-        app.backendUrl == backendUrl
+      (app) => app.backend === backend && app.backendUrl === backendUrl,
     )
 
     const processingAppData = await (async () => {
-      if (
-        findApp === undefined ||
-        findApp.appData.id === ''
-      ) {
+      if (findApp === undefined || findApp.appData.id === '') {
         const appData = await client.registerApp(APP_NAME, {
+          redirect_uris: APP_URL,
           scopes: ['read', 'write', 'follow', 'push'],
           website: APP_URL,
-          redirect_uris: APP_URL,
         })
 
         return {
+          appData,
           backend,
           backendUrl,
-          appData,
           tokenData: null,
         }
       } else {
@@ -71,7 +49,7 @@ const AddAccountModal = ({
     if (processingAppData?.appData?.url != null) {
       localStorage.setItem(
         'processingAppData',
-        JSON.stringify(processingAppData)
+        JSON.stringify(processingAppData),
       )
 
       window.location.href = processingAppData.appData.url
@@ -91,35 +69,33 @@ const AddAccountModal = ({
         <div className="w-72 space-y-2">
           <select
             className="w-full"
-            value={backend}
             onChange={(e) => {
               setBackend(e.target.value as Backend | '')
             }}
+            value={backend}
           >
             <option value="">Select backend</option>
             {backendList.map((backend) => (
-              <option
-                key={backend}
-                value={backend}
-              >
+              <option key={backend} value={backend}>
                 {backend}
               </option>
             ))}
           </select>
           <input
             className="w-full"
-            type="text"
-            placeholder="https://pl.waku.dev"
-            value={backendUrl}
             onChange={(e) => {
               setBackendUrl(e.target.value)
             }}
+            placeholder="https://pl.waku.dev"
+            type="text"
+            value={backendUrl}
           />
         </div>
         <div className="pt-4">
           <button
             className="rounded-md border bg-gray-900 px-4 py-2"
             onClick={onRegister}
+            type="button"
           >
             Login
           </button>
@@ -133,18 +109,14 @@ export const AccountsPanel = () => {
   const apps = useContext(AppsContext)
   const updateApps = useContext(UpdateAppsContext)
 
-  const [showAddAccountModal, setShowAddAccountModal] =
-    useState(false)
-  const [
-    showDeleteAccountModal,
-    setShowDeleteAccountModal,
-  ] = useState<{
+  const [showAddAccountModal, setShowAddAccountModal] = useState(false)
+  const [showDeleteAccountModal, setShowDeleteAccountModal] = useState<{
     app: App | null
     account: Entity.Account | null
     index: number | null
   }>({
-    app: null,
     account: null,
+    app: null,
     index: null,
   })
 
@@ -161,11 +133,9 @@ export const AccountsPanel = () => {
     ;(async () => {
       const data = apps.map((app) => {
         const client = GetClient(app)
-        return client
-          .verifyAccountCredentials()
-          .then((res) => {
-            return { app, account: res.data }
-          })
+        return client.verifyAccountCredentials().then((res) => {
+          return { account: res.data, app }
+        })
       })
 
       const res = await Promise.all(data)
@@ -184,29 +154,26 @@ export const AccountsPanel = () => {
       <div>アカウント管理</div>
       <div>
         {accountsMemo.map(({ app, account }, index) => (
-          <div
-            key={account.id}
-            className="flex items-center"
-          >
+          <div className="flex items-center" key={account.id}>
             <img
-              className="h-12 w-12 flex-none rounded-lg object-contain"
-              src={account.avatar}
               alt="avatar"
+              className="h-12 w-12 flex-none rounded-lg object-contain"
               loading="lazy"
+              src={account.avatar}
             />
             <div className="truncate">
               {account.display_name} @{account.acct}
             </div>
             <div className="ml-auto shrink-0 p-1">
               <RiCloseCircleFill
-                size={20}
                 onClick={() => {
                   setShowDeleteAccountModal({
-                    app,
                     account,
+                    app,
                     index,
                   })
                 }}
+                size={20}
               />
             </div>
           </div>
@@ -218,6 +185,7 @@ export const AccountsPanel = () => {
           onClick={() => {
             setShowAddAccountModal(true)
           }}
+          type="button"
         >
           アカウント追加
         </button>
@@ -229,7 +197,7 @@ export const AccountsPanel = () => {
               setShowAddAccountModal(false)
             }}
           />,
-          document.body
+          document.body,
         )}
       {showDeleteAccountModal.app != null &&
         showDeleteAccountModal.account != null &&
@@ -239,8 +207,8 @@ export const AccountsPanel = () => {
               className="absolute bottom-0 left-0 right-0 top-0 bg-black/60"
               onClick={() => {
                 setShowDeleteAccountModal({
-                  app: null,
                   account: null,
+                  app: null,
                   index: null,
                 })
               }}
@@ -248,27 +216,23 @@ export const AccountsPanel = () => {
             <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-md border bg-gray-600 p-12 text-center">
               <div>アカウントを削除しますか？</div>
               <div>
-                {
-                  showDeleteAccountModal.account
-                    ?.display_name
-                }{' '}
-                @{showDeleteAccountModal.account?.acct}
+                {showDeleteAccountModal.account?.display_name} @
+                {showDeleteAccountModal.account?.acct}
               </div>
               <div>{showDeleteAccountModal.index}</div>
               <div className="flex justify-center space-x-2">
                 <button
                   className="rounded-md border bg-gray-900 px-4 py-2"
                   onClick={() => {
-                    deleteAccount(
-                      showDeleteAccountModal.index
-                    )
+                    deleteAccount(showDeleteAccountModal.index)
 
                     setShowDeleteAccountModal({
-                      app: null,
                       account: null,
+                      app: null,
                       index: null,
                     })
                   }}
+                  type="button"
                 >
                   はい
                 </button>
@@ -276,18 +240,19 @@ export const AccountsPanel = () => {
                   className="rounded-md border bg-gray-900 px-4 py-2"
                   onClick={() => {
                     setShowDeleteAccountModal({
-                      app: null,
                       account: null,
+                      app: null,
                       index: null,
                     })
                   }}
+                  type="button"
                 >
                   いいえ
                 </button>
               </div>
             </div>
           </>,
-          document.body
+          document.body,
         )}
     </div>
   )

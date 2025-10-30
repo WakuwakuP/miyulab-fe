@@ -1,23 +1,22 @@
 'use client'
 
+import { SettingPanel } from 'app/_components/SettingPanel'
+import { TimelineManagement } from 'app/_components/TimelineManagement'
+import { Panel } from 'app/_parts/Panel'
+import { Status } from 'app/_parts/Status'
+import type { Entity, Response } from 'megalodon'
 import {
   Fragment,
   useCallback,
   useContext,
   useEffect,
+  useEffectEvent,
   useState,
 } from 'react'
-
-import { type Entity, type Response } from 'megalodon'
 import { CiWarning } from 'react-icons/ci'
 import { RiArrowLeftSLine } from 'react-icons/ri'
 import { Virtuoso } from 'react-virtuoso'
-
-import { SettingPanel } from 'app/_components/SettingPanel'
-import { TimelineManagement } from 'app/_components/TimelineManagement'
-import { Panel } from 'app/_parts/Panel'
-import { Status } from 'app/_parts/Status'
-import { type StatusAddAppIndex } from 'types/types'
+import type { StatusAddAppIndex } from 'types/types'
 import { GetClient } from 'util/GetClient'
 import { AppsContext } from 'util/provider/AppsProvider'
 
@@ -27,17 +26,10 @@ export const GettingStarted = () => {
   const apps = useContext(AppsContext)
   const [appIndex, setAppIndex] = useState(0)
   const [selected, setSelected] = useState<
-    | 'bookmark'
-    | 'dm'
-    | 'setting'
-    | 'timeline'
-    | 'accounts'
-    | null
+    'bookmark' | 'dm' | 'setting' | 'timeline' | 'accounts' | null
   >(null)
 
-  const [title, setTitle] = useState<string>(
-    'Getting Started'
-  )
+  const [title, setTitle] = useState<string>('Getting Started')
 
   const [bookmarks, setBookmarks] = useState<{
     [key: number]: StatusAddAppIndex[]
@@ -53,10 +45,11 @@ export const GettingStarted = () => {
     [key: number]: string | null
   }>(Array.from({ length: apps.length }, () => null))
 
+  const setMaxIdEvent = useEffectEvent(setMaxId)
   const setMaxIdCallback = useCallback(
     (res: Response<Entity.Status[]>, index: number) => {
       if (res.headers.link == null) {
-        setMaxId((prev) => ({
+        setMaxIdEvent((prev) => ({
           ...prev,
           [index]: null,
         }))
@@ -67,41 +60,36 @@ export const GettingStarted = () => {
         .map((link: string) => {
           const [url, rel] = link.split(';')
           return {
+            rel: rel.replace(/"/g, '').replace('rel=', '').trim(),
             url: url.replace(/[<>]/g, '').trim(),
-            rel: rel
-              .replace(/"/g, '')
-              .replace('rel=', '')
-              .trim(),
           }
         })
       const next = links.find((link) => link.rel === 'next')
 
       if (next == null) {
-        setMaxId((prev) => ({
+        setMaxIdEvent((prev) => ({
           ...prev,
           [index]: null,
         }))
         return
       }
 
-      const maxId = new URL(next.url).searchParams.get(
-        'max_id'
-      )
+      const maxId = new URL(next.url).searchParams.get('max_id')
 
       if (maxId == null) {
-        setMaxId((prev) => ({
+        setMaxIdEvent((prev) => ({
           ...prev,
           [index]: null,
         }))
         return
       }
 
-      setMaxId((prev) => ({
+      setMaxIdEvent((prev) => ({
         ...prev,
         [index]: maxId,
       }))
     },
-    [setMaxId]
+    [],
   )
 
   useEffect(() => {
@@ -178,10 +166,7 @@ export const GettingStarted = () => {
 
     client
       .getConversationTimeline({
-        max_id:
-          conversations[appIndex][
-            conversations[appIndex].length - 1
-          ].id,
+        max_id: conversations[appIndex][conversations[appIndex].length - 1].id,
       })
       .then((res) => {
         setConversations((prev) => ({
@@ -206,6 +191,7 @@ export const GettingStarted = () => {
           <button
             className="flex rounded-md border pr-4 text-xl text-blue-500"
             onClick={() => setSelected(null)}
+            type="button"
           >
             <RiArrowLeftSLine size={30} />
             <span>戻る</span>
@@ -213,6 +199,7 @@ export const GettingStarted = () => {
         ) : (
           <>
             {apps.map((app, index) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: App には index で key を付ける
               <Fragment key={index}>
                 <div className="flex w-full items-center space-x-2 border-b px-4 py-2 text-xl">
                   {app.tokenData == null && (
@@ -221,11 +208,11 @@ export const GettingStarted = () => {
                       onClick={() => {
                         localStorage.setItem(
                           'processingAppData',
-                          JSON.stringify({ ...app, index })
+                          JSON.stringify({ ...app, index }),
                         )
-                        window.location.href = app.appData
-                          .url as string
+                        window.location.href = app.appData.url as string
                       }}
+                      type="button"
                     >
                       <CiWarning size={24} />
                     </button>
@@ -238,6 +225,7 @@ export const GettingStarted = () => {
                     setAppIndex(index)
                     setSelected('bookmark')
                   }}
+                  type="button"
                 >
                   Bookmark
                 </button>
@@ -247,29 +235,31 @@ export const GettingStarted = () => {
                     setAppIndex(index)
                     setSelected('dm')
                   }}
+                  type="button"
                 >
                   Direct Message
                 </button>
               </Fragment>
             ))}
-            <div className="w-full border-b px-4 py-2 text-xl">
-              Setting
-            </div>
+            <div className="w-full border-b px-4 py-2 text-xl">Setting</div>
             <button
               className="w-full border-b px-4 py-2 text-xl hover:bg-slate-800"
               onClick={() => setSelected('setting')}
+              type="button"
             >
               Setting
             </button>
             <button
               className="w-full border-b px-4 py-2 text-xl hover:bg-slate-800"
               onClick={() => setSelected('timeline')}
+              type="button"
             >
               Timeline Management
             </button>
             <button
               className="w-full border-b px-4 py-2 text-xl hover:bg-slate-800"
               onClick={() => setSelected('accounts')}
+              type="button"
             >
               Accounts
             </button>
@@ -277,6 +267,7 @@ export const GettingStarted = () => {
         )}
       </div>
       {apps.map((_app, index) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: App には index で key を付ける
         <Fragment key={index}>
           {appIndex === index && (
             <>
@@ -289,8 +280,8 @@ export const GettingStarted = () => {
                     itemContent={(_, status) => (
                       <Status
                         key={status.id}
-                        status={status}
                         scrolling={isScrolling}
+                        status={status}
                       />
                     )}
                   />
@@ -304,14 +295,13 @@ export const GettingStarted = () => {
                     isScrolling={setIsScrolling}
                     itemContent={(_, conversation) => (
                       <div key={conversation.id}>
-                        {conversation.last_status !=
-                          null && (
+                        {conversation.last_status != null && (
                           <Status
+                            scrolling={isScrolling}
                             status={{
                               ...conversation.last_status,
                               appIndex: index,
                             }}
-                            scrolling={isScrolling}
                           />
                         )}
                       </div>

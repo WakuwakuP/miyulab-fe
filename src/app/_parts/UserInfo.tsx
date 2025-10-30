@@ -1,13 +1,12 @@
 /* eslint-disable @next/next/no-img-element */
 'use client'
 
-import { useContext, useMemo } from 'react'
-
-import { type Entity } from 'megalodon'
-import { RiRobotFill } from 'react-icons/ri'
-
 import { Visibility } from 'app/_parts/Visibility'
-import { type AccountAddAppIndex } from 'types/types'
+
+import type { Entity } from 'megalodon'
+import { useContext, useMemo } from 'react'
+import { RiRobotFill } from 'react-icons/ri'
+import type { AccountAddAppIndex } from 'types/types'
 import { SetDetailContext } from 'util/provider/DetailProvider'
 
 export const UserInfo = ({
@@ -28,7 +27,7 @@ export const UserInfo = ({
       account.emojis.forEach((emoji) => {
         displayName = displayName.replace(
           new RegExp(`:${emoji.shortcode}:`, 'gm'),
-          `<img src="${emoji.url}" alt="${emoji.shortcode}" class="min-w-5 h-5 inline-block" loading="lazy" />`
+          `<img src="${emoji.url}" alt="${emoji.shortcode}" class="min-w-5 h-5 inline-block" loading="lazy" />`,
         )
       })
     }
@@ -40,8 +39,8 @@ export const UserInfo = ({
       className="flex"
       onClick={() => {
         setDetail({
-          type: 'Account',
           content: account,
+          type: 'Account',
         })
       }}
     >
@@ -55,13 +54,13 @@ export const UserInfo = ({
           />
         ) : (
           <img
+            alt="avatar"
             className={[
               'rounded-lg object-contain flex-none',
               small ? 'w-6 h-6' : 'w-12 h-12',
             ].join(' ')}
-            src={account.avatar}
-            alt="avatar"
             loading="lazy"
+            src={account.avatar}
           />
         )}
         {account.bot === true && (
@@ -81,14 +80,13 @@ export const UserInfo = ({
             <p>
               <span>
                 <span
+                  // biome-ignore lint/security/noDangerouslySetInnerHtml: TODO
                   dangerouslySetInnerHTML={{
                     __html: getDisplayName,
                   }}
                 />
               </span>
-              <span className="pl-1 text-gray-300">
-                @{account.acct}
-              </span>
+              <span className="pl-1 text-gray-300">@{account.acct}</span>
             </p>
             <Visibility visibility={visibility} />
           </div>
@@ -98,16 +96,14 @@ export const UserInfo = ({
           <p className="flex w-full justify-between [&>span]:inline-block">
             <span
               className="truncate"
+              // biome-ignore lint/security/noDangerouslySetInnerHtml: TODO
               dangerouslySetInnerHTML={{
                 __html: getDisplayName,
               }}
             />
             <Visibility visibility={visibility} />
           </p>
-          <p
-            className="truncate text-gray-300"
-            title={`@${account.acct}`}
-          >
+          <p className="truncate text-gray-300" title={`@${account.acct}`}>
             @{account.acct}
           </p>
         </div>

@@ -1,18 +1,6 @@
 /* eslint-disable @next/next/no-img-element */
 'use client'
 
-import {
-  type MouseEventHandler,
-  useContext,
-  useEffect,
-  useState,
-} from 'react'
-
-import {
-  RiArrowLeftSLine,
-  RiArrowRightSLine,
-} from 'react-icons/ri'
-
 import { Media } from 'app/_parts/Media'
 import { Modal } from 'app/_parts/Modal'
 import {
@@ -21,21 +9,18 @@ import {
   CarouselContent,
   CarouselItem,
 } from 'components/ui/carousel'
+import { type MouseEventHandler, useContext, useEffect, useState } from 'react'
+import { RiArrowLeftSLine, RiArrowRightSLine } from 'react-icons/ri'
 import {
   MediaModalContext,
   SetMediaModalContext,
 } from 'util/provider/ModalProvider'
 
 const ModalContent = () => {
-  const { attachment, index } = useContext(
-    MediaModalContext
-  )
+  const { attachment, index } = useContext(MediaModalContext)
 
-  const [carouselApi, setCarouselApi] =
-    useState<CarouselApi>()
-  const [currentSlide, setCurrentSlide] = useState(
-    index ?? 0
-  )
+  const [carouselApi, setCarouselApi] = useState<CarouselApi>()
+  const [currentSlide, setCurrentSlide] = useState(index ?? 0)
 
   useEffect(() => {
     if (carouselApi == null) return
@@ -64,27 +49,19 @@ const ModalContent = () => {
     }
   }, [carouselApi])
 
-  const onClickPrev: MouseEventHandler<
-    HTMLButtonElement
-  > = (e) => {
+  const onClickPrev: MouseEventHandler<HTMLButtonElement> = (e) => {
     e.stopPropagation()
     carouselApi?.scrollPrev()
   }
 
-  const onClickNext: MouseEventHandler<
-    HTMLButtonElement
-  > = (e) => {
+  const onClickNext: MouseEventHandler<HTMLButtonElement> = (e) => {
     e.stopPropagation()
     carouselApi?.scrollNext()
   }
 
   if (attachment.length === 0 || index == null) return null
 
-  if (
-    ['video', 'gifv', 'audio'].includes(
-      attachment[index].type
-    )
-  ) {
+  if (['video', 'gifv', 'audio'].includes(attachment[index].type)) {
     return null
   }
   return (
@@ -93,11 +70,11 @@ const ModalContent = () => {
         <>
           <div className="fixed inset-0 z-50 m-auto h-[90vh] w-[90vw]">
             <Carousel
-              setApi={setCarouselApi}
               opts={{
                 loop: true,
                 startIndex: index,
               }}
+              setApi={setCarouselApi}
             >
               <CarouselContent>
                 {attachment.map((media) => {
@@ -105,8 +82,8 @@ const ModalContent = () => {
                     <CarouselItem key={media.id}>
                       <div key={media.id}>
                         <Media
-                          media={media}
                           className="h-[90vh] max-h-none w-[90vw] max-w-none"
+                          media={media}
                         />
                       </div>
                     </CarouselItem>
@@ -121,50 +98,38 @@ const ModalContent = () => {
           <button
             className="fixed left-3 top-1/2 z-51 -translate-y-1/2 rounded-full bg-gray-50/50"
             onClick={onClickPrev}
+            type="button"
           >
-            <RiArrowLeftSLine
-              size={60}
-              className="pr-1"
-            />
+            <RiArrowLeftSLine className="pr-1" size={60} />
           </button>
           <button
             className="fixed right-3 top-1/2 z-51 -translate-y-1/2 rounded-full bg-gray-50/50"
             onClick={onClickNext}
+            type="button"
           >
-            <RiArrowRightSLine
-              size={60}
-              className="pl-1"
-            />
+            <RiArrowRightSLine className="pl-1" size={60} />
           </button>
         </>
       ) : (
-        <>
-          {attachment[index].type === 'image' && (
-            <Media
-              media={attachment[index]}
-              className="fixed inset-0 z-50 m-auto h-[90vh] max-h-none w-[90vw] max-w-none"
-            />
-          )}
-        </>
+        attachment[index].type === 'image' && (
+          <Media
+            className="fixed inset-0 z-50 m-auto h-[90vh] max-h-none w-[90vw] max-w-none"
+            media={attachment[index]}
+          />
+        )
       )}
     </>
   )
 }
 
 export const MediaModal = () => {
-  const { attachment, index } = useContext(
-    MediaModalContext
-  )
+  const { attachment, index } = useContext(MediaModalContext)
 
   const setAttachment = useContext(SetMediaModalContext)
 
   if (attachment.length === 0 || index == null) return null
 
-  if (
-    ['video', 'gifv', 'audio'].includes(
-      attachment[index].type
-    )
-  ) {
+  if (['video', 'gifv', 'audio'].includes(attachment[index].type)) {
     return null
   }
 

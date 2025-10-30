@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
-import { type HTMLProps } from 'react'
 
-import { type Entity } from 'megalodon'
+import type { Entity } from 'megalodon'
+import type { HTMLProps } from 'react'
 import { RiPlayCircleLine } from 'react-icons/ri'
 
 export const Media = ({
@@ -27,39 +27,37 @@ export const Media = ({
   switch (media.type) {
     case 'image':
       return (
-        <>
-          <img
-            onClick={() => {
-              if (onClick != null) onClick()
-            }}
-            key={media.id}
-            src={media.preview_url ?? media.url}
-            alt=""
-            className={[
-              'aspect-square max-h-48 cursor-pointer object-contain p-0.5',
-              className,
-            ].join(' ')}
-          />
-        </>
+        <img
+          alt=""
+          className={[
+            'aspect-square max-h-48 cursor-pointer object-contain p-0.5',
+            className,
+          ].join(' ')}
+          key={media.id}
+          onClick={() => {
+            if (onClick != null) onClick()
+          }}
+          src={media.preview_url ?? media.url}
+        />
       )
     case 'video':
       return (
         <div
+          className={[
+            'relative aspect-square max-h-48 object-contain p-0.5',
+            className,
+          ].join(' ')}
           onClick={(e) => {
             e.preventDefault()
             e.stopPropagation()
             if (onClick != null) onClick()
           }}
-          className={[
-            'relative aspect-square max-h-48 object-contain p-0.5',
-            className,
-          ].join(' ')}
         >
           <video
-            key={media.id}
-            src={media.url}
-            muted
             className="h-full w-full object-contain"
+            key={media.id}
+            muted
+            src={media.url}
           />
           <div className="absolute left-0 top-0 h-full w-full bg-black/50">
             <RiPlayCircleLine
@@ -72,21 +70,21 @@ export const Media = ({
     case 'gifv':
       return (
         <div
+          className={[
+            'relative aspect-square max-h-48 object-contain p-0.5',
+            className,
+          ].join(' ')}
           onClick={(e) => {
             e.preventDefault()
             e.stopPropagation()
             if (onClick != null) onClick()
           }}
-          className={[
-            'relative aspect-square max-h-48 object-contain p-0.5',
-            className,
-          ].join(' ')}
         >
           <video
-            key={media.id}
-            src={media.url}
-            muted
             className="h-full w-full object-contain"
+            key={media.id}
+            muted
+            src={media.url}
           />
           <div className="absolute left-0 top-0 h-full w-full bg-black/50">
             <RiPlayCircleLine
@@ -99,22 +97,14 @@ export const Media = ({
     case 'audio':
       return (
         <div
+          className={['relative h-16 p-0.5', className].join(' ')}
           onClick={(e) => {
             e.preventDefault()
             e.stopPropagation()
             if (onClick != null) onClick()
           }}
-          className={[
-            'relative h-16 p-0.5',
-            className,
-          ].join(' ')}
         >
-          <audio
-            key={media.id}
-            src={media.url}
-            controls
-            className="w-full"
-          />
+          <audio className="w-full" controls key={media.id} src={media.url} />
           <div
             className="absolute left-0 top-0 z-1 h-full w-full"
             onClick={(e) => {
@@ -126,6 +116,7 @@ export const Media = ({
         </div>
       )
     case 'unknown':
+      return null
     default:
       return null
   }

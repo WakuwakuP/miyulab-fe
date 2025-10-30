@@ -1,14 +1,13 @@
 'use client'
 
+import type { Entity } from 'megalodon'
 import {
+  createContext,
   type Dispatch,
   type ReactNode,
   type SetStateAction,
-  createContext,
   useState,
 } from 'react'
-
-import { type Entity } from 'megalodon'
 
 export const MediaModalContext = createContext<{
   attachment: Entity.Attachment[]

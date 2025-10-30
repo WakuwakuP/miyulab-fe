@@ -1,26 +1,13 @@
-import {
-  useCallback,
-  useContext,
-  useEffect,
-  useState,
-} from 'react'
-
-import { Virtuoso } from 'react-virtuoso'
-
 import { Status } from 'app/_parts/Status'
-import { type StatusAddAppIndex } from 'types/types'
+import { useCallback, useContext, useEffect, useState } from 'react'
+import { Virtuoso } from 'react-virtuoso'
+import type { StatusAddAppIndex } from 'types/types'
 import { GetClient } from 'util/GetClient'
 import { AppsContext } from 'util/provider/AppsProvider'
 
-export const HashtagDetail = ({
-  hashtag,
-}: {
-  hashtag?: string
-}) => {
+export const HashtagDetail = ({ hashtag }: { hashtag?: string }) => {
   const apps = useContext(AppsContext)
-  const [statuses, setStatuses] = useState<
-    StatusAddAppIndex[]
-  >([])
+  const [statuses, setStatuses] = useState<StatusAddAppIndex[]>([])
 
   useEffect(() => {
     if (apps.length <= 0) return
@@ -38,7 +25,7 @@ export const HashtagDetail = ({
           res.data.map((status) => ({
             ...status,
             appIndex: 0,
-          }))
+          })),
         )
       })
   }, [apps, hashtag])
@@ -71,12 +58,7 @@ export const HashtagDetail = ({
     <Virtuoso
       data={statuses}
       endReached={moreStatus}
-      itemContent={(_, status) => (
-        <Status
-          key={status.id}
-          status={status}
-        />
-      )}
+      itemContent={(_, status) => <Status key={status.id} status={status} />}
     />
   )
 }

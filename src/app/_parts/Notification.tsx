@@ -1,14 +1,11 @@
 /* eslint-disable @next/next/no-img-element */
-import { useContext, useMemo } from 'react'
-
-import * as emoji from 'node-emoji'
-import { RiStarFill } from 'react-icons/ri'
 
 import { Status } from 'app/_parts/Status'
-import {
-  type NotificationAddAppIndex,
-  type StatusAddAppIndex,
-} from 'types/types'
+
+import * as emoji from 'node-emoji'
+import { useContext, useMemo } from 'react'
+import { RiStarFill } from 'react-icons/ri'
+import type { NotificationAddAppIndex, StatusAddAppIndex } from 'types/types'
 import { SetDetailContext } from 'util/provider/DetailProvider'
 
 const AvatarPlaceholder = () => (
@@ -28,14 +25,12 @@ export const Notification = ({
     if (notification.account == null) return ''
     let displayName = notification.account.display_name
     if (notification.account.emojis.length > 0) {
-      notification.account.emojis.forEach(
-        (accountEmoji) => {
-          displayName = displayName.replace(
-            new RegExp(`:${accountEmoji.shortcode}:`, 'gm'),
-            `<img src="${accountEmoji.url}" alt="${accountEmoji.shortcode}" title=":${accountEmoji.shortcode}:" class="min-w-7 h-7 inline-block" loading="lazy" />`
-          )
-        }
-      )
+      notification.account.emojis.forEach((accountEmoji) => {
+        displayName = displayName.replace(
+          new RegExp(`:${accountEmoji.shortcode}:`, 'gm'),
+          `<img src="${accountEmoji.url}" alt="${accountEmoji.shortcode}" title=":${accountEmoji.shortcode}:" class="min-w-7 h-7 inline-block" loading="lazy" />`,
+        )
+      })
     }
     return displayName
   }, [notification.account])
@@ -45,13 +40,13 @@ export const Notification = ({
       return (
         <div className="ml-1 mt-2 box-border border-b-2 border-l-2 border-teal-300 pl-2">
           <Status
+            scrolling={scrolling}
             status={
               {
                 ...notification.status,
                 appIndex: notification.appIndex,
               } as StatusAddAppIndex
             }
-            scrolling={scrolling}
           />
         </div>
       )
@@ -59,13 +54,13 @@ export const Notification = ({
       return (
         <div className="ml-1 mt-2 box-border border-b-2 border-l-2 border-green-500 pl-2">
           <Status
+            scrolling={scrolling}
             status={
               {
                 ...notification.status,
                 appIndex: notification.appIndex,
               } as StatusAddAppIndex
             }
-            scrolling={scrolling}
           />
         </div>
       )
@@ -77,11 +72,11 @@ export const Notification = ({
             onClick={() => {
               if (notification.account == null) return
               setDetail({
-                type: 'Account',
                 content: {
                   ...notification.account,
                   appIndex: notification.appIndex,
                 },
+                type: 'Account',
               })
             }}
           >
@@ -89,15 +84,16 @@ export const Notification = ({
               <AvatarPlaceholder />
             ) : (
               <img
-                className="h-12 w-12 flex-none rounded-lg object-contain"
-                src={notification.account?.avatar ?? ''}
                 alt="avatar"
+                className="h-12 w-12 flex-none rounded-lg object-contain"
                 loading="lazy"
+                src={notification.account?.avatar ?? ''}
               />
             )}
             <div className="w-[calc(100%-56px)] pl-2">
               <p className="w-full truncate">
                 <span
+                  // biome-ignore lint/security/noDangerouslySetInnerHtml: TODO
                   dangerouslySetInnerHTML={{
                     __html: displayName,
                   }}
@@ -112,14 +108,14 @@ export const Notification = ({
             </div>
           </h3>
           <Status
+            scrolling={scrolling}
+            small
             status={
               {
                 ...notification.status,
                 appIndex: notification.appIndex,
               } as StatusAddAppIndex
             }
-            scrolling={scrolling}
-            small
           />
         </div>
       )
@@ -131,11 +127,11 @@ export const Notification = ({
             onClick={() => {
               if (notification.account == null) return
               setDetail({
-                type: 'Account',
                 content: {
                   ...notification.account,
                   appIndex: notification.appIndex,
                 },
+                type: 'Account',
               })
             }}
           >
@@ -143,15 +139,16 @@ export const Notification = ({
               <AvatarPlaceholder />
             ) : (
               <img
-                className="h-12 w-12 flex-none rounded-lg object-contain"
-                src={notification.account?.avatar ?? ''}
                 alt="avatar"
+                className="h-12 w-12 flex-none rounded-lg object-contain"
                 loading="lazy"
+                src={notification.account?.avatar ?? ''}
               />
             )}
             <div className="w-[calc(100%-56px)] pl-2">
               <p className="w-full truncate">
                 <span
+                  // biome-ignore lint/security/noDangerouslySetInnerHtml: TODO
                   dangerouslySetInnerHTML={{
                     __html: displayName,
                   }}
@@ -169,14 +166,14 @@ export const Notification = ({
             <RiStarFill className="text-4xl text-orange-300" />
           </div>
           <Status
+            scrolling={scrolling}
+            small
             status={
               {
                 ...notification.status,
                 appIndex: notification.appIndex,
               } as StatusAddAppIndex
             }
-            scrolling={scrolling}
-            small
           />
         </div>
       )
@@ -189,11 +186,11 @@ export const Notification = ({
               onClick={() => {
                 if (notification.account == null) return
                 setDetail({
-                  type: 'Account',
                   content: {
                     ...notification.account,
                     appIndex: notification.appIndex,
                   },
+                  type: 'Account',
                 })
               }}
             >
@@ -201,15 +198,16 @@ export const Notification = ({
                 <AvatarPlaceholder />
               ) : (
                 <img
-                  className="h-12 w-12 flex-none rounded-lg object-contain"
-                  src={notification.account?.avatar ?? ''}
                   alt="avatar"
+                  className="h-12 w-12 flex-none rounded-lg object-contain"
                   loading="lazy"
+                  src={notification.account?.avatar ?? ''}
                 />
               )}
               <div className="w-[calc(100%-56px)] pl-2">
                 <p className="w-full truncate">
                   <span
+                    // biome-ignore lint/security/noDangerouslySetInnerHtml: TODO
                     dangerouslySetInnerHTML={{
                       __html: displayName,
                     }}
@@ -225,27 +223,21 @@ export const Notification = ({
             </div>
             <div className="min-w-12">
               {notification.reaction?.static_url != null ? (
-                <>
-                  {scrolling ? (
-                    <div className="h-12 w-12 flex-none rounded-lg" />
-                  ) : (
-                    <img
-                      className="h-12 max-w-full flex-none rounded-lg object-contain"
-                      src={
-                        notification.reaction?.static_url
-                      }
-                      title={notification.reaction?.name}
-                      alt="emoji"
-                      loading="lazy"
-                    />
-                  )}
-                </>
+                scrolling ? (
+                  <div className="h-12 w-12 flex-none rounded-lg" />
+                ) : (
+                  <img
+                    alt="emoji"
+                    className="h-12 max-w-full flex-none rounded-lg object-contain"
+                    loading="lazy"
+                    src={notification.reaction?.static_url}
+                    title={notification.reaction?.name}
+                  />
+                )
               ) : (
                 <span
                   className="text-3xl"
-                  title={emoji.which(
-                    notification.reaction?.name ?? ''
-                  )}
+                  title={emoji.which(notification.reaction?.name ?? '')}
                 >
                   {notification.reaction?.name ?? ''}
                 </span>
@@ -253,14 +245,14 @@ export const Notification = ({
             </div>
           </h3>
           <Status
+            scrolling={scrolling}
+            small
             status={
               {
                 ...notification.status,
                 appIndex: notification.appIndex,
               } as StatusAddAppIndex
             }
-            scrolling={scrolling}
-            small
           />
         </div>
       )
@@ -273,11 +265,11 @@ export const Notification = ({
             onClick={() => {
               if (notification.account == null) return
               setDetail({
-                type: 'Account',
                 content: {
                   ...notification.account,
                   appIndex: notification.appIndex,
                 },
+                type: 'Account',
               })
             }}
           >
@@ -285,15 +277,16 @@ export const Notification = ({
               <AvatarPlaceholder />
             ) : (
               <img
-                className="h-12 w-12 flex-none rounded-lg object-contain"
-                src={notification.account?.avatar ?? ''}
                 alt="avatar"
+                className="h-12 w-12 flex-none rounded-lg object-contain"
                 loading="lazy"
+                src={notification.account?.avatar ?? ''}
               />
             )}
             <div className="w-[calc(100%-56px)] pl-2">
               <p className="w-full truncate">
                 <span
+                  // biome-ignore lint/security/noDangerouslySetInnerHtml: TODO
                   dangerouslySetInnerHTML={{
                     __html: displayName,
                   }}
@@ -318,11 +311,11 @@ export const Notification = ({
             onClick={() => {
               if (notification.account == null) return
               setDetail({
-                type: 'Account',
                 content: {
                   ...notification.account,
                   appIndex: notification.appIndex,
                 },
+                type: 'Account',
               })
             }}
           >
@@ -330,15 +323,16 @@ export const Notification = ({
               <AvatarPlaceholder />
             ) : (
               <img
-                className="h-12 w-12 flex-none rounded-lg object-contain"
-                src={notification.account?.avatar ?? ''}
                 alt="avatar"
+                className="h-12 w-12 flex-none rounded-lg object-contain"
                 loading="lazy"
+                src={notification.account?.avatar ?? ''}
               />
             )}
             <div className="w-[calc(100%-56px)] pl-2">
               <p className="w-full truncate">
                 <span
+                  // biome-ignore lint/security/noDangerouslySetInnerHtml: TODO
                   dangerouslySetInnerHTML={{
                     __html: displayName,
                   }}
@@ -358,13 +352,13 @@ export const Notification = ({
       return (
         <div className="ml-1 mt-2 box-border border-b-2 border-l-2 border-green-500 pl-2">
           <Status
+            scrolling={scrolling}
             status={
               {
                 ...notification.status,
                 appIndex: notification.appIndex,
               } as StatusAddAppIndex
             }
-            scrolling={scrolling}
           />
         </div>
       )
