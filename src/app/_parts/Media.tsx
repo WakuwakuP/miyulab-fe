@@ -27,22 +27,33 @@ export const Media = ({
   switch (media.type) {
     case 'image':
       return (
-        <img
-          alt=""
-          className={[
-            'aspect-square max-h-48 cursor-pointer object-contain p-0.5',
-            className,
-          ].join(' ')}
-          key={media.id}
+        <div
+          role="button"
+          tabIndex={0}
+          className="aspect-square max-h-48 cursor-pointer p-0.5"
           onClick={() => {
             if (onClick != null) onClick()
           }}
-          src={media.preview_url ?? media.url}
-        />
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              if (onClick != null) onClick()
+            }
+          }}
+        >
+          <img
+            alt=""
+            className={['object-contain', className].join(' ')}
+            key={media.id}
+            src={media.preview_url ?? media.url}
+          />
+        </div>
       )
     case 'video':
       return (
         <div
+          role="button"
+          tabIndex={0}
           className={[
             'relative aspect-square max-h-48 object-contain p-0.5',
             className,
@@ -51,6 +62,13 @@ export const Media = ({
             e.preventDefault()
             e.stopPropagation()
             if (onClick != null) onClick()
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              e.stopPropagation()
+              if (onClick != null) onClick()
+            }
           }}
         >
           <video
@@ -70,6 +88,8 @@ export const Media = ({
     case 'gifv':
       return (
         <div
+          role="button"
+          tabIndex={0}
           className={[
             'relative aspect-square max-h-48 object-contain p-0.5',
             className,
@@ -78,6 +98,13 @@ export const Media = ({
             e.preventDefault()
             e.stopPropagation()
             if (onClick != null) onClick()
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              e.stopPropagation()
+              if (onClick != null) onClick()
+            }
           }}
         >
           <video
@@ -97,20 +124,38 @@ export const Media = ({
     case 'audio':
       return (
         <div
+          role="button"
+          tabIndex={0}
           className={['relative h-16 p-0.5', className].join(' ')}
           onClick={(e) => {
             e.preventDefault()
             e.stopPropagation()
             if (onClick != null) onClick()
           }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              e.stopPropagation()
+              if (onClick != null) onClick()
+            }
+          }}
         >
           <audio className="w-full" controls key={media.id} src={media.url} />
           <div
+            role="button"
+            tabIndex={0}
             className="absolute left-0 top-0 z-1 h-full w-full"
             onClick={(e) => {
               e.preventDefault()
               e.stopPropagation()
               if (onClick != null) onClick()
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                e.stopPropagation()
+                if (onClick != null) onClick()
+              }
             }}
           />
         </div>

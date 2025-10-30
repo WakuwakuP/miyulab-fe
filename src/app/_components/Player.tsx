@@ -171,7 +171,18 @@ const PlayerController = () => {
         classNamePlayerSize.w,
       ].join(' ')}
     >
-      <div className=" bg-black" onClick={onClickPlay}>
+      <div
+        className=" bg-black"
+        role="button"
+        tabIndex={0}
+        onClick={onClickPlay}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            onClickPlay()
+          }
+        }}
+      >
         {playableTypes.includes(attachment[index].type) && (
           <ReactPlayer
             className="aspect-video"
