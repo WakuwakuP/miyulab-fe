@@ -70,9 +70,17 @@ const MentionMenu = ({
       {chars.map((char, i) => (
         <div
           key={char.id}
+          role="button"
+          tabIndex={0}
           onMouseDown={(e) => {
             e.preventDefault()
             complete(i)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              complete(i)
+            }
           }}
           style={{
             padding: '4px',
@@ -122,9 +130,17 @@ const EmojiMenu = ({
       {chars.map((char, i) => (
         <div
           key={char.shortcode}
+          role="button"
+          tabIndex={0}
           onMouseDown={(e) => {
             e.preventDefault()
             complete(i)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              complete(i)
+            }
           }}
           style={{
             display: 'flex',
@@ -180,9 +196,17 @@ const Menu = ({
       {chars.map((char, i) => (
         <div
           key={char}
+          role="button"
+          tabIndex={0}
           onMouseDown={(e) => {
             e.preventDefault()
             complete(i)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault()
+              complete(i)
+            }
           }}
           style={{
             padding: '4px',

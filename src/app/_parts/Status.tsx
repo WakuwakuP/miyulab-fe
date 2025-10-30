@@ -217,6 +217,8 @@ export const Status = ({
       {status.reblog != null ? (
         <>
           <div
+            role="button"
+            tabIndex={0}
             className="flex mb-1 overflow-clip"
             onClick={() => {
               setDetail({
@@ -226,6 +228,18 @@ export const Status = ({
                 },
                 type: 'Account',
               })
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                setDetail({
+                  content: {
+                    ...status.account,
+                    appIndex: status.appIndex,
+                  },
+                  type: 'Account',
+                })
+              }
             }}
           >
             <RiRepeatFill
@@ -277,12 +291,23 @@ export const Status = ({
         </div>
       )}
       <div
+        role="button"
+        tabIndex={0}
         className="content"
         onClick={() => {
           setDetail({
             content: status,
             type: 'Status',
           })
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            setDetail({
+              content: status,
+              type: 'Status',
+            })
+          }
         }}
       >
         <EditedAt editedAt={status.edited_at} />
