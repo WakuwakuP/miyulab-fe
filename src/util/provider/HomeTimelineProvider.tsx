@@ -18,6 +18,7 @@ import {
   SetTagsContext,
   SetUsersContext,
 } from 'util/provider/ResourceProvider'
+import { usePageLifecycle } from 'util/usePageLifecycle'
 
 import { AppsContext } from './AppsProvider'
 
@@ -70,6 +71,14 @@ export const HomeTimelineProvider = ({
   const apps = useContext(AppsContext)
   const setUsers = useContext(SetUsersContext)
   const setTags = useContext(SetTagsContext)
+  const isVisible = usePageLifecycle()
+  const streamsRef = useRef<{
+    [key: string]: Awaited<
+      ReturnType<
+        ReturnType<typeof GetClient>['userStreaming']
+      >
+    >
+  }>({})
 
   const [timelines, setTimelines] = useState<{
     [key: string]: StatusAddAppIndex[]
@@ -302,6 +311,9 @@ export const HomeTimelineProvider = ({
 
       Promise.all([getHome, getNotifications]).then(() => {
         client.userStreaming().then((stream) => {
+          // Store stream reference for lifecycle management
+          streamsRef.current[app.backendUrl] = stream
+
           stream.on('update', (status: Entity.Status) => {
             setTags((prev) =>
               Array.from(
@@ -465,6 +477,31 @@ export const HomeTimelineProvider = ({
       })
     })
   }, [apps, setTags, setUsers])
+
+  // Handle page visibility changes using Page Lifecycle API
+  useEffect(() => {
+    const streams = Object.values(streamsRef.current)
+
+    if (streams.length === 0) return
+
+    if (isVisible) {
+      // Resume all streams when page becomes visible
+      streams.forEach((stream) => {
+        stream.start()
+      })
+      // eslint-disable-next-line no-console
+      console.info(
+        'Resumed WebSocket streams (page visible)'
+      )
+    } else {
+      // Pause all streams when page becomes hidden
+      streams.forEach((stream) => {
+        stream.stop()
+      })
+      // eslint-disable-next-line no-console
+      console.info('Paused WebSocket streams (page hidden)')
+    }
+  }, [isVisible])
 
   return (
     <HomeTimelineContext.Provider value={margeTimeline}>

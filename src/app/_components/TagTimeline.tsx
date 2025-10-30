@@ -25,6 +25,7 @@ import { CENTER_INDEX } from 'util/environment'
 import { GetClient } from 'util/GetClient'
 import { AppsContext } from 'util/provider/AppsProvider'
 import { SetTagsContext } from 'util/provider/ResourceProvider'
+import { usePageLifecycle } from 'util/usePageLifecycle'
 
 export const TagTimeline = ({ tag }: { tag: string }) => {
   const refFirstRef = useRef(true)
@@ -35,6 +36,10 @@ export const TagTimeline = ({ tag }: { tag: string }) => {
   > | null>(null)
   const apps = useContext(AppsContext)
   const setTags = useContext(SetTagsContext)
+  const isVisible = usePageLifecycle()
+  const streamRef = useRef<Awaited<
+    ReturnType<ReturnType<typeof GetClient>['tagStreaming']>
+  > | null>(null)
 
   const [timeline, setTimeline] = useState<
     StatusAddAppIndex[]
@@ -73,6 +78,9 @@ export const TagTimeline = ({ tag }: { tag: string }) => {
       })
 
     client.tagStreaming(tag).then((stream) => {
+      // Store stream reference for lifecycle management
+      streamRef.current = stream
+
       stream.on('update', (status: Entity.Status) => {
         setTags((prev) =>
           Array.from(
@@ -115,6 +123,27 @@ export const TagTimeline = ({ tag }: { tag: string }) => {
       })
     })
   }, [apps, setTags, tag])
+
+  // Handle page visibility changes using Page Lifecycle API
+  useEffect(() => {
+    if (streamRef.current == null) return
+
+    if (isVisible) {
+      // Resume stream when page becomes visible
+      streamRef.current.start()
+      // eslint-disable-next-line no-console
+      console.info(
+        'Resumed tag WebSocket stream (page visible)'
+      )
+    } else {
+      // Pause stream when page becomes hidden
+      streamRef.current.stop()
+      // eslint-disable-next-line no-console
+      console.info(
+        'Paused tag WebSocket stream (page hidden)'
+      )
+    }
+  }, [isVisible])
 
   const onWheel = useCallback<
     WheelEventHandler<HTMLDivElement>
