@@ -246,7 +246,7 @@ export const HomeTimelineProvider = ({
         }
         setTimelines((prev) => {
           const idx = prev[app.backendUrl].findIndex(
-            (s) => s.id == statusWithBackendUrl.id
+            (s) => s.id === statusWithBackendUrl.id
           )
           // 同一IDのStatusが存在する場合は更新
           if (idx === -1) {
