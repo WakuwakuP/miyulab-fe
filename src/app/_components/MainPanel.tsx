@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useEffectEvent,
   useMemo,
   useState,
 } from 'react'
@@ -126,9 +127,13 @@ export const MainPanel = () => {
     setVisibility(defaultStatusVisibility)
   }, [defaultStatusVisibility])
 
-  useEffect(() => {
+  const onCheckMediaLink = useEffectEvent(() => {
     if (mediaLink === '') return
     setIsPlay(canPlay(mediaLink))
+  })
+
+  useEffect(() => {
+    onCheckMediaLink()
   }, [mediaLink])
 
   const onPlay = useCallback(() => {
