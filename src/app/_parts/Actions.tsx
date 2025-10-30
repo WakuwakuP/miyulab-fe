@@ -55,6 +55,7 @@ export const Actions = ({ status }: { status: StatusAddAppIndex }) => {
   return (
     <div className="flex justify-between pt-2 [&>button]:mx-1">
       <button
+        type="button"
         className="flex items-center"
         onClick={() => {
           setReplyTo(status)
@@ -65,6 +66,7 @@ export const Actions = ({ status }: { status: StatusAddAppIndex }) => {
         <div className="pl-1">{status.replies_count}</div>
       </button>
       <button
+        type="button"
         className={isPrivate ? 'cursor-not-allowed opacity-50' : ''}
         disabled={isPrivate}
         onClick={() => {
@@ -98,6 +100,7 @@ export const Actions = ({ status }: { status: StatusAddAppIndex }) => {
         )}
       </button>
       <button
+        type="button"
         onClick={() => {
           if (favourited ?? false) {
             client.unfavouriteStatus(status.reblog?.id ?? status.id)
@@ -125,6 +128,7 @@ export const Actions = ({ status }: { status: StatusAddAppIndex }) => {
         )}
       </button>
       <button
+        type="button"
         onClick={() => {
           if (bookmarked ?? false) {
             client.unbookmarkStatus(status.reblog?.id ?? status.id)

@@ -181,6 +181,7 @@ export const GettingStarted = () => {
       <div className="box-border">
         {selected !== null ? (
           <button
+            type="button"
             className="flex rounded-md border pr-4 text-xl text-blue-500"
             onClick={() => setSelected(null)}
           >
@@ -194,6 +195,7 @@ export const GettingStarted = () => {
                 <div className="flex w-full items-center space-x-2 border-b px-4 py-2 text-xl">
                   {app.tokenData == null && (
                     <button
+                      type="button"
                       className="text-orange-500 hover:text-orange-300"
                       onClick={() => {
                         localStorage.setItem(
@@ -209,6 +211,7 @@ export const GettingStarted = () => {
                   <span>{app.backendUrl}</span>
                 </div>
                 <button
+                  type="button"
                   className="w-full border-b px-4 py-2 text-xl hover:bg-slate-800"
                   onClick={() => {
                     setAppIndex(index)
@@ -218,6 +221,7 @@ export const GettingStarted = () => {
                   Bookmark
                 </button>
                 <button
+                  type="button"
                   className="w-full border-b px-4 py-2 text-xl hover:bg-slate-800"
                   onClick={() => {
                     setAppIndex(index)
@@ -230,18 +234,21 @@ export const GettingStarted = () => {
             ))}
             <div className="w-full border-b px-4 py-2 text-xl">Setting</div>
             <button
+              type="button"
               className="w-full border-b px-4 py-2 text-xl hover:bg-slate-800"
               onClick={() => setSelected('setting')}
             >
               Setting
             </button>
             <button
+              type="button"
               className="w-full border-b px-4 py-2 text-xl hover:bg-slate-800"
               onClick={() => setSelected('timeline')}
             >
               Timeline Management
             </button>
             <button
+              type="button"
               className="w-full border-b px-4 py-2 text-xl hover:bg-slate-800"
               onClick={() => setSelected('accounts')}
             >

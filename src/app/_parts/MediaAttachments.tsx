@@ -52,6 +52,7 @@ export const MediaAttachments = ({
           </div>
         ) : (
           <button
+            type="button"
             className="absolute left-2 top-2 z-10 rounded-md bg-gray-500/50 px-1 py-0.5"
             onClick={() => setIsShowSensitive(false)}
           >
@@ -86,6 +87,7 @@ export const MediaAttachments = ({
               if (index === 5) {
                 return (
                   <button
+                    type="button"
                     className="flex w-1/3 items-center justify-center bg-black"
                     key={media.id}
                     onClick={() => {

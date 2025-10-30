@@ -212,6 +212,7 @@ export const MainPanel = () => {
                   </div>
                   <div>
                     <button
+                      type="button"
                       onClick={() => {
                         setReplyTo(undefined)
                       }}
@@ -248,6 +249,7 @@ export const MainPanel = () => {
           </div>
           <div>
             <button
+              type="button"
               className="rounded-md border bg-slate-500 px-3 py-2"
               onClick={clickPost}
             >
@@ -277,6 +279,7 @@ export const MainPanel = () => {
               value={mediaLink}
             />
             <button
+              type="button"
               className="border p-2 disabled:border-gray-600 disabled:text-gray-600"
               disabled={!isPlay}
               onClick={onPlay}

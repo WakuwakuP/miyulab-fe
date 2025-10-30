@@ -96,12 +96,14 @@ const ModalContent = () => {
             {currentSlide + 1}/{attachment.length}
           </div>
           <button
+            type="button"
             className="fixed left-3 top-1/2 z-51 -translate-y-1/2 rounded-full bg-gray-50/50"
             onClick={onClickPrev}
           >
             <RiArrowLeftSLine className="pr-1" size={60} />
           </button>
           <button
+            type="button"
             className="fixed right-3 top-1/2 z-51 -translate-y-1/2 rounded-full bg-gray-50/50"
             onClick={onClickNext}
           >

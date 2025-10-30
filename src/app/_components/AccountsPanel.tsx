@@ -93,6 +93,7 @@ const AddAccountModal = ({ onClose }: { onClose: () => void }) => {
         </div>
         <div className="pt-4">
           <button
+            type="button"
             className="rounded-md border bg-gray-900 px-4 py-2"
             onClick={onRegister}
           >
@@ -180,6 +181,7 @@ export const AccountsPanel = () => {
       </div>
       <div className="pt-2">
         <button
+          type="button"
           className="rounded-md border bg-gray-900 px-4 py-2"
           onClick={() => {
             setShowAddAccountModal(true)
@@ -220,6 +222,7 @@ export const AccountsPanel = () => {
               <div>{showDeleteAccountModal.index}</div>
               <div className="flex justify-center space-x-2">
                 <button
+                  type="button"
                   className="rounded-md border bg-gray-900 px-4 py-2"
                   onClick={() => {
                     deleteAccount(showDeleteAccountModal.index)
@@ -234,6 +237,7 @@ export const AccountsPanel = () => {
                   はい
                 </button>
                 <button
+                  type="button"
                   className="rounded-md border bg-gray-900 px-4 py-2"
                   onClick={() => {
                     setShowDeleteAccountModal({

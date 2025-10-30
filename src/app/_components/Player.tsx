@@ -197,6 +197,7 @@ const PlayerController = () => {
       </div>
       <div className="box-border flex h-12 items-center space-x-px bg-gray-500 pt-[2px]">
         <button
+          type="button"
           className="flex h-12 w-12 shrink-0 items-center justify-center bg-gray-800 hover:bg-gray-500"
           onClick={onClickPlay}
         >
@@ -205,12 +206,14 @@ const PlayerController = () => {
         {attachment.length > 1 && (
           <>
             <button
+              type="button"
               className="flex h-12 w-12 shrink-0 items-center justify-center bg-gray-800 hover:bg-gray-500"
               onClick={playPrevious}
             >
               <GrChapterPrevious size={30} />
             </button>
             <button
+              type="button"
               className="flex h-12 w-12 shrink-0 items-center justify-center bg-gray-800 hover:bg-gray-500"
               onClick={playNext}
             >
@@ -247,6 +250,7 @@ const PlayerController = () => {
           />
         </div>
         <button
+          type="button"
           className="flex h-12 w-12 shrink-0 items-center justify-center bg-gray-800 hover:bg-gray-500"
           onClick={onClickClose}
         >

@@ -174,6 +174,7 @@ export const AccountDetail = ({ account }: { account: AccountAddAppIndex }) => {
               <span className="text-gray-400">
                 {relationship.following ? (
                   <button
+                    type="button"
                     className="rounded-md border border-red-500 px-2 py-1 text-red-500 transition-colors duration-300 ease-in-out hover:bg-red-500 hover:text-white"
                     onClick={() => {
                       if (apps.length <= 0) return
@@ -190,6 +191,7 @@ export const AccountDetail = ({ account }: { account: AccountAddAppIndex }) => {
                   </button>
                 ) : (
                   <button
+                    type="button"
                     className="rounded-md border border-blue-500 px-2 py-1 text-blue-500 transition-colors duration-300 ease-in-out hover:bg-blue-500 hover:text-white"
                     onClick={() => {
                       if (apps.length <= 0) return
@@ -209,6 +211,7 @@ export const AccountDetail = ({ account }: { account: AccountAddAppIndex }) => {
               <span className="text-gray-400">
                 {relationship.notifying ? (
                   <button
+                    type="button"
                     className="rounded-md border border-red-500 px-2 py-1 text-red-500 transition-colors duration-300 ease-in-out hover:bg-red-500 hover:text-white"
                     onClick={() => {
                       if (apps.length <= 0) return
@@ -225,6 +228,7 @@ export const AccountDetail = ({ account }: { account: AccountAddAppIndex }) => {
                   </button>
                 ) : (
                   <button
+                    type="button"
                     className="rounded-md border border-blue-500 px-2 py-1 text-blue-500 transition-colors duration-300 ease-in-out hover:bg-blue-500 hover:text-white"
                     onClick={() => {
                       if (apps.length <= 0) return
@@ -276,6 +280,7 @@ export const AccountDetail = ({ account }: { account: AccountAddAppIndex }) => {
       <div>
         <div className="m-1 grid grid-cols-2 [&>button]:box-border">
           <button
+            type="button"
             className={[
               'border',
               tab === 'toots' ? 'border-blue-500' : '',
@@ -287,6 +292,7 @@ export const AccountDetail = ({ account }: { account: AccountAddAppIndex }) => {
             Toots
           </button>
           <button
+            type="button"
             className={[
               'border',
               tab === 'media' ? 'border-blue-500' : '',
@@ -315,6 +321,7 @@ export const AccountDetail = ({ account }: { account: AccountAddAppIndex }) => {
               </div>
             ) : (
               <button
+                type="button"
                 className="box-border flex h-10 w-full items-center justify-center border-t border-t-gray-500"
                 onClick={moreStatus}
               >
@@ -340,6 +347,7 @@ export const AccountDetail = ({ account }: { account: AccountAddAppIndex }) => {
               </div>
             ) : (
               <button
+                type="button"
                 className="box-border flex h-10 w-full items-center justify-center border-t border-t-gray-500"
                 onClick={moreMedia}
               >
