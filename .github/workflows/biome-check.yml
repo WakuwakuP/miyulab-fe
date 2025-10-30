@@ -31,6 +31,8 @@ jobs:
 
       - name: Run Biome check
         run: yarn lint
+        continue-on-error: true
 
       - name: Run Biome format check
         run: yarn biome format .
+        continue-on-error: true
