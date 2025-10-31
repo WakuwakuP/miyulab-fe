@@ -25,7 +25,6 @@ export const ProxyImage = ({
 
   // 元のURLからプロキシURLを生成
   const proxySrc = useMemo(() => {
-    console.log('Generating proxy URL for:', originalSrc)
     try {
       const u = new URL(originalSrc)
       const host = u.host
