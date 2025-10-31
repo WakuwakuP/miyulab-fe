@@ -1,6 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 'use client'
 
+import { ProxyImage } from 'app/_parts/ProxyImage'
 import { Visibility } from 'app/_parts/Visibility'
 
 import type { Entity } from 'megalodon'
@@ -53,14 +54,15 @@ export const UserInfo = ({
             ].join(' ')}
           />
         ) : (
-          <img
+          <ProxyImage
             alt="avatar"
             className={[
               'rounded-lg object-contain flex-none',
               small ? 'w-6 h-6' : 'w-12 h-12',
             ].join(' ')}
-            loading="lazy"
+            height={small ? 24 : 48}
             src={account.avatar}
+            width={small ? 24 : 48}
           />
         )}
         {account.bot === true && (
