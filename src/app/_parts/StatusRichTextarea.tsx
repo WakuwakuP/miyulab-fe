@@ -1,6 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 'use client'
 
+import { ProxyImage } from 'app/_parts/ProxyImage'
 import imageCompression from 'browser-image-compression'
 import type { Entity } from 'megalodon'
 import * as Emoji from 'node-emoji'
@@ -82,11 +83,12 @@ const MentionMenu = ({
             }),
           }}
         >
-          <img
+          <ProxyImage
             alt={char.display_name}
             className="mr-2 inline-block h-8 w-8 rounded-full"
-            loading="lazy"
+            height={32}
             src={char.avatar}
+            width={32}
           />
           <span>{`@${char.acct}`}</span>
         </div>

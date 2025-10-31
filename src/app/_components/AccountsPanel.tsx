@@ -1,6 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 'use client'
 
+import { ProxyImage } from 'app/_parts/ProxyImage'
 import generator, { type Entity } from 'megalodon'
 import { useContext, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -155,11 +156,12 @@ export const AccountsPanel = () => {
       <div>
         {accountsMemo.map(({ app, account }, index) => (
           <div className="flex items-center" key={account.id}>
-            <img
+            <ProxyImage
               alt="avatar"
               className="h-12 w-12 flex-none rounded-lg object-contain"
-              loading="lazy"
+              height={48}
               src={account.avatar}
+              width={48}
             />
             <div className="truncate">
               {account.display_name} @{account.acct}
