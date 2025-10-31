@@ -1,5 +1,6 @@
 /* eslint-disable @next/next/no-img-element */
 
+import { ProxyImage } from 'app/_parts/ProxyImage'
 import { Status } from 'app/_parts/Status'
 
 import * as emoji from 'node-emoji'
@@ -83,11 +84,12 @@ export const Notification = ({
             {scrolling ? (
               <AvatarPlaceholder />
             ) : (
-              <img
+              <ProxyImage
                 alt="avatar"
                 className="h-12 w-12 flex-none rounded-lg object-contain"
-                loading="lazy"
+                height={48}
                 src={notification.account?.avatar ?? ''}
+                width={48}
               />
             )}
             <div className="w-[calc(100%-56px)] pl-2">
@@ -138,11 +140,12 @@ export const Notification = ({
             {scrolling ? (
               <AvatarPlaceholder />
             ) : (
-              <img
+              <ProxyImage
                 alt="avatar"
                 className="h-12 w-12 flex-none rounded-lg object-contain"
-                loading="lazy"
+                height={48}
                 src={notification.account?.avatar ?? ''}
+                width={48}
               />
             )}
             <div className="w-[calc(100%-56px)] pl-2">
@@ -197,11 +200,12 @@ export const Notification = ({
               {scrolling ? (
                 <AvatarPlaceholder />
               ) : (
-                <img
+                <ProxyImage
                   alt="avatar"
                   className="h-12 w-12 flex-none rounded-lg object-contain"
-                  loading="lazy"
+                  height={48}
                   src={notification.account?.avatar ?? ''}
+                  width={48}
                 />
               )}
               <div className="w-[calc(100%-56px)] pl-2">
@@ -226,12 +230,13 @@ export const Notification = ({
                 scrolling ? (
                   <div className="h-12 w-12 flex-none rounded-lg" />
                 ) : (
-                  <img
+                  <ProxyImage
                     alt="emoji"
                     className="h-12 max-w-full flex-none rounded-lg object-contain"
-                    loading="lazy"
+                    height={48}
                     src={notification.reaction?.static_url}
                     title={notification.reaction?.name}
+                    width={48}
                   />
                 )
               ) : (
@@ -276,11 +281,12 @@ export const Notification = ({
             {scrolling ? (
               <AvatarPlaceholder />
             ) : (
-              <img
+              <ProxyImage
                 alt="avatar"
                 className="h-12 w-12 flex-none rounded-lg object-contain"
-                loading="lazy"
+                height={48}
                 src={notification.account?.avatar ?? ''}
+                width={48}
               />
             )}
             <div className="w-[calc(100%-56px)] pl-2">
@@ -322,11 +328,12 @@ export const Notification = ({
             {scrolling ? (
               <AvatarPlaceholder />
             ) : (
-              <img
+              <ProxyImage
                 alt="avatar"
                 className="h-12 w-12 flex-none rounded-lg object-contain"
-                loading="lazy"
+                height={48}
                 src={notification.account?.avatar ?? ''}
+                width={48}
               />
             )}
             <div className="w-[calc(100%-56px)] pl-2">

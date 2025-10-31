@@ -9,7 +9,7 @@ import {
 } from 'components/ui/context-menu'
 import Image from 'next/image'
 import type { ComponentProps } from 'react'
-import { useEffect, useMemo, useRef } from 'react'
+import { useMemo, useRef } from 'react'
 
 type ProxyImageProps = Omit<ComponentProps<typeof Image>, 'src'> & {
   /** オリジナルの画像URL（https://から始まる完全なURL） */
