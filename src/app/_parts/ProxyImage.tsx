@@ -39,19 +39,6 @@ export const ProxyImage = ({
     }
   }, [originalSrc])
 
-  useEffect(() => {
-    const img = imgRef.current
-    if (!img) return
-
-    // 画像が読み込まれた後の処理（将来的な拡張用）
-    const handleLoad = () => {
-      // 現在は何もしない（右クリック時の処理はonContextMenuで行う）
-    }
-
-    img.addEventListener('load', handleLoad)
-    return () => img.removeEventListener('load', handleLoad)
-  }, [])
-
   const handleOpenInNewTab = () => {
     window.open(originalSrc, '_blank', 'noopener,noreferrer')
   }
