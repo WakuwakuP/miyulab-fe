@@ -5,7 +5,7 @@ const nextConfig = {
   },
   images:{
     localPatterns: [{
-      pathname:'/api/attachment/**',
+      pathname: '/api/attachment/**',
     }]
   },
   reactCompiler: true,
