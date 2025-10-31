@@ -3,7 +3,7 @@ const nextConfig = {
   experimental: {
     turbopackUseSystemTlsCerts: true,
   },
-  images:{
+  images: {
     localPatterns: [{
       pathname: '/api/attachment/**',
     }]
