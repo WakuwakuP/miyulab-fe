@@ -1,8 +1,7 @@
-/* eslint-disable @next/next/no-img-element */
-
 import type { Entity } from 'megalodon'
 import type { HTMLProps } from 'react'
 import { RiPlayCircleLine } from 'react-icons/ri'
+import { ProxyImage } from './ProxyImage'
 
 export const Media = ({
   media,
@@ -27,17 +26,19 @@ export const Media = ({
   switch (media.type) {
     case 'image':
       return (
-        <img
+        <ProxyImage
           alt=""
           className={[
             'aspect-square max-h-48 cursor-pointer object-contain p-0.5',
             className,
           ].join(' ')}
+          height={800}
           key={media.id}
           onClick={() => {
             if (onClick != null) onClick()
           }}
           src={media.preview_url ?? media.url}
+          width={800}
         />
       )
     case 'video':

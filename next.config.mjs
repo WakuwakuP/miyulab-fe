@@ -3,6 +3,11 @@ const nextConfig = {
   experimental: {
     turbopackUseSystemTlsCerts: true,
   },
+  images:{
+    localPatterns: [{
+      pathname:'/api/attachment/**',
+    }]
+  },
   reactCompiler: true,
 };
 
