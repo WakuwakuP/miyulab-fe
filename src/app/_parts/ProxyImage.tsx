@@ -72,7 +72,13 @@ export const ProxyImage = ({
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
-        <Image className={className} ref={imgRef} src={proxySrc} {...props} />
+        <Image
+          className={className}
+          ref={imgRef}
+          src={proxySrc}
+          {...props}
+          unoptimized
+        />
       </ContextMenuTrigger>
       <ContextMenuContent>
         <ContextMenuItem onClick={handleOpenInNewTab}>
