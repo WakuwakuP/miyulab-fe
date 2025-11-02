@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
 
+export const revalidate = 14400 // 4 hours
+
 export async function GET(
   request: Request,
   context: { params: Promise<{ path: string[] }> },
@@ -50,8 +52,10 @@ export async function GET(
 
     // 外部画像を取得
     const imageResponse = await fetch(imageUrl, {
+      cache: 'force-cache',
       headers: {
-        'User-Agent': 'miyulab-fe/1.0',
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36',
       },
     })
 
