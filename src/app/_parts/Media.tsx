@@ -32,13 +32,13 @@ export const Media = ({
             'aspect-square max-h-48 cursor-pointer object-contain p-0.5',
             className,
           ].join(' ')}
-          height={800}
+          height={1920}
           key={media.id}
           onClick={() => {
             if (onClick != null) onClick()
           }}
           src={media.preview_url ?? media.url}
-          width={800}
+          width={1920}
         />
       )
     case 'video':
