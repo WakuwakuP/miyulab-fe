@@ -51,42 +51,37 @@ export async function GET(
     }
 
     // 外部画像を取得
-    const imageResponse = await fetch(imageUrl, {
+    const attachmentResponse = await fetch(imageUrl, {
       cache: 'force-cache',
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/117.0.0.0 Safari/537.36',
-      },
+      headers: { 'User-Agent': 'miyulab-fe/1.0' },
     })
 
-    if (!imageResponse.ok) {
+    if (!attachmentResponse.ok) {
       return NextResponse.json(
         { error: 'Failed to fetch image' },
-        { status: imageResponse.status },
+        { status: attachmentResponse.status },
       )
     }
 
-    // Content-Typeを取得（画像タイプの検証）
-    const contentType = imageResponse.headers.get('content-type')
-    if (!contentType?.startsWith('image/')) {
-      return NextResponse.json(
-        { error: 'Resource is not an image' },
-        { status: 400 },
-      )
-    }
+    const contentType = attachmentResponse.headers.get('content-type')
 
     // 画像データを取得
-    const imageBuffer = await imageResponse.arrayBuffer()
+    const imageBuffer = await attachmentResponse.arrayBuffer()
 
     // next/imageに適したレスポンスを返す
     // Content-Disposition: inline を追加してブラウザで表示されるようにする
+    const headers: HeadersInit = {
+      'Cache-Control': 'public, max-age=31536000, immutable',
+      'Content-Disposition': 'inline',
+      'Content-Length': imageBuffer.byteLength.toString(),
+    }
+
+    if (contentType) {
+      headers['Content-Type'] = contentType
+    }
+
     return new NextResponse(imageBuffer, {
-      headers: {
-        'Cache-Control': 'public, max-age=31536000, immutable',
-        'Content-Disposition': 'inline',
-        'Content-Length': imageBuffer.byteLength.toString(),
-        'Content-Type': contentType,
-      },
+      headers,
       status: 200,
     })
   } catch (error) {
