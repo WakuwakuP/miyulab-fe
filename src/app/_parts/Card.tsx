@@ -1,6 +1,4 @@
 /* eslint-disable @next/next/no-img-element */
-
-import { ProxyImage } from 'app/_parts/ProxyImage'
 import type { Entity } from 'megalodon'
 import { type MouseEventHandler, useContext } from 'react'
 
@@ -44,12 +42,10 @@ export const Card = ({ card }: { card: Entity.Card | null }) => {
       target="_blank"
     >
       {card.image != null && (
-        <ProxyImage
+        <img
           alt="card"
           className="aspect-video w-full rounded-t-lg object-cover"
-          height={720}
           src={card.image}
-          width={1280}
         />
       )}
       <div className="w-full px-2">

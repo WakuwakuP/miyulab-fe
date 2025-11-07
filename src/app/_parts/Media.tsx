@@ -1,7 +1,6 @@
 import type { Entity } from 'megalodon'
 import type { HTMLProps } from 'react'
 import { RiPlayCircleLine } from 'react-icons/ri'
-import { ProxyImage } from './ProxyImage'
 
 export const Media = ({
   media,
@@ -26,7 +25,7 @@ export const Media = ({
   switch (media.type) {
     case 'image':
       return (
-        <ProxyImage
+        <img
           alt=""
           className={[
             'aspect-square max-h-48 cursor-pointer object-contain p-0.5',
