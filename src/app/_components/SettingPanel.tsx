@@ -42,7 +42,6 @@ const SettingCheckbox = ({
   </SettingItem>
 )
 
-// biome-ignore lint/correctness/noUnusedVariables: 設定UI拡張用に残す
 const SettingNumberInput = ({
   id,
   label,
@@ -173,6 +172,20 @@ export const SettingPanel = () => {
           { name: 'Direct', value: 'direct' },
         ]}
         value={setting.defaultStatusVisibility}
+      />
+      <SettingNumberInput
+        id="recentHashtagsCount"
+        label="Recent hashtags count"
+        onChange={(e) => {
+          const value = Number.parseInt(e.target.value, 10)
+          if (!Number.isNaN(value) && value >= 0 && value <= 50) {
+            setSetting({
+              ...setting,
+              recentHashtagsCount: value,
+            })
+          }
+        }}
+        value={setting.recentHashtagsCount}
       />
     </div>
   )

@@ -1,5 +1,6 @@
 'use client'
 
+import { HashtagHistory } from 'app/_components/HashtagHistory'
 import { SettingPanel } from 'app/_components/SettingPanel'
 import { TimelineManagement } from 'app/_components/TimelineManagement'
 import { Panel } from 'app/_parts/Panel'
@@ -263,6 +264,7 @@ export const GettingStarted = () => {
             >
               Accounts
             </button>
+            <HashtagHistory />
           </>
         )}
       </div>
