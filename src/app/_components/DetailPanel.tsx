@@ -9,6 +9,7 @@ import { RiArrowLeftSLine } from 'react-icons/ri'
 import { Virtuoso } from 'react-virtuoso'
 import type { StatusAddAppIndex } from 'types/types'
 import { GetClient } from 'util/GetClient'
+import { useHashtagHistory } from 'util/hooks/useHashtagHistory'
 import { AppsContext } from 'util/provider/AppsProvider'
 import { DetailContext, SetDetailContext } from 'util/provider/DetailProvider'
 
@@ -18,6 +19,7 @@ export const DetailPanel = () => {
   const apps = useContext(AppsContext)
   const detail = useContext(DetailContext)
   const setDetail = useContext(SetDetailContext)
+  const { addHashtag } = useHashtagHistory()
 
   const [context, setContext] = useState<StatusAddAppIndex[]>([])
 
@@ -55,7 +57,11 @@ export const DetailPanel = () => {
         })
       })
     }
-  }, [apps, detail, detail.content, detail.type, setDetail])
+
+    if (detail.type === 'Hashtag' && typeof detail.content === 'string') {
+      addHashtag(detail.content)
+    }
+  }, [apps, detail, detail.content, detail.type, setDetail, addHashtag])
 
   const panelNames = {
     Account: 'Profile',
