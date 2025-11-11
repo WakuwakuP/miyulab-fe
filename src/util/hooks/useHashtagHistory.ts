@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 export type HashtagHistoryItem = {
   tag: string
@@ -25,9 +25,7 @@ export const useHashtagHistory = () => {
 
   // Save hashtags to localStorage whenever they change
   useEffect(() => {
-    if (hashtags.length > 0) {
-      localStorage.setItem('hashtagHistory', JSON.stringify(hashtags))
-    }
+    localStorage.setItem('hashtagHistory', JSON.stringify(hashtags))
   }, [hashtags])
 
   const addHashtag = useCallback((tag: string) => {
@@ -56,11 +54,13 @@ export const useHashtagHistory = () => {
     setHashtags((prev) => prev.filter((item) => item.tag !== tag))
   }, [])
 
-  const sortedHashtags = [...hashtags].sort((a, b) => {
-    if (a.isPinned && !b.isPinned) return -1
-    if (!a.isPinned && b.isPinned) return 1
-    return b.lastAccessed - a.lastAccessed
-  })
+  const sortedHashtags = useMemo(() => {
+    return [...hashtags].sort((a, b) => {
+      if (a.isPinned && !b.isPinned) return -1
+      if (!a.isPinned && b.isPinned) return 1
+      return b.lastAccessed - a.lastAccessed
+    })
+  }, [hashtags])
 
   return {
     addHashtag,

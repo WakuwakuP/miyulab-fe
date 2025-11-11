@@ -16,17 +16,13 @@ export const HashtagHistory = () => {
   const { recentHashtagsCount } = useContext(SettingContext)
   const {
     hashtags,
-    addHashtag,
     removeHashtag,
     togglePin: togglePinFn,
   } = useHashtagHistory()
   const [hoveredTag, setHoveredTag] = useState<string | null>(null)
 
   const handleHashtagClick = (tag: string) => {
-    // Update last accessed time
-    addHashtag(tag)
-
-    // Open hashtag detail
+    // Open hashtag detail (tracking handled in DetailPanel)
     setDetail({
       content: tag,
       type: 'Hashtag',
@@ -66,10 +62,10 @@ export const HashtagHistory = () => {
           >
             {hoveredTag === item.tag && (
               <button
+                aria-label={item.isPinned ? 'Unpin hashtag' : 'Pin hashtag'}
                 className="absolute -top-1 -left-1 w-5 h-5 rounded-full bg-blue-500 hover:bg-blue-400 flex items-center justify-center"
                 onClick={(e) => handleTogglePin(item.tag, e)}
                 type="button"
-                aria-label={item.isPinned ? 'Unpin hashtag' : 'Pin hashtag'}
               >
                 {item.isPinned ? (
                   <RiUnpinFill className="w-3 h-3 text-white" />
@@ -88,10 +84,10 @@ export const HashtagHistory = () => {
             <span>{item.tag}</span>
             {hoveredTag === item.tag && (
               <button
+                aria-label="Remove hashtag from history"
                 className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 hover:bg-red-400 flex items-center justify-center"
                 onClick={(e) => handleRemove(item.tag, e)}
                 type="button"
-                aria-label="Remove hashtag from history"
               >
                 <RiCloseLine className="w-3 h-3 text-white" />
               </button>

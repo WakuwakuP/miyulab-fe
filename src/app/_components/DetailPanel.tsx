@@ -57,11 +57,13 @@ export const DetailPanel = () => {
         })
       })
     }
+  }, [apps, detail, detail.content, detail.type, setDetail])
 
+  useEffect(() => {
     if (detail.type === 'Hashtag' && typeof detail.content === 'string') {
       addHashtag(detail.content)
     }
-  }, [apps, detail, detail.content, detail.type, setDetail, addHashtag])
+  }, [detail.type, detail.content, addHashtag])
 
   const panelNames = {
     Account: 'Profile',
