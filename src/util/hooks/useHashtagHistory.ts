@@ -8,6 +8,7 @@ export type HashtagHistoryItem = {
 
 export const useHashtagHistory = () => {
   const [hashtags, setHashtags] = useState<HashtagHistoryItem[]>([])
+  const [isLoaded, setIsLoaded] = useState(false)
 
   // Load hashtags from localStorage on mount
   useEffect(() => {
@@ -21,12 +22,15 @@ export const useHashtagHistory = () => {
         setHashtags([])
       }
     }
+    setIsLoaded(true)
   }, [])
 
-  // Save hashtags to localStorage whenever they change
+  // Save hashtags to localStorage whenever they change (after initial load)
   useEffect(() => {
-    localStorage.setItem('hashtagHistory', JSON.stringify(hashtags))
-  }, [hashtags])
+    if (isLoaded) {
+      localStorage.setItem('hashtagHistory', JSON.stringify(hashtags))
+    }
+  }, [hashtags, isLoaded])
 
   const addHashtag = useCallback((tag: string) => {
     setHashtags((prev) => {
