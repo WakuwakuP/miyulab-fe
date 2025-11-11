@@ -94,7 +94,7 @@ export const Status = ({
   const replace = (node: DOMNode) => {
     if (node.type === ElementType.Tag && node.name === 'a') {
       const classNames = (node.attribs.class ?? '').split(' ')
-      if (classNames.includes('mention')) {
+      if (classNames.includes('mention') && node.attribs.rel !== 'tag') {
         return (
           <a
             {...attributesToProps(node.attribs)}
