@@ -69,6 +69,7 @@ export const HashtagHistory = () => {
                 className="absolute -top-1 -left-1 w-5 h-5 rounded-full bg-blue-500 hover:bg-blue-400 flex items-center justify-center"
                 onClick={(e) => handleTogglePin(item.tag, e)}
                 type="button"
+                aria-label={item.isPinned ? 'Unpin hashtag' : 'Pin hashtag'}
               >
                 {item.isPinned ? (
                   <RiUnpinFill className="w-3 h-3 text-white" />
