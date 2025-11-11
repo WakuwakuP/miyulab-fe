@@ -1,7 +1,7 @@
 'use client'
 
 import { useContext, useState } from 'react'
-import { RiHashtag, RiPushpinFill } from 'react-icons/ri'
+import { RiHashtag, RiPushpinFill, RiUnpinFill } from 'react-icons/ri'
 import { useHashtagHistory } from 'util/hooks/useHashtagHistory'
 import { SetDetailContext } from 'util/provider/DetailProvider'
 import { SettingContext } from 'util/provider/SettingProvider'
@@ -63,7 +63,11 @@ export const HashtagHistory = () => {
                 onClick={(e) => handleTogglePin(item.tag, e)}
                 type="button"
               >
-                <RiPushpinFill className="w-3 h-3 text-white" />
+                {item.isPinned ? (
+                  <RiUnpinFill className="w-3 h-3 text-white" />
+                ) : (
+                  <RiPushpinFill className="w-3 h-3 text-white" />
+                )}
               </button>
             )}
           </button>
