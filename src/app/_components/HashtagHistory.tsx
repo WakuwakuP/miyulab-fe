@@ -1,7 +1,12 @@
 'use client'
 
 import { useContext, useState } from 'react'
-import { RiHashtag, RiPushpinFill, RiUnpinFill } from 'react-icons/ri'
+import {
+  RiCloseLine,
+  RiHashtag,
+  RiPushpinFill,
+  RiUnpinFill,
+} from 'react-icons/ri'
 import { useHashtagHistory } from 'util/hooks/useHashtagHistory'
 import { SetDetailContext } from 'util/provider/DetailProvider'
 import { SettingContext } from 'util/provider/SettingProvider'
@@ -9,7 +14,12 @@ import { SettingContext } from 'util/provider/SettingProvider'
 export const HashtagHistory = () => {
   const setDetail = useContext(SetDetailContext)
   const { recentHashtagsCount } = useContext(SettingContext)
-  const { hashtags, addHashtag, togglePin: togglePinFn } = useHashtagHistory()
+  const {
+    hashtags,
+    addHashtag,
+    removeHashtag,
+    togglePin: togglePinFn,
+  } = useHashtagHistory()
   const [hoveredTag, setHoveredTag] = useState<string | null>(null)
 
   const handleHashtagClick = (tag: string) => {
@@ -26,6 +36,11 @@ export const HashtagHistory = () => {
   const handleTogglePin = (tag: string, e: React.MouseEvent) => {
     e.stopPropagation()
     togglePinFn(tag)
+  }
+
+  const handleRemove = (tag: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    removeHashtag(tag)
   }
 
   // Limit display count
@@ -49,6 +64,19 @@ export const HashtagHistory = () => {
             onMouseLeave={() => setHoveredTag(null)}
             type="button"
           >
+            {hoveredTag === item.tag && (
+              <button
+                className="absolute -top-1 -left-1 w-5 h-5 rounded-full bg-blue-500 hover:bg-blue-400 flex items-center justify-center"
+                onClick={(e) => handleTogglePin(item.tag, e)}
+                type="button"
+              >
+                {item.isPinned ? (
+                  <RiUnpinFill className="w-3 h-3 text-white" />
+                ) : (
+                  <RiPushpinFill className="w-3 h-3 text-white" />
+                )}
+              </button>
+            )}
             <span className="flex items-center">
               {item.isPinned ? (
                 <RiPushpinFill className="w-4 h-4 text-blue-400" />
@@ -59,15 +87,11 @@ export const HashtagHistory = () => {
             <span>{item.tag}</span>
             {hoveredTag === item.tag && (
               <button
-                className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-blue-500 hover:bg-blue-400 flex items-center justify-center"
-                onClick={(e) => handleTogglePin(item.tag, e)}
+                className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 hover:bg-red-400 flex items-center justify-center"
+                onClick={(e) => handleRemove(item.tag, e)}
                 type="button"
               >
-                {item.isPinned ? (
-                  <RiUnpinFill className="w-3 h-3 text-white" />
-                ) : (
-                  <RiPushpinFill className="w-3 h-3 text-white" />
-                )}
+                <RiCloseLine className="w-3 h-3 text-white" />
               </button>
             )}
           </button>

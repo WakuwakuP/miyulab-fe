@@ -52,6 +52,10 @@ export const useHashtagHistory = () => {
     )
   }, [])
 
+  const removeHashtag = useCallback((tag: string) => {
+    setHashtags((prev) => prev.filter((item) => item.tag !== tag))
+  }, [])
+
   const sortedHashtags = [...hashtags].sort((a, b) => {
     if (a.isPinned && !b.isPinned) return -1
     if (!a.isPinned && b.isPinned) return 1
@@ -61,6 +65,7 @@ export const useHashtagHistory = () => {
   return {
     addHashtag,
     hashtags: sortedHashtags,
+    removeHashtag,
     togglePin,
   }
 }
