@@ -90,6 +90,7 @@ export const HashtagHistory = () => {
                 className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 hover:bg-red-400 flex items-center justify-center"
                 onClick={(e) => handleRemove(item.tag, e)}
                 type="button"
+                aria-label="Remove hashtag from history"
               >
                 <RiCloseLine className="w-3 h-3 text-white" />
               </button>
