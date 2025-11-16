@@ -9,7 +9,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "embla-carousel-react": "^8.6.0",
-    "html-react-parser": "5.2.8",
+    "html-react-parser": "^5.2.10",
     "jquery": "^3.7.1",
     "lucide-react": "0.553.0",
     "megalodon": "^10.1.3",
