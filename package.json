@@ -35,8 +35,8 @@
     "@biomejs/biome": "^2.3.5",
     "@tailwindcss/postcss": "4.1.17",
     "@types/node": "^24.10.1",
-    "@types/react": "19.2.2",
-    "@types/react-dom": "19.2.2",
+    "@types/react": "19.2.5",
+    "@types/react-dom": "19.2.3",
     "@types/slick-carousel": "^1.6.40",
     "babel-plugin-react-compiler": "^1.0.0",
     "globals": "^16.5.0",
@@ -51,8 +51,8 @@
   "packageManager": "yarn@4.6.0",
   "private": true,
   "resolutions": {
-    "@types/react": "19.2.2",
-    "@types/react-dom": "19.2.2"
+    "@types/react": "19.2.5",
+    "@types/react-dom": "19.2.3"
   },
   "scripts": {
     "build": "next build",
