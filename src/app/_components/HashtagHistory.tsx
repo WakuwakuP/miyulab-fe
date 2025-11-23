@@ -5,6 +5,7 @@ import {
   RiCloseLine,
   RiHashtag,
   RiPushpinFill,
+  RiSettingsFill,
   RiUnpinFill,
 } from 'react-icons/ri'
 import { useHashtagHistory } from 'util/hooks/useHashtagHistory'
@@ -20,6 +21,7 @@ export const HashtagHistory = () => {
     togglePin: togglePinFn,
   } = useHashtagHistory()
   const [hoveredTag, setHoveredTag] = useState<string | null>(null)
+  const [isSettingsMode, setIsSettingsMode] = useState(false)
 
   const handleHashtagClick = (tag: string) => {
     // Open hashtag detail (tracking handled in DetailPanel)
@@ -49,7 +51,23 @@ export const HashtagHistory = () => {
 
   return (
     <div className="px-4 py-2 border-t">
-      <div className="text-sm text-gray-400 mb-2">Recent Hashtags</div>
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-sm text-gray-400">Recent Hashtags</div>
+        <button
+          aria-label={
+            isSettingsMode ? 'Exit settings mode' : 'Enter settings mode'
+          }
+          className={`p-1.5 rounded transition-colors ${
+            isSettingsMode
+              ? 'bg-blue-600 hover:bg-blue-500 text-white'
+              : 'bg-gray-700 hover:bg-gray-600 text-gray-400'
+          }`}
+          onClick={() => setIsSettingsMode(!isSettingsMode)}
+          type="button"
+        >
+          <RiSettingsFill className="w-4 h-4" />
+        </button>
+      </div>
       <div className="flex flex-wrap gap-2">
         {displayedHashtags.map((item) => (
           <button
@@ -60,7 +78,7 @@ export const HashtagHistory = () => {
             onMouseLeave={() => setHoveredTag(null)}
             type="button"
           >
-            {hoveredTag === item.tag && (
+            {isSettingsMode && hoveredTag === item.tag && (
               <button
                 aria-label={item.isPinned ? 'Unpin hashtag' : 'Pin hashtag'}
                 className="absolute -top-1 -left-1 w-5 h-5 rounded-full bg-blue-500 hover:bg-blue-400 flex items-center justify-center"
@@ -82,7 +100,7 @@ export const HashtagHistory = () => {
               )}
             </span>
             <span>{item.tag}</span>
-            {hoveredTag === item.tag && (
+            {isSettingsMode && hoveredTag === item.tag && (
               <button
                 aria-label="Remove hashtag from history"
                 className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-red-500 hover:bg-red-400 flex items-center justify-center"
