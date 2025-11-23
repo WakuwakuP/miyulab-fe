@@ -14,11 +14,13 @@ type SettingData = {
   showSensitive: boolean
   playerSize: 'small' | 'medium' | 'large'
   defaultStatusVisibility: Entity.StatusVisibility
+  recentHashtagsCount: number
 }
 
 const initialSettingData: SettingData = {
   defaultStatusVisibility: 'public',
   playerSize: 'medium',
+  recentHashtagsCount: 10,
   showSensitive: false,
 } as const
 
