@@ -28,6 +28,11 @@ jobs:
               '',
               '## 実行手順',
               '',
+              '### 0. 作業ブランチの作成',
+              '',
+              '- ブランチ名は `*-yyyymmdd` の形式で作成してください',
+              '- 例: `weekly-package-upgrade-20250106`',
+              '',
               '### 1. アップグレード可能なパッケージの確認',
               '',
               '```bash',
@@ -130,11 +135,13 @@ jobs:
               ''
             ].join('\n');
 
+            const issueDate = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Tokyo' });
+
             // Create issue
             const issue = await github.rest.issues.create({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              title: '📦 Weekly Package Upgrade',
+              title: `📦 Weekly Package Upgrade (${issueDate})`,
               body: issueBody,
               labels: ['dependencies', 'maintenance', 'automated', 'copilot'],
             });
