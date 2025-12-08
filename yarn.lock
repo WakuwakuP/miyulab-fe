@@ -830,65 +830,65 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@next/env@npm:16.0.6":
-  version: 16.0.6
-  resolution: "@next/env@npm:16.0.6"
-  checksum: 10c0/ca0f1c4ecb6dd41beaa0a2fcc755dc2a66a0ca1a64eba47d42171afbefc67534366a4f544674381442643bf9d78ceefcf8dab5557618ef560814efefebc674d5
+"@next/env@npm:16.0.7":
+  version: 16.0.7
+  resolution: "@next/env@npm:16.0.7"
+  checksum: 10c0/5bbb4360ae6b0753de83f70700295c09427f5414f6765c7371fee0894de2a614364a2e9b4ec7b7e3451d56334026bafec6d28a21222a2fa7ecaa27f0a9421cc7
   languageName: node
   linkType: hard
 
-"@next/swc-darwin-arm64@npm:16.0.6":
-  version: 16.0.6
-  resolution: "@next/swc-darwin-arm64@npm:16.0.6"
+"@next/swc-darwin-arm64@npm:16.0.7":
+  version: 16.0.7
+  resolution: "@next/swc-darwin-arm64@npm:16.0.7"
   conditions: os=darwin & cpu=arm64
   languageName: node
   linkType: hard
 
-"@next/swc-darwin-x64@npm:16.0.6":
-  version: 16.0.6
-  resolution: "@next/swc-darwin-x64@npm:16.0.6"
+"@next/swc-darwin-x64@npm:16.0.7":
+  version: 16.0.7
+  resolution: "@next/swc-darwin-x64@npm:16.0.7"
   conditions: os=darwin & cpu=x64
   languageName: node
   linkType: hard
 
-"@next/swc-linux-arm64-gnu@npm:16.0.6":
-  version: 16.0.6
-  resolution: "@next/swc-linux-arm64-gnu@npm:16.0.6"
+"@next/swc-linux-arm64-gnu@npm:16.0.7":
+  version: 16.0.7
+  resolution: "@next/swc-linux-arm64-gnu@npm:16.0.7"
   conditions: os=linux & cpu=arm64 & libc=glibc
   languageName: node
   linkType: hard
 
-"@next/swc-linux-arm64-musl@npm:16.0.6":
-  version: 16.0.6
-  resolution: "@next/swc-linux-arm64-musl@npm:16.0.6"
+"@next/swc-linux-arm64-musl@npm:16.0.7":
+  version: 16.0.7
+  resolution: "@next/swc-linux-arm64-musl@npm:16.0.7"
   conditions: os=linux & cpu=arm64 & libc=musl
   languageName: node
   linkType: hard
 
-"@next/swc-linux-x64-gnu@npm:16.0.6":
-  version: 16.0.6
-  resolution: "@next/swc-linux-x64-gnu@npm:16.0.6"
+"@next/swc-linux-x64-gnu@npm:16.0.7":
+  version: 16.0.7
+  resolution: "@next/swc-linux-x64-gnu@npm:16.0.7"
   conditions: os=linux & cpu=x64 & libc=glibc
   languageName: node
   linkType: hard
 
-"@next/swc-linux-x64-musl@npm:16.0.6":
-  version: 16.0.6
-  resolution: "@next/swc-linux-x64-musl@npm:16.0.6"
+"@next/swc-linux-x64-musl@npm:16.0.7":
+  version: 16.0.7
+  resolution: "@next/swc-linux-x64-musl@npm:16.0.7"
   conditions: os=linux & cpu=x64 & libc=musl
   languageName: node
   linkType: hard
 
-"@next/swc-win32-arm64-msvc@npm:16.0.6":
-  version: 16.0.6
-  resolution: "@next/swc-win32-arm64-msvc@npm:16.0.6"
+"@next/swc-win32-arm64-msvc@npm:16.0.7":
+  version: 16.0.7
+  resolution: "@next/swc-win32-arm64-msvc@npm:16.0.7"
   conditions: os=win32 & cpu=arm64
   languageName: node
   linkType: hard
 
-"@next/swc-win32-x64-msvc@npm:16.0.6":
-  version: 16.0.6
-  resolution: "@next/swc-win32-x64-msvc@npm:16.0.6"
+"@next/swc-win32-x64-msvc@npm:16.0.7":
+  version: 16.0.7
+  resolution: "@next/swc-win32-x64-msvc@npm:16.0.7"
   conditions: os=win32 & cpu=x64
   languageName: node
   linkType: hard
@@ -1687,14 +1687,14 @@ __metadata:
   languageName: node
   linkType: hard
 
-"axios@npm:1.10.0":
-  version: 1.10.0
-  resolution: "axios@npm:1.10.0"
+"axios@npm:1.13.2":
+  version: 1.13.2
+  resolution: "axios@npm:1.13.2"
   dependencies:
     follow-redirects: "npm:^1.15.6"
-    form-data: "npm:^4.0.0"
+    form-data: "npm:^4.0.4"
     proxy-from-env: "npm:^1.1.0"
-  checksum: 10c0/2239cb269cc789eac22f5d1aabd58e1a83f8f364c92c2caa97b6f5cbb4ab2903d2e557d9dc670b5813e9bcdebfb149e783fb8ab3e45098635cd2f559b06bd5d8
+  checksum: 10c0/e8a42e37e5568ae9c7a28c348db0e8cf3e43d06fcbef73f0048669edfe4f71219664da7b6cc991b0c0f01c28a48f037c515263cb79be1f1ae8ff034cd813867b
   languageName: node
   linkType: hard
 
@@ -2172,7 +2172,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"form-data@npm:^4.0.0, form-data@npm:^4.0.3":
+"form-data@npm:^4.0.4, form-data@npm:^4.0.5":
   version: 4.0.5
   resolution: "form-data@npm:4.0.5"
   dependencies:
@@ -2662,12 +2662,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"lucide-react@npm:^0.555.0":
-  version: 0.555.0
-  resolution: "lucide-react@npm:0.555.0"
+"lucide-react@npm:^0.556.0":
+  version: 0.556.0
+  resolution: "lucide-react@npm:0.556.0"
   peerDependencies:
     react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
-  checksum: 10c0/18f0870307fe2a37cf62473de88845a78107295de1efcf599a8662be3af4239c0b661a57f8e29815e424773e4aad04d199ad4d94d7ae977b7ce7a61be7f64e04
+  checksum: 10c0/5c73bd317b2cd7d220082d1cc6f78c864819652be87a84c976f2b08aae0bf257b0f066f86f5d84c2cb838ba8fbd2fb1d2b9d84fbe025d9c6cb97dbf1cdbf6bbc
   languageName: node
   linkType: hard
 
@@ -2719,21 +2719,21 @@ __metadata:
   languageName: node
   linkType: hard
 
-"megalodon@npm:^10.1.3":
-  version: 10.1.3
-  resolution: "megalodon@npm:10.1.3"
+"megalodon@npm:^10.2.0":
+  version: 10.2.0
+  resolution: "megalodon@npm:10.2.0"
   dependencies:
     "@badgateway/oauth2-client": "npm:^2.4.2"
     "@types/ws": "npm:^8.18.1"
-    axios: "npm:1.10.0"
+    axios: "npm:1.13.2"
     dayjs: "npm:^1.11.13"
     events: "npm:^3.3.0"
-    form-data: "npm:^4.0.3"
+    form-data: "npm:^4.0.5"
     isomorphic-ws: "npm:^5.0.0"
     object-assign-deep: "npm:^0.4.0"
     uuid: "npm:^11.1.0"
     ws: "npm:8.18.3"
-  checksum: 10c0/96755625fbde51e4d290f8cd653431188a112b4d8e15b6dfbea1aeb2ef71dcdd16a4168cd2a276b1029cfa544c168bb1183e691c956326df92bf5835a90696a7
+  checksum: 10c0/5ff630479161781b00f67d61139605d0fa8f22da9add5dd35de2cec315909e35d3d0bc2661fcb65ee4d2db0775420bcdf3d2eaf78cb20ec2c24090d90c79b9f3
   languageName: node
   linkType: hard
 
@@ -2782,8 +2782,8 @@ __metadata:
     "@radix-ui/react-slot": "npm:1.2.4"
     "@tailwindcss/postcss": "npm:4.1.17"
     "@types/node": "npm:^24.10.1"
-    "@types/react": "npm:19.2.7"
-    "@types/react-dom": "npm:19.2.3"
+    "@types/react": "npm:^19.2.7"
+    "@types/react-dom": "npm:^19.2.3"
     "@types/slick-carousel": "npm:^1.6.40"
     babel-plugin-react-compiler: "npm:^1.0.0"
     browser-image-compression: "npm:^2.0.2"
@@ -2795,20 +2795,20 @@ __metadata:
     husky: "npm:9.1.7"
     jquery: "npm:^3.7.1"
     lint-staged: "npm:^16.2.7"
-    lucide-react: "npm:^0.555.0"
-    megalodon: "npm:^10.1.3"
-    next: "npm:^16.0.6"
+    lucide-react: "npm:^0.556.0"
+    megalodon: "npm:^10.2.0"
+    next: "npm:^16.0.7"
     node-emoji: "npm:^2.2.0"
     postcss: "npm:^8.5.6"
-    react: "npm:19.2.0"
-    react-dom: "npm:19.2.0"
+    react: "npm:^19.2.1"
+    react-dom: "npm:^19.2.1"
     react-dropzone: "npm:^14.3.8"
-    react-hook-form: "npm:^7.67.0"
+    react-hook-form: "npm:^7.68.0"
     react-hot-toast: "npm:^2.6.0"
     react-icons: "npm:^5.5.0"
     react-innertext: "npm:^1.1.5"
     react-player: "npm:^3.4.0"
-    react-virtuoso: "npm:^4.16.1"
+    react-virtuoso: "npm:^4.17.0"
     rich-textarea: "npm:0.27.0"
     sharp: "npm:0.34.5"
     slick-carousel: "npm:^1.8.1"
@@ -2866,19 +2866,19 @@ __metadata:
   languageName: node
   linkType: hard
 
-"next@npm:^16.0.6":
-  version: 16.0.6
-  resolution: "next@npm:16.0.6"
+"next@npm:^16.0.7":
+  version: 16.0.7
+  resolution: "next@npm:16.0.7"
   dependencies:
-    "@next/env": "npm:16.0.6"
-    "@next/swc-darwin-arm64": "npm:16.0.6"
-    "@next/swc-darwin-x64": "npm:16.0.6"
-    "@next/swc-linux-arm64-gnu": "npm:16.0.6"
-    "@next/swc-linux-arm64-musl": "npm:16.0.6"
-    "@next/swc-linux-x64-gnu": "npm:16.0.6"
-    "@next/swc-linux-x64-musl": "npm:16.0.6"
-    "@next/swc-win32-arm64-msvc": "npm:16.0.6"
-    "@next/swc-win32-x64-msvc": "npm:16.0.6"
+    "@next/env": "npm:16.0.7"
+    "@next/swc-darwin-arm64": "npm:16.0.7"
+    "@next/swc-darwin-x64": "npm:16.0.7"
+    "@next/swc-linux-arm64-gnu": "npm:16.0.7"
+    "@next/swc-linux-arm64-musl": "npm:16.0.7"
+    "@next/swc-linux-x64-gnu": "npm:16.0.7"
+    "@next/swc-linux-x64-musl": "npm:16.0.7"
+    "@next/swc-win32-arm64-msvc": "npm:16.0.7"
+    "@next/swc-win32-x64-msvc": "npm:16.0.7"
     "@swc/helpers": "npm:0.5.15"
     caniuse-lite: "npm:^1.0.30001579"
     postcss: "npm:8.4.31"
@@ -2921,7 +2921,7 @@ __metadata:
       optional: true
   bin:
     next: dist/bin/next
-  checksum: 10c0/974da48dfc9b54c9c7a915b9f311010397a0d530bf5443adbd92c5586fc42ea7cd8e6378484699ac3c41764f8fb0ed7d5d794aeef54125c753b1cfd15fc4f633
+  checksum: 10c0/72003fed0f5b690c91ae1a0cc59317691ca1976b46809557a93e00a43e55d4158a256b1a46da6cd7506e699d74aa0cf4e973ec5a35ceabbdd9a1955b507ec85d
   languageName: node
   linkType: hard
 
@@ -3057,14 +3057,14 @@ __metadata:
   languageName: node
   linkType: hard
 
-"react-dom@npm:19.2.0":
-  version: 19.2.0
-  resolution: "react-dom@npm:19.2.0"
+"react-dom@npm:^19.2.1":
+  version: 19.2.1
+  resolution: "react-dom@npm:19.2.1"
   dependencies:
     scheduler: "npm:^0.27.0"
   peerDependencies:
-    react: ^19.2.0
-  checksum: 10c0/fa2cae05248d01288e91523b590ce4e7635b1e13f1344e225f850d722a8da037bf0782f63b1c1d46353334e0c696909b82e582f8cad607948fde6f7646cc18d9
+    react: ^19.2.1
+  checksum: 10c0/e56b6b3d72314df580ca800b70a69a21c6372703c8f45d9b5451ca6519faefb2496d76ffa9c5adb94136d2bbf2fd303d0dfc208a2cd77ede3132877471af9470
   languageName: node
   linkType: hard
 
@@ -3081,12 +3081,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"react-hook-form@npm:^7.67.0":
-  version: 7.67.0
-  resolution: "react-hook-form@npm:7.67.0"
+"react-hook-form@npm:^7.68.0":
+  version: 7.68.0
+  resolution: "react-hook-form@npm:7.68.0"
   peerDependencies:
     react: ^16.8.0 || ^17 || ^18 || ^19
-  checksum: 10c0/d20fec07e2f86a3c7ad60c453ae004e5ca59def04c1ca9a34e7d899e93d1587f8070e4b8b88b0ff1d01ff1651c4bb06f580e32aa3a97120d60fbc483e3f9e312
+  checksum: 10c0/5fb500fe60077185ab6de32a2371d05bf75ae335ef62993f0359dbb42bb0c95e0c28d4f7d70c4382995486c82715295c87fc44f2ced5de1ae353aa1f23398f47
   languageName: node
   linkType: hard
 
@@ -3209,20 +3209,20 @@ __metadata:
   languageName: node
   linkType: hard
 
-"react-virtuoso@npm:^4.16.1":
-  version: 4.16.1
-  resolution: "react-virtuoso@npm:4.16.1"
+"react-virtuoso@npm:^4.17.0":
+  version: 4.17.0
+  resolution: "react-virtuoso@npm:4.17.0"
   peerDependencies:
     react: ">=16 || >=17 || >= 18 || >= 19"
     react-dom: ">=16 || >=17 || >= 18 || >=19"
-  checksum: 10c0/6b402855be4deb07b07eb34eece5979304dffcc981fccea1b917f42da8afdd26e973dd535f5fbe7ceccf9e8f989fe5dd7c40baf3ca4903cbaa203bb7fbe92082
+  checksum: 10c0/0f26395742d1e1f5db995ef18ec0726522e6f21536811222b409c08fcd7d142fb6bd4a498c78494da7630aa803492bbcf6b3cf5bf5ada0711ea48430fa0850e2
   languageName: node
   linkType: hard
 
-"react@npm:19.2.0":
-  version: 19.2.0
-  resolution: "react@npm:19.2.0"
-  checksum: 10c0/1b6d64eacb9324725bfe1e7860cb7a6b8a34bc89a482920765ebff5c10578eb487e6b46b2f0df263bd27a25edbdae2c45e5ea5d81ae61404301c1a7192c38330
+"react@npm:^19.2.1":
+  version: 19.2.1
+  resolution: "react@npm:19.2.1"
+  checksum: 10c0/2b5eaf407abb3db84090434c20d6c5a8e447ab7abcd8fe9eaf1ddc299babcf31284ee9db7ea5671d21c85ac5298bd632fa1a7da1ed78d5b368a537f5e1cd5d62
   languageName: node
   linkType: hard
 
