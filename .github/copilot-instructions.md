@@ -26,7 +26,7 @@ yarn format
 
 This project uses:
 - **Package Manager**: Yarn (with corepack)
-- **Node.js Framework**: Next.js 15.3.2
+- **Node.js Framework**: Next.js 16.0.10
 - **Language**: TypeScript
 - **Styling**: Tailwind CSS
 
