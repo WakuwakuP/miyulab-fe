@@ -2805,7 +2805,7 @@ __metadata:
     lint-staged: "npm:^16.2.7"
     lucide-react: "npm:^0.562.0"
     megalodon: "npm:^10.2.0"
-    next: "npm:^16.1.0"
+    next: "npm:16.1.0"
     node-emoji: "npm:^2.2.0"
     postcss: "npm:^8.5.6"
     react: "npm:19.2.3"
@@ -2874,7 +2874,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"next@npm:^16.1.0":
+"next@npm:16.1.0":
   version: 16.1.0
   resolution: "next@npm:16.1.0"
   dependencies:
