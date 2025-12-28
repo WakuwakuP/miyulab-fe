@@ -2816,7 +2816,7 @@ __metadata:
     react-icons: "npm:^5.5.0"
     react-innertext: "npm:^1.1.5"
     react-player: "npm:^3.4.0"
-    react-virtuoso: "npm:^4.17.0"
+    react-virtuoso: "npm:^4.18.0"
     rich-textarea: "npm:0.27.0"
     sharp: "npm:0.34.5"
     slick-carousel: "npm:^1.8.1"
@@ -3218,13 +3218,13 @@ __metadata:
   languageName: node
   linkType: hard
 
-"react-virtuoso@npm:^4.17.0":
-  version: 4.17.0
-  resolution: "react-virtuoso@npm:4.17.0"
+"react-virtuoso@npm:^4.18.0":
+  version: 4.18.0
+  resolution: "react-virtuoso@npm:4.18.0"
   peerDependencies:
     react: ">=16 || >=17 || >= 18 || >= 19"
     react-dom: ">=16 || >=17 || >= 18 || >=19"
-  checksum: 10c0/0f26395742d1e1f5db995ef18ec0726522e6f21536811222b409c08fcd7d142fb6bd4a498c78494da7630aa803492bbcf6b3cf5bf5ada0711ea48430fa0850e2
+  checksum: 10c0/e34fc7af27a5c02cd6918e4525dccca376eefb3c3e10eb363b2f8d3e9b4b9ecf4d6b0b3da19dc6a7bf4097248407b79ff323f7cddf4291a3554e1083d3c7f246
   languageName: node
   linkType: hard
 
