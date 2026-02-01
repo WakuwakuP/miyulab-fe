@@ -1686,14 +1686,14 @@ __metadata:
   languageName: node
   linkType: hard
 
-"axios@npm:1.13.2":
-  version: 1.13.2
-  resolution: "axios@npm:1.13.2"
+"axios@npm:1.13.4":
+  version: 1.13.4
+  resolution: "axios@npm:1.13.4"
   dependencies:
     follow-redirects: "npm:^1.15.6"
     form-data: "npm:^4.0.4"
     proxy-from-env: "npm:^1.1.0"
-  checksum: 10c0/e8a42e37e5568ae9c7a28c348db0e8cf3e43d06fcbef73f0048669edfe4f71219664da7b6cc991b0c0f01c28a48f037c515263cb79be1f1ae8ff034cd813867b
+  checksum: 10c0/474c00b7d71f4de4ad562589dae6b615149df7c2583bbc5ebba96229f3f85bfb0775d23705338df072f12e48d3e85685c065a3cf6855d58968a672d19214c728
   languageName: node
   linkType: hard
 
@@ -2727,21 +2727,21 @@ __metadata:
   languageName: node
   linkType: hard
 
-"megalodon@npm:^10.2.0":
-  version: 10.2.0
-  resolution: "megalodon@npm:10.2.0"
+"megalodon@npm:^10.2.1":
+  version: 10.2.1
+  resolution: "megalodon@npm:10.2.1"
   dependencies:
     "@badgateway/oauth2-client": "npm:^2.4.2"
     "@types/ws": "npm:^8.18.1"
-    axios: "npm:1.13.2"
+    axios: "npm:1.13.4"
     dayjs: "npm:^1.11.13"
     events: "npm:^3.3.0"
     form-data: "npm:^4.0.5"
     isomorphic-ws: "npm:^5.0.0"
     object-assign-deep: "npm:^0.4.0"
     uuid: "npm:^11.1.0"
-    ws: "npm:8.18.3"
-  checksum: 10c0/5ff630479161781b00f67d61139605d0fa8f22da9add5dd35de2cec315909e35d3d0bc2661fcb65ee4d2db0775420bcdf3d2eaf78cb20ec2c24090d90c79b9f3
+    ws: "npm:8.19.0"
+  checksum: 10c0/f9e8aa0bbdb6ddd837847e91560f2ad69812cd7bddda9bb2c5a0503acfb93539063766519f98b9567ecc982d1d07c0b14f46afc0d2b0032292e3b77e14481ab9
   languageName: node
   linkType: hard
 
@@ -2804,7 +2804,7 @@ __metadata:
     jquery: "npm:^3.7.1"
     lint-staged: "npm:^16.2.7"
     lucide-react: "npm:^0.563.0"
-    megalodon: "npm:^10.2.0"
+    megalodon: "npm:^10.2.1"
     next: "npm:^16.1.4"
     node-emoji: "npm:^2.2.0"
     postcss: "npm:^8.5.6"
@@ -3796,9 +3796,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"ws@npm:8.18.3":
-  version: 8.18.3
-  resolution: "ws@npm:8.18.3"
+"ws@npm:8.19.0":
+  version: 8.19.0
+  resolution: "ws@npm:8.19.0"
   peerDependencies:
     bufferutil: ^4.0.1
     utf-8-validate: ">=5.0.2"
@@ -3807,7 +3807,7 @@ __metadata:
       optional: true
     utf-8-validate:
       optional: true
-  checksum: 10c0/eac918213de265ef7cb3d4ca348b891a51a520d839aa51cdb8ca93d4fa7ff9f6ccb339ccee89e4075324097f0a55157c89fa3f7147bde9d8d7e90335dc087b53
+  checksum: 10c0/4741d9b9bc3f9c791880882414f96e36b8b254e34d4b503279d6400d9a4b87a033834856dbdd94ee4b637944df17ea8afc4bce0ff4a1560d2166be8855da5b04
   languageName: node
   linkType: hard
 
