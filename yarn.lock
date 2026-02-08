@@ -2727,9 +2727,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"megalodon@npm:^10.2.1":
-  version: 10.2.1
-  resolution: "megalodon@npm:10.2.1"
+"megalodon@npm:^10.2.3":
+  version: 10.2.3
+  resolution: "megalodon@npm:10.2.3"
   dependencies:
     "@badgateway/oauth2-client": "npm:^2.4.2"
     "@types/ws": "npm:^8.18.1"
@@ -2741,7 +2741,7 @@ __metadata:
     object-assign-deep: "npm:^0.4.0"
     uuid: "npm:^11.1.0"
     ws: "npm:8.19.0"
-  checksum: 10c0/f9e8aa0bbdb6ddd837847e91560f2ad69812cd7bddda9bb2c5a0503acfb93539063766519f98b9567ecc982d1d07c0b14f46afc0d2b0032292e3b77e14481ab9
+  checksum: 10c0/ba9f9e5bd5d190c21d4c6f39355cccec0bc4f88adf11f7d337899b994bab891254ab465bae4ce6a734aa3f0aa5ffb6b35be44c368ba43b9fd46de5a7ce664910
   languageName: node
   linkType: hard
 
@@ -2804,7 +2804,7 @@ __metadata:
     jquery: "npm:^4.0.0"
     lint-staged: "npm:^16.2.7"
     lucide-react: "npm:^0.563.0"
-    megalodon: "npm:^10.2.1"
+    megalodon: "npm:^10.2.3"
     next: "npm:^16.1.6"
     node-emoji: "npm:^2.2.0"
     postcss: "npm:^8.5.6"
