@@ -107,10 +107,24 @@ export async function fetchMoreData(
     case 'tag': {
       const tags = config.tagConfig?.tags ?? []
       let total = 0
+      // 各タグごとに個別のmaxIdでページングする
+      // （同じmaxIdを使うと、タグごとに異なるタイムラインのため
+      //  一部のタグで投稿がスキップされる可能性がある）
       for (const tag of tags) {
+        // このタグの最古の投稿を取得
+        const { db } = await import('util/db/database')
+        const oldestForTag = await db.statuses
+          .where('belongingTags')
+          .equals(tag)
+          .and((s) => s.backendUrl === backendUrl)
+          .reverse()
+          .first()
+
+        const tagMaxId = oldestForTag?.id ?? maxId
+
         const res = await client.getTagTimeline(tag, {
           limit,
-          max_id: maxId,
+          max_id: tagMaxId,
         })
         await bulkUpsertStatuses(res.data, backendUrl, 'tag', tag)
         total += res.data.length

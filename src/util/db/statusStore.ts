@@ -88,11 +88,28 @@ export async function bulkUpsertStatuses(
   tag?: string,
 ): Promise<void> {
   await db.transaction('rw', db.statuses, async () => {
-    for (const status of statuses) {
-      const compositeKey = createCompositeKey(backendUrl, status.id)
-      const existing = await db.statuses.get(compositeKey)
+    // 全てのcompositeKeyを生成
+    const compositeKeys = statuses.map((status) =>
+      createCompositeKey(backendUrl, status.id),
+    )
+
+    // 既存のStatusを一括取得
+    const existingStatuses = await db.statuses.bulkGet(compositeKeys)
+
+    // 更新用と追加用に分離
+    const statusesToUpdate: Array<{
+      key: string
+      changes: UpdateSpec<StoredStatus>
+    }> = []
+    const statusesToAdd: StoredStatus[] = []
+
+    for (let i = 0; i < statuses.length; i++) {
+      const status = statuses[i]
+      const compositeKey = compositeKeys[i]
+      const existing = existingStatuses[i]
 
       if (existing) {
+        // 既存の場合は更新
         const updatedTimelineTypes = Array.from(
           new Set([...existing.timelineTypes, timelineType]),
         )
@@ -100,22 +117,38 @@ export async function bulkUpsertStatuses(
           ? Array.from(new Set([...existing.belongingTags, tag]))
           : existing.belongingTags
 
-        await db.statuses.update(compositeKey, {
-          ...status,
-          belongingTags: updatedBelongingTags,
-          created_at_ms: new Date(status.created_at).getTime(),
-          storedAt: Date.now(),
-          timelineTypes: updatedTimelineTypes,
+        statusesToUpdate.push({
+          changes: {
+            ...status,
+            belongingTags: updatedBelongingTags,
+            created_at_ms: new Date(status.created_at).getTime(),
+            storedAt: Date.now(),
+            timelineTypes: updatedTimelineTypes,
+          },
+          key: compositeKey,
         })
       } else {
+        // 新規追加
         const storedStatus = toStoredStatus(status, backendUrl, [timelineType])
         if (tag) {
           storedStatus.belongingTags = Array.from(
             new Set([...storedStatus.belongingTags, tag]),
           )
         }
-        await db.statuses.add(storedStatus)
+        statusesToAdd.push(storedStatus)
       }
+    }
+
+    // 一括更新と一括追加を実行
+    if (statusesToUpdate.length > 0) {
+      await Promise.all(
+        statusesToUpdate.map(({ key, changes }) =>
+          db.statuses.update(key, changes),
+        ),
+      )
+    }
+    if (statusesToAdd.length > 0) {
+      await db.statuses.bulkAdd(statusesToAdd)
     }
   })
 }
@@ -216,6 +249,14 @@ export async function updateStatusAction(
   })
 
   // このStatusをreblogとして持つ他のStatusも更新
+  //
+  // パフォーマンスノート:
+  // この処理は backendUrl の全 Status をスキャンして reblog.id をチェックするため、
+  // 大量の Status がある場合は比較的高コストになる可能性があります。
+  // もしこの処理が頻繁に発生してパフォーマンスボトルネックになる場合は、
+  // 以下の対策を検討してください：
+  // 1. reblog.id に対する複合インデックスを追加（例: '[backendUrl+reblog.id]'）
+  // 2. reblog 関係の逆マッピングテーブルを別途保持
   const relatedStatuses = await db.statuses
     .where('[backendUrl+created_at_ms]')
     .between([backendUrl, Dexie.minKey], [backendUrl, Dexie.maxKey])

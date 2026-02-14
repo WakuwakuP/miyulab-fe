@@ -36,11 +36,18 @@ import { getDefaultTimelineName } from 'util/timelineDisplayName'
  * UUID v4 の簡易生成
  * crypto.randomUUID が使えない環境へのフォールバック付き
  */
+let fallbackIdCounter = 0
+
 function generateId(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID()
   }
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`
+
+  fallbackIdCounter = (fallbackIdCounter + 1) % Number.MAX_SAFE_INTEGER
+
+  return `${Date.now().toString(36)}-${Math.random()
+    .toString(36)
+    .slice(2)}-${fallbackIdCounter.toString(36)}`
 }
 
 const SortableTimelineItem = ({
