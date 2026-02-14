@@ -5,7 +5,6 @@ import { Panel } from 'app/_parts/Panel'
 import { TimelineStreamIcon } from 'app/_parts/TimelineIcon'
 import {
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -16,14 +15,12 @@ import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import type { TimelineConfigV2 } from 'types/types'
 import { CENTER_INDEX } from 'util/environment'
 import { useNotifications } from 'util/hooks/useNotifications'
-import { AppsContext } from 'util/provider/AppsProvider'
 
 export const NotificationTimeline = ({
   config,
 }: {
   config: TimelineConfigV2
 }) => {
-  const apps = useContext(AppsContext)
   const notifications = useNotifications(config)
   const scrollerRef = useRef<VirtuosoHandle>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)

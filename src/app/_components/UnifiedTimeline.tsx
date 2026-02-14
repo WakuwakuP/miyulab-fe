@@ -95,7 +95,11 @@ export const UnifiedTimeline = ({ config }: { config: TimelineConfigV2 }) => {
         // （フィルタリングにより表示されていないが、実際には存在する可能性）
         if (!oldestStatus) {
           const { db } = await import('util/db/database')
-          const timelineType = config.type as 'home' | 'local' | 'public' | 'tag'
+          const timelineType = config.type as
+            | 'home'
+            | 'local'
+            | 'public'
+            | 'tag'
 
           if (config.type === 'tag') {
             // タグタイムラインの場合は該当タグの最古投稿を取得

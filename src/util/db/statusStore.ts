@@ -97,7 +97,10 @@ export async function bulkUpsertStatuses(
     const existingStatuses = await db.statuses.bulkGet(compositeKeys)
 
     // 更新用と追加用に分離
-    const statusesToUpdate: Array<{ key: string; changes: UpdateSpec<StoredStatus> }> = []
+    const statusesToUpdate: Array<{
+      key: string
+      changes: UpdateSpec<StoredStatus>
+    }> = []
     const statusesToAdd: StoredStatus[] = []
 
     for (let i = 0; i < statuses.length; i++) {
@@ -115,7 +118,6 @@ export async function bulkUpsertStatuses(
           : existing.belongingTags
 
         statusesToUpdate.push({
-          key: compositeKey,
           changes: {
             ...status,
             belongingTags: updatedBelongingTags,
@@ -123,6 +125,7 @@ export async function bulkUpsertStatuses(
             storedAt: Date.now(),
             timelineTypes: updatedTimelineTypes,
           },
+          key: compositeKey,
         })
       } else {
         // 新規追加
