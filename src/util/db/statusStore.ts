@@ -88,11 +88,25 @@ export async function bulkUpsertStatuses(
   tag?: string,
 ): Promise<void> {
   await db.transaction('rw', db.statuses, async () => {
-    for (const status of statuses) {
-      const compositeKey = createCompositeKey(backendUrl, status.id)
-      const existing = await db.statuses.get(compositeKey)
+    // 全てのcompositeKeyを生成
+    const compositeKeys = statuses.map((status) =>
+      createCompositeKey(backendUrl, status.id),
+    )
+
+    // 既存のStatusを一括取得
+    const existingStatuses = await db.statuses.bulkGet(compositeKeys)
+
+    // 更新用と追加用に分離
+    const statusesToUpdate: Array<{ key: string; changes: UpdateSpec<StoredStatus> }> = []
+    const statusesToAdd: StoredStatus[] = []
+
+    for (let i = 0; i < statuses.length; i++) {
+      const status = statuses[i]
+      const compositeKey = compositeKeys[i]
+      const existing = existingStatuses[i]
 
       if (existing) {
+        // 既存の場合は更新
         const updatedTimelineTypes = Array.from(
           new Set([...existing.timelineTypes, timelineType]),
         )
@@ -100,22 +114,38 @@ export async function bulkUpsertStatuses(
           ? Array.from(new Set([...existing.belongingTags, tag]))
           : existing.belongingTags
 
-        await db.statuses.update(compositeKey, {
-          ...status,
-          belongingTags: updatedBelongingTags,
-          created_at_ms: new Date(status.created_at).getTime(),
-          storedAt: Date.now(),
-          timelineTypes: updatedTimelineTypes,
+        statusesToUpdate.push({
+          key: compositeKey,
+          changes: {
+            ...status,
+            belongingTags: updatedBelongingTags,
+            created_at_ms: new Date(status.created_at).getTime(),
+            storedAt: Date.now(),
+            timelineTypes: updatedTimelineTypes,
+          },
         })
       } else {
+        // 新規追加
         const storedStatus = toStoredStatus(status, backendUrl, [timelineType])
         if (tag) {
           storedStatus.belongingTags = Array.from(
             new Set([...storedStatus.belongingTags, tag]),
           )
         }
-        await db.statuses.add(storedStatus)
+        statusesToAdd.push(storedStatus)
       }
+    }
+
+    // 一括更新と一括追加を実行
+    if (statusesToUpdate.length > 0) {
+      await Promise.all(
+        statusesToUpdate.map(({ key, changes }) =>
+          db.statuses.update(key, changes),
+        ),
+      )
+    }
+    if (statusesToAdd.length > 0) {
+      await db.statuses.bulkAdd(statusesToAdd)
     }
   })
 }

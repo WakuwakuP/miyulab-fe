@@ -29,7 +29,7 @@ export function useTimelineData(
   // 全 Hook を無条件に呼び出す（Hook ルール遵守）
   const filteredTimeline = useFilteredTimeline(config)
   const filteredTagTimeline = useFilteredTagTimeline(config)
-  const notifications = useNotifications()
+  const notifications = useNotifications(config)
 
   switch (config.type) {
     case 'home':

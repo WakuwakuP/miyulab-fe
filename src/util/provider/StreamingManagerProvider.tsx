@@ -196,6 +196,13 @@ export const StreamingManagerProvider = ({
         const entry = registryRef.current.get(key)
         if (entry) {
           entry.status = 'error'
+          // 初期化失敗時もリトライをスケジュール
+          entry.retryTimer = setTimeout(() => {
+            if (registryRef.current.has(key)) {
+              console.info(`Retrying initialization for ${key}`)
+              initializeStream(key, type, backendUrl, app, options)
+            }
+          }, RETRY_DELAY_MS)
         }
       }
     },

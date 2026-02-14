@@ -89,14 +89,26 @@ export async function enforceMaxLength(): Promise<void> {
  */
 export function startPeriodicCleanup(): () => void {
   // 初回実行
-  cleanupOldData()
-  enforceMaxLength()
+  void (async () => {
+    try {
+      await cleanupOldData()
+      await enforceMaxLength()
+    } catch (error) {
+      console.error('Failed to perform initial periodic cleanup', error)
+    }
+  })()
 
   // 1時間ごとに実行
   const intervalId = setInterval(
     () => {
-      cleanupOldData()
-      enforceMaxLength()
+      void (async () => {
+        try {
+          await cleanupOldData()
+          await enforceMaxLength()
+        } catch (error) {
+          console.error('Failed to perform periodic cleanup', error)
+        }
+      })()
     },
     60 * 60 * 1000,
   )

@@ -3,10 +3,14 @@
 import Dexie from 'dexie'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { useContext, useMemo } from 'react'
-import type { NotificationAddAppIndex } from 'types/types'
+import type { NotificationAddAppIndex, TimelineConfigV2 } from 'types/types'
 import { db } from 'util/db/database'
 import { MAX_LENGTH } from 'util/environment'
 import { AppsContext } from 'util/provider/AppsProvider'
+import {
+  normalizeBackendFilter,
+  resolveBackendUrls,
+} from 'util/timelineConfigValidator'
 
 /**
  * backendUrl から appIndex を算出するヘルパー
@@ -30,18 +34,27 @@ function resolveAppIndex(
  * created_at_ms は数値型（UnixTime ms）のため、
  * ソート順が確実に時系列となる。
  */
-export function useNotifications(): NotificationAddAppIndex[] {
+export function useNotifications(
+  config?: TimelineConfigV2,
+): NotificationAddAppIndex[] {
   const apps = useContext(AppsContext)
 
-  const backendUrls = useMemo(() => apps.map((app) => app.backendUrl), [apps])
+  // configが渡された場合はbackendFilterを適用、なければ全バックエンド
+  const targetBackendUrls = useMemo(() => {
+    if (!config) {
+      return apps.map((app) => app.backendUrl)
+    }
+    const filter = normalizeBackendFilter(config.backendFilter, apps)
+    return resolveBackendUrls(filter, apps)
+  }, [config, apps])
 
   const notifications = useLiveQuery(
     async () => {
-      if (backendUrls.length === 0) return []
+      if (targetBackendUrls.length === 0) return []
 
       // 各backendUrl別に複合インデックスで降順取得し、マージする
       const perUrlResults = await Promise.all(
-        backendUrls.map((url) =>
+        targetBackendUrls.map((url) =>
           db.notifications
             .where('[backendUrl+created_at_ms]')
             .between([url, Dexie.minKey], [url, Dexie.maxKey])
@@ -56,7 +69,7 @@ export function useNotifications(): NotificationAddAppIndex[] {
         .sort((a, b) => b.created_at_ms - a.created_at_ms)
         .slice(0, MAX_LENGTH)
     },
-    [backendUrls],
+    [targetBackendUrls],
     [],
   )
 
