@@ -259,7 +259,9 @@ export const StreamingManagerProvider = ({
     // 不要なストリームを切断
     for (const [key, entry] of registry) {
       if (!requiredKeys.has(key)) {
-        entry.stream.stop()
+        if (entry.stream) {
+          entry.stream.stop()
+        }
         if (entry.retryTimer != null) {
           clearTimeout(entry.retryTimer)
         }
@@ -277,7 +279,7 @@ export const StreamingManagerProvider = ({
           registry.set(key, {
             retryTimer: null,
             status: 'connecting',
-            stream: null as unknown as WebSocketInterface,
+            stream: null,
           })
           initializeStream(key, type, backendUrl, app, { tag })
         }

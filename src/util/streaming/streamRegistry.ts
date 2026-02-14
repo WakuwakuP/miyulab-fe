@@ -5,8 +5,8 @@ export type StreamEntry = {
   retryTimer: ReturnType<typeof setTimeout> | null
   /** 接続状態 */
   status: 'connected' | 'connecting' | 'disconnected' | 'error'
-  /** WebSocket ストリームインスタンス */
-  stream: WebSocketInterface
+  /** WebSocket ストリームインスタンス（初期化中はnull） */
+  stream: WebSocketInterface | null
 }
 
 // 注: 参照カウント（refCount）は不要。
