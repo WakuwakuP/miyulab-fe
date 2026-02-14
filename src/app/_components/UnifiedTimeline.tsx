@@ -23,7 +23,7 @@ import {
   resolveBackendUrls,
 } from 'util/timelineConfigValidator'
 import { getDefaultTimelineName } from 'util/timelineDisplayName'
-import { fetchMoreData } from 'util/timelineFetcher'
+import { fetchInitialData, fetchMoreData } from 'util/timelineFetcher'
 
 /**
  * 統合タイムラインコンポーネント
@@ -86,12 +86,65 @@ export const UnifiedTimeline = ({ config }: { config: TimelineConfigV2 }) => {
         if (!app) return 0
 
         // 該当 backend の最古投稿を取得
-        const oldestStatus = timeline
+        // まず現在のタイムライン表示から探す
+        let oldestStatus = timeline
           .filter((s) => apps[s.appIndex]?.backendUrl === url)
           .at(-1)
 
-        if (!oldestStatus) return 0
+        // 表示上に該当バックエンドの投稿がない場合は DB から直接取得
+        // （フィルタリングにより表示されていないが、実際には存在する可能性）
+        if (!oldestStatus) {
+          const { db } = await import('util/db/database')
+          const timelineType = config.type as 'home' | 'local' | 'public' | 'tag'
 
+          if (config.type === 'tag') {
+            // タグタイムラインの場合は該当タグの最古投稿を取得
+            const tags = config.tagConfig?.tags ?? []
+            for (const tag of tags) {
+              const oldest = await db.statuses
+                .where('belongingTags')
+                .equals(tag)
+                .and((s) => s.backendUrl === url)
+                .reverse()
+                .first()
+              if (oldest) {
+                oldestStatus = {
+                  ...oldest,
+                  appIndex: apps.findIndex((a) => a.backendUrl === url),
+                }
+                break
+              }
+            }
+          } else {
+            // 通常のタイムラインの場合
+            const oldest = await db.statuses
+              .where('[backendUrl+created_at_ms]')
+              .between([url, 0], [url, Date.now()])
+              .and((s) => s.timelineTypes.includes(timelineType))
+              .reverse()
+              .first()
+            if (oldest) {
+              oldestStatus = {
+                ...oldest,
+                appIndex: apps.findIndex((a) => a.backendUrl === url),
+              }
+            }
+          }
+        }
+
+        // それでも見つからない場合は初期データを取得
+        if (!oldestStatus) {
+          const client = GetClient(app)
+          try {
+            await fetchInitialData(client, config, url)
+            return 0 // 初期データ取得のため追加カウントは0
+          } catch (error) {
+            console.error(`Failed to fetch initial data for ${url}:`, error)
+            return 0
+          }
+        }
+
+        // 追加データを取得
         const client = GetClient(app)
         try {
           return await fetchMoreData(client, config, url, oldestStatus.id)

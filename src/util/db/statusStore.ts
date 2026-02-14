@@ -246,6 +246,14 @@ export async function updateStatusAction(
   })
 
   // このStatusをreblogとして持つ他のStatusも更新
+  //
+  // パフォーマンスノート:
+  // この処理は backendUrl の全 Status をスキャンして reblog.id をチェックするため、
+  // 大量の Status がある場合は比較的高コストになる可能性があります。
+  // もしこの処理が頻繁に発生してパフォーマンスボトルネックになる場合は、
+  // 以下の対策を検討してください：
+  // 1. reblog.id に対する複合インデックスを追加（例: '[backendUrl+reblog.id]'）
+  // 2. reblog 関係の逆マッピングテーブルを別途保持
   const relatedStatuses = await db.statuses
     .where('[backendUrl+created_at_ms]')
     .between([backendUrl, Dexie.minKey], [backendUrl, Dexie.maxKey])
