@@ -15,10 +15,14 @@ import {
   type WheelEventHandler,
 } from 'react'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
-import type { StatusAddAppIndex } from 'types/types'
-import { ArrayLengthControl } from 'util/ArrayLengthControl'
+import {
+  bulkUpsertStatuses,
+  handleDeleteEvent,
+  upsertStatus,
+} from 'util/db/statusStore'
 import { CENTER_INDEX } from 'util/environment'
 import { GetClient } from 'util/GetClient'
+import { useTimeline } from 'util/hooks/useTimeline'
 import { AppsContext } from 'util/provider/AppsProvider'
 import { SetTagsContext } from 'util/provider/ResourceProvider'
 
@@ -30,7 +34,9 @@ export const PublicTimeline = () => {
   const setTags = useContext(SetTagsContext)
   const setTagsEvent = useEffectEvent(setTags)
 
-  const [timeline, setTimeline] = useState<StatusAddAppIndex[]>([])
+  // IndexedDBからリアクティブに取得
+  // appIndex は useTimeline 内で backendUrl から都度算出される
+  const timeline = useTimeline('public')
 
   const [enableScrollToTop, setEnableScrollToTop] = useState(true)
   const [isScrolling, setIsScrolling] = useState(false)
@@ -39,54 +45,66 @@ export const PublicTimeline = () => {
     return CENTER_INDEX - timeline.length
   }, [timeline.length])
 
+  // Public用ストリーミング処理
+  // ※ このコンポーネントは publicStreaming() のみを担当する
   useEffect(() => {
     if (process.env.NODE_ENV === 'development' && refFirstRef.current) {
       refFirstRef.current = false
       return
     }
     if (apps.length <= 0) return
-    const client = GetClient(apps[0])
 
-    client.getPublicTimeline({ limit: 40, only_media: true }).then((res) => {
-      setTimeline(
-        res.data.map((status) => ({
-          ...status,
-          appIndex: 0,
-        })),
-      )
-    })
-    client.publicStreaming().then((stream) => {
-      stream.on('update', (status: Entity.Status) => {
+    const app = apps[0]
+    const client = GetClient(app)
+    const { backendUrl } = app
+
+    // 初期データ取得（メディア付きのみ: APIパラメータ only_media: true）
+    // appIndex は永続化しない
+    client
+      .getPublicTimeline({ limit: 40, only_media: true })
+      .then(async (res) => {
+        await bulkUpsertStatuses(res.data, backendUrl, 'public')
+      })
+
+    // ストリーミング接続
+    let stream: Awaited<ReturnType<typeof client.publicStreaming>> | null = null
+
+    client.publicStreaming().then((s) => {
+      stream = s
+
+      stream.on('update', async (status: Entity.Status) => {
         setTagsEvent((prev) =>
           Array.from(new Set([...prev, ...status.tags.map((tag) => tag.name)])),
         )
+        // メディア付きの投稿のみ保存（ストリームは全投稿が流れるためJS側でフィルタ）
         if (status.media_attachments.length > 0) {
-          setTimeline((prev) =>
-            ArrayLengthControl([{ ...status, appIndex: 0 }, ...prev]),
-          )
+          await upsertStatus(status, backendUrl, 'public')
         }
       })
+
       stream.on('connect', () => {
-        // eslint-disable-next-line no-console
         console.info('connected publicStreaming')
       })
 
-      stream.on('delete', (id: string) => {
-        setTimeline((prev) => prev.filter((status) => status.id !== id))
+      // deleteイベント: publicストリームからの受信なので 'public' のみ除外
+      stream.on('delete', async (id: string) => {
+        await handleDeleteEvent(backendUrl, id, 'public')
       })
 
       stream.on('error', (err: Error) => {
         console.error(err)
-
-        stream.stop()
+        stream?.stop()
         const timeout = setTimeout(() => {
-          stream.start()
-          // eslint-disable-next-line no-console
+          stream?.start()
           console.info('reconnected publicSocket')
           clearTimeout(timeout)
         }, 1000)
       })
     })
+
+    return () => {
+      stream?.stop()
+    }
   }, [apps])
 
   const onWheel = useCallback<WheelEventHandler<HTMLDivElement>>((e) => {
@@ -102,25 +120,21 @@ export const PublicTimeline = () => {
   }, [])
 
   const scrollToTop = useCallback(() => {
-    if (scrollerRef.current != null) {
-      scrollerRef.current.scrollToIndex({
-        behavior: 'smooth',
-        index: 0,
-      })
-    }
+    scrollerRef.current?.scrollToIndex({
+      behavior: 'smooth',
+      index: 0,
+    })
   }, [])
 
-  // 最新の投稿が追加されたときにスクロールする
   useEffect(() => {
-    void timeline.length // 明示的に依存があることを示す
+    void timeline.length
     if (enableScrollToTop) {
       timer.current = setTimeout(() => {
         scrollToTop()
       }, 50)
     }
     return () => {
-      if (timer.current == null) return
-      clearTimeout(timer.current)
+      if (timer.current != null) clearTimeout(timer.current)
     }
   }, [enableScrollToTop, timeline.length, scrollToTop])
 
@@ -128,9 +142,7 @@ export const PublicTimeline = () => {
     <Panel
       className="relative"
       name="Public"
-      onClickHeader={() => {
-        scrollToTop()
-      }}
+      onClickHeader={() => scrollToTop()}
     >
       {enableScrollToTop && <TimelineStreamIcon />}
       <Virtuoso

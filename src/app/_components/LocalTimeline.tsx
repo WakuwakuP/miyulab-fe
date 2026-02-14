@@ -15,10 +15,14 @@ import {
   type WheelEventHandler,
 } from 'react'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
-import type { StatusAddAppIndex } from 'types/types'
-import { ArrayLengthControl } from 'util/ArrayLengthControl'
+import {
+  bulkUpsertStatuses,
+  handleDeleteEvent,
+  upsertStatus,
+} from 'util/db/statusStore'
 import { CENTER_INDEX } from 'util/environment'
 import { GetClient } from 'util/GetClient'
+import { useTimeline } from 'util/hooks/useTimeline'
 import { AppsContext } from 'util/provider/AppsProvider'
 import { SetTagsContext } from 'util/provider/ResourceProvider'
 
@@ -29,7 +33,9 @@ export const LocalTimeline = () => {
   const apps = useContext(AppsContext)
   const setTags = useContext(SetTagsContext)
 
-  const [timeline, setTimeline] = useState<StatusAddAppIndex[]>([])
+  // IndexedDBからリアクティブに取得
+  // appIndex は useTimeline 内で backendUrl から都度算出される
+  const timeline = useTimeline('local')
 
   const [enableScrollToTop, setEnableScrollToTop] = useState(true)
   const [isScrolling, setIsScrolling] = useState(false)
@@ -38,66 +44,68 @@ export const LocalTimeline = () => {
     return CENTER_INDEX - timeline.length
   }, [timeline.length])
 
-  const onStreamUpdate = useEffectEvent((status: Entity.Status) => {
-    const statusesForHashtag = status.tags.map((tag) => tag.name)
-    setTags((prev) => [...prev, ...statusesForHashtag])
+  const setTagsEvent = useEffectEvent(setTags)
 
-    setTimeline((prev) =>
-      ArrayLengthControl([{ ...status, appIndex: 0 }, ...prev]),
-    )
-  })
-
-  const onStreamDelete = useEffectEvent((id: string) => {
-    setTimeline((prev) => prev.filter((status) => status.id !== id))
-  })
-
-  const onStreamError = useEffectEvent(
-    (stream: { stop: () => void; start: () => void }) => (err: Error) => {
-      console.error(err)
-
-      stream.stop()
-      const timeout = setTimeout(() => {
-        stream.start()
-        // eslint-disable-next-line no-console
-        console.info('reconnected localSocket')
-        clearTimeout(timeout)
-      }, 1000)
-    },
-  )
-
+  // Local用ストリーミング処理
+  // ※ このコンポーネントは localStreaming() のみを担当する
   useEffect(() => {
     if (apps.length <= 0) return
-
-    const client = GetClient(apps[0])
-
-    if (refFirstRef.current) {
+    if (process.env.NODE_ENV === 'development' && refFirstRef.current) {
       refFirstRef.current = false
-
-      client
-        .getLocalTimeline({ limit: 40 })
-        .then((res) => {
-          const statuses = res.data.map((status) => ({
-            ...status,
-            appIndex: 0,
-          }))
-          setTimeline(statuses)
-        })
-        .catch((error) => {
-          console.error('Failed to fetch local timeline:', error)
-        })
+      return
     }
 
-    client.localStreaming().then((stream) => {
-      stream.on('update', onStreamUpdate)
+    const app = apps[0]
+    const client = GetClient(app)
+    const { backendUrl } = app
+
+    // 初期データ取得（appIndex は永続化しない）
+    client
+      .getLocalTimeline({ limit: 40 })
+      .then(async (res) => {
+        await bulkUpsertStatuses(res.data, backendUrl, 'local')
+      })
+      .catch((error) => {
+        console.error('Failed to fetch local timeline:', error)
+      })
+
+    // ストリーミング接続
+    let stream: Awaited<ReturnType<typeof client.localStreaming>> | null = null
+
+    client.localStreaming().then((s) => {
+      stream = s
+
+      stream.on('update', async (status: Entity.Status) => {
+        setTagsEvent((prev) =>
+          Array.from(new Set([...prev, ...status.tags.map((tag) => tag.name)])),
+        )
+        // appIndex は永続化しない
+        await upsertStatus(status, backendUrl, 'local')
+      })
+
       stream.on('connect', () => {
-        // eslint-disable-next-line no-console
         console.info('connected localStreaming')
       })
 
-      stream.on('delete', onStreamDelete)
+      // deleteイベント: localストリームからの受信なので 'local' のみ除外
+      stream.on('delete', async (id: string) => {
+        await handleDeleteEvent(backendUrl, id, 'local')
+      })
 
-      stream.on('error', onStreamError(stream))
+      stream.on('error', (err: Error) => {
+        console.error(err)
+        stream?.stop()
+        const timeout = setTimeout(() => {
+          stream?.start()
+          console.info('reconnected localSocket')
+          clearTimeout(timeout)
+        }, 1000)
+      })
     })
+
+    return () => {
+      stream?.stop()
+    }
   }, [apps])
 
   const onWheel = useCallback<WheelEventHandler<HTMLDivElement>>((e) => {
@@ -113,19 +121,16 @@ export const LocalTimeline = () => {
   }, [])
 
   const scrollToTopIfNeeded = useEffectEvent(() => {
-    if (enableScrollToTop) {
-      if (!isScrolling) {
-        scrollerRef.current?.scrollToIndex({
-          behavior: 'smooth',
-          index: 0,
-        })
-      }
+    if (enableScrollToTop && !isScrolling) {
+      scrollerRef.current?.scrollToIndex({
+        behavior: 'smooth',
+        index: 0,
+      })
     }
   })
 
-  // 最新の投稿が追加されたときにスクロールする
   useEffect(() => {
-    void timeline // 明示的に依存があることを示す
+    void timeline
     scrollToTopIfNeeded()
   }, [timeline])
 
