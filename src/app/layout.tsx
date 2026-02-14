@@ -14,6 +14,7 @@ import { ReplyToProvider } from 'util/provider/ReplyToProvider'
 import { ResourceProvider } from 'util/provider/ResourceProvider'
 import { SettingProvider } from 'util/provider/SettingProvider'
 import { StatusStoreProvider } from 'util/provider/StatusStoreProvider'
+import { StreamingManagerProvider } from 'util/provider/StreamingManagerProvider'
 import { SuspenseProvider } from 'util/provider/SuspenseProvider'
 import { TimelineProvider } from 'util/provider/TimelineProvider'
 
@@ -45,13 +46,15 @@ export default function RootLayout({
                         <MediaModalProvider>
                           <PlayerProvider>
                             <StatusStoreProvider>
-                              <HomeTimelineProvider>
-                                <Toaster
-                                  position="bottom-left"
-                                  reverseOrder={false}
-                                />
-                                {children}
-                              </HomeTimelineProvider>
+                              <StreamingManagerProvider>
+                                <HomeTimelineProvider>
+                                  <Toaster
+                                    position="bottom-left"
+                                    reverseOrder={false}
+                                  />
+                                  {children}
+                                </HomeTimelineProvider>
+                              </StreamingManagerProvider>
                             </StatusStoreProvider>
                           </PlayerProvider>
                         </MediaModalProvider>

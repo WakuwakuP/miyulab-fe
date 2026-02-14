@@ -1,29 +1,18 @@
 'use client'
 
-import { HomeTimeline } from 'app/_components/HomeTimeline'
-import { LocalTimeline } from 'app/_components/LocalTimeline'
 import { NotificationTimeline } from 'app/_components/NotificationTimeline'
-import { PublicTimeline } from 'app/_components/PublicTimeline'
-import { TagTimeline } from 'app/_components/TagTimeline'
-import type { TimelineConfig } from 'types/types'
+import { UnifiedTimeline } from 'app/_components/UnifiedTimeline'
+import type { TimelineConfigV2 } from 'types/types'
 
-export const DynamicTimeline = ({ config }: { config: TimelineConfig }) => {
+export const DynamicTimeline = ({ config }: { config: TimelineConfigV2 }) => {
   if (!config.visible) {
     return null
   }
 
-  switch (config.type) {
-    case 'home':
-      return <HomeTimeline />
-    case 'local':
-      return <LocalTimeline />
-    case 'public':
-      return <PublicTimeline />
-    case 'notification':
-      return <NotificationTimeline />
-    case 'tag':
-      return <TagTimeline tag={config.tag ?? ''} />
-    default:
-      return null
+  // notification は専用コンポーネントを維持（表示形式が大きく異なるため）
+  if (config.type === 'notification') {
+    return <NotificationTimeline config={config} />
   }
+
+  return <UnifiedTimeline config={config} />
 }

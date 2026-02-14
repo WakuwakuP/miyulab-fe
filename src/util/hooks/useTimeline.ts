@@ -33,6 +33,8 @@ function resolveAppIndex(
  *
  * created_at_ms は数値型（UnixTime ms）のため、
  * ソート順が確実に時系列となる（文字列ソートの不確実性を排除）。
+ *
+ * @deprecated useFilteredTimeline を使用してください
  */
 export function useTimeline(timelineType: TimelineType): StatusAddAppIndex[] {
   const apps = useContext(AppsContext)
@@ -92,6 +94,8 @@ export function useTimeline(timelineType: TimelineType): StatusAddAppIndex[] {
  * onlyMedia オプションにより、メディア付き投稿のみに絞り込むことができる。
  * このフィルタはストレージ層ではなく表示層（この Hook）で行う。
  * データ保存時には全投稿を保存し、フィルタの切り替えに対応できるようにする。
+ *
+ * @deprecated useFilteredTagTimeline を使用してください
  */
 export function useTagTimeline(
   tag: string,

@@ -13,16 +13,41 @@ import {
   type WheelEventHandler,
 } from 'react'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
+import type { TimelineConfigV2 } from 'types/types'
 import { CENTER_INDEX } from 'util/environment'
-import { NotificationsContext } from 'util/provider/HomeTimelineProvider'
+import { useNotifications } from 'util/hooks/useNotifications'
+import { AppsContext } from 'util/provider/AppsProvider'
+import {
+  normalizeBackendFilter,
+  resolveBackendUrls,
+} from 'util/timelineConfigValidator'
 
-export const NotificationTimeline = () => {
-  const notifications = useContext(NotificationsContext)
+export const NotificationTimeline = ({
+  config,
+}: {
+  config: TimelineConfigV2
+}) => {
+  const apps = useContext(AppsContext)
+  const allNotifications = useNotifications()
   const scrollerRef = useRef<VirtuosoHandle>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const [enableScrollToTop, setEnableScrollToTop] = useState(true)
   const [isScrolling, setIsScrolling] = useState(false)
+
+  // backendFilter に基づいてフィルタ
+  const targetBackendUrls = useMemo(() => {
+    const filter = normalizeBackendFilter(config.backendFilter, apps)
+    return resolveBackendUrls(filter, apps)
+  }, [config.backendFilter, apps])
+
+  const notifications = useMemo(
+    () =>
+      allNotifications.filter((n) =>
+        targetBackendUrls.includes(apps[n.appIndex]?.backendUrl),
+      ),
+    [allNotifications, targetBackendUrls, apps],
+  )
 
   const internalIndex = useMemo(() => {
     return CENTER_INDEX - notifications.length
@@ -65,7 +90,7 @@ export const NotificationTimeline = () => {
   return (
     <Panel
       className="relative"
-      name="Notification"
+      name={config.label ?? 'Notification'}
       onClickHeader={() => {
         scrollToTop()
       }}
