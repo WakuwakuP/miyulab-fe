@@ -25,6 +25,7 @@ import {
   upsertStatus,
 } from 'util/db/statusStore'
 import { GetClient } from 'util/GetClient'
+import { getRetryDelay, MAX_RETRY_COUNT } from 'util/streaming/constants'
 import { AppsContext } from './AppsProvider'
 import { SetTagsContext, SetUsersContext } from './ResourceProvider'
 
@@ -172,14 +173,30 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
       await handleDeleteEvent(backendUrl, id, 'home')
     }
 
-    const onError = (stream: WebSocketInterface) => (err: Error) => {
-      console.error(err)
-      stream.stop()
-      const timeout = setTimeout(() => {
-        stream.start()
-        console.info('reconnected userSocket')
-        clearTimeout(timeout)
-      }, 1000)
+    const onError = (stream: WebSocketInterface) => {
+      let retryCount = 0
+      return (err: Error) => {
+        console.warn('userStreaming error:', err.message)
+        stream.stop()
+
+        retryCount += 1
+
+        if (retryCount > MAX_RETRY_COUNT) {
+          console.warn(
+            `userStreaming: max retry count (${MAX_RETRY_COUNT}) exceeded. Giving up.`,
+          )
+          return
+        }
+
+        const delay = getRetryDelay(retryCount - 1)
+        const timeout = setTimeout(() => {
+          stream.start()
+          console.info(
+            `reconnecting userStreaming (retry ${retryCount}/${MAX_RETRY_COUNT}, delay ${delay}ms)`,
+          )
+          clearTimeout(timeout)
+        }, delay)
+      }
     }
 
     const onConnect = () => {

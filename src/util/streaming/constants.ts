@@ -1,20 +1,21 @@
-/** リトライ待機時間（ミリ秒） */
+/** リトライ待機時間の初期値（ミリ秒） */
 export const RETRY_DELAY_MS = 1000
+
+/** エクスポネンシャルバックオフの最大待機時間（ミリ秒） */
+export const MAX_RETRY_DELAY_MS = 30000
 
 /**
  * 最大リトライ回数
  * 超過した場合は接続を諦め、ユーザーに手動リロードを促す。
- * null の場合は無制限リトライ（現行動作）。
- *
- * 注意: 現在の実装ではこの定数は参照されておらず、
- * 実際には無制限リトライとなっています。
- * 将来的にリトライ回数制限を実装する際は、
- * StreamingManagerProvider.tsx の scheduleRetry 関数を
- * 修正してリトライカウントをチェックする必要があります。
- *
- * 将来的にはエクスポネンシャルバックオフの導入も検討します。
  */
-export const MAX_RETRY_COUNT: null | number = null
+export const MAX_RETRY_COUNT = 10
+
+/**
+ * エクスポネンシャルバックオフによるリトライ待機時間を計算する。
+ * retryCount が増えるごとに待機時間が倍増し、MAX_RETRY_DELAY_MS で上限を設ける。
+ */
+export const getRetryDelay = (retryCount: number): number =>
+  Math.min(RETRY_DELAY_MS * 2 ** retryCount, MAX_RETRY_DELAY_MS)
 
 /**
  * ストリーム接続数の警告閾値
