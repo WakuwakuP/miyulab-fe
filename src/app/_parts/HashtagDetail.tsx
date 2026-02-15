@@ -28,6 +28,9 @@ export const HashtagDetail = ({ hashtag }: { hashtag?: string }) => {
           })),
         )
       })
+      .catch((error) => {
+        console.error('Failed to fetch tag timeline:', error)
+      })
   }, [apps, hashtag])
 
   const moreStatus = useCallback(() => {
@@ -49,6 +52,9 @@ export const HashtagDetail = ({ hashtag }: { hashtag?: string }) => {
             appIndex: 0,
           })),
         ])
+      })
+      .catch((error) => {
+        console.error('Failed to fetch more tag timeline:', error)
       })
   }, [apps, hashtag, statuses])
 

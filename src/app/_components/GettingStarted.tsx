@@ -115,20 +115,28 @@ export const GettingStarted = () => {
             }))
             setMaxIdCallback(res, appIndex)
           })
+          .catch((error) => {
+            console.error('Failed to fetch bookmarks:', error)
+          })
         break
       case 'dm':
         setTitle('Direct Message')
-        client.getConversationTimeline().then((res) => {
-          setConversations((prev) => ({
-            ...prev,
-            [appIndex]: res.data.map((conversation) => {
-              return {
-                ...conversation,
-                appIndex: appIndex,
-              }
-            }),
-          }))
-        })
+        client
+          .getConversationTimeline()
+          .then((res) => {
+            setConversations((prev) => ({
+              ...prev,
+              [appIndex]: res.data.map((conversation) => {
+                return {
+                  ...conversation,
+                  appIndex: appIndex,
+                }
+              }),
+            }))
+          })
+          .catch((error) => {
+            console.error('Failed to fetch conversations:', error)
+          })
         break
       default:
         setTitle('Getting Started')
@@ -159,6 +167,9 @@ export const GettingStarted = () => {
         }))
         setMaxIdCallback(res, appIndex)
       })
+      .catch((error) => {
+        console.error('Failed to fetch more bookmarks:', error)
+      })
   }, [appIndex, apps, maxId, setMaxIdCallback])
 
   const moreConversations = useCallback(() => {
@@ -182,6 +193,9 @@ export const GettingStarted = () => {
             }),
           ],
         }))
+      })
+      .catch((error) => {
+        console.error('Failed to fetch more conversations:', error)
       })
   }, [appIndex, apps, conversations])
 

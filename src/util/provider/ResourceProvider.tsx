@@ -95,13 +95,23 @@ export const ResourceProvider = ({
   useEffect(() => {
     if (apps.length <= 0) return
     const client = GetClient(apps[0])
-    client.getInstanceCustomEmojis().then((res) => {
-      setEmojis([...res.data, ...emojiList])
-    })
+    client
+      .getInstanceCustomEmojis()
+      .then((res) => {
+        setEmojis([...res.data, ...emojiList])
+      })
+      .catch((error) => {
+        console.error('Failed to fetch custom emojis:', error)
+      })
 
-    client.getInstance().then((res) => {
-      setInstance(res.data as PleromaInstance)
-    })
+    client
+      .getInstance()
+      .then((res) => {
+        setInstance(res.data as PleromaInstance)
+      })
+      .catch((error) => {
+        console.error('Failed to fetch instance:', error)
+      })
   }, [apps, emojiList])
 
   return (
