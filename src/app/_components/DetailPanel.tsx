@@ -29,33 +29,43 @@ export const DetailPanel = () => {
     if (detail.type === 'Status') {
       const client = GetClient(apps[detail.content.appIndex])
 
-      client.getStatusContext(detail.content.id).then((res) => {
-        setContext([
-          ...(res.data.ancestors.map((status) => ({
-            ...status,
-            appIndex: detail.content.appIndex,
-          })) ?? []),
-          detail.content,
-          ...(res.data.descendants.map((status) => ({
-            ...status,
-            appIndex: detail.content.appIndex,
-          })) ?? []),
-        ])
-      })
+      client
+        .getStatusContext(detail.content.id)
+        .then((res) => {
+          setContext([
+            ...(res.data.ancestors.map((status) => ({
+              ...status,
+              appIndex: detail.content.appIndex,
+            })) ?? []),
+            detail.content,
+            ...(res.data.descendants.map((status) => ({
+              ...status,
+              appIndex: detail.content.appIndex,
+            })) ?? []),
+          ])
+        })
+        .catch((error) => {
+          console.error('Failed to fetch status context:', error)
+        })
     }
 
     if (detail.type === 'SearchUser') {
       const client = GetClient(apps[detail.appIndex])
 
-      client.getAccount(detail.content).then((res) => {
-        setDetail({
-          content: {
-            ...res.data,
-            appIndex: detail.appIndex,
-          },
-          type: 'Account',
+      client
+        .getAccount(detail.content)
+        .then((res) => {
+          setDetail({
+            content: {
+              ...res.data,
+              appIndex: detail.appIndex,
+            },
+            type: 'Account',
+          })
         })
-      })
+        .catch((error) => {
+          console.error('Failed to fetch account:', error)
+        })
     }
   }, [apps, detail, detail.content, detail.type, setDetail])
 

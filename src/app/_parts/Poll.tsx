@@ -26,9 +26,14 @@ export const Poll = ({
     if (apps.length <= 0) return
     if (poll == null || selected.length === 0) return
     const client = GetClient(apps[poll.appIndex])
-    client.votePoll(poll.id, selected).then(() => {
-      setVoted(true)
-    })
+    client
+      .votePoll(poll.id, selected)
+      .then(() => {
+        setVoted(true)
+      })
+      .catch((error) => {
+        console.error('Failed to vote poll:', error)
+      })
   }
 
   return poll != null ? (

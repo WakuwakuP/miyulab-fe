@@ -80,14 +80,18 @@ export const MainPanel = () => {
 
     const client = GetClient(apps[0])
 
-    client.postStatus(content, {
-      in_reply_to_id: replyTo?.id ?? undefined,
-      language: 'ja',
-      media_ids:
-        attachments.length > 0 ? attachments.map((a) => a.id) : undefined,
-      spoiler_text: isCW ? spoilerText : undefined,
-      visibility: visibility,
-    })
+    client
+      .postStatus(content, {
+        in_reply_to_id: replyTo?.id ?? undefined,
+        language: 'ja',
+        media_ids:
+          attachments.length > 0 ? attachments.map((a) => a.id) : undefined,
+        spoiler_text: isCW ? spoilerText : undefined,
+        visibility: visibility,
+      })
+      .catch((error) => {
+        console.error('Failed to post status:', error)
+      })
 
     resetForm()
   }
@@ -101,9 +105,14 @@ export const MainPanel = () => {
     if (apps.length <= 0) return
     const client = GetClient(apps[0])
 
-    client.verifyAccountCredentials().then((res) => {
-      setAccount(res.data)
-    })
+    client
+      .verifyAccountCredentials()
+      .then((res) => {
+        setAccount(res.data)
+      })
+      .catch((error) => {
+        console.error('Failed to verify account credentials:', error)
+      })
   }, [apps])
 
   useEffect(() => {
