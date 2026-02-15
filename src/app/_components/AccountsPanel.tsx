@@ -132,15 +132,19 @@ export const AccountsPanel = () => {
 
   useEffect(() => {
     ;(async () => {
-      const data = apps.map((app) => {
-        const client = GetClient(app)
-        return client.verifyAccountCredentials().then((res) => {
-          return { account: res.data, app }
+      try {
+        const data = apps.map((app) => {
+          const client = GetClient(app)
+          return client.verifyAccountCredentials().then((res) => {
+            return { account: res.data, app }
+          })
         })
-      })
 
-      const res = await Promise.all(data)
-      setAccounts(res)
+        const res = await Promise.all(data)
+        setAccounts(res)
+      } catch (error) {
+        console.error('Failed to verify account credentials:', error)
+      }
     })()
   }, [apps])
 

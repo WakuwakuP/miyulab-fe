@@ -101,9 +101,14 @@ export const AccountDetail = ({ account }: { account: AccountAddAppIndex }) => {
 
     const client = GetClient(apps[account.appIndex])
 
-    client.getRelationship(account.id).then((res) => {
-      setRelationship(res.data)
-    })
+    client
+      .getRelationship(account.id)
+      .then((res) => {
+        setRelationship(res.data)
+      })
+      .catch((error) => {
+        console.error('Failed to fetch relationship:', error)
+      })
 
     client
       .getAccountStatuses(account.id, {
@@ -111,6 +116,10 @@ export const AccountDetail = ({ account }: { account: AccountAddAppIndex }) => {
       })
       .then((res) => {
         setToots(res.data)
+        setIsLoading(false)
+      })
+      .catch((error) => {
+        console.error('Failed to fetch account statuses:', error)
         setIsLoading(false)
       })
 
@@ -121,6 +130,9 @@ export const AccountDetail = ({ account }: { account: AccountAddAppIndex }) => {
       })
       .then((res) => {
         setMedia(res.data)
+      })
+      .catch((error) => {
+        console.error('Failed to fetch account media:', error)
       })
   }, [account.appIndex, account.id, apps])
 
@@ -137,6 +149,10 @@ export const AccountDetail = ({ account }: { account: AccountAddAppIndex }) => {
         setToots((prev) => [...prev, ...res.data])
         setIsLoading(false)
       })
+      .catch((error) => {
+        console.error('Failed to fetch more statuses:', error)
+        setIsLoading(false)
+      })
   }, [account.appIndex, account.id, apps, toots])
 
   const moreMedia = useCallback(() => {
@@ -150,6 +166,9 @@ export const AccountDetail = ({ account }: { account: AccountAddAppIndex }) => {
       })
       .then((res) => {
         setMedia((prev) => [...prev, ...res.data])
+      })
+      .catch((error) => {
+        console.error('Failed to fetch more media:', error)
       })
   }, [account.appIndex, account.id, apps, media])
 
@@ -180,12 +199,17 @@ export const AccountDetail = ({ account }: { account: AccountAddAppIndex }) => {
                     onClick={() => {
                       if (apps.length <= 0) return
                       const client = GetClient(apps[account.appIndex])
-                      client.unfollowAccount(account.id).then(() => {
-                        setRelationship({
-                          ...relationship,
-                          following: true,
+                      client
+                        .unfollowAccount(account.id)
+                        .then(() => {
+                          setRelationship({
+                            ...relationship,
+                            following: true,
+                          })
                         })
-                      })
+                        .catch((error) => {
+                          console.error('Failed to unfollow account:', error)
+                        })
                     }}
                     type="button"
                   >
@@ -197,12 +221,17 @@ export const AccountDetail = ({ account }: { account: AccountAddAppIndex }) => {
                     onClick={() => {
                       if (apps.length <= 0) return
                       const client = GetClient(apps[account.appIndex])
-                      client.followAccount(account.id).then(() => {
-                        setRelationship({
-                          ...relationship,
-                          following: true,
+                      client
+                        .followAccount(account.id)
+                        .then(() => {
+                          setRelationship({
+                            ...relationship,
+                            following: true,
+                          })
                         })
-                      })
+                        .catch((error) => {
+                          console.error('Failed to follow account:', error)
+                        })
                     }}
                     type="button"
                   >
@@ -217,12 +246,17 @@ export const AccountDetail = ({ account }: { account: AccountAddAppIndex }) => {
                     onClick={() => {
                       if (apps.length <= 0) return
                       const client = GetClient(apps[account.appIndex])
-                      client.unsubscribeAccount(account.id).then(() => {
-                        setRelationship({
-                          ...relationship,
-                          notifying: false,
+                      client
+                        .unsubscribeAccount(account.id)
+                        .then(() => {
+                          setRelationship({
+                            ...relationship,
+                            notifying: false,
+                          })
                         })
-                      })
+                        .catch((error) => {
+                          console.error('Failed to unsubscribe account:', error)
+                        })
                     }}
                     type="button"
                   >
@@ -236,12 +270,17 @@ export const AccountDetail = ({ account }: { account: AccountAddAppIndex }) => {
 
                       const client = GetClient(apps[account.appIndex])
 
-                      client.subscribeAccount(account.id).then(() => {
-                        setRelationship({
-                          ...relationship,
-                          notifying: true,
+                      client
+                        .subscribeAccount(account.id)
+                        .then(() => {
+                          setRelationship({
+                            ...relationship,
+                            notifying: true,
+                          })
                         })
-                      })
+                        .catch((error) => {
+                          console.error('Failed to subscribe account:', error)
+                        })
                     }}
                     type="button"
                   >

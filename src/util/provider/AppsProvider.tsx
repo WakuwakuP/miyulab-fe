@@ -130,6 +130,9 @@ export const AppsProvider = ({
                 .then((tokenData) => {
                   app.tokenData = tokenData
                 })
+                .catch((e) => {
+                  console.error('Failed to refresh token:', e)
+                })
               return
             }
           }

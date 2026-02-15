@@ -49,6 +49,9 @@ export const Dropzone = ({
             const Attachment = res.data as Entity.Attachment
             setAttachments((prev) => [...prev, Attachment])
           })
+          .catch((error) => {
+            console.error('Failed to upload media:', error)
+          })
           .finally(() => {
             setUploading((prev) => prev - 1)
           })
@@ -61,9 +64,14 @@ export const Dropzone = ({
             maxSizeMB: update_limit,
             maxWidthOrHeight: 2048,
             useWebWorker: true,
-          }).then((compressedFile) => {
-            uploadMedia(compressedFile)
           })
+            .then((compressedFile) => {
+              uploadMedia(compressedFile)
+            })
+            .catch((error) => {
+              console.error('Failed to compress image:', error)
+              setUploading((prev) => prev - 1)
+            })
         } else {
           uploadMedia(file)
         }
