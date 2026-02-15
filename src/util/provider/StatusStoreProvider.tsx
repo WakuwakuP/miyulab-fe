@@ -177,8 +177,12 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
 
     const onError = (stream: WebSocketInterface) => {
       return (err: Error) => {
-        console.warn('userStreaming error:', err.message)
-        stream.stop()
+        console.warn('userStreaming error:', err?.message ?? err)
+        try {
+          stream.stop()
+        } catch {
+          // already closed
+        }
 
         retryState.count += 1
 
@@ -191,7 +195,11 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
 
         const delay = getRetryDelay(retryState.count - 1)
         const timeout = setTimeout(() => {
-          stream.start()
+          try {
+            stream.start()
+          } catch {
+            // connection failed
+          }
           console.info(
             `reconnecting userStreaming (retry ${retryState.count}/${MAX_RETRY_COUNT}, delay ${delay}ms)`,
           )
@@ -296,7 +304,11 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
     return () => {
       stopCleanup()
       for (const stream of streamsRef.current.values()) {
-        stream.stop()
+        try {
+          stream.stop()
+        } catch {
+          // already closed
+        }
       }
       streamsRef.current.clear()
     }

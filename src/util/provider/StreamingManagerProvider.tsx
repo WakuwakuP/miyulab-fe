@@ -94,7 +94,11 @@ export const StreamingManagerProvider = ({
       const entry = registryRef.current.get(key)
       if (!entry) return // syncStreamsEvent により既に削除済み
 
-      stream.stop()
+      try {
+        stream.stop()
+      } catch {
+        // already closed
+      }
 
       entry.retryCount += 1
 
@@ -111,7 +115,12 @@ export const StreamingManagerProvider = ({
       entry.retryTimer = setTimeout(() => {
         // レジストリにまだ存在するか確認（syncStreamsEvent で削除されている可能性）
         if (registryRef.current.has(key)) {
-          stream.start()
+          try {
+            stream.start()
+          } catch {
+            updateStreamStatus(key, 'error')
+            return
+          }
           updateStreamStatus(key, 'connecting')
           console.info(
             `reconnecting ${key} (retry ${entry.retryCount}/${MAX_RETRY_COUNT}, delay ${delay}ms)`,
@@ -154,7 +163,7 @@ export const StreamingManagerProvider = ({
       })
 
       stream.on('error', (err: Error) => {
-        console.warn(`stream error ${key}:`, err.message)
+        console.warn(`stream error ${key}:`, err?.message ?? err)
         updateStreamStatus(key, 'error')
         scheduleRetry(key, stream)
       })
@@ -196,7 +205,11 @@ export const StreamingManagerProvider = ({
 
         // レジストリにまだ必要か確認（非同期処理中に syncStreamsEvent が発火している可能性）
         if (!registryRef.current.has(key)) {
-          stream.stop()
+          try {
+            stream.stop()
+          } catch {
+            // already closed
+          }
           return
         }
 
@@ -213,7 +226,7 @@ export const StreamingManagerProvider = ({
       } catch (error) {
         console.warn(
           `Failed to create stream ${key}:`,
-          (error as Error).message,
+          error instanceof Error ? error.message : error,
         )
         // エラー発生時もレジストリを更新（リトライ可能な状態にする）
         const entry = registryRef.current.get(key)
@@ -295,7 +308,11 @@ export const StreamingManagerProvider = ({
     for (const [key, entry] of registry) {
       if (!requiredKeys.has(key)) {
         if (entry.stream) {
-          entry.stream.stop()
+          try {
+            entry.stream.stop()
+          } catch {
+            // already closed
+          }
         }
         if (entry.retryTimer != null) {
           clearTimeout(entry.retryTimer)
@@ -341,7 +358,11 @@ export const StreamingManagerProvider = ({
     return () => {
       for (const [, entry] of registryRef.current) {
         if (entry.stream) {
-          entry.stream.stop()
+          try {
+            entry.stream.stop()
+          } catch {
+            // already closed
+          }
         }
         if (entry.retryTimer != null) {
           clearTimeout(entry.retryTimer)
