@@ -15,8 +15,9 @@ import type { TimelineType as DbTimelineType } from 'util/db/database'
 import { handleDeleteEvent, upsertStatus } from 'util/db/statusStore'
 import { GetClient } from 'util/GetClient'
 import {
+  getRetryDelay,
+  MAX_RETRY_COUNT,
   MAX_STREAM_COUNT_WARNING,
-  RETRY_DELAY_MS,
 } from 'util/streaming/constants'
 import { deriveRequiredStreams } from 'util/streaming/deriveRequiredStreams'
 import { parseStreamKey, type StreamType } from 'util/streaming/streamKey'
@@ -95,14 +96,28 @@ export const StreamingManagerProvider = ({
 
       stream.stop()
 
+      entry.retryCount += 1
+
+      if (entry.retryCount > MAX_RETRY_COUNT) {
+        console.warn(
+          `Stream ${key}: max retry count (${MAX_RETRY_COUNT}) exceeded. Giving up.`,
+        )
+        updateStreamStatus(key, 'error')
+        return
+      }
+
+      const delay = getRetryDelay(entry.retryCount - 1)
+
       entry.retryTimer = setTimeout(() => {
         // レジストリにまだ存在するか確認（syncStreamsEvent で削除されている可能性）
         if (registryRef.current.has(key)) {
           stream.start()
           updateStreamStatus(key, 'connecting')
-          console.info(`reconnected ${key}`)
+          console.info(
+            `reconnecting ${key} (retry ${entry.retryCount}/${MAX_RETRY_COUNT}, delay ${delay}ms)`,
+          )
         }
-      }, RETRY_DELAY_MS)
+      }, delay)
     },
     [updateStreamStatus],
   )
@@ -132,10 +147,14 @@ export const StreamingManagerProvider = ({
       stream.on('connect', () => {
         console.info(`connected ${key}`)
         updateStreamStatus(key, 'connected')
+        const entry = registryRef.current.get(key)
+        if (entry) {
+          entry.retryCount = 0
+        }
       })
 
       stream.on('error', (err: Error) => {
-        console.error(`stream error ${key}:`, err)
+        console.warn(`stream error ${key}:`, err.message)
         updateStreamStatus(key, 'error')
         scheduleRetry(key, stream)
       })
@@ -183,6 +202,7 @@ export const StreamingManagerProvider = ({
 
         // レジストリを更新
         registryRef.current.set(key, {
+          retryCount: 0,
           retryTimer: null,
           status: 'connecting',
           stream,
@@ -191,18 +211,33 @@ export const StreamingManagerProvider = ({
         // イベントハンドラ登録
         setupStreamHandlers(stream, key, type, backendUrl, options)
       } catch (error) {
-        console.error(`Failed to create stream ${key}:`, error)
+        console.warn(
+          `Failed to create stream ${key}:`,
+          (error as Error).message,
+        )
         // エラー発生時もレジストリを更新（リトライ可能な状態にする）
         const entry = registryRef.current.get(key)
         if (entry) {
           entry.status = 'error'
+          entry.retryCount += 1
+
+          if (entry.retryCount > MAX_RETRY_COUNT) {
+            console.warn(
+              `Stream ${key}: max retry count (${MAX_RETRY_COUNT}) exceeded during initialization. Giving up.`,
+            )
+            return
+          }
+
+          const delay = getRetryDelay(entry.retryCount - 1)
           // 初期化失敗時もリトライをスケジュール
           entry.retryTimer = setTimeout(() => {
             if (registryRef.current.has(key)) {
-              console.info(`Retrying initialization for ${key}`)
+              console.info(
+                `Retrying initialization for ${key} (retry ${entry.retryCount}/${MAX_RETRY_COUNT}, delay ${delay}ms)`,
+              )
               initializeStream(key, type, backendUrl, app, options)
             }
-          }, RETRY_DELAY_MS)
+          }, delay)
         }
       }
     },
@@ -277,6 +312,7 @@ export const StreamingManagerProvider = ({
         if (app) {
           // プレースホルダーエントリを先に登録（重複接続防止）
           registry.set(key, {
+            retryCount: 0,
             retryTimer: null,
             status: 'connecting',
             stream: null,
