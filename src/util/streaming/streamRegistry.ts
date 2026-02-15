@@ -1,6 +1,8 @@
 import type { WebSocketInterface } from 'megalodon'
 
 export type StreamEntry = {
+  /** 現在のリトライ回数 */
+  retryCount: number
   /** リトライタイマー ID */
   retryTimer: ReturnType<typeof setTimeout> | null
   /** 接続状態 */
