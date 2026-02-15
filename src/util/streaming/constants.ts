@@ -15,7 +15,7 @@ export const MAX_RETRY_COUNT = 10
  * retryCount が増えるごとに待機時間が倍増し、MAX_RETRY_DELAY_MS で上限を設ける。
  */
 export const getRetryDelay = (retryCount: number): number =>
-  Math.min(RETRY_DELAY_MS * 2 ** retryCount, MAX_RETRY_DELAY_MS)
+  Math.min(RETRY_DELAY_MS * 2 ** Math.min(retryCount, 15), MAX_RETRY_DELAY_MS)
 
 /**
  * ストリーム接続数の警告閾値

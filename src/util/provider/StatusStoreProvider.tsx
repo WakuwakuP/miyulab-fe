@@ -173,26 +173,27 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
       await handleDeleteEvent(backendUrl, id, 'home')
     }
 
+    const retryState = { count: 0 }
+
     const onError = (stream: WebSocketInterface) => {
-      let retryCount = 0
       return (err: Error) => {
         console.warn('userStreaming error:', err.message)
         stream.stop()
 
-        retryCount += 1
+        retryState.count += 1
 
-        if (retryCount > MAX_RETRY_COUNT) {
+        if (retryState.count > MAX_RETRY_COUNT) {
           console.warn(
             `userStreaming: max retry count (${MAX_RETRY_COUNT}) exceeded. Giving up.`,
           )
           return
         }
 
-        const delay = getRetryDelay(retryCount - 1)
+        const delay = getRetryDelay(retryState.count - 1)
         const timeout = setTimeout(() => {
           stream.start()
           console.info(
-            `reconnecting userStreaming (retry ${retryCount}/${MAX_RETRY_COUNT}, delay ${delay}ms)`,
+            `reconnecting userStreaming (retry ${retryState.count}/${MAX_RETRY_COUNT}, delay ${delay}ms)`,
           )
           clearTimeout(timeout)
         }, delay)
@@ -200,6 +201,7 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
     }
 
     const onConnect = () => {
+      retryState.count = 0
       console.info('connected userStreaming')
     }
 
