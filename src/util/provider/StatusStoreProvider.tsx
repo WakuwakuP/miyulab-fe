@@ -197,12 +197,12 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
         const timeout = setTimeout(() => {
           try {
             stream.start()
-          } catch {
-            // connection failed
+            console.info(
+              `reconnecting userStreaming (retry ${retryState.count}/${MAX_RETRY_COUNT}, delay ${delay}ms)`,
+            )
+          } catch (e) {
+            console.warn('Failed to restart userStreaming:', e)
           }
-          console.info(
-            `reconnecting userStreaming (retry ${retryState.count}/${MAX_RETRY_COUNT}, delay ${delay}ms)`,
-          )
           clearTimeout(timeout)
         }, delay)
       }

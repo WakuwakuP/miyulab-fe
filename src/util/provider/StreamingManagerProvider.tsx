@@ -117,7 +117,8 @@ export const StreamingManagerProvider = ({
         if (registryRef.current.has(key)) {
           try {
             stream.start()
-          } catch {
+          } catch (e) {
+            console.warn(`Failed to restart stream ${key}:`, e)
             updateStreamStatus(key, 'error')
             return
           }
