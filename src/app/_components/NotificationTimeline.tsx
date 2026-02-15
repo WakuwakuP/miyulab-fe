@@ -5,7 +5,6 @@ import { Panel } from 'app/_parts/Panel'
 import { TimelineStreamIcon } from 'app/_parts/TimelineIcon'
 import {
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useRef,
@@ -13,11 +12,16 @@ import {
   type WheelEventHandler,
 } from 'react'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
+import type { TimelineConfigV2 } from 'types/types'
 import { CENTER_INDEX } from 'util/environment'
-import { NotificationsContext } from 'util/provider/HomeTimelineProvider'
+import { useNotifications } from 'util/hooks/useNotifications'
 
-export const NotificationTimeline = () => {
-  const notifications = useContext(NotificationsContext)
+export const NotificationTimeline = ({
+  config,
+}: {
+  config: TimelineConfigV2
+}) => {
+  const notifications = useNotifications(config)
   const scrollerRef = useRef<VirtuosoHandle>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -65,7 +69,7 @@ export const NotificationTimeline = () => {
   return (
     <Panel
       className="relative"
-      name="Notification"
+      name={config.label ?? 'Notification'}
       onClickHeader={() => {
         scrollToTop()
       }}
