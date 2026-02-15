@@ -19,7 +19,7 @@ export function getDefaultTimelineName(config: TimelineConfigV2): string {
         if (tags.length === 0) return 'Tag'
         const mode = config.tagConfig?.mode ?? 'or'
         const separator = mode === 'and' ? ' & ' : ' | '
-        return `#${tags.join(separator)}`
+        return tags.map((tag) => `#${tag}`).join(separator)
       }
       default:
         return 'Unknown'
