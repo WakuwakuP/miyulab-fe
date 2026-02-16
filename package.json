@@ -29,7 +29,7 @@
     "rich-textarea": "0.27.0",
     "sharp": "0.34.5",
     "slick-carousel": "^1.8.1",
-    "tailwind-merge": "3.4.0",
+    "tailwind-merge": "3.4.1",
     "tailwindcss-animate": "^1.0.7",
     "unicode-emoji-json": "^0.8.0"
   },
