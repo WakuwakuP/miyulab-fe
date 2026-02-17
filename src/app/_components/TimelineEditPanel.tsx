@@ -88,16 +88,6 @@ export const TimelineEditPanel = ({
     }
   }, [builtQuery, showAdvanced])
 
-  const isTagTimeline = config.type === 'tag'
-  const isNotification = config.type === 'notification'
-
-  // バリデーション:
-  // - 通常UIモード: tag タイムラインは最低1つのタグが必須
-  // - Advanced Query モード: カスタムクエリがあればタグ無しも許可
-  const isValid =
-    !isTagTimeline ||
-    (showAdvanced ? Boolean(customQuery.trim()) : tagConfig.tags.length > 0)
-
   // Advanced Query トグル
   const handleToggleAdvanced = useCallback(() => {
     setShowAdvanced((prev) => {
@@ -143,8 +133,6 @@ export const TimelineEditPanel = ({
   }, [builtQuery, customQuery])
 
   const handleSave = useCallback(() => {
-    if (!isValid) return
-
     const updates: Partial<TimelineConfigV2> = {
       advancedQuery: showAdvanced,
       // Advanced Query モードでは backendFilter はクエリに含まれるため all にリセット
@@ -152,12 +140,9 @@ export const TimelineEditPanel = ({
       customQuery: customQuery.trim() || undefined,
       label: label.trim() || undefined,
       onlyMedia,
+      tagConfig,
       // v2 フィルタオプション
       ...filterUpdates,
-    }
-
-    if (isTagTimeline) {
-      updates.tagConfig = tagConfig
     }
 
     onSave(updates)
@@ -165,8 +150,6 @@ export const TimelineEditPanel = ({
     backendFilter,
     customQuery,
     filterUpdates,
-    isTagTimeline,
-    isValid,
     label,
     onSave,
     onlyMedia,
@@ -177,7 +160,9 @@ export const TimelineEditPanel = ({
   return (
     <div className="border border-gray-600 rounded-md p-3 mt-2 space-y-3 bg-gray-800">
       <h4 className="text-sm font-semibold text-gray-200">
-        Edit: {config.label || config.type}
+        Edit:{' '}
+        {config.label ||
+          config.type.charAt(0).toUpperCase() + config.type.slice(1)}
       </h4>
 
       {/* Label */}
@@ -199,32 +184,30 @@ export const TimelineEditPanel = ({
       </div>
 
       {/* Advanced Query トグルスイッチ（表示名の直下） */}
-      {!isNotification && (
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-gray-300">
-            Advanced Query
-          </span>
-          <button
-            aria-checked={showAdvanced}
-            aria-label="Advanced Query"
-            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out ${
-              showAdvanced ? 'bg-blue-600' : 'bg-gray-600'
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-gray-300">
+          Advanced Query
+        </span>
+        <button
+          aria-checked={showAdvanced}
+          aria-label="Advanced Query"
+          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out ${
+            showAdvanced ? 'bg-blue-600' : 'bg-gray-600'
+          }`}
+          onClick={handleToggleAdvanced}
+          role="switch"
+          type="button"
+        >
+          <span
+            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out mt-0.5 ${
+              showAdvanced ? 'translate-x-4 ml-0.5' : 'translate-x-0 ml-0.5'
             }`}
-            onClick={handleToggleAdvanced}
-            role="switch"
-            type="button"
-          >
-            <span
-              className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out mt-0.5 ${
-                showAdvanced ? 'translate-x-4 ml-0.5' : 'translate-x-0 ml-0.5'
-              }`}
-            />
-          </button>
-        </div>
-      )}
+          />
+        </button>
+      </div>
 
       {/* 通常UIモード: Backend Filter + Filters + Tag Config */}
-      {!isNotification && !showAdvanced && (
+      {!showAdvanced && (
         <>
           {/* Backend Filter */}
           <BackendFilterSelector
@@ -235,9 +218,7 @@ export const TimelineEditPanel = ({
           {/* v2 フィルタコントロール（Media, Visibility, Language, Toggle, Account） */}
           <FilterControls config={mergedConfig} onChange={handleFilterChange} />
 
-          {isTagTimeline && (
-            <TagConfigEditor onChange={setTagConfig} value={tagConfig} />
-          )}
+          <TagConfigEditor onChange={setTagConfig} value={tagConfig} />
 
           {/* Mute / Block コントロール */}
           <MuteBlockControls
@@ -250,7 +231,7 @@ export const TimelineEditPanel = ({
       )}
 
       {/* Advanced Query エディタ */}
-      {!isNotification && showAdvanced && (
+      {showAdvanced && (
         <QueryEditor onChange={setCustomQuery} value={customQuery} />
       )}
 
@@ -264,20 +245,13 @@ export const TimelineEditPanel = ({
           Cancel
         </button>
         <button
-          className="rounded bg-blue-600 px-3 py-1 text-sm hover:bg-blue-500 disabled:bg-gray-600 disabled:cursor-not-allowed"
-          disabled={!isValid}
+          className="rounded bg-blue-600 px-3 py-1 text-sm hover:bg-blue-500"
           onClick={handleSave}
           type="button"
         >
           Save
         </button>
       </div>
-
-      {!isValid && (
-        <p className="text-xs text-red-400">
-          Tag timeline requires at least one tag.
-        </p>
-      )}
 
       {/* MuteManager モーダル */}
       {showMuteManager && (

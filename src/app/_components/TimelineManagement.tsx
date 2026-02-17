@@ -421,7 +421,7 @@ export const TimelineManagement = () => {
     [timelineSettings.timelines, sortedTimelines, setTimelineSettings],
   )
 
-  const onAddCoreTimeline = useCallback(
+  const onAddTimeline = useCallback(
     (type: TimelineType) => {
       const maxOrder = Math.max(
         ...timelineSettings.timelines.map((t) => t.order),
@@ -542,7 +542,7 @@ export const TimelineManagement = () => {
                 <button
                   className="rounded bg-slate-600 px-2 py-1 text-xs hover:bg-slate-500"
                   key={type}
-                  onClick={() => onAddCoreTimeline(type)}
+                  onClick={() => onAddTimeline(type)}
                   type="button"
                 >
                   {type.charAt(0).toUpperCase() + type.slice(1)}

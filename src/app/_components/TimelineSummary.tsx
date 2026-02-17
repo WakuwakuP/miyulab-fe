@@ -45,7 +45,7 @@ export const TimelineSummary = ({ config }: TimelineSummaryProps) => {
   const mediaLabel = config.onlyMedia ? '📷 Media only' : null
 
   const tagLabel = useMemo(() => {
-    if (config.type !== 'tag' || !config.tagConfig) return null
+    if (!config.tagConfig) return null
 
     const { mode, tags } = config.tagConfig
     if (tags.length === 0) return null
@@ -56,7 +56,7 @@ export const TimelineSummary = ({ config }: TimelineSummaryProps) => {
       .join(mode === 'and' ? ' & ' : ' | ')
 
     return tags.length > 1 ? `${tagList} (${modeLabel})` : tagList
-  }, [config.type, config.tagConfig])
+  }, [config.tagConfig])
 
   const parts = [backendLabel, mediaLabel, tagLabel].filter(Boolean)
 

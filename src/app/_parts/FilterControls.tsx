@@ -4,6 +4,7 @@ import { useState } from 'react'
 import type {
   AccountFilter,
   AccountFilterMode,
+  NotificationType,
   TimelineConfigV2,
   VisibilityType,
 } from 'types/types'
@@ -353,6 +354,71 @@ function AccountFilterEditor({
 }
 
 // ========================================
+// Notification Type Filter
+// ========================================
+
+const NOTIFICATION_TYPE_OPTIONS: {
+  label: string
+  value: NotificationType
+}[] = [
+  { label: '👤 Follow', value: 'follow' },
+  { label: '👤❓ Follow Request', value: 'follow_request' },
+  { label: '💬 Mention', value: 'mention' },
+  { label: '🔁 Reblog', value: 'reblog' },
+  { label: '⭐ Favourite', value: 'favourite' },
+  { label: '😀 Reaction', value: 'reaction' },
+  { label: '📊 Poll Expired', value: 'poll_expired' },
+  { label: '📝 Status', value: 'status' },
+]
+
+function NotificationTypeFilter({
+  onChange,
+  value,
+}: {
+  onChange: (filter: NotificationType[] | undefined) => void
+  value: NotificationType[] | undefined
+}) {
+  // 未設定 = 全て選択状態
+  const allTypes = NOTIFICATION_TYPE_OPTIONS.map((o) => o.value)
+  const selected: NotificationType[] = value ?? allTypes
+
+  const toggle = (v: NotificationType) => {
+    const next = selected.includes(v)
+      ? selected.filter((s) => s !== v)
+      : [...selected, v]
+
+    // 全て選択 or 全て未選択 → undefined（フィルタなし）
+    if (next.length === 0 || next.length === allTypes.length) {
+      onChange(undefined)
+    } else {
+      onChange(next)
+    }
+  }
+
+  return (
+    <div className="space-y-1">
+      <span className="text-xs text-gray-400">Notification Types</span>
+      <div className="flex flex-wrap gap-2">
+        {NOTIFICATION_TYPE_OPTIONS.map((opt) => (
+          <label
+            className="flex items-center gap-1 text-xs cursor-pointer"
+            key={opt.value}
+          >
+            <input
+              checked={selected.includes(opt.value)}
+              className="cursor-pointer"
+              onChange={() => toggle(opt.value)}
+              type="checkbox"
+            />
+            {opt.label}
+          </label>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ========================================
 // Media Filter Controls (enhanced)
 // ========================================
 
@@ -488,6 +554,13 @@ function CollapsibleSection({
 export function FilterControls({ config, onChange }: FilterControlsProps) {
   return (
     <div className="space-y-3">
+      <CollapsibleSection defaultOpen={false} title="Notification Types">
+        <NotificationTypeFilter
+          onChange={(notificationFilter) => onChange({ notificationFilter })}
+          value={config.notificationFilter}
+        />
+      </CollapsibleSection>
+
       <CollapsibleSection defaultOpen={false} title="Media">
         <MediaFilterControls config={config} onChange={onChange} />
       </CollapsibleSection>
