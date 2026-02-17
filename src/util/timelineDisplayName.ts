@@ -89,6 +89,29 @@ export function getDefaultTimelineName(config: TimelineConfigV2): string {
     suffixes.push('🚫⚠️')
   }
 
+  // 通知タイプフィルタ
+  // NotificationType は 8 種類: follow, follow_request, mention, reblog, favourite, reaction, poll_expired, status
+  if (
+    config.notificationFilter != null &&
+    config.notificationFilter.length > 0 &&
+    config.notificationFilter.length < 8
+  ) {
+    const NOTIFICATION_EMOJI: Record<string, string> = {
+      favourite: '⭐',
+      follow: '👤',
+      follow_request: '👤❓',
+      mention: '💬',
+      poll_expired: '📊',
+      reaction: '😀',
+      reblog: '🔁',
+      status: '📝',
+    }
+    const emojis = config.notificationFilter
+      .map((t) => NOTIFICATION_EMOJI[t] ?? t)
+      .join('')
+    suffixes.push(emojis)
+  }
+
   // サフィックスの数を最大4つに制限（表示が長くなりすぎるのを防ぐ）
   const maxSuffixes = 4
   const truncatedSuffixes = suffixes.slice(0, maxSuffixes)
