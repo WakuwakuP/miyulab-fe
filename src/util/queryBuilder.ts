@@ -483,7 +483,7 @@ export function parseQueryToConfig(
   // timelineTypes の検出
   // ========================================
   const timelineTypeInMatch = query.match(
-    /stt\.timelineType\s+IN\s*\(\s*((?:'[^']+'\s*,?\s*)+)\)/i,
+    /stt\.timelineType\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
   )
   const timelineTypeSingleMatch = query.match(
     /stt\.timelineType\s*=\s*'([^']+)'/i,
