@@ -11,6 +11,13 @@ import type { TimelineType } from '../database'
 import { type DbHandle, getSqliteDb, notifyChange } from './connection'
 
 // ================================================================
+// 定数
+// ================================================================
+
+/** クエリの最大行数上限（LIMIT 未指定時のデフォルト） */
+const MAX_QUERY_LIMIT = 2147483647
+
+// ================================================================
 // ヘルパー
 // ================================================================
 
@@ -489,7 +496,7 @@ export async function getStatusesByTimelineType(
       ORDER BY s.created_at_ms DESC
       LIMIT ?;
     `
-    binds.push(timelineType, ...backendUrls, limit ?? 2147483647)
+    binds.push(timelineType, ...backendUrls, limit ?? MAX_QUERY_LIMIT)
   } else {
     sql = `
       SELECT s.compositeKey, s.backendUrl, s.created_at_ms, s.storedAt, s.json
@@ -500,7 +507,7 @@ export async function getStatusesByTimelineType(
       ORDER BY s.created_at_ms DESC
       LIMIT ?;
     `
-    binds.push(timelineType, limit ?? 2147483647)
+    binds.push(timelineType, limit ?? MAX_QUERY_LIMIT)
   }
 
   const rows = db.exec(sql, {
@@ -537,7 +544,7 @@ export async function getStatusesByTag(
       ORDER BY s.created_at_ms DESC
       LIMIT ?;
     `
-    binds.push(tag, ...backendUrls, limit ?? 2147483647)
+    binds.push(tag, ...backendUrls, limit ?? MAX_QUERY_LIMIT)
   } else {
     sql = `
       SELECT s.compositeKey, s.backendUrl, s.created_at_ms, s.storedAt, s.json
@@ -548,7 +555,7 @@ export async function getStatusesByTag(
       ORDER BY s.created_at_ms DESC
       LIMIT ?;
     `
-    binds.push(tag, limit ?? 2147483647)
+    binds.push(tag, limit ?? MAX_QUERY_LIMIT)
   }
 
   const rows = db.exec(sql, {
@@ -560,11 +567,47 @@ export async function getStatusesByTag(
 }
 
 /**
+ * ユーザー入力の WHERE 句をサニタイズする
+ *
+ * - LIMIT / OFFSET を除去（自動設定のため）
+ * - データ変更系ステートメントを拒否（DROP, DELETE, INSERT, UPDATE, ALTER, CREATE）
+ * - セミコロン（複文実行）を除去
+ *
+ * ※ この DB はクライアントサイド専用（ユーザー自身のデータのみ）のため、
+ *   悪意のある第三者による攻撃リスクは低い。しかし誤操作によるデータ破損を
+ *   防止するため、DML/DDL ステートメントは拒否する。
+ */
+function sanitizeWhereClause(input: string): string {
+  // データ変更・構造変更ステートメントを検出して拒否
+  const forbidden =
+    /\b(DROP|DELETE|INSERT|UPDATE|ALTER|CREATE|ATTACH|DETACH|PRAGMA|VACUUM|REINDEX)\b/i
+  if (forbidden.test(input)) {
+    throw new Error(
+      'Custom query contains forbidden SQL statements. Only SELECT-compatible WHERE clauses are allowed.',
+    )
+  }
+
+  return (
+    input
+      // セミコロンを除去（複文実行防止）
+      .replace(/;/g, '')
+      // LIMIT/OFFSET を除去（自動設定のため）
+      .replace(/\bLIMIT\b\s+\d+/gi, '')
+      .replace(/\bOFFSET\b\s+\d+/gi, '')
+      .trim()
+  )
+}
+
+/**
  * カスタム WHERE 句で Status を取得（advanced query 用）
  *
  * limit / offset はクエリ文字列を無視して自動設定する。
  * WHERE 句は statuses_timeline_types (stt), statuses_belonging_tags (sbt),
  * statuses (s) テーブルを参照できる。
+ *
+ * ※ この関数はクライアントサイド SQLite DB に対してのみ実行される。
+ *   DB にはユーザー自身のデータのみが格納されており、
+ *   第三者からの入力は含まれない。
  */
 export async function getStatusesByCustomQuery(
   whereClause: string,
@@ -575,11 +618,7 @@ export async function getStatusesByCustomQuery(
   const handle = await getSqliteDb()
   const { db } = handle
 
-  // ユーザー入力から LIMIT/OFFSET を除去（安全のため）
-  const sanitized = whereClause
-    .replace(/\bLIMIT\b\s+\d+/gi, '')
-    .replace(/\bOFFSET\b\s+\d+/gi, '')
-    .trim()
+  const sanitized = sanitizeWhereClause(whereClause)
 
   let backendFilter = ''
   const binds: (string | number)[] = []
@@ -603,7 +642,7 @@ export async function getStatusesByCustomQuery(
     LIMIT ?
     OFFSET ?;
   `
-  binds.push(limit ?? 2147483647, offset ?? 0)
+  binds.push(limit ?? MAX_QUERY_LIMIT, offset ?? 0)
 
   const rows = db.exec(sql, {
     bind: binds,

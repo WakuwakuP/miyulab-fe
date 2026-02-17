@@ -6,6 +6,9 @@ import type { Entity } from 'megalodon'
 import { getSqliteDb, notifyChange } from './connection'
 import { createCompositeKey } from './statusStore'
 
+/** クエリの最大行数上限 */
+const MAX_QUERY_LIMIT = 2147483647
+
 export interface SqliteStoredNotification extends Entity.Notification {
   compositeKey: string
   backendUrl: string
@@ -134,7 +137,7 @@ export async function getNotifications(
       ORDER BY created_at_ms DESC
       LIMIT ?;
     `
-    binds.push(...backendUrls, limit ?? 2147483647)
+    binds.push(...backendUrls, limit ?? MAX_QUERY_LIMIT)
   } else {
     sql = `
       SELECT compositeKey, backendUrl, created_at_ms, storedAt, json
@@ -142,7 +145,7 @@ export async function getNotifications(
       ORDER BY created_at_ms DESC
       LIMIT ?;
     `
-    binds.push(limit ?? 2147483647)
+    binds.push(limit ?? MAX_QUERY_LIMIT)
   }
 
   const rows = db.exec(sql, {

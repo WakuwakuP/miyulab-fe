@@ -54,8 +54,16 @@ export function useCustomQueryTimeline(
       const handle = await getSqliteDb()
       const { db } = handle
 
-      // ユーザー入力から LIMIT/OFFSET を除去
+      // サニタイズ: DML/DDL拒否, セミコロン除去, LIMIT/OFFSET除去
+      const forbidden =
+        /\b(DROP|DELETE|INSERT|UPDATE|ALTER|CREATE|ATTACH|DETACH|PRAGMA|VACUUM|REINDEX)\b/i
+      if (forbidden.test(customQuery)) {
+        console.error('Custom query contains forbidden SQL statements.')
+        setStatuses([])
+        return
+      }
       const sanitized = customQuery
+        .replace(/;/g, '')
         .replace(/\bLIMIT\b\s+\d+/gi, '')
         .replace(/\bOFFSET\b\s+\d+/gi, '')
         .trim()
