@@ -234,7 +234,7 @@ export const MainPanel = () => {
                   className="content p-2"
                   // biome-ignore lint/security/noDangerouslySetInnerHtml: TODO:
                   dangerouslySetInnerHTML={{
-                    __html: contentFormatted,
+                    __html: contentFormatted(),
                   }}
                 />
               </div>
