@@ -247,7 +247,7 @@ const AddTagTimelineDialog = ({
     const defaultQuery = buildQueryFromConfig(baseConfig)
     const newConfig: TimelineConfigV2 = {
       ...baseConfig,
-      advancedQuery: true,
+      advancedQuery: false,
       customQuery: defaultQuery || undefined,
     }
 
@@ -469,7 +469,7 @@ export const TimelineManagement = () => {
       const defaultQuery = buildQueryFromConfig(baseConfig)
       const newConfig: TimelineConfigV2 = {
         ...baseConfig,
-        advancedQuery: true,
+        advancedQuery: false,
         customQuery: defaultQuery || undefined,
       }
 
