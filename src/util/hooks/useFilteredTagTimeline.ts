@@ -58,9 +58,52 @@ export function useFilteredTagTimeline(
   const tagMode = tagConfig?.mode ?? 'or'
 
   // フィルタ条件を事前計算（useMemo で安定化）
+  const {
+    onlyMedia,
+    minMediaCount,
+    visibilityFilter,
+    languageFilter,
+    excludeReblogs,
+    excludeReplies,
+    excludeSpoiler,
+    excludeSensitive,
+    accountFilter,
+    applyMuteFilter,
+    applyInstanceBlock,
+  } = config
+
   const filterResult = useMemo(
-    () => buildFilterConditions(config, targetBackendUrls),
-    [config, targetBackendUrls],
+    () =>
+      buildFilterConditions(
+        {
+          accountFilter,
+          applyInstanceBlock,
+          applyMuteFilter,
+          excludeReblogs,
+          excludeReplies,
+          excludeSensitive,
+          excludeSpoiler,
+          languageFilter,
+          minMediaCount,
+          onlyMedia,
+          visibilityFilter,
+        } as TimelineConfigV2,
+        targetBackendUrls,
+      ),
+    [
+      onlyMedia,
+      minMediaCount,
+      visibilityFilter,
+      languageFilter,
+      excludeReblogs,
+      excludeReplies,
+      excludeSpoiler,
+      excludeSensitive,
+      accountFilter,
+      applyMuteFilter,
+      applyInstanceBlock,
+      targetBackendUrls,
+    ],
   )
   const filterConditions = filterResult.conditions
   const filterBinds = filterResult.binds

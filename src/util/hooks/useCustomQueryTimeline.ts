@@ -74,6 +74,13 @@ export function useCustomQueryTimeline(
         return
       }
 
+      // ? プレースホルダーのバインド競合を防止
+      if (sanitized.includes('?')) {
+        console.error('Custom query must not contain ? placeholders.')
+        setStatuses([])
+        return
+      }
+
       // onlyMedia フィルタを SQL 条件として追加
       let additionalConditions = ''
       const additionalBinds: (string | number)[] = []

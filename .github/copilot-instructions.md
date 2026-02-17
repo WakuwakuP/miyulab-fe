@@ -5,26 +5,25 @@
 Before creating any commit, please ensure the following checks pass:
 
 ### 1. Build Verification
+
 Always run and verify that the build succeeds:
+
 ```bash
 yarn build
 ```
 
-### 2. Lint Check
-Ensure code follows project standards:
-```bash
-yarn lint
-```
+### 2. Lint & Format Check
 
-### 3. Format Check
-Verify code formatting is correct:
+Ensure code follows project standards:
+
 ```bash
-yarn format
+yarn check
 ```
 
 ## Development Environment Setup
 
 This project uses:
+
 - **Package Manager**: Yarn (with corepack)
 - **Node.js Framework**: Next.js 16
 - **Language**: TypeScript
@@ -33,6 +32,7 @@ This project uses:
 ## Build Process
 
 The project build process includes:
+
 1. TypeScript compilation
 2. Next.js optimization
 3. Static asset processing
@@ -47,6 +47,7 @@ The project build process includes:
 ## Environment Variables
 
 When testing locally, ensure proper environment variables are set as documented in README.md:
+
 - `NEXT_PUBLIC_APP_URL`
 - `NEXT_PUBLIC_BACKEND_URL`
 - `NEXT_PUBLIC_BACKEND_SNS` (optional)

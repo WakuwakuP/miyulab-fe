@@ -195,9 +195,6 @@ function buildAccountCondition(
 }
 
 /**
- * TagConfig から SQL 条件を構築する
- */
-/**
  * バックエンドフィルタ条件を構築する
  *
  * v3: statuses_backends テーブル（エイリアス sb）経由で参照する。
@@ -225,6 +222,9 @@ function buildBackendFilterCondition(
   return null
 }
 
+/**
+ * TagConfig から SQL 条件を構築する
+ */
 function buildTagCondition(tagConfig: TagConfig): string {
   const { mode, tags } = tagConfig
 

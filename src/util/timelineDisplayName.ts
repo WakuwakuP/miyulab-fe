@@ -1,5 +1,13 @@
 import type { TimelineConfigV2 } from 'types/types'
 
+/** 公開範囲に対応する絵文字マッピング */
+const VISIBILITY_EMOJI: Record<string, string> = {
+  direct: '✉️',
+  private: '🔒',
+  public: '🌐',
+  unlisted: '🔓',
+}
+
 /**
  * TimelineConfigV2 からデフォルトの表示名を生成する
  *
@@ -50,14 +58,8 @@ export function getDefaultTimelineName(config: TimelineConfigV2): string {
     config.visibilityFilter.length > 0 &&
     config.visibilityFilter.length < 4
   ) {
-    const visibilityEmoji: Record<string, string> = {
-      direct: '✉️',
-      private: '🔒',
-      public: '🌐',
-      unlisted: '🔓',
-    }
     const emojis = config.visibilityFilter
-      .map((v) => visibilityEmoji[v] ?? v)
+      .map((v) => VISIBILITY_EMOJI[v] ?? v)
       .join('')
     suffixes.push(emojis)
   }
