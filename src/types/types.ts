@@ -117,6 +117,21 @@ export type TagConfig = {
   tags: string[]
 }
 
+/**
+ * 通知の種類
+ *
+ * Mastodon / Pleroma 互換の通知タイプ。
+ */
+export type NotificationType =
+  | 'follow'
+  | 'follow_request'
+  | 'mention'
+  | 'reblog'
+  | 'favourite'
+  | 'reaction'
+  | 'poll_expired'
+  | 'status'
+
 export type TimelineConfigV2 = {
   /** Advanced Query モードが有効か（トグル状態の永続化） */
   advancedQuery?: boolean
@@ -253,6 +268,17 @@ export type TimelineConfigV2 = {
    * @example { mode: 'exclude', accts: ['spam@example.com'] }
    */
   accountFilter?: AccountFilter
+
+  /**
+   * 通知タイプのフィルタ
+   *
+   * 未指定時はすべての通知タイプを表示する。
+   * 配列で指定した通知タイプのみを表示する。
+   * 主に type === 'notification' のタイムラインで使用される。
+   *
+   * @example ['follow', 'favourite', 'reblog'] // フォロー・お気に入り・ブーストのみ
+   */
+  notificationFilter?: NotificationType[]
 }
 
 export type TimelineSettingsV2 = {

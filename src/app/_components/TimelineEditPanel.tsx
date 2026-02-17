@@ -125,6 +125,8 @@ export const TimelineEditPanel = ({
             restoredUpdates.accountFilter = parsed.accountFilter
           if (parsed.minMediaCount !== undefined)
             restoredUpdates.minMediaCount = parsed.minMediaCount
+          if (parsed.notificationFilter !== undefined)
+            restoredUpdates.notificationFilter = parsed.notificationFilter
           setFilterUpdates((prev) => ({ ...prev, ...restoredUpdates }))
         }
       }

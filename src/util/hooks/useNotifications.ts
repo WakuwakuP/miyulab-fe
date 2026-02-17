@@ -57,15 +57,31 @@ export function useNotifications(
       const handle = await getSqliteDb()
       const { db } = handle
 
+      const conditions: string[] = []
+      const binds: (string | number)[] = []
+
+      // バックエンドフィルタ
       const placeholders = targetBackendUrls.map(() => '?').join(',')
+      conditions.push(`backendUrl IN (${placeholders})`)
+      binds.push(...targetBackendUrls)
+
+      // 通知タイプフィルタ
+      const notificationFilter = config?.notificationFilter
+      if (notificationFilter != null && notificationFilter.length > 0) {
+        const typePlaceholders = notificationFilter.map(() => '?').join(',')
+        conditions.push(`notification_type IN (${typePlaceholders})`)
+        binds.push(...notificationFilter)
+      }
+
+      const whereClause = conditions.join(' AND ')
       const sql = `
         SELECT compositeKey, backendUrl, created_at_ms, storedAt, json
         FROM notifications
-        WHERE backendUrl IN (${placeholders})
+        WHERE ${whereClause}
         ORDER BY created_at_ms DESC
         LIMIT ?;
       `
-      const binds: (string | number)[] = [...targetBackendUrls, MAX_LENGTH]
+      binds.push(MAX_LENGTH)
 
       const rows = db.exec(sql, {
         bind: binds,
@@ -88,7 +104,7 @@ export function useNotifications(
       console.error('useNotifications query error:', e)
       setNotifications([])
     }
-  }, [targetBackendUrls, config?.customQuery])
+  }, [targetBackendUrls, config?.customQuery, config?.notificationFilter])
 
   // 初回取得 + 変更通知で再取得
   useEffect(() => {

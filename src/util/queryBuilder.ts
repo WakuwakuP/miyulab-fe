@@ -1,6 +1,7 @@
 import type {
   AccountFilter,
   BackendFilter,
+  NotificationType,
   TagConfig,
   TimelineConfigV2,
   VisibilityType,
@@ -90,6 +91,14 @@ export function buildQueryFromConfig(config: TimelineConfigV2): string {
   const accountCondition = buildAccountCondition(config.accountFilter)
   if (accountCondition) {
     conditions.push(accountCondition)
+  }
+
+  // 通知タイプフィルタ
+  const notificationCondition = buildNotificationTypeCondition(
+    config.notificationFilter,
+  )
+  if (notificationCondition) {
+    conditions.push(notificationCondition)
   }
 
   // バックエンドフィルタ
@@ -192,6 +201,29 @@ function buildAccountCondition(
     return `s.account_acct IN (${escaped})`
   }
   return `s.account_acct NOT IN (${escaped})`
+}
+
+/**
+ * 通知タイプフィルタ条件を構築する
+ *
+ * 通知テーブルの notification_type カラムを使用して
+ * 指定された通知タイプのみを表示する IN 句を生成する。
+ *
+ * @example
+ * buildNotificationTypeCondition(['follow', 'favourite'])
+ * // → "n.notification_type IN ('follow','favourite')"
+ */
+function buildNotificationTypeCondition(
+  filter: NotificationType[] | undefined,
+): string | null {
+  if (filter == null || filter.length === 0) return null
+
+  // 全タイプが指定されている場合はフィルタ不要
+  // NotificationType は 8 種類: follow, follow_request, mention, reblog, favourite, reaction, poll_expired, status
+  if (filter.length >= 8) return null
+
+  const escaped = filter.map((t) => `'${escapeSqlString(t)}'`).join(',')
+  return `n.notification_type IN (${escaped})`
 }
 
 /**
@@ -506,6 +538,23 @@ export function parseQueryToConfig(
       .filter(Boolean)
     const mode = andTagMatch ? 'and' : 'or'
     result.tagConfig = { mode, tags }
+  }
+
+  // ========================================
+  // 通知タイプフィルタの検出
+  // ========================================
+  const notificationTypeMatch = query.match(
+    /n\.notification_type\s+IN\s*\(\s*([^)]+)\)/i,
+  )
+  if (notificationTypeMatch) {
+    const types = notificationTypeMatch[1]
+      .split(',')
+      .map((v) => v.trim().replace(/^'|'$/g, ''))
+      .filter(Boolean)
+    if (types.length > 0) {
+      result.notificationFilter =
+        types as TimelineConfigV2['notificationFilter']
+    }
   }
 
   return Object.keys(result).length > 0 ? result : null
