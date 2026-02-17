@@ -10,7 +10,7 @@ import {
   useEffectEvent,
   useRef,
 } from 'react'
-import type { App } from 'types/types'
+import type { App, TimelineConfigV2 } from 'types/types'
 import type { TimelineType as DbTimelineType } from 'util/db/database'
 import { handleDeleteEvent, upsertStatus } from 'util/db/sqlite/statusStore'
 import { GetClient } from 'util/GetClient'
@@ -248,23 +248,51 @@ export const StreamingManagerProvider = ({
   // 初期データ取得（ストリーム接続に伴う）
   // =============================================
   const fetchInitialDataForTimelines = useEffectEvent(() => {
+    // local / public は全 backendUrl に対してデフォルトで初期データを取得
+    const fetchedLocalPublic = new Set<string>()
+    for (const app of apps) {
+      const { backendUrl } = app
+      const client = GetClient(app)
+      for (const type of ['local', 'public'] as const) {
+        const key = `${type}|${backendUrl}`
+        if (!fetchedLocalPublic.has(key)) {
+          fetchedLocalPublic.add(key)
+          const config: TimelineConfigV2 = {
+            id: `__default_${type}`,
+            order: 0,
+            type,
+            visible: false,
+          }
+          fetchInitialData(client, config, backendUrl).catch((error) => {
+            console.error(
+              `Failed to fetch initial data for ${type} (${backendUrl}):`,
+              error,
+            )
+          })
+        }
+      }
+    }
+
+    // tag タイムラインの初期データ取得（tagConfig を持つ全設定が対象）
     for (const config of timelineSettings.timelines) {
-      // home は StatusStoreProvider が担当、notification は対象外
-      if (config.type === 'home' || config.type === 'notification') continue
+      if (!config.tagConfig || config.tagConfig.tags.length === 0) continue
 
       const filter = normalizeBackendFilter(config.backendFilter, apps)
       const targetUrls = resolveBackendUrls(filter, apps)
+
+      // tagConfig のデータ取得は常に tag タイプとして実行する
+      const tagConfig: TimelineConfigV2 = {
+        ...config,
+        type: 'tag',
+      }
 
       for (const url of targetUrls) {
         const app = apps.find((a) => a.backendUrl === url)
         if (!app) continue
 
         const client = GetClient(app)
-        fetchInitialData(client, config, url).catch((error) => {
-          console.error(
-            `Failed to fetch initial data for ${config.type} (${url}):`,
-            error,
-          )
+        fetchInitialData(client, tagConfig, url).catch((error) => {
+          console.error(`Failed to fetch initial data for tag (${url}):`, error)
         })
       }
     }

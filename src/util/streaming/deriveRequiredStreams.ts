@@ -12,9 +12,10 @@ import { createStreamKey } from './streamKey'
  *
  * - type === 'home': userStreaming は StatusStoreProvider 管理のため対象外
  * - type === 'notification': userStreaming に含まれるため対象外
- * - type === 'local': 各対象 backendUrl に対して localStreaming を要求
- * - type === 'public': 各対象 backendUrl に対して publicStreaming を要求
- * - type === 'tag': 各対象 backendUrl × 各タグに対して tagStreaming を要求
+ * - local / public: 全 backendUrl に対してデフォルトでストリーミング接続する
+ *   （タイムライン設定の有無に関わらず常時接続）
+ * - type === 'tag': 全タイムライン設定の tagConfig から
+ *   各対象 backendUrl × 各タグに対して tagStreaming を要求
  *
  * ## 可視性
  *
@@ -31,23 +32,22 @@ export function deriveRequiredStreams(
 ): Set<string> {
   const keys = new Set<string>()
 
+  // local / public は全 backendUrl に対してデフォルトでストリーミング接続
+  for (const app of apps) {
+    keys.add(createStreamKey('local', app.backendUrl))
+    keys.add(createStreamKey('public', app.backendUrl))
+  }
+
+  // tag: 全タイムライン設定の tagConfig からストリームを作成
   for (const config of timelines) {
-    // home / notification は userStreaming（StatusStoreProvider）で管理
-    if (config.type === 'home' || config.type === 'notification') {
-      continue
-    }
+    if (config.tagConfig && config.tagConfig.tags.length > 0) {
+      const filter = normalizeBackendFilter(config.backendFilter, apps)
+      const backendUrls = resolveBackendUrls(filter, apps)
 
-    const filter = normalizeBackendFilter(config.backendFilter, apps)
-    const backendUrls = resolveBackendUrls(filter, apps)
-
-    for (const url of backendUrls) {
-      if (config.type === 'tag' && config.tagConfig) {
-        // tag: 各タグに対して個別のストリームを要求
+      for (const url of backendUrls) {
         for (const tag of config.tagConfig.tags) {
           keys.add(createStreamKey('tag', url, tag))
         }
-      } else if (config.type === 'local' || config.type === 'public') {
-        keys.add(createStreamKey(config.type, url))
       }
     }
   }
