@@ -9,7 +9,10 @@ import {
   useRef,
   useState,
 } from 'react'
-import { QUERY_COMPLETIONS } from 'util/db/sqlite/statusStore'
+import {
+  QUERY_COMPLETIONS,
+  validateCustomQuery,
+} from 'util/db/sqlite/statusStore'
 
 type QueryEditorProps = {
   onChange: (value: string) => void
@@ -21,13 +24,17 @@ type QueryEditorProps = {
  *
  * テーブルエイリアス (s., stt., sbt.) を入力すると
  * カラム名の補完候補を表示する。
+ * `$.` を入力すると json_extract パスの補完候補を表示する。
  * SQL キーワードの補完も提供する。
  */
 export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [showSuggestions, setShowSuggestions] = useState(false)
+  const [validationError, setValidationError] = useState<string | null>(null)
+  const [isValidating, setIsValidating] = useState(false)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const validationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // 全ての補完候補を事前に構築
   const allCompletions = useMemo(() => {
@@ -50,10 +57,51 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
     return items
   }, [])
 
+  // クエリ変更時にバリデーション（デバウンス）
+  useEffect(() => {
+    if (validationTimerRef.current) {
+      clearTimeout(validationTimerRef.current)
+    }
+
+    if (!value.trim()) {
+      setValidationError(null)
+      return
+    }
+
+    validationTimerRef.current = setTimeout(async () => {
+      setIsValidating(true)
+      const error = await validateCustomQuery(value)
+      setValidationError(error)
+      setIsValidating(false)
+    }, 500)
+
+    return () => {
+      if (validationTimerRef.current) {
+        clearTimeout(validationTimerRef.current)
+      }
+    }
+  }, [value])
+
   const updateSuggestions = useCallback(
     (text: string, cursorPos: number) => {
       // カーソル位置の直前のワードを取得
       const beforeCursor = text.slice(0, cursorPos)
+
+      // `$.` パス補完のチェック（json_extract 内の `'$.` に続くパス）
+      const jsonPathMatch = beforeCursor.match(/'\$\.[\w.]*$/)
+      if (jsonPathMatch) {
+        const currentPath = jsonPathMatch[0].slice(1) // 先頭の `'` を除去
+        const filtered = QUERY_COMPLETIONS.jsonPaths.filter((item) =>
+          item.toLowerCase().startsWith(currentPath.toLowerCase()),
+        )
+        if (filtered.length > 0) {
+          setSuggestions(filtered.slice(0, 8))
+          setSelectedIndex(0)
+          setShowSuggestions(true)
+          return
+        }
+      }
+
       const match = beforeCursor.match(/[\w.]*$/)
       const currentWord = match ? match[0] : ''
 
@@ -90,7 +138,24 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
       const beforeCursor = text.slice(0, cursorPos)
       const afterCursor = text.slice(cursorPos)
 
-      // 現在のワードを置換
+      // `$.` パス補完の場合
+      const jsonPathMatch = beforeCursor.match(/'\$\.[\w.]*$/)
+      if (jsonPathMatch) {
+        const matchStart = beforeCursor.length - jsonPathMatch[0].length + 1 // `'` の次
+        const newBeforeCursor = beforeCursor.slice(0, matchStart)
+        const newValue = `${newBeforeCursor}${suggestion}${afterCursor}`
+        onChange(newValue)
+        setShowSuggestions(false)
+
+        const newPos = newBeforeCursor.length + suggestion.length
+        requestAnimationFrame(() => {
+          textarea.setSelectionRange(newPos, newPos)
+          textarea.focus()
+        })
+        return
+      }
+
+      // 通常の補完
       const match = beforeCursor.match(/[\w.]*$/)
       const currentWordLen = match ? match[0].length : 0
       const newBeforeCursor = beforeCursor.slice(
@@ -172,12 +237,15 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
 
   return (
     <div className="space-y-1">
-      <span className="text-xs font-semibold text-gray-300">
-        Advanced Query (SQL WHERE clause)
-      </span>
       <div className="relative">
         <textarea
-          className="w-full rounded bg-gray-700 px-2 py-1 text-sm text-white font-mono resize-y min-h-[60px]"
+          className={`w-full rounded bg-gray-700 px-2 py-1 text-sm text-white font-mono resize-y min-h-[60px] ${
+            validationError
+              ? 'border border-red-500'
+              : value.trim() && !isValidating
+                ? 'border border-green-600'
+                : ''
+          }`}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
           placeholder="e.g. stt.timelineType = 'home' AND sbt.tag = 'photo'"
@@ -207,6 +275,16 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
           </div>
         )}
       </div>
+
+      {/* バリデーション結果 */}
+      {isValidating && <p className="text-xs text-gray-500">チェック中...</p>}
+      {validationError && (
+        <p className="text-xs text-red-400">⚠ {validationError}</p>
+      )}
+      {value.trim() && !isValidating && !validationError && (
+        <p className="text-xs text-green-500">✓ クエリに問題はありません</p>
+      )}
+
       <p className="text-xs text-gray-500">
         Available tables: <code className="text-gray-400">s</code> (statuses),{' '}
         <code className="text-gray-400">stt</code> (timeline types),{' '}
@@ -218,16 +296,17 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
           <summary className="cursor-pointer hover:text-gray-400">
             Examples
           </summary>
-          <ul className="mt-1 space-y-0.5 pl-2">
+          <ul className="mt-1 space-y-1 pl-2">
             {QUERY_COMPLETIONS.examples.map((example) => (
-              <li key={example}>
+              <li key={example.query}>
                 <button
                   className="text-left font-mono text-gray-400 hover:text-white"
-                  onClick={() => onChange(example)}
+                  onClick={() => onChange(example.query)}
                   type="button"
                 >
-                  {example}
+                  {example.query}
                 </button>
+                <p className="text-gray-500 ml-2">{example.description}</p>
               </li>
             ))}
           </ul>

@@ -27,7 +27,10 @@ export const TimelineEditPanel = ({
   const [tagConfig, setTagConfig] = useState<TagConfig>(
     config.tagConfig ?? { mode: 'or', tags: [] },
   )
-  const [showAdvanced, setShowAdvanced] = useState(false)
+  // Advanced Query モードの永続化: config から初期値を復元
+  const [showAdvanced, setShowAdvanced] = useState(
+    config.advancedQuery ?? false,
+  )
 
   // UI 設定から構築されたクエリ
   const builtQuery = useMemo(
@@ -82,6 +85,7 @@ export const TimelineEditPanel = ({
     if (!isValid) return
 
     const updates: Partial<TimelineConfigV2> = {
+      advancedQuery: showAdvanced,
       backendFilter,
       customQuery: customQuery.trim() || undefined,
       label: label.trim() || undefined,
@@ -101,6 +105,7 @@ export const TimelineEditPanel = ({
     label,
     onSave,
     onlyMedia,
+    showAdvanced,
     tagConfig,
   ])
 
@@ -128,6 +133,30 @@ export const TimelineEditPanel = ({
         />
       </div>
 
+      {/* Advanced Query トグルスイッチ（表示名の直下） */}
+      {!isNotification && (
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-semibold text-gray-300">
+            Advanced Query
+          </span>
+          <button
+            aria-checked={showAdvanced}
+            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out ${
+              showAdvanced ? 'bg-blue-600' : 'bg-gray-600'
+            }`}
+            onClick={handleToggleAdvanced}
+            role="switch"
+            type="button"
+          >
+            <span
+              className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out mt-0.5 ${
+                showAdvanced ? 'translate-x-4 ml-0.5' : 'translate-x-0 ml-0.5'
+              }`}
+            />
+          </button>
+        </div>
+      )}
+
       {/* Backend Filter */}
       <BackendFilterSelector
         onChange={setBackendFilter}
@@ -145,24 +174,9 @@ export const TimelineEditPanel = ({
         </>
       )}
 
-      {/* Advanced Query トグル */}
-      {!isNotification && (
-        <div className="space-y-1">
-          <label className="flex items-center space-x-2 cursor-pointer text-sm">
-            <input
-              checked={showAdvanced}
-              className="cursor-pointer"
-              onChange={handleToggleAdvanced}
-              type="checkbox"
-            />
-            <span className="text-xs font-semibold text-gray-300">
-              Advanced Query
-            </span>
-          </label>
-          {showAdvanced && (
-            <QueryEditor onChange={setCustomQuery} value={customQuery} />
-          )}
-        </div>
+      {/* Advanced Query エディタ */}
+      {!isNotification && showAdvanced && (
+        <QueryEditor onChange={setCustomQuery} value={customQuery} />
       )}
 
       {/* Actions */}

@@ -85,6 +85,8 @@ export type TagConfig = {
 }
 
 export type TimelineConfigV2 = {
+  /** Advanced Query モードが有効か（トグル状態の永続化） */
+  advancedQuery?: boolean
   /** バックエンドフィルタ（未指定時は 'all' として扱う） */
   backendFilter?: BackendFilter
   /**

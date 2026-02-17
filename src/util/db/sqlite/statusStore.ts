@@ -663,12 +663,61 @@ export const QUERY_COMPLETIONS = {
     stt: ['compositeKey', 'timelineType'],
   },
   examples: [
-    "stt.timelineType = 'home'",
-    "sbt.tag = 'photo'",
-    "sbt.tag IN ('photo', 'art')",
-    "stt.timelineType = 'local' AND sbt.tag = 'music'",
-    "json_extract(s.json, '$.account.acct') = 'user@example.com'",
-    "json_extract(s.json, '$.media_attachments') != '[]'",
+    {
+      description: 'ホームタイムラインを取得する',
+      query: "stt.timelineType = 'home'",
+    },
+    {
+      description: '指定タグの投稿を取得する',
+      query: "sbt.tag = 'photo'",
+    },
+    {
+      description: '複数タグのいずれかを含む投稿を取得する',
+      query: "sbt.tag IN ('photo', 'art')",
+    },
+    {
+      description: 'ローカルタイムラインで特定タグの投稿を取得する',
+      query: "stt.timelineType = 'local' AND sbt.tag = 'music'",
+    },
+    {
+      description: '特定ユーザーの投稿を取得する',
+      query: "json_extract(s.json, '$.account.acct') = 'user@example.com'",
+    },
+    {
+      description: '添付メディアが存在する投稿を取得する',
+      query: "json_extract(s.json, '$.media_attachments') != '[]'",
+    },
+    {
+      description: 'ブーストされた投稿を取得する',
+      query: "json_extract(s.json, '$.reblog') IS NOT NULL",
+    },
+    {
+      description: 'CW（Content Warning）付きの投稿を取得する',
+      query: "json_extract(s.json, '$.spoiler_text') != ''",
+    },
+  ],
+  /** json_extract の `$.` パス補完候補 */
+  jsonPaths: [
+    '$.id',
+    '$.content',
+    '$.account.acct',
+    '$.account.display_name',
+    '$.account.username',
+    '$.account.url',
+    '$.media_attachments',
+    '$.reblog',
+    '$.spoiler_text',
+    '$.visibility',
+    '$.language',
+    '$.created_at',
+    '$.favourites_count',
+    '$.reblogs_count',
+    '$.replies_count',
+    '$.sensitive',
+    '$.tags',
+    '$.mentions',
+    '$.url',
+    '$.in_reply_to_id',
   ],
   keywords: [
     'SELECT',
@@ -682,6 +731,57 @@ export const QUERY_COMPLETIONS = {
     'BETWEEN',
     'IS',
     'NULL',
+    'IS NOT NULL',
     'json_extract',
   ],
 } as const
+
+/**
+ * クエリの構文チェック
+ *
+ * EXPLAIN を使ってクエリの有効性を検証する。
+ * エラーがあればメッセージを返し、問題なければ null を返す。
+ */
+export async function validateCustomQuery(
+  whereClause: string,
+): Promise<string | null> {
+  if (!whereClause.trim()) return null
+
+  // DML/DDL チェック
+  const forbidden =
+    /\b(DROP|DELETE|INSERT|UPDATE|ALTER|CREATE|ATTACH|DETACH|PRAGMA|VACUUM|REINDEX)\b/i
+  if (forbidden.test(whereClause)) {
+    return 'クエリに禁止されたSQL文が含まれています。WHERE句のみ使用可能です。'
+  }
+
+  const sanitized = whereClause
+    .replace(/;/g, '')
+    .replace(/\bLIMIT\b\s+\d+/gi, '')
+    .replace(/\bOFFSET\b\s+\d+/gi, '')
+    .trim()
+
+  if (!sanitized) return null
+
+  try {
+    const handle = await getSqliteDb()
+    const { db } = handle
+
+    // EXPLAIN でクエリの構文チェック
+    const sql = `
+      EXPLAIN
+      SELECT DISTINCT s.compositeKey
+      FROM statuses s
+      LEFT JOIN statuses_timeline_types stt
+        ON s.compositeKey = stt.compositeKey
+      LEFT JOIN statuses_belonging_tags sbt
+        ON s.compositeKey = sbt.compositeKey
+      WHERE (${sanitized})
+      LIMIT 1;
+    `
+    db.exec(sql)
+    return null
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e)
+    return `クエリエラー: ${message}`
+  }
+}
