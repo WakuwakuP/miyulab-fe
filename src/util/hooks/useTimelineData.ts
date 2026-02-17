@@ -5,6 +5,7 @@ import type {
   StatusAddAppIndex,
   TimelineConfigV2,
 } from 'types/types'
+import { useCustomQueryTimeline } from 'util/hooks/useCustomQueryTimeline'
 import { useFilteredTagTimeline } from 'util/hooks/useFilteredTagTimeline'
 import { useFilteredTimeline } from 'util/hooks/useFilteredTimeline'
 import { useNotifications } from 'util/hooks/useNotifications'
@@ -12,6 +13,7 @@ import { useNotifications } from 'util/hooks/useNotifications'
 /**
  * TimelineConfigV2 に基づいて適切なデータ取得 Hook を選択するファサード
  *
+ * - customQuery が設定されている場合 → useCustomQueryTimeline
  * - type === 'tag' → useFilteredTagTimeline
  * - type === 'home' | 'local' | 'public' → useFilteredTimeline
  * - type === 'notification' → useNotifications (既存)
@@ -30,6 +32,12 @@ export function useTimelineData(
   const filteredTimeline = useFilteredTimeline(config)
   const filteredTagTimeline = useFilteredTagTimeline(config)
   const notifications = useNotifications(config)
+  const customQueryTimeline = useCustomQueryTimeline(config)
+
+  // customQuery が設定されている場合は優先して使用
+  if (config.customQuery?.trim()) {
+    return customQueryTimeline
+  }
 
   switch (config.type) {
     case 'home':

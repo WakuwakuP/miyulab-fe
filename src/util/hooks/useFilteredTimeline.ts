@@ -1,10 +1,10 @@
 'use client'
 
-import Dexie from 'dexie'
-import { useLiveQuery } from 'dexie-react-hooks'
-import { useContext, useMemo } from 'react'
+import { useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { StatusAddAppIndex, TimelineConfigV2 } from 'types/types'
-import { type TimelineType as DbTimelineType, db } from 'util/db/database'
+import type { TimelineType as DbTimelineType } from 'util/db/database'
+import { getSqliteDb, subscribe } from 'util/db/sqlite/connection'
+import type { SqliteStoredStatus } from 'util/db/sqlite/statusStore'
 import { MAX_LENGTH } from 'util/environment'
 import { AppsContext } from 'util/provider/AppsProvider'
 import {
@@ -31,23 +31,24 @@ function resolveAppIndex(
  * TimelineConfigV2 に基づいてフィルタ済みの Status 配列を返す
  *
  * 対応する type:
- * - 'home' | 'local' | 'public': timelineTypes インデックスを使用
+ * - 'home' | 'local' | 'public': SQLite JOIN クエリを使用
  * - 'tag': このHookでは扱わない（useFilteredTagTimeline に委譲）
  * - 'notification': このHookでは扱わない
  *
  * ## クエリ戦略
  *
  * backendFilter.mode に応じてクエリ対象の backendUrl を決定し、
- * 複合インデックス [backendUrl+created_at_ms] を活用して
+ * statuses_timeline_types テーブルとの JOIN で
  * DB 側でソート・フィルタを行う。
  *
- * onlyMedia フィルタは DB インデックスに含まれないため、
+ * onlyMedia フィルタは DB カラムに含まれないため、
  * JS 側で適用する（表示層フィルタリング）。
  */
 export function useFilteredTimeline(
   config: TimelineConfigV2,
 ): StatusAddAppIndex[] {
   const apps = useContext(AppsContext)
+  const [statuses, setStatuses] = useState<SqliteStoredStatus[]>([])
 
   // 1. BackendFilter から対象 backendUrls を解決
   const targetBackendUrls = useMemo(() => {
@@ -55,49 +56,76 @@ export function useFilteredTimeline(
     return resolveBackendUrls(filter, apps)
   }, [config.backendFilter, apps])
 
-  // 依存配列用に安定したプリミティブを生成
-  const backendUrlsKey = targetBackendUrls.join(',')
+  // 2. SQLite からデータ取得
+  const fetchData = useCallback(async () => {
+    // tag / notification はそれぞれ専用 Hook で処理するためスキップ
+    if (config.type === 'tag' || config.type === 'notification') {
+      setStatuses([])
+      return
+    }
+    if (targetBackendUrls.length === 0) {
+      setStatuses([])
+      return
+    }
 
-  // 2. IndexedDB からリアクティブにデータ取得
-  //    type === 'tag' / 'notification' の場合は早期に空配列を返し、
-  //    不要な DB クエリの発行を防ぐ（useTimelineData で全 Hook を
-  //    無条件に呼び出すため、この分岐が必須）
-  const statuses = useLiveQuery(
-    async () => {
-      // tag / notification はそれぞれ専用 Hook で処理するためスキップ
-      if (config.type === 'tag' || config.type === 'notification') return []
-      if (targetBackendUrls.length === 0) return []
+    try {
+      const handle = await getSqliteDb()
+      const { db } = handle
 
-      const perUrlResults = await Promise.all(
-        targetBackendUrls.map((url) =>
-          db.statuses
-            .where('[backendUrl+created_at_ms]')
-            .between([url, Dexie.minKey], [url, Dexie.maxKey])
-            .reverse()
-            .filter((s) =>
-              s.timelineTypes.includes(config.type as DbTimelineType),
-            )
-            .limit(MAX_LENGTH)
-            .toArray(),
-        ),
-      )
+      const placeholders = targetBackendUrls.map(() => '?').join(',')
+      const sql = `
+        SELECT s.compositeKey, s.backendUrl, s.created_at_ms, s.storedAt, s.json
+        FROM statuses s
+        INNER JOIN statuses_timeline_types stt
+          ON s.compositeKey = stt.compositeKey
+        WHERE stt.timelineType = ?
+          AND s.backendUrl IN (${placeholders})
+        ORDER BY s.created_at_ms DESC
+        LIMIT ?;
+      `
+      const binds: (string | number)[] = [
+        config.type as DbTimelineType,
+        ...targetBackendUrls,
+        MAX_LENGTH,
+      ]
 
-      let merged = perUrlResults.flat()
+      const rows = db.exec(sql, {
+        bind: binds,
+        returnValue: 'resultRows',
+      }) as (string | number)[][]
+
+      let results: SqliteStoredStatus[] = rows.map((row) => {
+        const status = JSON.parse(row[4] as string)
+        return {
+          ...status,
+          backendUrl: row[1] as string,
+          belongingTags: [],
+          compositeKey: row[0] as string,
+          created_at_ms: row[2] as number,
+          storedAt: row[3] as number,
+          timelineTypes: [],
+        }
+      })
 
       // 3. onlyMedia フィルタ（JS 側）
       if (config.onlyMedia) {
-        merged = merged.filter(
+        results = results.filter(
           (s) => s.media_attachments && s.media_attachments.length > 0,
         )
       }
 
-      return merged
-        .sort((a, b) => b.created_at_ms - a.created_at_ms)
-        .slice(0, MAX_LENGTH)
-    },
-    [backendUrlsKey, config.type, config.onlyMedia],
-    [],
-  )
+      setStatuses(results)
+    } catch (e) {
+      console.error('useFilteredTimeline query error:', e)
+      setStatuses([])
+    }
+  }, [config.type, config.onlyMedia, targetBackendUrls])
+
+  // 初回取得 + 変更通知で再取得
+  useEffect(() => {
+    fetchData()
+    return subscribe('statuses', fetchData)
+  }, [fetchData])
 
   // 4. appIndex を付与
   return useMemo(

@@ -1,6 +1,6 @@
 import type { MegalodonInterface } from 'megalodon'
 import type { TimelineConfigV2 } from 'types/types'
-import { bulkUpsertStatuses } from 'util/db/statusStore'
+import { bulkUpsertStatuses } from 'util/db/sqlite/statusStore'
 
 /**
  * タイムライン種別に応じた初期データ取得
@@ -111,16 +111,23 @@ export async function fetchMoreData(
       // （同じmaxIdを使うと、タグごとに異なるタイムラインのため
       //  一部のタグで投稿がスキップされる可能性がある）
       for (const tag of tags) {
-        // このタグの最古の投稿を取得
-        const { db } = await import('util/db/database')
-        const oldestForTag = await db.statuses
-          .where('belongingTags')
-          .equals(tag)
-          .and((s) => s.backendUrl === backendUrl)
-          .reverse()
-          .first()
+        // このタグの最古の投稿を取得 (SQLite)
+        const { getSqliteDb } = await import('util/db/sqlite/connection')
+        const handle = await getSqliteDb()
+        const rows = handle.db.exec(
+          `SELECT s.json FROM statuses s
+           INNER JOIN statuses_belonging_tags sbt ON s.compositeKey = sbt.compositeKey
+           WHERE sbt.tag = ? AND s.backendUrl = ?
+           ORDER BY s.created_at_ms ASC
+           LIMIT 1;`,
+          { bind: [tag, backendUrl], returnValue: 'resultRows' },
+        ) as string[][]
 
-        const tagMaxId = oldestForTag?.id ?? maxId
+        let tagMaxId = maxId
+        if (rows.length > 0) {
+          const oldest = JSON.parse(rows[0][0]) as { id: string }
+          tagMaxId = oldest.id
+        }
 
         const res = await client.getTagTimeline(tag, {
           limit,

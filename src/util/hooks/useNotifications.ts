@@ -1,10 +1,9 @@
 'use client'
 
-import Dexie from 'dexie'
-import { useLiveQuery } from 'dexie-react-hooks'
-import { useContext, useMemo } from 'react'
+import { useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { NotificationAddAppIndex, TimelineConfigV2 } from 'types/types'
-import { db } from 'util/db/database'
+import { getSqliteDb, subscribe } from 'util/db/sqlite/connection'
+import type { SqliteStoredNotification } from 'util/db/sqlite/notificationStore'
 import { MAX_LENGTH } from 'util/environment'
 import { AppsContext } from 'util/provider/AppsProvider'
 import {
@@ -26,18 +25,17 @@ function resolveAppIndex(
 }
 
 /**
- * 通知をリアクティブに取得するHook
+ * 通知をリアクティブに取得するHook (SQLite版)
  *
- * 複合インデックス [backendUrl+created_at_ms] を活用し、
- * 可能な限りDB側でソート・フィルタを行う。
- *
- * created_at_ms は数値型（UnixTime ms）のため、
- * ソート順が確実に時系列となる。
+ * subscribe/notifyChange による変更通知で再クエリする。
  */
 export function useNotifications(
   config?: TimelineConfigV2,
 ): NotificationAddAppIndex[] {
   const apps = useContext(AppsContext)
+  const [notifications, setNotifications] = useState<
+    SqliteStoredNotification[]
+  >([])
 
   // configが渡された場合はbackendFilterを適用、なければ全バックエンド
   const targetBackendUrls = useMemo(() => {
@@ -48,30 +46,54 @@ export function useNotifications(
     return resolveBackendUrls(filter, apps)
   }, [config, apps])
 
-  const notifications = useLiveQuery(
-    async () => {
-      if (targetBackendUrls.length === 0) return []
+  const fetchData = useCallback(async () => {
+    if (targetBackendUrls.length === 0) {
+      setNotifications([])
+      return
+    }
 
-      // 各backendUrl別に複合インデックスで降順取得し、マージする
-      const perUrlResults = await Promise.all(
-        targetBackendUrls.map((url) =>
-          db.notifications
-            .where('[backendUrl+created_at_ms]')
-            .between([url, Dexie.minKey], [url, Dexie.maxKey])
-            .reverse()
-            .limit(MAX_LENGTH)
-            .toArray(),
-        ),
-      )
+    try {
+      const handle = await getSqliteDb()
+      const { db } = handle
 
-      const merged = perUrlResults.flat()
-      return merged
-        .sort((a, b) => b.created_at_ms - a.created_at_ms)
-        .slice(0, MAX_LENGTH)
-    },
-    [targetBackendUrls],
-    [],
-  )
+      const placeholders = targetBackendUrls.map(() => '?').join(',')
+      const sql = `
+        SELECT compositeKey, backendUrl, created_at_ms, storedAt, json
+        FROM notifications
+        WHERE backendUrl IN (${placeholders})
+        ORDER BY created_at_ms DESC
+        LIMIT ?;
+      `
+      const binds: (string | number)[] = [...targetBackendUrls, MAX_LENGTH]
+
+      const rows = db.exec(sql, {
+        bind: binds,
+        returnValue: 'resultRows',
+      }) as (string | number)[][]
+
+      const results: SqliteStoredNotification[] = rows.map((row) => {
+        const notification = JSON.parse(row[4] as string)
+        return {
+          ...notification,
+          backendUrl: row[1] as string,
+          compositeKey: row[0] as string,
+          created_at_ms: row[2] as number,
+          storedAt: row[3] as number,
+        }
+      })
+
+      setNotifications(results)
+    } catch (e) {
+      console.error('useNotifications query error:', e)
+      setNotifications([])
+    }
+  }, [targetBackendUrls])
+
+  // 初回取得 + 変更通知で再取得
+  useEffect(() => {
+    fetchData()
+    return subscribe('notifications', fetchData)
+  }, [fetchData])
 
   // appIndex を都度算出して付与し、解決できなかったレコードは除外する
   return useMemo(

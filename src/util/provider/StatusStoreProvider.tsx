@@ -11,19 +11,20 @@ import {
   useRef,
 } from 'react'
 import type { App } from 'types/types'
-import { startPeriodicCleanup } from 'util/db/cleanup'
+import { startPeriodicCleanup } from 'util/db/sqlite/cleanup'
+import { migrateFromIndexedDb } from 'util/db/sqlite/migration'
 import {
   addNotification,
   bulkAddNotifications,
   updateNotificationStatusAction,
-} from 'util/db/notificationStore'
+} from 'util/db/sqlite/notificationStore'
 import {
   bulkUpsertStatuses,
   handleDeleteEvent,
   updateStatus,
   updateStatusAction,
   upsertStatus,
-} from 'util/db/statusStore'
+} from 'util/db/sqlite/statusStore'
 import { GetClient } from 'util/GetClient'
 import { getRetryDelay, MAX_RETRY_COUNT } from 'util/streaming/constants'
 import { AppsContext } from './AppsProvider'
@@ -222,6 +223,11 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
       return
     }
     if (apps.length <= 0) return
+
+    // IndexedDB → SQLite マイグレーション（初回のみ）
+    migrateFromIndexedDb().catch((error) => {
+      console.error('Migration failed:', error)
+    })
 
     // 定期クリーンアップ開始（TTL管理 + MAX_LENGTH管理）
     const stopCleanup = startPeriodicCleanup()

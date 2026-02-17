@@ -2,6 +2,7 @@
 
 import { BackendFilterSelector } from 'app/_components/BackendFilterSelector'
 import { MediaFilterToggle } from 'app/_components/MediaFilterToggle'
+import { QueryEditor } from 'app/_components/QueryEditor'
 import { TagConfigEditor } from 'app/_components/TagConfigEditor'
 import { useCallback, useState } from 'react'
 import type { BackendFilter, TagConfig, TimelineConfigV2 } from 'types/types'
@@ -25,18 +26,24 @@ export const TimelineEditPanel = ({
   const [tagConfig, setTagConfig] = useState<TagConfig>(
     config.tagConfig ?? { mode: 'or', tags: [] },
   )
+  const [customQuery, setCustomQuery] = useState(config.customQuery ?? '')
+  const [showAdvanced, setShowAdvanced] = useState(
+    Boolean(config.customQuery?.trim()),
+  )
 
   const isTagTimeline = config.type === 'tag'
   const isNotification = config.type === 'notification'
 
-  // バリデーション: tag タイムラインは最低1つのタグが必要
-  const isValid = !isTagTimeline || tagConfig.tags.length > 0
+  // バリデーション: tag タイムラインは最低1つのタグが必要（カスタムクエリがない場合）
+  const isValid =
+    !isTagTimeline || tagConfig.tags.length > 0 || Boolean(customQuery.trim())
 
   const handleSave = useCallback(() => {
     if (!isValid) return
 
     const updates: Partial<TimelineConfigV2> = {
       backendFilter,
+      customQuery: customQuery.trim() || undefined,
       label: label.trim() || undefined,
       onlyMedia,
     }
@@ -48,6 +55,7 @@ export const TimelineEditPanel = ({
     onSave(updates)
   }, [
     backendFilter,
+    customQuery,
     isTagTimeline,
     isValid,
     label,
@@ -94,6 +102,24 @@ export const TimelineEditPanel = ({
       {/* Tag Config (tag タイムラインのみ) */}
       {isTagTimeline && (
         <TagConfigEditor onChange={setTagConfig} value={tagConfig} />
+      )}
+
+      {/* Advanced Query Option */}
+      {!isNotification && (
+        <div className="space-y-1">
+          <button
+            className={`text-xs font-semibold ${
+              showAdvanced ? 'text-blue-400' : 'text-gray-400'
+            } hover:text-blue-300`}
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            type="button"
+          >
+            {showAdvanced ? '▼ Advanced Query' : '▶ Advanced Query'}
+          </button>
+          {showAdvanced && (
+            <QueryEditor onChange={setCustomQuery} value={customQuery} />
+          )}
+        </div>
       )}
 
       {/* Actions */}
