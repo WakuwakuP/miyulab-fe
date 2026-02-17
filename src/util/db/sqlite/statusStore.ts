@@ -1553,33 +1553,86 @@ export async function getDistinctJsonValues(
  *
  * statuses テーブルの backendUrl 等の値を返す。
  */
+/** 許可リスト（安全なテーブル＋カラムの組み合わせ） */
+const ALLOWED_COLUMN_VALUES: Record<string, string[]> = {
+  notifications: [
+    'backendUrl',
+    'notification_type',
+    'status_id',
+    'account_acct',
+  ],
+  statuses: [
+    'backendUrl',
+    'uri',
+    'account_acct',
+    'account_id',
+    'visibility',
+    'language',
+  ],
+  statuses_backends: ['backendUrl', 'local_id'],
+  statuses_belonging_tags: ['tag'],
+  statuses_mentions: ['acct'],
+  statuses_timeline_types: ['timelineType'],
+}
+
+/** エイリアスからテーブル名・カラム名へのマッピング */
+export const ALIAS_TO_TABLE: Record<
+  string,
+  { table: string; columns: Record<string, string> }
+> = {
+  n: {
+    columns: {
+      account_acct: 'account_acct',
+      backendUrl: 'backendUrl',
+      notification_type: 'notification_type',
+      status_id: 'status_id',
+    },
+    table: 'notifications',
+  },
+  s: {
+    columns: {
+      account_acct: 'account_acct',
+      account_id: 'account_id',
+      backendUrl: 'backendUrl',
+      language: 'language',
+      uri: 'uri',
+      visibility: 'visibility',
+    },
+    table: 'statuses',
+  },
+  sb: {
+    columns: {
+      backendUrl: 'backendUrl',
+      local_id: 'local_id',
+    },
+    table: 'statuses_backends',
+  },
+  sbt: {
+    columns: {
+      tag: 'tag',
+    },
+    table: 'statuses_belonging_tags',
+  },
+  sm: {
+    columns: {
+      acct: 'acct',
+    },
+    table: 'statuses_mentions',
+  },
+  stt: {
+    columns: {
+      timelineType: 'timelineType',
+    },
+    table: 'statuses_timeline_types',
+  },
+}
+
 export async function getDistinctColumnValues(
   table: string,
   column: string,
   maxResults = 20,
 ): Promise<string[]> {
-  // 許可リスト（安全なテーブル＋カラムの組み合わせ）
-  const allowed: Record<string, string[]> = {
-    notifications: [
-      'backendUrl',
-      'notification_type',
-      'status_id',
-      'account_acct',
-    ],
-    statuses: [
-      'backendUrl',
-      'uri',
-      'account_acct',
-      'account_id',
-      'visibility',
-      'language',
-    ],
-    statuses_backends: ['backendUrl', 'local_id'],
-    statuses_belonging_tags: ['tag'],
-    statuses_mentions: ['acct'],
-    statuses_timeline_types: ['timelineType'],
-  }
-  if (!allowed[table]?.includes(column)) return []
+  if (!ALLOWED_COLUMN_VALUES[table]?.includes(column)) return []
 
   try {
     const handle = await getSqliteDb()
@@ -1587,6 +1640,40 @@ export async function getDistinctColumnValues(
     const rows = db.exec(
       `SELECT DISTINCT "${column}" FROM "${table}" WHERE "${column}" IS NOT NULL AND "${column}" != '' ORDER BY "${column}" LIMIT ?;`,
       { bind: [maxResults], returnValue: 'resultRows' },
+    ) as string[][]
+    return rows.map((r) => r[0])
+  } catch {
+    return []
+  }
+}
+
+/**
+ * 指定したテーブル・カラムの値をプレフィクス検索で取得する（補完用）
+ *
+ * エイリアス (s, sbt, sm 等) とカラム名から実テーブルを解決し、
+ * 入力中のプレフィクスに一致する値を DB から検索して返す。
+ */
+export async function searchDistinctColumnValues(
+  alias: string,
+  column: string,
+  prefix: string,
+  maxResults = 20,
+): Promise<string[]> {
+  const mapping = ALIAS_TO_TABLE[alias]
+  if (!mapping) return []
+  const realColumn = mapping.columns[column]
+  if (!realColumn) return []
+  const { table } = mapping
+  if (!ALLOWED_COLUMN_VALUES[table]?.includes(realColumn)) return []
+
+  try {
+    const handle = await getSqliteDb()
+    const { db } = handle
+    // LIKE でプレフィクスフィルタ（ESCAPE でワイルドカード文字を安全にエスケープ）
+    const escaped = prefix.replace(/[%_\\]/g, (c) => `\\${c}`)
+    const rows = db.exec(
+      `SELECT DISTINCT "${realColumn}" FROM "${table}" WHERE "${realColumn}" IS NOT NULL AND "${realColumn}" != '' AND "${realColumn}" LIKE ? ESCAPE '\\' ORDER BY "${realColumn}" LIMIT ?;`,
+      { bind: [`${escaped}%`, maxResults], returnValue: 'resultRows' },
     ) as string[][]
     return rows.map((r) => r[0])
   } catch {
