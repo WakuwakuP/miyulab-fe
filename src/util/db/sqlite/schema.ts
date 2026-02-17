@@ -407,11 +407,8 @@ function migrateV2toV3(handle: DbHandle): void {
   `)
 
   // ============================================
-  // Step 3: インデックスの作成
+  // Step 3: 非UNIQUEインデックスの作成
   // ============================================
-  db.exec(
-    "CREATE UNIQUE INDEX IF NOT EXISTS idx_statuses_uri ON statuses(uri) WHERE uri != '';",
-  )
   db.exec(
     'CREATE INDEX IF NOT EXISTS idx_statuses_reblog_of_uri ON statuses(reblog_of_uri);',
   )
@@ -446,6 +443,13 @@ function migrateV2toV3(handle: DbHandle): void {
   // Step 6: 同一 URI の重複排除（デデュプリケーション）
   // ============================================
   deduplicateByUri(handle)
+
+  // ============================================
+  // Step 7: UNIQUEインデックスの作成（重複排除後）
+  // ============================================
+  db.exec(
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_statuses_uri ON statuses(uri) WHERE uri != '';",
+  )
 }
 
 // ================================================================

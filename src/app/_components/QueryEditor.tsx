@@ -527,7 +527,8 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
         Available tables: <code className="text-gray-400">s</code> (statuses),{' '}
         <code className="text-gray-400">stt</code> (timeline types),{' '}
         <code className="text-gray-400">sbt</code> (tags),{' '}
-        <code className="text-gray-400">sm</code> (mentions). LIMIT/OFFSET are
+        <code className="text-gray-400">sm</code> (mentions),{' '}
+        <code className="text-gray-400">sb</code> (backends). LIMIT/OFFSET are
         set automatically.
       </p>
       {QUERY_COMPLETIONS.examples.length > 0 && (

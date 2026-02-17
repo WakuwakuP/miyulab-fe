@@ -198,7 +198,7 @@ export async function upsertStatus(
 ): Promise<void> {
   const handle = await getSqliteDb()
   const { db } = handle
-  const uri = status.uri
+  const normalizedUri = status.uri?.trim() || ''
   const now = Date.now()
   const created_at_ms = new Date(status.created_at).getTime()
   const cols = extractStatusColumns(status)
@@ -207,10 +207,12 @@ export async function upsertStatus(
   try {
     // URI で既存行を検索（跨サーバー重複排除）
     let compositeKey: string
-    const existingRows = db.exec(
-      'SELECT compositeKey FROM statuses WHERE uri = ?;',
-      { bind: [uri], returnValue: 'resultRows' },
-    ) as string[][]
+    const existingRows = normalizedUri
+      ? (db.exec('SELECT compositeKey FROM statuses WHERE uri = ?;', {
+          bind: [normalizedUri],
+          returnValue: 'resultRows',
+        }) as string[][])
+      : []
 
     if (existingRows.length > 0) {
       // 既存行を更新（compositeKey を再利用）
@@ -382,17 +384,22 @@ export async function bulkUpsertStatuses(
   db.exec('BEGIN;')
   try {
     for (const status of statuses) {
-      const uri = status.uri
+      const normalizedUri = status.uri?.trim() || ''
       const created_at_ms = new Date(status.created_at).getTime()
       const cols = extractStatusColumns(status)
 
       // URI で既存行を検索（キャッシュ優先）
-      let compositeKey: string | undefined = uriCache.get(uri)
+      let compositeKey: string | undefined = normalizedUri
+        ? uriCache.get(normalizedUri)
+        : undefined
 
-      if (compositeKey === undefined) {
+      if (compositeKey === undefined && normalizedUri) {
         const existingRows = db.exec(
           'SELECT compositeKey FROM statuses WHERE uri = ?;',
-          { bind: [uri], returnValue: 'resultRows' },
+          {
+            bind: [normalizedUri],
+            returnValue: 'resultRows',
+          },
         ) as string[][]
 
         compositeKey = existingRows.length > 0 ? existingRows[0][0] : undefined
@@ -502,7 +509,9 @@ export async function bulkUpsertStatuses(
         )
       }
 
-      uriCache.set(uri, compositeKey)
+      if (normalizedUri) {
+        uriCache.set(normalizedUri, compositeKey)
+      }
 
       // バックエンド関連を登録
       db.exec(

@@ -17,6 +17,29 @@ function resolveAppIndex(
   return apps.findIndex((app) => app.backendUrl === backendUrl)
 }
 
+function hasUnquotedQuestionMark(query: string): boolean {
+  let inSingleQuote = false
+
+  for (let i = 0; i < query.length; i++) {
+    const char = query[i]
+
+    if (char === "'") {
+      if (inSingleQuote && query[i + 1] === "'") {
+        i++
+        continue
+      }
+      inSingleQuote = !inSingleQuote
+      continue
+    }
+
+    if (!inSingleQuote && char === '?') {
+      return true
+    }
+  }
+
+  return false
+}
+
 /**
  * カスタム SQL WHERE 句でフィルタした Status を返す Hook
  *
@@ -74,8 +97,8 @@ export function useCustomQueryTimeline(
         return
       }
 
-      // ? プレースホルダーのバインド競合を防止
-      if (sanitized.includes('?')) {
+      // ? プレースホルダーのバインド競合を防止（文字列リテラル内は許可）
+      if (hasUnquotedQuestionMark(sanitized)) {
         console.error('Custom query must not contain ? placeholders.')
         setStatuses([])
         return
