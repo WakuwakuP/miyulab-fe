@@ -159,7 +159,7 @@ function LanguageFilter({
       {/* カスタム入力 */}
       <div className="flex gap-1">
         <input
-          className="flex-1 rounded border border-slate-600 bg-slate-800 px-2 py-1 text-xs"
+          className="flex-1 rounded bg-gray-700 px-2 py-1 text-xs text-white"
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
@@ -330,7 +330,7 @@ function AccountFilterEditor({
       {/* 入力欄 */}
       <div className="flex gap-1">
         <input
-          className="flex-1 rounded border border-slate-600 bg-slate-800 px-2 py-1 text-xs"
+          className="flex-1 rounded bg-gray-700 px-2 py-1 text-xs text-white"
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
@@ -464,7 +464,7 @@ function MediaFilterControls({
       <div className="flex items-center gap-2 text-xs">
         <label htmlFor="minMediaCount">Min count:</label>
         <input
-          className="w-16 rounded border border-slate-600 bg-slate-800 px-2 py-1 text-xs"
+          className="w-16 rounded bg-gray-700 px-2 py-1 text-xs text-white"
           id="minMediaCount"
           max={20}
           min={0}
