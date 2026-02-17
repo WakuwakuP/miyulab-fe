@@ -6,6 +6,7 @@ import type { TimelineType as DbTimelineType } from 'util/db/database'
 import { getSqliteDb, subscribe } from 'util/db/sqlite/connection'
 import type { SqliteStoredStatus } from 'util/db/sqlite/statusStore'
 import { MAX_LENGTH } from 'util/environment'
+import { buildFilterConditions } from 'util/hooks/timelineFilterBuilder'
 import { AppsContext } from 'util/provider/AppsProvider'
 import {
   normalizeBackendFilter,
@@ -41,8 +42,11 @@ function resolveAppIndex(
  * statuses_timeline_types テーブルとの JOIN で
  * DB 側でソート・フィルタを行う。
  *
- * onlyMedia フィルタは DB カラムに含まれないため、
- * JS 側で適用する（表示層フィルタリング）。
+ * ## v2 スキーマ対応
+ *
+ * onlyMedia / visibilityFilter / languageFilter 等のフィルタは
+ * 正規化カラムを使って SQL の WHERE 句で直接フィルタする。
+ * これにより LIMIT の精度が向上し、JS 側フィルタが不要になる。
  */
 export function useFilteredTimeline(
   config: TimelineConfigV2,
@@ -56,14 +60,68 @@ export function useFilteredTimeline(
     return resolveBackendUrls(filter, apps)
   }, [config.backendFilter, apps])
 
-  // 2. SQLite からデータ取得
+  // 2. フィルタ条件を事前計算（useMemo で安定化）
+  const {
+    onlyMedia,
+    minMediaCount,
+    visibilityFilter,
+    languageFilter,
+    excludeReblogs,
+    excludeReplies,
+    excludeSpoiler,
+    excludeSensitive,
+    accountFilter,
+    applyMuteFilter,
+    applyInstanceBlock,
+  } = config
+
+  const filterResult = useMemo(
+    () =>
+      buildFilterConditions(
+        {
+          accountFilter,
+          applyInstanceBlock,
+          applyMuteFilter,
+          excludeReblogs,
+          excludeReplies,
+          excludeSensitive,
+          excludeSpoiler,
+          languageFilter,
+          minMediaCount,
+          onlyMedia,
+          visibilityFilter,
+        } as TimelineConfigV2,
+        targetBackendUrls,
+      ),
+    [
+      onlyMedia,
+      minMediaCount,
+      visibilityFilter,
+      languageFilter,
+      excludeReblogs,
+      excludeReplies,
+      excludeSpoiler,
+      excludeSensitive,
+      accountFilter,
+      applyMuteFilter,
+      applyInstanceBlock,
+      targetBackendUrls,
+    ],
+  )
+  const filterConditions = filterResult.conditions
+  const filterBinds = filterResult.binds
+
+  const configType = config.type
+  const customQuery = config.customQuery
+
+  // 3. SQLite からデータ取得
   const fetchData = useCallback(async () => {
     // tag / notification はそれぞれ専用 Hook で処理するためスキップ
     // customQuery が設定されている場合も useCustomQueryTimeline に委譲するためスキップ
     if (
-      config.type === 'tag' ||
-      config.type === 'notification' ||
-      config.customQuery?.trim()
+      configType === 'tag' ||
+      configType === 'notification' ||
+      customQuery?.trim()
     ) {
       setStatuses([])
       return
@@ -77,20 +135,32 @@ export function useFilteredTimeline(
       const handle = await getSqliteDb()
       const { db } = handle
 
-      const placeholders = targetBackendUrls.map(() => '?').join(',')
+      const backendPlaceholders = targetBackendUrls.map(() => '?').join(',')
+
+      // WHERE 条件を組み立て
+      const whereConditions = [
+        'stt.timelineType = ?',
+        `sb.backendUrl IN (${backendPlaceholders})`,
+        ...filterConditions,
+      ]
+
       const sql = `
-        SELECT s.compositeKey, s.backendUrl, s.created_at_ms, s.storedAt, s.json
+        SELECT s.compositeKey, MIN(sb.backendUrl) AS backendUrl,
+               s.created_at_ms, s.storedAt, s.json
         FROM statuses s
         INNER JOIN statuses_timeline_types stt
           ON s.compositeKey = stt.compositeKey
-        WHERE stt.timelineType = ?
-          AND s.backendUrl IN (${placeholders})
+        INNER JOIN statuses_backends sb
+          ON s.compositeKey = sb.compositeKey
+        WHERE ${whereConditions.join('\n          AND ')}
+        GROUP BY s.compositeKey
         ORDER BY s.created_at_ms DESC
         LIMIT ?;
       `
       const binds: (string | number)[] = [
-        config.type as DbTimelineType,
+        configType as DbTimelineType,
         ...targetBackendUrls,
+        ...filterBinds,
         MAX_LENGTH,
       ]
 
@@ -99,7 +169,7 @@ export function useFilteredTimeline(
         returnValue: 'resultRows',
       }) as (string | number)[][]
 
-      let results: SqliteStoredStatus[] = rows.map((row) => {
+      const results: SqliteStoredStatus[] = rows.map((row) => {
         const status = JSON.parse(row[4] as string)
         return {
           ...status,
@@ -112,19 +182,18 @@ export function useFilteredTimeline(
         }
       })
 
-      // 3. onlyMedia フィルタ（JS 側）
-      if (config.onlyMedia) {
-        results = results.filter(
-          (s) => s.media_attachments && s.media_attachments.length > 0,
-        )
-      }
-
       setStatuses(results)
     } catch (e) {
       console.error('useFilteredTimeline query error:', e)
       setStatuses([])
     }
-  }, [config.type, config.onlyMedia, config.customQuery, targetBackendUrls])
+  }, [
+    configType,
+    customQuery,
+    targetBackendUrls,
+    filterConditions,
+    filterBinds,
+  ])
 
   // 初回取得 + 変更通知で再取得
   useEffect(() => {

@@ -1,9 +1,11 @@
 'use client'
 
 import { BackendFilterSelector } from 'app/_components/BackendFilterSelector'
-import { MediaFilterToggle } from 'app/_components/MediaFilterToggle'
 import { QueryEditor } from 'app/_components/QueryEditor'
 import { TagConfigEditor } from 'app/_components/TagConfigEditor'
+import { FilterControls, MuteBlockControls } from 'app/_parts/FilterControls'
+import { InstanceBlockManager } from 'app/_parts/InstanceBlockManager'
+import { MuteManager } from 'app/_parts/MuteManager'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { BackendFilter, TagConfig, TimelineConfigV2 } from 'types/types'
 import { buildQueryFromConfig, parseQueryToConfig } from 'util/queryBuilder'
@@ -32,15 +34,46 @@ export const TimelineEditPanel = ({
     config.advancedQuery ?? false,
   )
 
+  // v2 フィルタオプションのローカル状態
+  const [filterUpdates, setFilterUpdates] = useState<Partial<TimelineConfigV2>>(
+    {},
+  )
+
+  // MuteManager / InstanceBlockManager モーダルの表示状態
+  const [showMuteManager, setShowMuteManager] = useState(false)
+  const [showBlockManager, setShowBlockManager] = useState(false)
+
+  // フィルタ変更ハンドラ: 差分を蓄積する
+  const handleFilterChange = useCallback(
+    (updates: Partial<TimelineConfigV2>) => {
+      setFilterUpdates((prev) => ({ ...prev, ...updates }))
+      // onlyMedia は既存の独立状態と同期
+      if (updates.onlyMedia !== undefined) {
+        setOnlyMedia(updates.onlyMedia)
+      }
+    },
+    [],
+  )
+
+  // 現在のフィルタ状態をマージした config
+  const mergedConfig = useMemo(
+    () => ({
+      ...config,
+      backendFilter,
+      onlyMedia,
+      ...filterUpdates,
+    }),
+    [backendFilter, config, onlyMedia, filterUpdates],
+  )
+
   // UI 設定から構築されたクエリ
   const builtQuery = useMemo(
     () =>
       buildQueryFromConfig({
-        ...config,
-        onlyMedia,
+        ...mergedConfig,
         tagConfig,
       }),
-    [config, onlyMedia, tagConfig],
+    [mergedConfig, tagConfig],
   )
 
   // カスタムクエリ: 初期値は保存済みクエリ or UI から構築
@@ -78,6 +111,31 @@ export const TimelineEditPanel = ({
         if (parsed) {
           if (parsed.onlyMedia !== undefined) setOnlyMedia(parsed.onlyMedia)
           if (parsed.tagConfig) setTagConfig(parsed.tagConfig)
+          // backendFilter も逆算
+          if (parsed.backendFilter) {
+            setBackendFilter(parsed.backendFilter)
+          } else {
+            setBackendFilter({ mode: 'all' })
+          }
+          // v2 フィルタオプションも逆算
+          const restoredUpdates: Partial<TimelineConfigV2> = {}
+          if (parsed.excludeReblogs !== undefined)
+            restoredUpdates.excludeReblogs = parsed.excludeReblogs
+          if (parsed.excludeReplies !== undefined)
+            restoredUpdates.excludeReplies = parsed.excludeReplies
+          if (parsed.excludeSpoiler !== undefined)
+            restoredUpdates.excludeSpoiler = parsed.excludeSpoiler
+          if (parsed.excludeSensitive !== undefined)
+            restoredUpdates.excludeSensitive = parsed.excludeSensitive
+          if (parsed.visibilityFilter !== undefined)
+            restoredUpdates.visibilityFilter = parsed.visibilityFilter
+          if (parsed.languageFilter !== undefined)
+            restoredUpdates.languageFilter = parsed.languageFilter
+          if (parsed.accountFilter !== undefined)
+            restoredUpdates.accountFilter = parsed.accountFilter
+          if (parsed.minMediaCount !== undefined)
+            restoredUpdates.minMediaCount = parsed.minMediaCount
+          setFilterUpdates((prev) => ({ ...prev, ...restoredUpdates }))
         }
       }
       return next
@@ -89,10 +147,13 @@ export const TimelineEditPanel = ({
 
     const updates: Partial<TimelineConfigV2> = {
       advancedQuery: showAdvanced,
-      backendFilter,
+      // Advanced Query モードでは backendFilter はクエリに含まれるため all にリセット
+      backendFilter: showAdvanced ? { mode: 'all' } : backendFilter,
       customQuery: customQuery.trim() || undefined,
       label: label.trim() || undefined,
       onlyMedia,
+      // v2 フィルタオプション
+      ...filterUpdates,
     }
 
     if (isTagTimeline) {
@@ -103,6 +164,7 @@ export const TimelineEditPanel = ({
   }, [
     backendFilter,
     customQuery,
+    filterUpdates,
     isTagTimeline,
     isValid,
     label,
@@ -161,20 +223,29 @@ export const TimelineEditPanel = ({
         </div>
       )}
 
-      {/* Backend Filter */}
-      <BackendFilterSelector
-        onChange={setBackendFilter}
-        value={backendFilter}
-      />
-
-      {/* 通常UIモード: Media Filter + Tag Config */}
+      {/* 通常UIモード: Backend Filter + Filters + Tag Config */}
       {!isNotification && !showAdvanced && (
         <>
-          <MediaFilterToggle onChange={setOnlyMedia} value={onlyMedia} />
+          {/* Backend Filter */}
+          <BackendFilterSelector
+            onChange={setBackendFilter}
+            value={backendFilter}
+          />
+
+          {/* v2 フィルタコントロール（Media, Visibility, Language, Toggle, Account） */}
+          <FilterControls config={mergedConfig} onChange={handleFilterChange} />
 
           {isTagTimeline && (
             <TagConfigEditor onChange={setTagConfig} value={tagConfig} />
           )}
+
+          {/* Mute / Block コントロール */}
+          <MuteBlockControls
+            config={mergedConfig}
+            onChange={handleFilterChange}
+            onOpenBlockManager={() => setShowBlockManager(true)}
+            onOpenMuteManager={() => setShowMuteManager(true)}
+          />
         </>
       )}
 
@@ -206,6 +277,16 @@ export const TimelineEditPanel = ({
         <p className="text-xs text-red-400">
           Tag timeline requires at least one tag.
         </p>
+      )}
+
+      {/* MuteManager モーダル */}
+      {showMuteManager && (
+        <MuteManager onClose={() => setShowMuteManager(false)} />
+      )}
+
+      {/* InstanceBlockManager モーダル */}
+      {showBlockManager && (
+        <InstanceBlockManager onClose={() => setShowBlockManager(false)} />
       )}
     </div>
   )

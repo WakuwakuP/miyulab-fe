@@ -5,6 +5,7 @@ import type { StatusAddAppIndex, TimelineConfigV2 } from 'types/types'
 import { getSqliteDb, subscribe } from 'util/db/sqlite/connection'
 import type { SqliteStoredStatus } from 'util/db/sqlite/statusStore'
 import { MAX_LENGTH } from 'util/environment'
+import { buildFilterConditions } from 'util/hooks/timelineFilterBuilder'
 import { AppsContext } from 'util/provider/AppsProvider'
 import {
   normalizeBackendFilter,
@@ -34,6 +35,12 @@ function resolveAppIndex(
  *
  * ## AND 条件 (tagConfig.mode === 'and')
  * HAVING COUNT(DISTINCT tag) = タグ数 で全タグを含む Status のみ取得する。
+ *
+ * ## v2 スキーマ対応
+ *
+ * onlyMedia / visibilityFilter / languageFilter 等のフィルタは
+ * 正規化カラムを使って SQL の WHERE 句で直接フィルタする。
+ * これにより LIMIT の精度が向上し、JS 側フィルタが不要になる。
  */
 export function useFilteredTagTimeline(
   config: TimelineConfigV2,
@@ -49,12 +56,65 @@ export function useFilteredTagTimeline(
 
   const tags = tagConfig?.tags ?? []
   const tagMode = tagConfig?.mode ?? 'or'
-  const onlyMedia = config.onlyMedia ?? false
+
+  // フィルタ条件を事前計算（useMemo で安定化）
+  const {
+    onlyMedia,
+    minMediaCount,
+    visibilityFilter,
+    languageFilter,
+    excludeReblogs,
+    excludeReplies,
+    excludeSpoiler,
+    excludeSensitive,
+    accountFilter,
+    applyMuteFilter,
+    applyInstanceBlock,
+  } = config
+
+  const filterResult = useMemo(
+    () =>
+      buildFilterConditions(
+        {
+          accountFilter,
+          applyInstanceBlock,
+          applyMuteFilter,
+          excludeReblogs,
+          excludeReplies,
+          excludeSensitive,
+          excludeSpoiler,
+          languageFilter,
+          minMediaCount,
+          onlyMedia,
+          visibilityFilter,
+        } as TimelineConfigV2,
+        targetBackendUrls,
+      ),
+    [
+      onlyMedia,
+      minMediaCount,
+      visibilityFilter,
+      languageFilter,
+      excludeReblogs,
+      excludeReplies,
+      excludeSpoiler,
+      excludeSensitive,
+      accountFilter,
+      applyMuteFilter,
+      applyInstanceBlock,
+      targetBackendUrls,
+    ],
+  )
+  const filterConditions = filterResult.conditions
+  const filterBinds = filterResult.binds
+
+  const configType = config.type
+  const customQuery = config.customQuery
 
   const fetchData = useCallback(async () => {
     // tag 以外の type の場合は早期に空配列を返し、不要な DB クエリを防ぐ
     // customQuery が設定されている場合も useCustomQueryTimeline に委譲するためスキップ
-    if (config.type !== 'tag' || config.customQuery?.trim()) {
+    if (configType !== 'tag' || customQuery?.trim()) {
       setStatuses([])
       return
     }
@@ -75,32 +135,55 @@ export function useFilteredTagTimeline(
 
       if (tagMode === 'or') {
         // OR: いずれかのタグを含む
+        const whereConditions = [
+          `sbt.tag IN (${tagPlaceholders})`,
+          `sb.backendUrl IN (${backendPlaceholders})`,
+          ...filterConditions,
+        ]
+
         sql = `
-          SELECT DISTINCT s.compositeKey, s.backendUrl, s.created_at_ms, s.storedAt, s.json
+          SELECT s.compositeKey, MIN(sb.backendUrl) AS backendUrl,
+                 s.created_at_ms, s.storedAt, s.json
           FROM statuses s
           INNER JOIN statuses_belonging_tags sbt
             ON s.compositeKey = sbt.compositeKey
-          WHERE sbt.tag IN (${tagPlaceholders})
-            AND s.backendUrl IN (${backendPlaceholders})
+          INNER JOIN statuses_backends sb
+            ON s.compositeKey = sb.compositeKey
+          WHERE ${whereConditions.join('\n            AND ')}
+          GROUP BY s.compositeKey
           ORDER BY s.created_at_ms DESC
           LIMIT ?;
         `
-        binds.push(...tags, ...targetBackendUrls, MAX_LENGTH)
+        binds.push(...tags, ...targetBackendUrls, ...filterBinds, MAX_LENGTH)
       } else {
         // AND: すべてのタグを含む
+        const whereConditions = [
+          `sbt.tag IN (${tagPlaceholders})`,
+          `sb.backendUrl IN (${backendPlaceholders})`,
+          ...filterConditions,
+        ]
+
         sql = `
-          SELECT s.compositeKey, s.backendUrl, s.created_at_ms, s.storedAt, s.json
+          SELECT s.compositeKey, MIN(sb.backendUrl) AS backendUrl,
+                 s.created_at_ms, s.storedAt, s.json
           FROM statuses s
           INNER JOIN statuses_belonging_tags sbt
             ON s.compositeKey = sbt.compositeKey
-          WHERE sbt.tag IN (${tagPlaceholders})
-            AND s.backendUrl IN (${backendPlaceholders})
+          INNER JOIN statuses_backends sb
+            ON s.compositeKey = sb.compositeKey
+          WHERE ${whereConditions.join('\n            AND ')}
           GROUP BY s.compositeKey
           HAVING COUNT(DISTINCT sbt.tag) = ?
           ORDER BY s.created_at_ms DESC
           LIMIT ?;
         `
-        binds.push(...tags, ...targetBackendUrls, tags.length, MAX_LENGTH)
+        binds.push(
+          ...tags,
+          ...targetBackendUrls,
+          ...filterBinds,
+          tags.length,
+          MAX_LENGTH,
+        )
       }
 
       const rows = db.exec(sql, {
@@ -108,7 +191,7 @@ export function useFilteredTagTimeline(
         returnValue: 'resultRows',
       }) as (string | number)[][]
 
-      let results: SqliteStoredStatus[] = rows.map((row) => {
+      const results: SqliteStoredStatus[] = rows.map((row) => {
         const status = JSON.parse(row[4] as string)
         return {
           ...status,
@@ -121,13 +204,6 @@ export function useFilteredTagTimeline(
         }
       })
 
-      // onlyMedia フィルタ
-      if (onlyMedia) {
-        results = results.filter(
-          (s) => s.media_attachments && s.media_attachments.length > 0,
-        )
-      }
-
       setStatuses(results)
     } catch (e) {
       console.error('useFilteredTagTimeline query error:', e)
@@ -135,11 +211,12 @@ export function useFilteredTagTimeline(
     }
   }, [
     tagMode,
-    onlyMedia,
-    config.type,
-    config.customQuery,
+    configType,
+    customQuery,
     targetBackendUrls,
     tags,
+    filterConditions,
+    filterBinds,
   ])
 
   // 初回取得 + 変更通知で再取得

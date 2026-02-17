@@ -18,6 +18,7 @@ import {
   QUERY_COMPLETIONS,
   validateCustomQuery,
 } from 'util/db/sqlite/statusStore'
+import { upgradeQueryToV2 } from 'util/queryBuilder'
 
 type QueryEditorProps = {
   onChange: (value: string) => void
@@ -43,6 +44,9 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
   const [dynamicTags, setDynamicTags] = useState<string[]>([])
   const [dynamicTimelineTypes, setDynamicTimelineTypes] = useState<string[]>([])
   const [dynamicJsonPaths, setDynamicJsonPaths] = useState<string[]>([])
+  const [dynamicVisibilities, setDynamicVisibilities] = useState<string[]>([])
+  const [dynamicLanguages, setDynamicLanguages] = useState<string[]>([])
+  const [dynamicAccountAccts, setDynamicAccountAccts] = useState<string[]>([])
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const validationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -51,6 +55,16 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
     getDistinctTags().then(setDynamicTags)
     getDistinctTimelineTypes().then(setDynamicTimelineTypes)
     getJsonKeysFromSample(20).then(setDynamicJsonPaths)
+    // v2 カラムの動的補完候補
+    getDistinctColumnValues('statuses', 'visibility', 10).then(
+      setDynamicVisibilities,
+    )
+    getDistinctColumnValues('statuses', 'language', 50).then(
+      setDynamicLanguages,
+    )
+    getDistinctColumnValues('statuses', 'account_acct', 100).then(
+      setDynamicAccountAccts,
+    )
   }, [])
 
   // 全ての補完候補を事前に構築
@@ -204,6 +218,57 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
         return
       }
 
+      // visibility 値補完: s.visibility = ' の後
+      const visibilityValueMatch = beforeCursor.match(
+        /s\.visibility\s*(?:=|IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
+      )
+      if (visibilityValueMatch) {
+        const partial = visibilityValueMatch[1].toLowerCase()
+        const filtered = dynamicVisibilities.filter((v) =>
+          v.toLowerCase().startsWith(partial),
+        )
+        if (filtered.length > 0) {
+          setSuggestions(filtered.slice(0, 12))
+          setSelectedIndex(0)
+          setShowSuggestions(true)
+          return
+        }
+      }
+
+      // language 値補完: s.language = ' の後
+      const languageValueMatch = beforeCursor.match(
+        /s\.language\s*(?:=|IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
+      )
+      if (languageValueMatch) {
+        const partial = languageValueMatch[1].toLowerCase()
+        const filtered = dynamicLanguages.filter((l) =>
+          l.toLowerCase().startsWith(partial),
+        )
+        if (filtered.length > 0) {
+          setSuggestions(filtered.slice(0, 12))
+          setSelectedIndex(0)
+          setShowSuggestions(true)
+          return
+        }
+      }
+
+      // account_acct 値補完: s.account_acct = ' の後
+      const accountValueMatch = beforeCursor.match(
+        /s\.account_acct\s*(?:=|IN\s*\((?:'[^']*',\s*)*|NOT\s+IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
+      )
+      if (accountValueMatch) {
+        const partial = accountValueMatch[1].toLowerCase()
+        const filtered = dynamicAccountAccts.filter((a) =>
+          a.toLowerCase().startsWith(partial),
+        )
+        if (filtered.length > 0) {
+          setSuggestions(filtered.slice(0, 12))
+          setSelectedIndex(0)
+          setShowSuggestions(true)
+          return
+        }
+      }
+
       const match = beforeCursor.match(/[\w.]*$/)
       const currentWord = match ? match[0] : ''
 
@@ -227,7 +292,15 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
         setShowSuggestions(false)
       }
     },
-    [allCompletions, dynamicTags, dynamicTimelineTypes, mergedJsonPaths],
+    [
+      allCompletions,
+      dynamicTags,
+      dynamicTimelineTypes,
+      dynamicVisibilities,
+      dynamicLanguages,
+      dynamicAccountAccts,
+      mergedJsonPaths,
+    ],
   )
 
   const applySuggestion = useCallback(
@@ -270,11 +343,23 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
       const columnValueMatch = beforeCursor.match(
         /s\.backendUrl\s*(?:=|IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
       )
+      const visibilityValueMatch2 = beforeCursor.match(
+        /s\.visibility\s*(?:=|IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
+      )
+      const languageValueMatch2 = beforeCursor.match(
+        /s\.language\s*(?:=|IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
+      )
+      const accountValueMatch2 = beforeCursor.match(
+        /s\.account_acct\s*(?:=|IN\s*\((?:'[^']*',\s*)*|NOT\s+IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
+      )
       const valueMatch =
         tagValueMatch ||
         timelineValueMatch ||
         jsonValueMatch ||
-        columnValueMatch
+        columnValueMatch ||
+        visibilityValueMatch2 ||
+        languageValueMatch2 ||
+        accountValueMatch2
       if (valueMatch) {
         const matchedPartial = valueMatch[1]
         const replaceStart = beforeCursor.length - matchedPartial.length
@@ -412,6 +497,23 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
         )}
       </div>
 
+      {/* v2 アップグレードボタン */}
+      <div className="flex gap-1">
+        <button
+          className="rounded border border-slate-600 px-2 py-0.5 text-xs hover:bg-slate-700"
+          onClick={() => {
+            const upgraded = upgradeQueryToV2(value)
+            if (upgraded !== value) {
+              onChange(upgraded)
+            }
+          }}
+          title="Convert json_extract() calls to v2 column references"
+          type="button"
+        >
+          ⬆ Upgrade to v2
+        </button>
+      </div>
+
       {/* バリデーション結果 */}
       {isValidating && <p className="text-xs text-gray-500">チェック中...</p>}
       {validationError && (
@@ -424,8 +526,10 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
       <p className="text-xs text-gray-500">
         Available tables: <code className="text-gray-400">s</code> (statuses),{' '}
         <code className="text-gray-400">stt</code> (timeline types),{' '}
-        <code className="text-gray-400">sbt</code> (tags). LIMIT/OFFSET are set
-        automatically.
+        <code className="text-gray-400">sbt</code> (tags),{' '}
+        <code className="text-gray-400">sm</code> (mentions),{' '}
+        <code className="text-gray-400">sb</code> (backends). LIMIT/OFFSET are
+        set automatically.
       </p>
       {QUERY_COMPLETIONS.examples.length > 0 && (
         <details className="text-xs text-gray-500">
