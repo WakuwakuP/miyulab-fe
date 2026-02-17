@@ -1,15 +1,31 @@
-import type { TagConfig, TimelineConfigV2 } from 'types/types'
+import type { BackendFilter, TagConfig, TimelineConfigV2 } from 'types/types'
 
 /**
  * TimelineConfigV2 の UI 設定から SQL WHERE 句を構築する
  *
  * 通常の設定UIをクエリビルダとして機能させるための関数。
- * type, tagConfig, onlyMedia 等の設定を対応する SQL 条件に変換する。
+ * type, tagConfig, onlyMedia, backendFilter 等の設定を対応する SQL 条件に変換する。
  *
- * backendUrl フィルタは実行時に自動付与されるためクエリには含めない。
+ * backendFilter もクエリに含めることで、Advanced Query モードでも
+ * ユーザーがバックエンド条件を確認・編集できるようにする。
+ *
+ * @param config タイムライン設定
+ * @param allBackendUrls 全登録アカウントの backendUrl 配列（backendFilter 'all' 時に使用）
  */
-export function buildQueryFromConfig(config: TimelineConfigV2): string {
+export function buildQueryFromConfig(
+  config: TimelineConfigV2,
+  allBackendUrls?: string[],
+): string {
   const conditions: string[] = []
+
+  // バックエンドフィルタ
+  const backendCondition = buildBackendFilterCondition(
+    config.backendFilter,
+    allBackendUrls,
+  )
+  if (backendCondition) {
+    conditions.push(backendCondition)
+  }
 
   // タイムライン種類
   if (config.type === 'tag') {
@@ -33,6 +49,43 @@ export function buildQueryFromConfig(config: TimelineConfigV2): string {
 
   if (conditions.length === 0) return ''
   return conditions.join(' AND ')
+}
+
+/**
+ * BackendFilter から SQL 条件を構築する
+ *
+ * - 'all' / undefined: 条件なし（全バックエンド対象）
+ * - 'single': `s.backendUrl = '...'`
+ * - 'composite': `s.backendUrl IN ('...', '...')`
+ */
+function buildBackendFilterCondition(
+  filter: BackendFilter | undefined,
+  allBackendUrls?: string[],
+): string {
+  if (!filter || filter.mode === 'all') {
+    // 'all' でも全 URL が既知なら明示的に列挙する（クエリの透明性のため）
+    if (allBackendUrls && allBackendUrls.length > 0) {
+      if (allBackendUrls.length === 1) {
+        return `s.backendUrl = '${escapeSqlString(allBackendUrls[0])}'`
+      }
+      const urlList = allBackendUrls
+        .map((u) => `'${escapeSqlString(u)}'`)
+        .join(', ')
+      return `s.backendUrl IN (${urlList})`
+    }
+    return ''
+  }
+
+  switch (filter.mode) {
+    case 'single':
+      return `s.backendUrl = '${escapeSqlString(filter.backendUrl)}'`
+    case 'composite': {
+      const urlList = filter.backendUrls
+        .map((u) => `'${escapeSqlString(u)}'`)
+        .join(', ')
+      return `s.backendUrl IN (${urlList})`
+    }
+  }
 }
 
 /**
@@ -78,7 +131,7 @@ function escapeSqlString(value: string): string {
  * 完全なパースは不要 — 認識できない場合は null を返す。
  *
  * type は変更しない（タイムラインの種類は固定値のため）。
- * onlyMedia, tagConfig のみ逆算対象。
+ * onlyMedia, tagConfig, backendFilter を逆算対象とする。
  */
 export function parseQueryToConfig(
   query: string,
@@ -90,6 +143,12 @@ export function parseQueryToConfig(
   // onlyMedia の検出
   if (query.includes("json_extract(s.json, '$.media_attachments') != '[]'")) {
     result.onlyMedia = true
+  }
+
+  // backendFilter の検出
+  const backendFilter = parseBackendFilter(query)
+  if (backendFilter) {
+    result.backendFilter = backendFilter
   }
 
   // タグ条件の検出
@@ -116,4 +175,41 @@ export function parseQueryToConfig(
   }
 
   return Object.keys(result).length > 0 ? result : null
+}
+
+/**
+ * クエリ文字列から BackendFilter を逆算する（ベストエフォート）
+ *
+ * - `s.backendUrl = '...'` → single
+ * - `s.backendUrl IN ('...', '...')` → composite（2つ以上）/ single（1つ）
+ * - 条件なし → null（判定不能）
+ */
+function parseBackendFilter(query: string): BackendFilter | null {
+  // single: s.backendUrl = '...'
+  const singleMatch = query.match(/s\.backendUrl\s*=\s*'([^']+)'/i)
+  if (singleMatch) {
+    return {
+      backendUrl: singleMatch[1].replace(/''/g, "'"),
+      mode: 'single',
+    }
+  }
+
+  // composite / single: s.backendUrl IN ('...', '...')
+  const inMatch = query.match(
+    /s\.backendUrl\s+IN\s*\(\s*((?:'[^']+'\s*,?\s*)+)\)/i,
+  )
+  if (inMatch) {
+    const urls = inMatch[1]
+      .split(',')
+      .map((u) => u.trim().replace(/^'|'$/g, '').replace(/''/g, "'"))
+      .filter(Boolean)
+    if (urls.length === 1) {
+      return { backendUrl: urls[0], mode: 'single' }
+    }
+    if (urls.length > 1) {
+      return { backendUrls: urls, mode: 'composite' }
+    }
+  }
+
+  return null
 }

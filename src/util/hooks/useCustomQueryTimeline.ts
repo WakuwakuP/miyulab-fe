@@ -6,10 +6,6 @@ import { getSqliteDb, subscribe } from 'util/db/sqlite/connection'
 import type { SqliteStoredStatus } from 'util/db/sqlite/statusStore'
 import { MAX_LENGTH } from 'util/environment'
 import { AppsContext } from 'util/provider/AppsProvider'
-import {
-  normalizeBackendFilter,
-  resolveBackendUrls,
-} from 'util/timelineConfigValidator'
 
 /**
  * backendUrl から appIndex を算出するヘルパー
@@ -26,6 +22,9 @@ function resolveAppIndex(
  *
  * config.customQuery が設定されている場合にのみ使用される。
  * LIMIT / OFFSET は自動設定され、ユーザーが指定した値は無視される。
+ *
+ * backendFilter は customQuery 内に含まれているため、
+ * この Hook では別途 backendUrl フィルタを注入しない。
  */
 export function useCustomQueryTimeline(
   config: TimelineConfigV2,
@@ -33,19 +32,10 @@ export function useCustomQueryTimeline(
   const apps = useContext(AppsContext)
   const [statuses, setStatuses] = useState<SqliteStoredStatus[]>([])
 
-  const targetBackendUrls = useMemo(() => {
-    const filter = normalizeBackendFilter(config.backendFilter, apps)
-    return resolveBackendUrls(filter, apps)
-  }, [config.backendFilter, apps])
-
   const customQuery = config.customQuery ?? ''
 
   const fetchData = useCallback(async () => {
     if (!customQuery.trim()) {
-      setStatuses([])
-      return
-    }
-    if (targetBackendUrls.length === 0) {
       setStatuses([])
       return
     }
@@ -62,7 +52,7 @@ export function useCustomQueryTimeline(
         setStatuses([])
         return
       }
-      // SQLコメントも拒否（後続の backendUrl 条件のコメントアウト防止）
+      // SQLコメントも拒否
       if (/--/.test(customQuery) || /\/\*/.test(customQuery)) {
         console.error('Custom query contains SQL comments.')
         setStatuses([])
@@ -79,9 +69,9 @@ export function useCustomQueryTimeline(
         return
       }
 
-      const backendPlaceholders = targetBackendUrls.map(() => '?').join(',')
-      const binds: (string | number)[] = [...targetBackendUrls, MAX_LENGTH]
+      const binds: (string | number)[] = [MAX_LENGTH]
 
+      // backendFilter はクエリ内に含まれているため、別途注入しない
       const sql = `
         SELECT DISTINCT s.compositeKey, s.backendUrl, s.created_at_ms, s.storedAt, s.json
         FROM statuses s
@@ -90,7 +80,6 @@ export function useCustomQueryTimeline(
         LEFT JOIN statuses_belonging_tags sbt
           ON s.compositeKey = sbt.compositeKey
         WHERE (${sanitized})
-          AND s.backendUrl IN (${backendPlaceholders})
         ORDER BY s.created_at_ms DESC
         LIMIT ?;
       `
@@ -125,7 +114,7 @@ export function useCustomQueryTimeline(
       console.error('useCustomQueryTimeline query error:', e)
       setStatuses([])
     }
-  }, [customQuery, config.onlyMedia, targetBackendUrls])
+  }, [customQuery, config.onlyMedia])
 
   useEffect(() => {
     fetchData()

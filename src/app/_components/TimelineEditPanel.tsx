@@ -4,8 +4,9 @@ import { BackendFilterSelector } from 'app/_components/BackendFilterSelector'
 import { MediaFilterToggle } from 'app/_components/MediaFilterToggle'
 import { QueryEditor } from 'app/_components/QueryEditor'
 import { TagConfigEditor } from 'app/_components/TagConfigEditor'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { BackendFilter, TagConfig, TimelineConfigV2 } from 'types/types'
+import { AppsContext } from 'util/provider/AppsProvider'
 import { buildQueryFromConfig, parseQueryToConfig } from 'util/queryBuilder'
 
 type TimelineEditPanelProps = {
@@ -19,6 +20,7 @@ export const TimelineEditPanel = ({
   onCancel,
   onSave,
 }: TimelineEditPanelProps) => {
+  const apps = useContext(AppsContext)
   const [label, setLabel] = useState(config.label ?? '')
   const [backendFilter, setBackendFilter] = useState<BackendFilter>(
     config.backendFilter ?? { mode: 'all' },
@@ -32,15 +34,25 @@ export const TimelineEditPanel = ({
     config.advancedQuery ?? false,
   )
 
+  // 全アカウントの backendUrl 一覧
+  const allBackendUrls = useMemo(
+    () => apps.map((app) => app.backendUrl),
+    [apps],
+  )
+
   // UI 設定から構築されたクエリ
   const builtQuery = useMemo(
     () =>
-      buildQueryFromConfig({
-        ...config,
-        onlyMedia,
-        tagConfig,
-      }),
-    [config, onlyMedia, tagConfig],
+      buildQueryFromConfig(
+        {
+          ...config,
+          backendFilter,
+          onlyMedia,
+          tagConfig,
+        },
+        allBackendUrls,
+      ),
+    [config, backendFilter, onlyMedia, tagConfig, allBackendUrls],
   )
 
   // カスタムクエリ: 初期値は保存済みクエリ or UI から構築
@@ -78,6 +90,7 @@ export const TimelineEditPanel = ({
         if (parsed) {
           if (parsed.onlyMedia !== undefined) setOnlyMedia(parsed.onlyMedia)
           if (parsed.tagConfig) setTagConfig(parsed.tagConfig)
+          if (parsed.backendFilter) setBackendFilter(parsed.backendFilter)
         }
       }
       return next
@@ -161,11 +174,13 @@ export const TimelineEditPanel = ({
         </div>
       )}
 
-      {/* Backend Filter */}
-      <BackendFilterSelector
-        onChange={setBackendFilter}
-        value={backendFilter}
-      />
+      {/* Backend Filter（通常UIモード時のみ表示。Advanced Query モードではクエリ内に含まれる） */}
+      {!showAdvanced && (
+        <BackendFilterSelector
+          onChange={setBackendFilter}
+          value={backendFilter}
+        />
+      )}
 
       {/* 通常UIモード: Media Filter + Tag Config */}
       {!isNotification && !showAdvanced && (

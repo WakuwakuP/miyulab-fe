@@ -686,6 +686,15 @@ export const QUERY_COMPLETIONS = {
       query: "stt.timelineType = 'local' AND sbt.tag = 'music'",
     },
     {
+      description: '特定バックエンドの投稿のみ取得する',
+      query: "s.backendUrl = 'https://example.com'",
+    },
+    {
+      description: '複数バックエンドの投稿を取得する',
+      query:
+        "s.backendUrl IN ('https://example.com', 'https://other.example.com')",
+    },
+    {
       description: '特定ユーザーの投稿を取得する',
       query: "json_extract(s.json, '$.account.acct') = 'user@example.com'",
     },
