@@ -508,9 +508,15 @@ export function parseQueryToConfig(
     query.match(/s\.backendUrl\s*=\s*'([^']+)'/i) ??
     query.match(/n\.backendUrl\s*=\s*'([^']+)'/i)
   const backendInMatch =
-    query.match(/sb\.backendUrl\s+IN\s*\(\s*((?:'[^']+'\s*,?\s*)+)\)/i) ??
-    query.match(/s\.backendUrl\s+IN\s*\(\s*((?:'[^']+'\s*,?\s*)+)\)/i) ??
-    query.match(/n\.backendUrl\s+IN\s*\(\s*((?:'[^']+'\s*,?\s*)+)\)/i)
+    query.match(
+      /sb\.backendUrl\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
+    ) ??
+    query.match(
+      /s\.backendUrl\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
+    ) ??
+    query.match(
+      /n\.backendUrl\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
+    )
 
   if (backendSingleMatch) {
     result.backendFilter = {
@@ -533,7 +539,7 @@ export function parseQueryToConfig(
   // notificationFilter の検出
   // ========================================
   const notifTypeInMatch = query.match(
-    /n\.notification_type\s+IN\s*\(\s*((?:'[^']+'\s*,?\s*)+)\)/i,
+    /n\.notification_type\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
   )
   const notifTypeSingleMatch = query.match(
     /n\.notification_type\s*=\s*'([^']+)'/i,
