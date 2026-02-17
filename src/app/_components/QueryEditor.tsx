@@ -10,8 +10,11 @@ import {
   useState,
 } from 'react'
 import {
+  getDistinctColumnValues,
+  getDistinctJsonValues,
   getDistinctTags,
   getDistinctTimelineTypes,
+  getJsonKeysFromSample,
   QUERY_COMPLETIONS,
   validateCustomQuery,
 } from 'util/db/sqlite/statusStore'
@@ -39,6 +42,7 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
   const [isValidating, setIsValidating] = useState(false)
   const [dynamicTags, setDynamicTags] = useState<string[]>([])
   const [dynamicTimelineTypes, setDynamicTimelineTypes] = useState<string[]>([])
+  const [dynamicJsonPaths, setDynamicJsonPaths] = useState<string[]>([])
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const validationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -46,6 +50,7 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
   useEffect(() => {
     getDistinctTags().then(setDynamicTags)
     getDistinctTimelineTypes().then(setDynamicTimelineTypes)
+    getJsonKeysFromSample(20).then(setDynamicJsonPaths)
   }, [])
 
   // 全ての補完候補を事前に構築
@@ -94,24 +99,54 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
     }
   }, [value])
 
+  // JSON パス候補をマージ（静的 + 動的）
+  const mergedJsonPaths = useMemo(() => {
+    const pathSet = new Set<string>(QUERY_COMPLETIONS.jsonPaths)
+    for (const p of dynamicJsonPaths) {
+      pathSet.add(p)
+    }
+    return Array.from(pathSet).sort()
+  }, [dynamicJsonPaths])
+
   const updateSuggestions = useCallback(
     (text: string, cursorPos: number) => {
       // カーソル位置の直前のワードを取得
       const beforeCursor = text.slice(0, cursorPos)
 
       // `$.` パス補完のチェック（json_extract 内の `'$.` に続くパス）
-      const jsonPathMatch = beforeCursor.match(/'\$\.[\w.]*$/)
+      const jsonPathMatch = beforeCursor.match(/'\$\.[\w.[\]]*$/)
       if (jsonPathMatch) {
         const currentPath = jsonPathMatch[0].slice(1) // 先頭の `'` を除去
-        const filtered = QUERY_COMPLETIONS.jsonPaths.filter((item) =>
+        const filtered = mergedJsonPaths.filter((item) =>
           item.toLowerCase().startsWith(currentPath.toLowerCase()),
         )
         if (filtered.length > 0) {
-          setSuggestions(filtered.slice(0, 8))
+          setSuggestions(filtered.slice(0, 12))
           setSelectedIndex(0)
           setShowSuggestions(true)
           return
         }
+      }
+
+      // json_extract 値補完: json_extract(s.json, '$.path') = ' の後
+      const jsonValueMatch = beforeCursor.match(
+        /json_extract\s*\(\s*s\.json\s*,\s*'(\$[.\w[\]]+)'\s*\)\s*(?:=|!=|<>)\s*'([^']*)$/i,
+      )
+      if (jsonValueMatch) {
+        const jsonPath = jsonValueMatch[1]
+        const partial = jsonValueMatch[2].toLowerCase()
+        // 非同期で値を取得してサジェスト
+        void getDistinctJsonValues(jsonPath).then((values) => {
+          const filtered = values.filter((v) =>
+            v.toLowerCase().startsWith(partial),
+          )
+          if (filtered.length > 0) {
+            setSuggestions(filtered.slice(0, 12))
+            setSelectedIndex(0)
+            setShowSuggestions(true)
+          }
+        })
+        return
       }
 
       // タグ値補完: sbt.tag = ' または sbt.tag IN ('..., ' の後
@@ -124,7 +159,7 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
           t.toLowerCase().startsWith(partial),
         )
         if (filtered.length > 0) {
-          setSuggestions(filtered.slice(0, 8))
+          setSuggestions(filtered.slice(0, 12))
           setSelectedIndex(0)
           setShowSuggestions(true)
           return
@@ -133,7 +168,7 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
 
       // タイムラインタイプ値補完: stt.timelineType = ' の後
       const timelineValueMatch = beforeCursor.match(
-        /stt\.timelineType\s*=\s*'([^']*)$/i,
+        /stt\.timelineType\s*(?:=|IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
       )
       if (timelineValueMatch) {
         const partial = timelineValueMatch[1].toLowerCase()
@@ -141,11 +176,32 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
           t.toLowerCase().startsWith(partial),
         )
         if (filtered.length > 0) {
-          setSuggestions(filtered.slice(0, 8))
+          setSuggestions(filtered.slice(0, 12))
           setSelectedIndex(0)
           setShowSuggestions(true)
           return
         }
+      }
+
+      // カラム値補完: s.backendUrl = ' の後
+      const columnValueMatch = beforeCursor.match(
+        /s\.backendUrl\s*(?:=|IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
+      )
+      if (columnValueMatch) {
+        const partial = columnValueMatch[1].toLowerCase()
+        void getDistinctColumnValues('statuses', 'backendUrl').then(
+          (values) => {
+            const filtered = values.filter((v) =>
+              v.toLowerCase().startsWith(partial),
+            )
+            if (filtered.length > 0) {
+              setSuggestions(filtered.slice(0, 12))
+              setSelectedIndex(0)
+              setShowSuggestions(true)
+            }
+          },
+        )
+        return
       }
 
       const match = beforeCursor.match(/[\w.]*$/)
@@ -171,7 +227,7 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
         setShowSuggestions(false)
       }
     },
-    [allCompletions, dynamicTags, dynamicTimelineTypes],
+    [allCompletions, dynamicTags, dynamicTimelineTypes, mergedJsonPaths],
   )
 
   const applySuggestion = useCallback(
@@ -185,7 +241,7 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
       const afterCursor = text.slice(cursorPos)
 
       // `$.` パス補完の場合
-      const jsonPathMatch = beforeCursor.match(/'\$\.[\w.]*$/)
+      const jsonPathMatch = beforeCursor.match(/'\$\.[\w.[\]]*$/)
       if (jsonPathMatch) {
         const matchStart = beforeCursor.length - jsonPathMatch[0].length + 1 // `'` の次
         const newBeforeCursor = beforeCursor.slice(0, matchStart)
@@ -201,17 +257,26 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
         return
       }
 
-      // タグ値・タイムラインタイプ値補完の場合
+      // 値補完の場合（タグ、タイムラインタイプ、json_extract値、カラム値）
       const tagValueMatch = beforeCursor.match(
         /sbt\.tag\s*(?:=|IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
       )
       const timelineValueMatch = beforeCursor.match(
-        /stt\.timelineType\s*=\s*'([^']*)$/i,
+        /stt\.timelineType\s*(?:=|IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
       )
-      if (tagValueMatch || timelineValueMatch) {
-        const matchedPartial = tagValueMatch
-          ? tagValueMatch[1]
-          : (timelineValueMatch?.[1] ?? '')
+      const jsonValueMatch = beforeCursor.match(
+        /json_extract\s*\(\s*s\.json\s*,\s*'\$[.\w[\]]+'\s*\)\s*(?:=|!=|<>)\s*'([^']*)$/i,
+      )
+      const columnValueMatch = beforeCursor.match(
+        /s\.backendUrl\s*(?:=|IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
+      )
+      const valueMatch =
+        tagValueMatch ||
+        timelineValueMatch ||
+        jsonValueMatch ||
+        columnValueMatch
+      if (valueMatch) {
+        const matchedPartial = valueMatch[1]
         const replaceStart = beforeCursor.length - matchedPartial.length
         const newBeforeCursor = beforeCursor.slice(0, replaceStart)
         const newValue = `${newBeforeCursor}${suggestion}${afterCursor}`

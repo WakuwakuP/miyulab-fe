@@ -860,3 +860,132 @@ export async function getDistinctTimelineTypes(): Promise<string[]> {
     return []
   }
 }
+
+/**
+ * サンプル Status の JSON から全キーパスを再帰的に抽出する（補完用）
+ *
+ * 最新 N 件の Status JSON をパースし、存在するすべてのキーパスを
+ * `$.key.subkey` 形式で返す。
+ */
+export async function getJsonKeysFromSample(
+  sampleSize = 10,
+): Promise<string[]> {
+  try {
+    const handle = await getSqliteDb()
+    const { db } = handle
+    const rows = db.exec(
+      `SELECT json FROM statuses ORDER BY created_at_ms DESC LIMIT ?;`,
+      { bind: [sampleSize], returnValue: 'resultRows' },
+    ) as string[][]
+
+    const paths = new Set<string>()
+
+    for (const row of rows) {
+      try {
+        const obj = JSON.parse(row[0]) as Record<string, unknown>
+        collectJsonPaths(obj, '$', paths)
+      } catch {
+        // skip malformed JSON
+      }
+    }
+
+    return Array.from(paths).sort()
+  } catch {
+    return []
+  }
+}
+
+/** JSON オブジェクトからキーパスを再帰収集するヘルパー（最大深度 4） */
+function collectJsonPaths(
+  obj: unknown,
+  prefix: string,
+  paths: Set<string>,
+  depth = 0,
+): void {
+  if (depth > 4 || obj == null) return
+
+  if (Array.isArray(obj)) {
+    paths.add(prefix)
+    // 配列の最初の要素だけ探索（構造サンプリング）
+    if (obj.length > 0 && typeof obj[0] === 'object' && obj[0] !== null) {
+      collectJsonPaths(obj[0], `${prefix}[0]`, paths, depth + 1)
+    }
+    return
+  }
+
+  if (typeof obj === 'object') {
+    for (const key of Object.keys(obj as Record<string, unknown>)) {
+      const childPath = `${prefix}.${key}`
+      const child = (obj as Record<string, unknown>)[key]
+      paths.add(childPath)
+      if (typeof child === 'object' && child !== null) {
+        collectJsonPaths(child, childPath, paths, depth + 1)
+      }
+    }
+    return
+  }
+
+  // プリミティブ値は末端パスとして追加済み
+}
+
+/**
+ * 指定した JSON パスの値を DB からサンプル取得する（補完用）
+ *
+ * json_extract で値を抽出し、DISTINCT で重複排除。
+ * 文字列値のみ返す（数値・null・配列/オブジェクトは除外）。
+ */
+export async function getDistinctJsonValues(
+  jsonPath: string,
+  maxResults = 20,
+): Promise<string[]> {
+  try {
+    const handle = await getSqliteDb()
+    const { db } = handle
+
+    // パスのバリデーション: $. で始まり英数字・ドット・アンダースコア・ブラケットのみ
+    if (!/^\$[.\w[\]]*$/.test(jsonPath)) return []
+
+    const rows = db.exec(
+      `SELECT DISTINCT json_extract(json, '${jsonPath}') AS val
+       FROM statuses
+       WHERE val IS NOT NULL AND typeof(val) = 'text' AND val != '' AND val != '[]'
+       ORDER BY val
+       LIMIT ?;`,
+      { bind: [maxResults], returnValue: 'resultRows' },
+    ) as string[][]
+    return rows.map((r) => r[0])
+  } catch {
+    return []
+  }
+}
+
+/**
+ * 指定したテーブル・カラムの値を DB から取得する（補完用）
+ *
+ * statuses テーブルの backendUrl 等の値を返す。
+ */
+export async function getDistinctColumnValues(
+  table: string,
+  column: string,
+  maxResults = 20,
+): Promise<string[]> {
+  // 許可リスト（安全なテーブル＋カラムの組み合わせ）
+  const allowed: Record<string, string[]> = {
+    statuses: ['backendUrl'],
+    statuses_belonging_tags: ['tag'],
+    statuses_timeline_types: ['timelineType'],
+  }
+  if (!allowed[table]?.includes(column)) return []
+
+  try {
+    const handle = await getSqliteDb()
+    const { db } = handle
+    const rows = db.exec(
+      `SELECT DISTINCT "${column}" FROM "${table}" WHERE "${column}" IS NOT NULL AND "${column}" != '' ORDER BY "${column}" LIMIT ?;`,
+      { bind: [maxResults], returnValue: 'resultRows' },
+    ) as string[][]
+    return rows.map((r) => r[0])
+  } catch {
+    return []
+  }
+}
