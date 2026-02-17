@@ -25,13 +25,29 @@ import {
   RiEyeOffLine,
 } from 'react-icons/ri'
 
-import type { TimelineConfigV2, TimelineType } from 'types/types'
+import type {
+  NotificationType,
+  TimelineConfigV2,
+  TimelineType,
+} from 'types/types'
 import {
   SetTimelineContext,
   TimelineContext,
 } from 'util/provider/TimelineProvider'
 import { buildQueryFromConfig } from 'util/queryBuilder'
 import { getDefaultTimelineName } from 'util/timelineDisplayName'
+
+/** Add Timeline で notification を追加する際に全通知タイプを設定する */
+const ALL_NOTIFICATION_TYPES: NotificationType[] = [
+  'follow',
+  'follow_request',
+  'mention',
+  'reblog',
+  'favourite',
+  'reaction',
+  'poll_expired',
+  'status',
+]
 
 /**
  * UUID v4 の簡易生成
@@ -440,6 +456,9 @@ export const TimelineManagement = () => {
       const baseConfig: TimelineConfigV2 = {
         backendFilter: { mode: 'all' },
         id: generateId(),
+        // notification タイプの場合は全通知タイプを設定してクエリを生成する
+        notificationFilter:
+          type === 'notification' ? ALL_NOTIFICATION_TYPES : undefined,
         onlyMedia: type === 'public',
         order: maxOrder + 1,
         type,
