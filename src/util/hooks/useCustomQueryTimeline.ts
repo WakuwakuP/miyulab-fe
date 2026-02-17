@@ -133,7 +133,18 @@ export function useCustomQueryTimeline(
         // ============================
         // 各サブクエリでは、対象外テーブルのカラムが NULL になるよう
         // LEFT JOIN ... ON 0 = 1 でダミー結合する
-        const binds: (string | number)[] = [MAX_LENGTH]
+
+        // statuses サブクエリ用のメディアフィルタ条件
+        let statusMediaConditions = ''
+        const statusMediaBinds: (string | number)[] = []
+        if (minMediaCount != null && minMediaCount > 0) {
+          statusMediaConditions += '\n              AND s.media_count >= ?'
+          statusMediaBinds.push(minMediaCount)
+        } else if (onlyMedia) {
+          statusMediaConditions += '\n              AND s.has_media = 1'
+        }
+
+        const binds: (string | number)[] = [...statusMediaBinds, MAX_LENGTH]
 
         const sql = `
           SELECT compositeKey, backendUrl, created_at_ms, storedAt, json, _type
@@ -153,7 +164,7 @@ export function useCustomQueryTimeline(
             -- Dummy join: n.* columns resolve to NULL so mixed WHERE clause passes
             LEFT JOIN notifications n
               ON 0 = 1
-            WHERE (${sanitized})
+            WHERE (${sanitized})${statusMediaConditions}
             GROUP BY s.compositeKey
             UNION ALL
             SELECT n.compositeKey, n.backendUrl,

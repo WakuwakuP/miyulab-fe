@@ -8,8 +8,25 @@ import type {
   VisibilityType,
 } from 'types/types'
 
-/** 全通知タイプの数（NotificationType の全列挙数） */
-const ALL_NOTIFICATION_TYPES_COUNT = 8 satisfies number
+/**
+ * 全通知タイプの配列
+ *
+ * NotificationType の全値を列挙する。
+ * ALL_NOTIFICATION_TYPES_COUNT はこの配列の長さから導出する。
+ */
+export const ALL_NOTIFICATION_TYPES: readonly NotificationType[] = [
+  'follow',
+  'follow_request',
+  'mention',
+  'reblog',
+  'favourite',
+  'reaction',
+  'poll_expired',
+  'status',
+] as const
+
+/** 全通知タイプの数（ALL_NOTIFICATION_TYPES の長さから導出） */
+const ALL_NOTIFICATION_TYPES_COUNT = ALL_NOTIFICATION_TYPES.length
 
 /**
  * クエリが notifications テーブル（エイリアス n）を参照しているか判定する
@@ -85,19 +102,26 @@ export function buildQueryFromConfig(config: TimelineConfigV2): string {
   // ========================================
   const filterConditions: string[] = []
 
+  // 混合クエリかどうか（statuses 固有フィルタを NULL 許容にする判定）
+  const isMixed = sourceConditions.length > 1
+
   // メディアフィルタ（v2: 正規化カラム使用）
   const mediaCondition = buildMediaCondition(config)
   if (mediaCondition) {
-    filterConditions.push(mediaCondition)
+    filterConditions.push(
+      isMixed ? nullTolerant(mediaCondition) : mediaCondition,
+    )
   }
 
   // 公開範囲フィルタ
   const visibilityCondition = buildVisibilityCondition(config.visibilityFilter)
   if (visibilityCondition) {
-    filterConditions.push(visibilityCondition)
+    filterConditions.push(
+      isMixed ? nullTolerant(visibilityCondition) : visibilityCondition,
+    )
   }
 
-  // 言語フィルタ
+  // 言語フィルタ（既に OR ... IS NULL を含むためそのまま）
   const languageCondition = buildLanguageCondition(config.languageFilter)
   if (languageCondition) {
     filterConditions.push(languageCondition)
@@ -105,28 +129,33 @@ export function buildQueryFromConfig(config: TimelineConfigV2): string {
 
   // ブースト除外
   if (config.excludeReblogs) {
-    filterConditions.push('s.is_reblog = 0')
+    const cond = 's.is_reblog = 0'
+    filterConditions.push(isMixed ? nullTolerant(cond) : cond)
   }
 
-  // リプライ除外
+  // リプライ除外（IS NULL は混合クエリでも notifications 行を通すため変更不要）
   if (config.excludeReplies) {
     filterConditions.push('s.in_reply_to_id IS NULL')
   }
 
   // CW 付き除外
   if (config.excludeSpoiler) {
-    filterConditions.push('s.has_spoiler = 0')
+    const cond = 's.has_spoiler = 0'
+    filterConditions.push(isMixed ? nullTolerant(cond) : cond)
   }
 
   // センシティブ除外
   if (config.excludeSensitive) {
-    filterConditions.push('s.is_sensitive = 0')
+    const cond = 's.is_sensitive = 0'
+    filterConditions.push(isMixed ? nullTolerant(cond) : cond)
   }
 
   // アカウントフィルタ
   const accountCondition = buildAccountCondition(config.accountFilter)
   if (accountCondition) {
-    filterConditions.push(accountCondition)
+    filterConditions.push(
+      isMixed ? nullTolerant(accountCondition) : accountCondition,
+    )
   }
 
   // バックエンドフィルタ
@@ -401,6 +430,26 @@ function escapeSqlString(value: string): string {
   return value.replace(/'/g, "''")
 }
 
+/**
+ * 混合クエリ（UNION ALL）で statuses 固有の条件が notifications 行を
+ * フィルタアウトしないよう、NULL 許容のラッパーを付与する。
+ *
+ * UNION ALL の notifications サブクエリでは s.* カラムは
+ * LEFT JOIN ... ON 0 = 1 により NULL になるため、
+ * `s.has_media = 1` は `NULL = 1` → FALSE となり全件除外される。
+ * これを防ぐため `(条件 OR s.compositeKey IS NULL)` で囲む。
+ *
+ * s.compositeKey が NULL ＝ notifications 行であるため、
+ * notifications 行は常に通過する。
+ *
+ * @example
+ * nullTolerant('s.has_media = 1')
+ * // → "(s.has_media = 1 OR s.compositeKey IS NULL)"
+ */
+function nullTolerant(condition: string): string {
+  return `(${condition} OR s.compositeKey IS NULL)`
+}
+
 // ================================================================
 // ミュート・インスタンスブロック条件
 // ================================================================
@@ -530,7 +579,7 @@ export function parseQueryToConfig(
   // visibilityFilter の検出
   // ========================================
   const visibilityMatch = query.match(
-    /s\.visibility\s+IN\s*\(\s*((?:'[^']+'\s*,?\s*)+)\)/i,
+    /s\.visibility\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
   )
   if (visibilityMatch) {
     const visibilities = visibilityMatch[1]
@@ -547,7 +596,7 @@ export function parseQueryToConfig(
   // languageFilter の検出
   // ========================================
   const languageMatch = query.match(
-    /s\.language\s+IN\s*\(\s*((?:'[^']+'\s*,?\s*)+)\)/i,
+    /s\.language\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
   )
   if (languageMatch) {
     const languages = languageMatch[1]
@@ -597,10 +646,10 @@ export function parseQueryToConfig(
   // accountFilter の検出
   // ========================================
   const accountExcludeMatch = query.match(
-    /s\.account_acct\s+NOT\s+IN\s*\(\s*((?:'[^']+'\s*,?\s*)+)\)/i,
+    /s\.account_acct\s+NOT\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
   )
   const accountIncludeMatch = query.match(
-    /s\.account_acct\s+IN\s*\(\s*((?:'[^']+'\s*,?\s*)+)\)/i,
+    /s\.account_acct\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
   )
 
   if (accountExcludeMatch) {
@@ -701,7 +750,7 @@ export function parseQueryToConfig(
   // ========================================
   const singleTagMatch = query.match(/sbt\.tag\s*=\s*'([^']+)'/i)
   const multiTagMatch = query.match(
-    /sbt\.tag\s+IN\s*\(\s*((?:'[^']+'\s*,?\s*)+)\)/i,
+    /sbt\.tag\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
   )
   const andTagMatch = query.match(
     /HAVING\s+COUNT\s*\(\s*DISTINCT\s+\w+\.tag\s*\)\s*=\s*(\d+)/i,

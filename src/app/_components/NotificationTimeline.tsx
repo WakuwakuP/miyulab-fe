@@ -21,7 +21,13 @@ export const NotificationTimeline = ({
 }: {
   config: TimelineConfigV2
 }) => {
-  const notifications = useTimelineData(config) as NotificationAddAppIndex[]
+  const rawData = useTimelineData(config)
+  // Runtime type guard: filter out any non-notification items that may slip through
+  const notifications = useMemo(
+    () =>
+      rawData.filter((item): item is NotificationAddAppIndex => 'type' in item),
+    [rawData],
+  )
   const scrollerRef = useRef<VirtuosoHandle>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
