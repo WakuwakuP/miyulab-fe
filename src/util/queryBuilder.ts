@@ -306,7 +306,7 @@ export function buildMuteCondition(backendUrls: string[]): {
 export function buildInstanceBlockCondition(): string {
   return `NOT EXISTS (
     SELECT 1 FROM blocked_instances bi
-    WHERE s.account_acct LIKE '%@' || bi.instance_domain
+    WHERE s.account_acct LIKE '%@' || REPLACE(REPLACE(bi.instance_domain, '%', '\\%'), '_', '\\_') ESCAPE '\\'
   )`
 }
 

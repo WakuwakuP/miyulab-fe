@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useContext, useEffect, useState } from 'react'
+import { useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { getSqliteDb, notifyChange } from 'util/db/sqlite/connection'
 import { AppsContext } from 'util/provider/AppsProvider'
 
@@ -121,18 +121,40 @@ export function MuteManager({ onClose }: { onClose: () => void }) {
     })
   }
 
+  const dialogRef = useRef<HTMLDivElement>(null)
+
+  // Escape キーでモーダルを閉じる
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [onClose])
+
+  // モーダル表示時にフォーカスを移動
+  useEffect(() => {
+    dialogRef.current?.focus()
+  }, [])
+
   return (
     <div
+      aria-label="Muted Accounts"
+      aria-modal="true"
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose()
       }}
+      role="dialog"
     >
-      <div className="w-full max-w-md rounded-lg border border-gray-600 bg-gray-800 p-4 shadow-xl">
+      <div
+        className="w-full max-w-md rounded-lg border border-gray-600 bg-gray-800 p-4 shadow-xl outline-none"
+        ref={dialogRef}
+        tabIndex={-1}
+      >
         <h3 className="mb-3 text-sm font-semibold text-gray-200">
           Muted Accounts
         </h3>
-
         {/* Backend selector */}
         {apps.length > 1 && (
           <div className="mb-3">
@@ -154,7 +176,6 @@ export function MuteManager({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
-        {/* Input */}
         <div className="mb-3 flex gap-1">
           <input
             className="flex-1 rounded border border-slate-600 bg-slate-800 px-2 py-1 text-xs text-white"
@@ -178,7 +199,6 @@ export function MuteManager({ onClose }: { onClose: () => void }) {
             Mute
           </button>
         </div>
-
         {/* List */}
         <div className="max-h-60 overflow-y-auto">
           {isLoading ? (
@@ -214,7 +234,6 @@ export function MuteManager({ onClose }: { onClose: () => void }) {
             </ul>
           )}
         </div>
-
         {/* Close */}
         <div className="mt-3 flex justify-end">
           <button

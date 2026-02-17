@@ -59,11 +59,6 @@ export function extractStatusColumns(status: Entity.Status) {
   }
 }
 
-/**
- * メンション情報を statuses_mentions テーブルに書き込む
- *
- * 既存のメンションを削除してから再挿入する（編集対応）。
- */
 // ================================================================
 // compositeKey 解決ヘルパー（v3）
 // ================================================================
@@ -90,6 +85,11 @@ export function resolveCompositeKey(
 // メンション書き込みヘルパー
 // ================================================================
 
+/**
+ * メンション情報を statuses_mentions テーブルに書き込む
+ *
+ * 既存のメンションを削除してから再挿入する（編集対応）。
+ */
 export function upsertMentions(
   handle: DbHandle,
   compositeKey: string,
@@ -619,6 +619,11 @@ export async function removeFromTimeline(
 
 /**
  * delete イベントの処理
+ *
+ * v3: statuses_backends 経由でバックエンド関連を削除し、
+ * 他のバックエンドからの参照がなくなった場合のみ物理削除する。
+ * 他のバックエンドが参照している場合はタイムライン種別を除外し、
+ * どのタイムラインにも属さなくなった場合も物理削除する。
  */
 export async function handleDeleteEvent(
   backendUrl: string,
@@ -654,7 +659,7 @@ export async function handleDeleteEvent(
         bind: [compositeKey],
       })
     } else {
-      // 他のバックエンドから参照されている → タイムライン種別のみ除外
+      // 他のバックエンドから参照されている → タイムライン種別を除外
       db.exec(
         'DELETE FROM statuses_timeline_types WHERE compositeKey = ? AND timelineType = ?;',
         { bind: [compositeKey, sourceTimelineType] },
@@ -665,6 +670,20 @@ export async function handleDeleteEvent(
           'DELETE FROM statuses_belonging_tags WHERE compositeKey = ? AND tag = ?;',
           { bind: [compositeKey, tag] },
         )
+      }
+
+      // どのタイムラインにも属さなくなったら物理削除
+      const remainingTimelines = (
+        db.exec(
+          'SELECT COUNT(*) FROM statuses_timeline_types WHERE compositeKey = ?;',
+          { bind: [compositeKey], returnValue: 'resultRows' },
+        ) as number[][]
+      )[0][0]
+
+      if (remainingTimelines === 0) {
+        db.exec('DELETE FROM statuses WHERE compositeKey = ?;', {
+          bind: [compositeKey],
+        })
       }
     }
 
