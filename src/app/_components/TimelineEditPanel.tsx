@@ -88,13 +88,6 @@ export const TimelineEditPanel = ({
     }
   }, [builtQuery, showAdvanced])
 
-  // バリデーション:
-  // - tag タイムラインは通常UIモードで最低1つのタグが必須
-  // - Advanced Query モード: カスタムクエリがあればタグ無しも許可
-  const isValid =
-    config.type !== 'tag' ||
-    (showAdvanced ? Boolean(customQuery.trim()) : tagConfig.tags.length > 0)
-
   // Advanced Query トグル
   const handleToggleAdvanced = useCallback(() => {
     setShowAdvanced((prev) => {
@@ -140,8 +133,6 @@ export const TimelineEditPanel = ({
   }, [builtQuery, customQuery])
 
   const handleSave = useCallback(() => {
-    if (!isValid) return
-
     const updates: Partial<TimelineConfigV2> = {
       advancedQuery: showAdvanced,
       // Advanced Query モードでは backendFilter はクエリに含まれるため all にリセット
@@ -159,7 +150,6 @@ export const TimelineEditPanel = ({
     backendFilter,
     customQuery,
     filterUpdates,
-    isValid,
     label,
     onSave,
     onlyMedia,
@@ -255,20 +245,13 @@ export const TimelineEditPanel = ({
           Cancel
         </button>
         <button
-          className="rounded bg-blue-600 px-3 py-1 text-sm hover:bg-blue-500 disabled:bg-gray-600 disabled:cursor-not-allowed"
-          disabled={!isValid}
+          className="rounded bg-blue-600 px-3 py-1 text-sm hover:bg-blue-500"
           onClick={handleSave}
           type="button"
         >
           Save
         </button>
       </div>
-
-      {!isValid && (
-        <p className="text-xs text-red-400">
-          Tag timeline requires at least one tag.
-        </p>
-      )}
 
       {/* MuteManager モーダル */}
       {showMuteManager && (

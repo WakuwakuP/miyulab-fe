@@ -15,8 +15,9 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { TimelineEditPanel } from 'app/_components/TimelineEditPanel'
 import { TimelineSummary } from 'app/_components/TimelineSummary'
-import { useCallback, useContext, useState } from 'react'
+import { type ChangeEvent, useCallback, useContext, useState } from 'react'
 import {
+  RiAddLine,
   RiDeleteBinLine,
   RiDragMove2Line,
   RiEditLine,
@@ -182,10 +183,136 @@ const SortableTimelineItem = ({
   )
 }
 
+const AddTagTimelineDialog = ({
+  onAdd,
+  onCancel,
+}: {
+  onAdd: (config: TimelineConfigV2) => void
+  onCancel: () => void
+}) => {
+  const [tagInput, setTagInput] = useState('')
+  const [tags, setTags] = useState<string[]>([])
+
+  const addTag = useCallback(() => {
+    const trimmed = tagInput.trim().toLowerCase().replace(/^#/, '')
+    if (trimmed === '' || tags.includes(trimmed)) {
+      setTagInput('')
+      return
+    }
+    if (tags.length >= 5) return
+
+    setTags((prev) => [...prev, trimmed])
+    setTagInput('')
+  }, [tagInput, tags])
+
+  const removeTag = useCallback((tag: string) => {
+    setTags((prev) => prev.filter((t) => t !== tag))
+  }, [])
+
+  const handleCreate = useCallback(() => {
+    if (tags.length === 0) return
+
+    const newConfig: TimelineConfigV2 = {
+      backendFilter: { mode: 'all' },
+      id: generateId(),
+      label: undefined,
+      onlyMedia: false,
+      order: 0, // will be overridden by caller
+      tagConfig: {
+        mode: 'or',
+        tags,
+      },
+      type: 'tag',
+      visible: true,
+    }
+
+    onAdd(newConfig)
+  }, [tags, onAdd])
+
+  return (
+    <div className="border border-gray-600 rounded-md p-3 mt-2 space-y-3 bg-gray-800">
+      <h4 className="text-sm font-semibold text-gray-200">Add Tag Timeline</h4>
+
+      {/* Tag list */}
+      <div className="flex flex-wrap gap-1">
+        {tags.map((tag) => (
+          <span
+            className="inline-flex items-center space-x-1 rounded bg-gray-700 px-2 py-0.5 text-xs"
+            key={tag}
+          >
+            <span>#{tag}</span>
+            <button
+              className="text-red-400 hover:text-red-300 ml-1"
+              onClick={() => removeTag(tag)}
+              type="button"
+            >
+              ×
+            </button>
+          </span>
+        ))}
+      </div>
+
+      {/* Tag input */}
+      <div className="flex space-x-2">
+        <input
+          className="flex-1 rounded bg-gray-700 px-2 py-1 text-sm text-white"
+          disabled={tags.length >= 5}
+          onChange={(e: ChangeEvent<HTMLInputElement>) =>
+            setTagInput(e.target.value)
+          }
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              addTag()
+            }
+          }}
+          placeholder={tags.length >= 5 ? 'Max 5 tags' : 'Tag name'}
+          type="text"
+          value={tagInput}
+        />
+        <button
+          className="rounded bg-blue-600 px-3 py-1 text-sm hover:bg-blue-500 disabled:bg-gray-600"
+          disabled={tagInput.trim() === '' || tags.length >= 5}
+          onClick={addTag}
+          type="button"
+        >
+          <RiAddLine size={16} />
+        </button>
+      </div>
+
+      {/* Actions */}
+      <div className="flex justify-end space-x-2 pt-1">
+        <button
+          className="rounded bg-gray-600 px-3 py-1 text-sm hover:bg-gray-500"
+          onClick={onCancel}
+          type="button"
+        >
+          Cancel
+        </button>
+        <button
+          className="rounded bg-blue-600 px-3 py-1 text-sm hover:bg-blue-500 disabled:bg-gray-600 disabled:cursor-not-allowed"
+          disabled={tags.length === 0}
+          onClick={handleCreate}
+          type="button"
+        >
+          Create
+        </button>
+      </div>
+
+      {tags.length === 0 && (
+        <p className="text-xs text-gray-400">
+          Add at least one tag to create a tag timeline.
+        </p>
+      )}
+    </div>
+  )
+}
+
 export const TimelineManagement = () => {
   const timelineSettings = useContext(TimelineContext)
   const setTimelineSettings = useContext(SetTimelineContext)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [showAddTagDialog, setShowAddTagDialog] = useState(false)
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -306,7 +433,6 @@ export const TimelineManagement = () => {
         id: generateId(),
         onlyMedia: type === 'public',
         order: maxOrder + 1,
-        tagConfig: type === 'tag' ? { mode: 'or', tags: [] } : undefined,
         type,
         visible: true,
       }
@@ -315,6 +441,23 @@ export const TimelineManagement = () => {
         ...prev,
         timelines: [...prev.timelines, newConfig],
       }))
+    },
+    [timelineSettings.timelines, setTimelineSettings],
+  )
+
+  const onAddTagTimeline = useCallback(
+    (config: TimelineConfigV2) => {
+      const maxOrder = Math.max(
+        ...timelineSettings.timelines.map((t) => t.order),
+        -1,
+      )
+
+      setTimelineSettings((prev) => ({
+        ...prev,
+        timelines: [...prev.timelines, { ...config, order: maxOrder + 1 }],
+      }))
+
+      setShowAddTagDialog(false)
     },
     [timelineSettings.timelines, setTimelineSettings],
   )
@@ -394,13 +537,7 @@ export const TimelineManagement = () => {
           <div className="space-y-2">
             <div className="flex flex-wrap gap-1">
               {(
-                [
-                  'home',
-                  'local',
-                  'public',
-                  'notification',
-                  'tag',
-                ] as TimelineType[]
+                ['home', 'local', 'public', 'notification'] as TimelineType[]
               ).map((type) => (
                 <button
                   className="rounded bg-slate-600 px-2 py-1 text-xs hover:bg-slate-500"
@@ -411,7 +548,25 @@ export const TimelineManagement = () => {
                   {type.charAt(0).toUpperCase() + type.slice(1)}
                 </button>
               ))}
+              <button
+                className={`rounded px-2 py-1 text-xs ${
+                  showAddTagDialog
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-slate-600 hover:bg-slate-500'
+                }`}
+                onClick={() => setShowAddTagDialog(!showAddTagDialog)}
+                type="button"
+              >
+                Tag
+              </button>
             </div>
+
+            {showAddTagDialog && (
+              <AddTagTimelineDialog
+                onAdd={onAddTagTimeline}
+                onCancel={() => setShowAddTagDialog(false)}
+              />
+            )}
           </div>
         </div>
       </div>
