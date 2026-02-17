@@ -1,5 +1,8 @@
 import type { TagConfig, TimelineConfigV2 } from 'types/types'
 
+/** 許可された timelineType 値のホワイトリスト */
+const VALID_TIMELINE_TYPES = new Set(['home', 'local', 'public'])
+
 /**
  * TimelineConfigV2 の UI 設定から SQL WHERE 句を構築する
  *
@@ -18,8 +21,8 @@ export function buildQueryFromConfig(config: TimelineConfigV2): string {
     if (tagConfig && tagConfig.tags.length > 0) {
       conditions.push(buildTagCondition(tagConfig))
     }
-  } else if (config.type !== 'notification') {
-    // home / local / public
+  } else if (VALID_TIMELINE_TYPES.has(config.type)) {
+    // home / local / public (ホワイトリスト検証済み)
     conditions.push(`stt.timelineType = '${config.type}'`)
   }
 
@@ -72,7 +75,10 @@ function escapeSqlString(value: string): string {
  *
  * Advanced Query → 通常 UI に切り替えた際に、
  * 手編集されたクエリから可能な範囲で UI 状態を復元する。
- * 完全なパースは不要 — 認識できない場合は undefined を返す。
+ * 完全なパースは不要 — 認識できない場合は null を返す。
+ *
+ * type は変更しない（タイムラインの種類は固定値のため）。
+ * onlyMedia, tagConfig のみ逆算対象。
  */
 export function parseQueryToConfig(
   query: string,
@@ -80,14 +86,6 @@ export function parseQueryToConfig(
   if (!query.trim()) return null
 
   const result: Partial<TimelineConfigV2> = {}
-
-  // timelineType の検出
-  const timelineMatch = query.match(
-    /stt\.timelineType\s*=\s*'(home|local|public)'/i,
-  )
-  if (timelineMatch) {
-    result.type = timelineMatch[1] as 'home' | 'local' | 'public'
-  }
 
   // onlyMedia の検出
   if (query.includes("json_extract(s.json, '$.media_attachments') != '[]'")) {
@@ -104,7 +102,6 @@ export function parseQueryToConfig(
   )
 
   if (singleTagMatch) {
-    result.type = 'tag'
     result.tagConfig = {
       mode: 'or',
       tags: [singleTagMatch[1]],
@@ -115,7 +112,6 @@ export function parseQueryToConfig(
       .map((t) => t.trim().replace(/^'|'$/g, ''))
       .filter(Boolean)
     const mode = andTagMatch ? 'and' : 'or'
-    result.type = 'tag'
     result.tagConfig = { mode, tags }
   }
 
