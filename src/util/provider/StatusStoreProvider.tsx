@@ -227,11 +227,11 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
     // IndexedDB → SQLite マイグレーション完了後に定期クリーンアップを開始
     let stopCleanup: (() => void) | undefined
     migrateFromIndexedDb()
-      .catch((error) => {
-        console.error('Migration failed:', error)
-      })
       .then(() => {
         stopCleanup = startPeriodicCleanup()
+      })
+      .catch((error) => {
+        console.error('Migration failed:', error)
       })
 
     // 各アプリのデータを取得してストリーミング接続

@@ -1,8 +1,5 @@
 import type { TagConfig, TimelineConfigV2 } from 'types/types'
 
-/** 許可された timelineType 値のホワイトリスト */
-const VALID_TIMELINE_TYPES = new Set(['home', 'local', 'public'])
-
 /**
  * TimelineConfigV2 の UI 設定から SQL WHERE 句を構築する
  *
@@ -21,9 +18,12 @@ export function buildQueryFromConfig(config: TimelineConfigV2): string {
     if (tagConfig && tagConfig.tags.length > 0) {
       conditions.push(buildTagCondition(tagConfig))
     }
-  } else if (VALID_TIMELINE_TYPES.has(config.type)) {
-    // home / local / public (ホワイトリスト検証済み)
-    conditions.push(`stt.timelineType = '${config.type}'`)
+  } else if (config.type === 'home') {
+    conditions.push("stt.timelineType = 'home'")
+  } else if (config.type === 'local') {
+    conditions.push("stt.timelineType = 'local'")
+  } else if (config.type === 'public') {
+    conditions.push("stt.timelineType = 'public'")
   }
 
   // onlyMedia

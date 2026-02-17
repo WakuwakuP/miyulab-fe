@@ -66,28 +66,33 @@ export async function enforceMaxLength(): Promise<void> {
           { bind: [type, count - MAX_LENGTH], returnValue: 'resultRows' },
         ) as string[][]
 
-        for (const row of toRemoveRows) {
-          const key = row[0]
+        const keys = toRemoveRows
+          .map((row) => row[0])
+          .filter((key) => key != null)
 
-          // このタイムライン種別を削除
+        if (keys.length > 0) {
+          const placeholders = keys.map(() => '?').join(', ')
+
+          // 他のタイムラインに属していないものをまとめて物理削除
           db.exec(
-            'DELETE FROM statuses_timeline_types WHERE compositeKey = ? AND timelineType = ?;',
-            { bind: [key, type] },
+            `DELETE FROM statuses
+             WHERE compositeKey IN (${placeholders})
+               AND compositeKey NOT IN (
+                 SELECT compositeKey
+                 FROM statuses_timeline_types
+                 WHERE compositeKey IN (${placeholders})
+                   AND timelineType <> ?
+               );`,
+            { bind: [...keys, ...keys, type] },
           )
 
-          // 他のタイムラインに属していなければ物理削除
-          const remaining = (
-            db.exec(
-              'SELECT COUNT(*) FROM statuses_timeline_types WHERE compositeKey = ?;',
-              { bind: [key], returnValue: 'resultRows' },
-            ) as number[][]
-          )[0][0]
-
-          if (remaining === 0) {
-            db.exec('DELETE FROM statuses WHERE compositeKey = ?;', {
-              bind: [key],
-            })
-          }
+          // このタイムライン種別との関連をまとめて削除
+          db.exec(
+            `DELETE FROM statuses_timeline_types
+             WHERE timelineType = ?
+               AND compositeKey IN (${placeholders});`,
+            { bind: [type, ...keys] },
+          )
         }
       }
     }

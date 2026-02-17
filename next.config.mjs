@@ -6,8 +6,8 @@ const nextConfig = {
   async headers() {
     return [
       {
-        // COOP/COEP ヘッダはアプリ本体ページのみに適用
-        // （APIやアセットに適用するとクロスオリジン画像がブロックされる）
+        // COOP/COEP ヘッダを全ルートに適用（SharedArrayBuffer / OPFS に必要）
+        // credentialless を使用してクロスオリジン画像のブロックを回避
         headers: [
           {
             key: 'Cross-Origin-Embedder-Policy',
@@ -18,7 +18,7 @@ const nextConfig = {
             value: 'same-origin',
           },
         ],
-        source: '/',
+        source: '/:path*',
       },
     ]
   },

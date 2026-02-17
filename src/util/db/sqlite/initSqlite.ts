@@ -48,7 +48,9 @@ async function initDb(): Promise<DbHandle> {
   } catch {
     // フォールバック: メモリDB
     db = new sqlite3.oo1.DB(':memory:', 'c')
-    console.warn('SQLite: OPFS not available, using in-memory database')
+    console.warn(
+      'SQLite: OPFS not available, using in-memory database. Data will not persist across page reloads.',
+    )
   }
 
   // WAL モード有効化（パフォーマンス向上）

@@ -73,7 +73,7 @@ export async function migrateFromIndexedDb(): Promise<void> {
           } = s
 
           db.exec(
-            `INSERT OR IGNORE INTO statuses (compositeKey, backendUrl, created_at_ms, storedAt, json)
+            `INSERT OR REPLACE INTO statuses (compositeKey, backendUrl, created_at_ms, storedAt, json)
              VALUES (?, ?, ?, ?, ?);`,
             {
               bind: [
@@ -109,6 +109,9 @@ export async function migrateFromIndexedDb(): Promise<void> {
       }
 
       offset += batch.length
+      console.info(
+        `Migration progress: ${Math.min(offset, statusCount)}/${statusCount} statuses migrated...`,
+      )
     }
 
     // ---- notifications ----
@@ -134,7 +137,7 @@ export async function migrateFromIndexedDb(): Promise<void> {
           } = n
 
           db.exec(
-            `INSERT OR IGNORE INTO notifications (compositeKey, backendUrl, created_at_ms, storedAt, json)
+            `INSERT OR REPLACE INTO notifications (compositeKey, backendUrl, created_at_ms, storedAt, json)
              VALUES (?, ?, ?, ?, ?);`,
             {
               bind: [
@@ -154,6 +157,9 @@ export async function migrateFromIndexedDb(): Promise<void> {
       }
 
       offset += batch.length
+      console.info(
+        `Migration progress: ${Math.min(offset, notifCount)}/${notifCount} notifications migrated...`,
+      )
     }
 
     markMigrated()

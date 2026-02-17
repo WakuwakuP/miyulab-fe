@@ -942,16 +942,21 @@ export async function getDistinctJsonValues(
     const handle = await getSqliteDb()
     const { db } = handle
 
-    // パスのバリデーション: $. で始まり英数字・ドット・アンダースコア・ブラケットのみ
-    if (!/^\$[.\w[\]]*$/.test(jsonPath)) return []
+    // パスのバリデーション: $. で始まり、正しいJSONパス構文のみ許可
+    // [N] (配列アクセス)、.key (オブジェクトキー) のみ許可。連続ドットや不正ブラケットを拒否
+    if (!/^\$(\.[a-zA-Z_]\w*|\[\d+\])*$/.test(jsonPath)) return []
 
     const rows = db.exec(
-      `SELECT DISTINCT json_extract(json, '${jsonPath}') AS val
-       FROM statuses
+      `WITH vals AS (
+         SELECT json_extract(json, ?) AS val
+         FROM statuses
+       )
+       SELECT DISTINCT val
+       FROM vals
        WHERE val IS NOT NULL AND typeof(val) = 'text' AND val != '' AND val != '[]'
        ORDER BY val
        LIMIT ?;`,
-      { bind: [maxResults], returnValue: 'resultRows' },
+      { bind: [jsonPath, maxResults], returnValue: 'resultRows' },
     ) as string[][]
     return rows.map((r) => r[0])
   } catch {
