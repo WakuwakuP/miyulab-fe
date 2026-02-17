@@ -47,6 +47,9 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
   const [dynamicVisibilities, setDynamicVisibilities] = useState<string[]>([])
   const [dynamicLanguages, setDynamicLanguages] = useState<string[]>([])
   const [dynamicAccountAccts, setDynamicAccountAccts] = useState<string[]>([])
+  const [dynamicNotificationTypes, setDynamicNotificationTypes] = useState<
+    string[]
+  >([])
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const validationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -64,6 +67,9 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
     )
     getDistinctColumnValues('statuses', 'account_acct', 100).then(
       setDynamicAccountAccts,
+    )
+    getDistinctColumnValues('notifications', 'notification_type', 20).then(
+      setDynamicNotificationTypes,
     )
   }, [])
 
@@ -197,9 +203,9 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
         }
       }
 
-      // カラム値補完: s.backendUrl = ' の後
+      // カラム値補完: s.backendUrl = ' または n.backendUrl = ' の後
       const columnValueMatch = beforeCursor.match(
-        /s\.backendUrl\s*(?:=|IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
+        /[sn]\.backendUrl\s*(?:=|IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
       )
       if (columnValueMatch) {
         const partial = columnValueMatch[1].toLowerCase()
@@ -269,6 +275,40 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
         }
       }
 
+      // notification_type 値補完: n.notification_type = ' の後
+      const notifTypeValueMatch = beforeCursor.match(
+        /n\.notification_type\s*(?:=|IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
+      )
+      if (notifTypeValueMatch) {
+        const partial = notifTypeValueMatch[1].toLowerCase()
+        const filtered = dynamicNotificationTypes.filter((t) =>
+          t.toLowerCase().startsWith(partial),
+        )
+        if (filtered.length > 0) {
+          setSuggestions(filtered.slice(0, 12))
+          setSelectedIndex(0)
+          setShowSuggestions(true)
+          return
+        }
+      }
+
+      // notification account_acct 値補完: n.account_acct = ' の後
+      const notifAccountValueMatch = beforeCursor.match(
+        /n\.account_acct\s*(?:=|IN\s*\((?:'[^']*',\s*)*|NOT\s+IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
+      )
+      if (notifAccountValueMatch) {
+        const partial = notifAccountValueMatch[1].toLowerCase()
+        const filtered = dynamicAccountAccts.filter((a) =>
+          a.toLowerCase().startsWith(partial),
+        )
+        if (filtered.length > 0) {
+          setSuggestions(filtered.slice(0, 12))
+          setSelectedIndex(0)
+          setShowSuggestions(true)
+          return
+        }
+      }
+
       const match = beforeCursor.match(/[\w.]*$/)
       const currentWord = match ? match[0] : ''
 
@@ -299,6 +339,7 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
       dynamicVisibilities,
       dynamicLanguages,
       dynamicAccountAccts,
+      dynamicNotificationTypes,
       mergedJsonPaths,
     ],
   )
@@ -341,7 +382,7 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
         /json_extract\s*\(\s*s\.json\s*,\s*'\$[.\w[\]]+'\s*\)\s*(?:=|!=|<>)\s*'([^']*)$/i,
       )
       const columnValueMatch = beforeCursor.match(
-        /s\.backendUrl\s*(?:=|IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
+        /[sn]\.backendUrl\s*(?:=|IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
       )
       const visibilityValueMatch2 = beforeCursor.match(
         /s\.visibility\s*(?:=|IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
@@ -352,6 +393,12 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
       const accountValueMatch2 = beforeCursor.match(
         /s\.account_acct\s*(?:=|IN\s*\((?:'[^']*',\s*)*|NOT\s+IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
       )
+      const notifTypeValueMatch2 = beforeCursor.match(
+        /n\.notification_type\s*(?:=|IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
+      )
+      const notifAccountValueMatch2 = beforeCursor.match(
+        /n\.account_acct\s*(?:=|IN\s*\((?:'[^']*',\s*)*|NOT\s+IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
+      )
       const valueMatch =
         tagValueMatch ||
         timelineValueMatch ||
@@ -359,7 +406,9 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
         columnValueMatch ||
         visibilityValueMatch2 ||
         languageValueMatch2 ||
-        accountValueMatch2
+        accountValueMatch2 ||
+        notifTypeValueMatch2 ||
+        notifAccountValueMatch2
       if (valueMatch) {
         const matchedPartial = valueMatch[1]
         const replaceStart = beforeCursor.length - matchedPartial.length
@@ -528,8 +577,10 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
         <code className="text-gray-400">stt</code> (timeline types),{' '}
         <code className="text-gray-400">sbt</code> (tags),{' '}
         <code className="text-gray-400">sm</code> (mentions),{' '}
-        <code className="text-gray-400">sb</code> (backends). LIMIT/OFFSET are
-        set automatically.
+        <code className="text-gray-400">sb</code> (backends),{' '}
+        <code className="text-gray-400">n</code> (notifications). You can
+        combine statuses and notifications using OR. LIMIT/OFFSET are set
+        automatically.
       </p>
       {QUERY_COMPLETIONS.examples.length > 0 && (
         <details className="text-xs text-gray-500">

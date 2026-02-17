@@ -27,7 +27,7 @@ import { useNotifications } from 'util/hooks/useNotifications'
  */
 export function useTimelineData(
   config: TimelineConfigV2,
-): NotificationAddAppIndex[] | StatusAddAppIndex[] {
+): (NotificationAddAppIndex | StatusAddAppIndex)[] {
   // 全 Hook を無条件に呼び出す（Hook ルール遵守）
   const filteredTimeline = useFilteredTimeline(config)
   const filteredTagTimeline = useFilteredTagTimeline(config)

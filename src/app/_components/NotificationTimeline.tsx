@@ -12,16 +12,22 @@ import {
   type WheelEventHandler,
 } from 'react'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
-import type { TimelineConfigV2 } from 'types/types'
+import type { NotificationAddAppIndex, TimelineConfigV2 } from 'types/types'
 import { CENTER_INDEX } from 'util/environment'
-import { useNotifications } from 'util/hooks/useNotifications'
+import { useTimelineData } from 'util/hooks/useTimelineData'
 
 export const NotificationTimeline = ({
   config,
 }: {
   config: TimelineConfigV2
 }) => {
-  const notifications = useNotifications(config)
+  const rawData = useTimelineData(config)
+  // Runtime type guard: filter out any non-notification items that may slip through
+  const notifications = useMemo(
+    () =>
+      rawData.filter((item): item is NotificationAddAppIndex => 'type' in item),
+    [rawData],
+  )
   const scrollerRef = useRef<VirtuosoHandle>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 

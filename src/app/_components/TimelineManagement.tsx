@@ -30,6 +30,7 @@ import {
   SetTimelineContext,
   TimelineContext,
 } from 'util/provider/TimelineProvider'
+import { ALL_NOTIFICATION_TYPES, buildQueryFromConfig } from 'util/queryBuilder'
 import { getDefaultTimelineName } from 'util/timelineDisplayName'
 
 /**
@@ -212,7 +213,7 @@ const AddTagTimelineDialog = ({
   const handleCreate = useCallback(() => {
     if (tags.length === 0) return
 
-    const newConfig: TimelineConfigV2 = {
+    const baseConfig: TimelineConfigV2 = {
       backendFilter: { mode: 'all' },
       id: generateId(),
       label: undefined,
@@ -224,6 +225,14 @@ const AddTagTimelineDialog = ({
       },
       type: 'tag',
       visible: true,
+    }
+
+    // クエリを正として設定
+    const defaultQuery = buildQueryFromConfig(baseConfig)
+    const newConfig: TimelineConfigV2 = {
+      ...baseConfig,
+      advancedQuery: false,
+      customQuery: defaultQuery || undefined,
     }
 
     onAdd(newConfig)
@@ -428,13 +437,24 @@ export const TimelineManagement = () => {
         -1,
       )
 
-      const newConfig: TimelineConfigV2 = {
+      const baseConfig: TimelineConfigV2 = {
         backendFilter: { mode: 'all' },
         id: generateId(),
+        // notification タイプの場合は全通知タイプを設定してクエリを生成する
+        notificationFilter:
+          type === 'notification' ? [...ALL_NOTIFICATION_TYPES] : undefined,
         onlyMedia: type === 'public',
         order: maxOrder + 1,
         type,
         visible: true,
+      }
+
+      // クエリを正として設定: type に基づいたデフォルトクエリを生成
+      const defaultQuery = buildQueryFromConfig(baseConfig)
+      const newConfig: TimelineConfigV2 = {
+        ...baseConfig,
+        advancedQuery: false,
+        customQuery: defaultQuery || undefined,
       }
 
       setTimelineSettings((prev) => ({
