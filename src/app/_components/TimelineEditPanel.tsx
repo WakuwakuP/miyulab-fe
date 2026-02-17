@@ -8,7 +8,11 @@ import { InstanceBlockManager } from 'app/_parts/InstanceBlockManager'
 import { MuteManager } from 'app/_parts/MuteManager'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { BackendFilter, TagConfig, TimelineConfigV2 } from 'types/types'
-import { buildQueryFromConfig, parseQueryToConfig } from 'util/queryBuilder'
+import {
+  buildQueryFromConfig,
+  canParseQuery,
+  parseQueryToConfig,
+} from 'util/queryBuilder'
 
 type TimelineEditPanelProps = {
   config: TimelineConfigV2
@@ -33,6 +37,9 @@ export const TimelineEditPanel = ({
   const [showAdvanced, setShowAdvanced] = useState(
     config.advancedQuery ?? false,
   )
+
+  // Advanced Query → 通常UI 切替時の復元不可警告
+  const [parseWarning, setParseWarning] = useState(false)
 
   // v2 フィルタオプションのローカル状態
   const [filterUpdates, setFilterUpdates] = useState<Partial<TimelineConfigV2>>(
@@ -95,8 +102,12 @@ export const TimelineEditPanel = ({
       if (next) {
         // 通常UI → Advanced: 現在の UI 設定からクエリを生成して反映
         setCustomQuery(builtQuery)
+        setParseWarning(false)
       } else {
         // Advanced → 通常UI: クエリから UI 設定を逆算（ベストエフォート）
+        const parseable = canParseQuery(customQuery, mergedConfig)
+        setParseWarning(!parseable)
+
         const parsed = parseQueryToConfig(customQuery)
         if (parsed) {
           if (parsed.onlyMedia !== undefined) setOnlyMedia(parsed.onlyMedia)
@@ -109,6 +120,8 @@ export const TimelineEditPanel = ({
           }
           // v2 フィルタオプションも逆算
           const restoredUpdates: Partial<TimelineConfigV2> = {}
+          if (parsed.timelineTypes !== undefined)
+            restoredUpdates.timelineTypes = parsed.timelineTypes
           if (parsed.excludeReblogs !== undefined)
             restoredUpdates.excludeReblogs = parsed.excludeReblogs
           if (parsed.excludeReplies !== undefined)
@@ -125,12 +138,14 @@ export const TimelineEditPanel = ({
             restoredUpdates.accountFilter = parsed.accountFilter
           if (parsed.minMediaCount !== undefined)
             restoredUpdates.minMediaCount = parsed.minMediaCount
+          if (parsed.notificationFilter !== undefined)
+            restoredUpdates.notificationFilter = parsed.notificationFilter
           setFilterUpdates((prev) => ({ ...prev, ...restoredUpdates }))
         }
       }
       return next
     })
-  }, [builtQuery, customQuery])
+  }, [builtQuery, customQuery, mergedConfig])
 
   const handleSave = useCallback(() => {
     const updates: Partial<TimelineConfigV2> = {
@@ -205,6 +220,14 @@ export const TimelineEditPanel = ({
           />
         </button>
       </div>
+
+      {/* クエリ復元不可警告 */}
+      {!showAdvanced && parseWarning && (
+        <div className="rounded border border-yellow-600 bg-yellow-900/30 px-3 py-2 text-xs text-yellow-300">
+          ⚠️ The query could not be fully restored to UI settings. Some
+          conditions may have been lost.
+        </div>
+      )}
 
       {/* 通常UIモード: Backend Filter + Filters + Tag Config */}
       {!showAdvanced && (
