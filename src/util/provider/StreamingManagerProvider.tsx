@@ -257,6 +257,8 @@ export const StreamingManagerProvider = ({
         const key = `${type}|${backendUrl}`
         if (!fetchedLocalPublic.has(key)) {
           fetchedLocalPublic.add(key)
+          // fetchInitialData は config.type に基づいて動作するため、
+          // local/public 用の最小限の設定を構築して渡す
           const config: TimelineConfigV2 = {
             id: `__default_${type}`,
             order: 0,
@@ -280,8 +282,8 @@ export const StreamingManagerProvider = ({
       const filter = normalizeBackendFilter(config.backendFilter, apps)
       const targetUrls = resolveBackendUrls(filter, apps)
 
-      // tagConfig のデータ取得は常に tag タイプとして実行する
-      const tagConfig: TimelineConfigV2 = {
+      // fetchInitialData は config.type で分岐するため、type を 'tag' に強制する
+      const tagFetchConfig: TimelineConfigV2 = {
         ...config,
         type: 'tag',
       }
@@ -291,7 +293,7 @@ export const StreamingManagerProvider = ({
         if (!app) continue
 
         const client = GetClient(app)
-        fetchInitialData(client, tagConfig, url).catch((error) => {
+        fetchInitialData(client, tagFetchConfig, url).catch((error) => {
           console.error(`Failed to fetch initial data for tag (${url}):`, error)
         })
       }
