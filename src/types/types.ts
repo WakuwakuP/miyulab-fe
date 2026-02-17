@@ -74,6 +74,14 @@ export type AccountFilter = {
 export type TimelineType = 'home' | 'local' | 'public' | 'notification' | 'tag'
 
 /**
+ * 取得するタイムラインの種類（statuses_timeline_types テーブルの値）
+ *
+ * TimelineType から 'notification' と 'tag' を除いたサブセット。
+ * 通常UIでどのタイムラインを取得するか選択するために使用する。
+ */
+export type StatusTimelineType = 'home' | 'local' | 'public'
+
+/**
  * 全アカウントの投稿を統合表示
  */
 export type BackendFilterAll = {
@@ -277,13 +285,22 @@ export type TimelineConfigV2 = {
   /**
    * 通知タイプのフィルタ
    *
-   * 未指定時はすべての通知タイプを表示する。
+   * 未指定時は通知を取得しない（デフォルトオフ）。
    * 配列で指定した通知タイプのみを表示する。
-   * 主に type === 'notification' のタイムラインで使用される。
    *
    * @example ['follow', 'favourite', 'reblog'] // フォロー・お気に入り・ブーストのみ
    */
   notificationFilter?: NotificationType[]
+
+  /**
+   * 取得するタイムラインの種類
+   *
+   * 通常UIから複数のタイムライン種類を選択できるようにする。
+   * 未指定時は config.type に基づいてデフォルトを決定する。
+   *
+   * @example ['home', 'local'] // ホームとローカルの投稿を表示
+   */
+  timelineTypes?: StatusTimelineType[]
 }
 
 export type TimelineSettingsV2 = {

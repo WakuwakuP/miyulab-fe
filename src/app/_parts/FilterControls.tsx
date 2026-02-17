@@ -5,6 +5,7 @@ import type {
   AccountFilter,
   AccountFilterMode,
   NotificationType,
+  StatusTimelineType,
   TimelineConfigV2,
   VisibilityType,
 } from 'types/types'
@@ -378,26 +379,46 @@ function NotificationTypeFilter({
   onChange: (filter: NotificationType[] | undefined) => void
   value: NotificationType[] | undefined
 }) {
-  // 未設定 = 全て選択状態
+  // 未設定 = 全てオフ状態（通知を取得しない）
+  const selected: NotificationType[] = value ?? []
+
   const allTypes = NOTIFICATION_TYPE_OPTIONS.map((o) => o.value)
-  const selected: NotificationType[] = value ?? allTypes
 
   const toggle = (v: NotificationType) => {
     const next = selected.includes(v)
       ? selected.filter((s) => s !== v)
       : [...selected, v]
 
-    // 全て選択 or 全て未選択 → undefined（フィルタなし）
-    if (next.length === 0 || next.length === allTypes.length) {
+    // 空配列 → undefined（通知なし）
+    if (next.length === 0) {
       onChange(undefined)
     } else {
       onChange(next)
     }
   }
 
+  const toggleAll = () => {
+    if (selected.length === allTypes.length) {
+      // 全選択 → 全解除
+      onChange(undefined)
+    } else {
+      // 一部選択 or 全解除 → 全選択
+      onChange([...allTypes])
+    }
+  }
+
   return (
     <div className="space-y-1">
-      <span className="text-xs text-gray-400">Notification Types</span>
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-gray-400">Notification Types</span>
+        <button
+          className="text-xs text-gray-500 hover:text-gray-300"
+          onClick={toggleAll}
+          type="button"
+        >
+          {selected.length === allTypes.length ? 'Deselect All' : 'Select All'}
+        </button>
+      </div>
       <div className="flex flex-wrap gap-2">
         {NOTIFICATION_TYPE_OPTIONS.map((opt) => (
           <label
@@ -548,13 +569,83 @@ function CollapsibleSection({
 }
 
 // ========================================
+// Timeline Type Selector
+// ========================================
+
+const TIMELINE_TYPE_OPTIONS: {
+  label: string
+  value: StatusTimelineType
+}[] = [
+  { label: '🏠 Home', value: 'home' },
+  { label: '👥 Local', value: 'local' },
+  { label: '🌐 Public', value: 'public' },
+]
+
+function TimelineTypeSelector({
+  configType,
+  onChange,
+  value,
+}: {
+  configType: TimelineConfigV2['type']
+  onChange: (types: StatusTimelineType[] | undefined) => void
+  value: StatusTimelineType[] | undefined
+}) {
+  // 未設定時は config.type から推定
+  const defaultTypes: StatusTimelineType[] =
+    configType === 'home' || configType === 'local' || configType === 'public'
+      ? [configType]
+      : []
+  const selected: StatusTimelineType[] = value ?? defaultTypes
+
+  const toggle = (v: StatusTimelineType) => {
+    const next = selected.includes(v)
+      ? selected.filter((s) => s !== v)
+      : [...selected, v]
+
+    // 空配列 → undefined（タイムラインなし）
+    if (next.length === 0) {
+      onChange(undefined)
+    } else {
+      onChange(next)
+    }
+  }
+
+  return (
+    <div className="space-y-1">
+      <span className="text-xs text-gray-400">Timeline Sources</span>
+      <div className="flex flex-wrap gap-2">
+        {TIMELINE_TYPE_OPTIONS.map((opt) => (
+          <label
+            className="flex items-center gap-1 text-xs cursor-pointer"
+            key={opt.value}
+          >
+            <input
+              checked={selected.includes(opt.value)}
+              className="cursor-pointer"
+              onChange={() => toggle(opt.value)}
+              type="checkbox"
+            />
+            {opt.label}
+          </label>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ========================================
 // FilterControls（統合コンポーネント）
 // ========================================
 
 export function FilterControls({ config, onChange }: FilterControlsProps) {
   return (
     <div className="space-y-3">
-      <CollapsibleSection defaultOpen={false} title="Notification Types">
+      <CollapsibleSection defaultOpen title="Sources">
+        <TimelineTypeSelector
+          configType={config.type}
+          onChange={(timelineTypes) => onChange({ timelineTypes })}
+          value={config.timelineTypes}
+        />
         <NotificationTypeFilter
           onChange={(notificationFilter) => onChange({ notificationFilter })}
           value={config.notificationFilter}

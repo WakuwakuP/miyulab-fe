@@ -2,6 +2,7 @@ import type {
   AccountFilter,
   BackendFilter,
   NotificationType,
+  StatusTimelineType,
   TagConfig,
   TimelineConfigV2,
   VisibilityType,
@@ -42,6 +43,13 @@ export function isMixedQuery(query: string): boolean {
  * 通常の設定UIをクエリビルダとして機能させるための関数。
  * type, tagConfig, onlyMedia 等の設定を対応する SQL 条件に変換する。
  *
+ * ## クエリ構造
+ *
+ * `(<取得するタイムライン> OR <取得する通知>) AND <メディア関係> AND <フィルター>`
+ *
+ * - タイムラインと通知は OR で結合（ソースの選択）
+ * - メディアやフィルタは AND で適用（絞り込み）
+ *
  * ## v2 スキーマ対応
  *
  * 正規化カラムが利用可能になったことで、以下の変更を行う:
@@ -53,74 +61,15 @@ export function isMixedQuery(query: string): boolean {
  * Hook 側で別途追加する（クエリ文字列には含めない）。
  */
 export function buildQueryFromConfig(config: TimelineConfigV2): string {
-  const statusConditions: string[] = []
-  const notificationConditions: string[] = []
-
   // ========================================
-  // タイムライン種類（既存ロジック）
+  // ソース条件（タイムラインと通知、OR で結合）
   // ========================================
-  if (config.type === 'tag') {
-    // tag タイプはタグ条件で表現
-    const tagConfig = config.tagConfig
-    if (tagConfig && tagConfig.tags.length > 0) {
-      statusConditions.push(buildTagCondition(tagConfig))
-    }
-  } else if (config.type === 'home') {
-    statusConditions.push("stt.timelineType = 'home'")
-  } else if (config.type === 'local') {
-    statusConditions.push("stt.timelineType = 'local'")
-  } else if (config.type === 'public') {
-    statusConditions.push("stt.timelineType = 'public'")
-  }
+  const sourceConditions: string[] = []
 
-  // ========================================
-  // メディアフィルタ（v2: 正規化カラム使用）
-  // ========================================
-  const mediaCondition = buildMediaCondition(config)
-  if (mediaCondition) {
-    statusConditions.push(mediaCondition)
-  }
-
-  // ========================================
-  // 新規フィルタ条件
-  // ========================================
-
-  // 公開範囲フィルタ
-  const visibilityCondition = buildVisibilityCondition(config.visibilityFilter)
-  if (visibilityCondition) {
-    statusConditions.push(visibilityCondition)
-  }
-
-  // 言語フィルタ
-  const languageCondition = buildLanguageCondition(config.languageFilter)
-  if (languageCondition) {
-    statusConditions.push(languageCondition)
-  }
-
-  // ブースト除外
-  if (config.excludeReblogs) {
-    statusConditions.push('s.is_reblog = 0')
-  }
-
-  // リプライ除外
-  if (config.excludeReplies) {
-    statusConditions.push('s.in_reply_to_id IS NULL')
-  }
-
-  // CW 付き除外
-  if (config.excludeSpoiler) {
-    statusConditions.push('s.has_spoiler = 0')
-  }
-
-  // センシティブ除外
-  if (config.excludeSensitive) {
-    statusConditions.push('s.is_sensitive = 0')
-  }
-
-  // アカウントフィルタ
-  const accountCondition = buildAccountCondition(config.accountFilter)
-  if (accountCondition) {
-    statusConditions.push(accountCondition)
+  // タイムライン種類条件
+  const timelineCondition = buildTimelineTypeCondition(config)
+  if (timelineCondition) {
+    sourceConditions.push(timelineCondition)
   }
 
   // 通知タイプフィルタ（notifications テーブル側の条件）
@@ -128,32 +77,136 @@ export function buildQueryFromConfig(config: TimelineConfigV2): string {
     config.notificationFilter,
   )
   if (notificationCondition) {
-    notificationConditions.push(notificationCondition)
+    sourceConditions.push(notificationCondition)
   }
 
-  // バックエンドフィルタ（statuses 側に追加）
+  // ========================================
+  // フィルタ条件（AND で絞り込み）
+  // ========================================
+  const filterConditions: string[] = []
+
+  // メディアフィルタ（v2: 正規化カラム使用）
+  const mediaCondition = buildMediaCondition(config)
+  if (mediaCondition) {
+    filterConditions.push(mediaCondition)
+  }
+
+  // 公開範囲フィルタ
+  const visibilityCondition = buildVisibilityCondition(config.visibilityFilter)
+  if (visibilityCondition) {
+    filterConditions.push(visibilityCondition)
+  }
+
+  // 言語フィルタ
+  const languageCondition = buildLanguageCondition(config.languageFilter)
+  if (languageCondition) {
+    filterConditions.push(languageCondition)
+  }
+
+  // ブースト除外
+  if (config.excludeReblogs) {
+    filterConditions.push('s.is_reblog = 0')
+  }
+
+  // リプライ除外
+  if (config.excludeReplies) {
+    filterConditions.push('s.in_reply_to_id IS NULL')
+  }
+
+  // CW 付き除外
+  if (config.excludeSpoiler) {
+    filterConditions.push('s.has_spoiler = 0')
+  }
+
+  // センシティブ除外
+  if (config.excludeSensitive) {
+    filterConditions.push('s.is_sensitive = 0')
+  }
+
+  // アカウントフィルタ
+  const accountCondition = buildAccountCondition(config.accountFilter)
+  if (accountCondition) {
+    filterConditions.push(accountCondition)
+  }
+
+  // バックエンドフィルタ
   const backendCondition = buildBackendFilterCondition(config.backendFilter)
   if (backendCondition) {
-    statusConditions.push(backendCondition)
+    filterConditions.push(backendCondition)
   }
 
   // ========================================
   // クエリの組み立て
+  // (<ソース条件>) AND <フィルタ条件>
   // ========================================
-  // statuses 条件と notifications 条件を OR で結合する
-  const statusPart =
-    statusConditions.length > 0 ? statusConditions.join(' AND ') : ''
-  const notificationPart =
-    notificationConditions.length > 0
-      ? notificationConditions.join(' AND ')
-      : ''
+  const parts: string[] = []
 
-  if (statusPart && notificationPart) {
-    return `${statusPart} OR ${notificationPart}`
+  if (sourceConditions.length > 0) {
+    const sourcePart = sourceConditions.join(' OR ')
+    // ソース条件が複数ある場合は括弧で囲む
+    if (sourceConditions.length > 1) {
+      parts.push(`(${sourcePart})`)
+    } else {
+      parts.push(sourcePart)
+    }
   }
-  if (statusPart) return statusPart
-  if (notificationPart) return notificationPart
-  return ''
+
+  parts.push(...filterConditions)
+
+  if (parts.length === 0) return ''
+  return parts.join(' AND ')
+}
+
+/**
+ * タイムライン種類条件を構築する
+ *
+ * config.timelineTypes が設定されている場合はその値を使用する。
+ * 未設定の場合は config.type に基づいてデフォルトを決定する。
+ * tag タイプの場合はタグ条件で表現する。
+ *
+ * @example
+ * // timelineTypes: ['home', 'local']
+ * // → "stt.timelineType IN ('home','local')"
+ *
+ * // timelineTypes: ['home']
+ * // → "stt.timelineType = 'home'"
+ */
+function buildTimelineTypeCondition(config: TimelineConfigV2): string | null {
+  // tag タイプはタグ条件で表現
+  if (config.type === 'tag') {
+    const tagConfig = config.tagConfig
+    if (tagConfig && tagConfig.tags.length > 0) {
+      return buildTagCondition(tagConfig)
+    }
+    return null
+  }
+
+  // timelineTypes が明示的に設定されている場合はそれを使用
+  if (config.timelineTypes && config.timelineTypes.length > 0) {
+    if (config.timelineTypes.length === 1) {
+      return `stt.timelineType = '${escapeSqlString(config.timelineTypes[0])}'`
+    }
+    const escaped = config.timelineTypes
+      .map((t) => `'${escapeSqlString(t)}'`)
+      .join(',')
+    return `stt.timelineType IN (${escaped})`
+  }
+
+  // notification タイプの場合はタイムライン条件なし
+  if (config.type === 'notification') {
+    return null
+  }
+
+  // 未設定の場合は config.type から推定
+  if (
+    config.type === 'home' ||
+    config.type === 'local' ||
+    config.type === 'public'
+  ) {
+    return `stt.timelineType = '${escapeSqlString(config.type)}'`
+  }
+
+  return null
 }
 
 /**
@@ -251,21 +304,35 @@ function buildAccountCondition(
 /**
  * 通知タイプフィルタ条件を構築する
  *
- * 未指定・空配列の場合は null を返す（フィルタなし）。
- * 全タイプが指定されている場合もフィルタ不要として null を返す。
+ * 未指定・空配列の場合は null を返す（通知を取得しない）。
+ * 全タイプが指定されている場合は `n.notification_type IS NOT NULL` を返す。
+ * 1タイプの場合は `=` で、2タイプ以上の場合は `IN` 句で表現する。
  * notifications テーブル（エイリアス n）を参照する。
  *
  * @example
+ * buildNotificationTypeCondition(['follow'])
+ * // → "n.notification_type = 'follow'"
+ *
  * buildNotificationTypeCondition(['follow', 'favourite'])
  * // → "n.notification_type IN ('follow','favourite')"
+ *
+ * buildNotificationTypeCondition(allTypes)
+ * // → "n.notification_type IS NOT NULL"
  */
 function buildNotificationTypeCondition(
   filter: NotificationType[] | undefined,
 ): string | null {
   if (filter == null || filter.length === 0) return null
 
-  // 全通知タイプが指定されている場合はフィルタ不要
-  if (filter.length >= ALL_NOTIFICATION_TYPES_COUNT) return null
+  // 全通知タイプが指定されている場合
+  if (filter.length >= ALL_NOTIFICATION_TYPES_COUNT) {
+    return 'n.notification_type IS NOT NULL'
+  }
+
+  // 1個の場合は = で表現
+  if (filter.length === 1) {
+    return `n.notification_type = '${escapeSqlString(filter[0])}'`
+  }
 
   const escaped = filter.map((v) => `'${escapeSqlString(v)}'`).join(',')
   return `n.notification_type IN (${escaped})`
@@ -411,6 +478,28 @@ export function parseQueryToConfig(
   if (!query.trim()) return null
 
   const result: Partial<TimelineConfigV2> = {}
+
+  // ========================================
+  // timelineTypes の検出
+  // ========================================
+  const timelineTypeInMatch = query.match(
+    /stt\.timelineType\s+IN\s*\(\s*((?:'[^']+'\s*,?\s*)+)\)/i,
+  )
+  const timelineTypeSingleMatch = query.match(
+    /stt\.timelineType\s*=\s*'([^']+)'/i,
+  )
+
+  if (timelineTypeInMatch) {
+    const types = timelineTypeInMatch[1]
+      .split(',')
+      .map((v) => v.trim().replace(/^'|'$/g, ''))
+      .filter(Boolean) as StatusTimelineType[]
+    if (types.length > 0) {
+      result.timelineTypes = types
+    }
+  } else if (timelineTypeSingleMatch) {
+    result.timelineTypes = [timelineTypeSingleMatch[1] as StatusTimelineType]
+  }
 
   // ========================================
   // onlyMedia の検出（v1 + v2 両対応）
@@ -571,26 +660,40 @@ export function parseQueryToConfig(
   // ========================================
   // notificationFilter の検出
   // ========================================
-  const notifTypeInMatch = query.match(
-    /n\.notification_type\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
-  )
-  const notifTypeSingleMatch = query.match(
-    /n\.notification_type\s*=\s*'([^']+)'/i,
-  )
-
-  if (notifTypeInMatch) {
-    const types = notifTypeInMatch[1]
-      .split(',')
-      .map((v) => v.trim().replace(/^'|'$/g, ''))
-      .filter(Boolean)
-    if (types.length > 0) {
-      result.notificationFilter =
-        types as TimelineConfigV2['notificationFilter']
-    }
-  } else if (notifTypeSingleMatch) {
+  // IS NOT NULL = 全通知タイプ
+  if (/n\.notification_type\s+IS\s+NOT\s+NULL/i.test(query)) {
     result.notificationFilter = [
-      notifTypeSingleMatch[1],
-    ] as TimelineConfigV2['notificationFilter']
+      'follow',
+      'follow_request',
+      'mention',
+      'reblog',
+      'favourite',
+      'reaction',
+      'poll_expired',
+      'status',
+    ]
+  } else {
+    const notifTypeInMatch = query.match(
+      /n\.notification_type\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
+    )
+    const notifTypeSingleMatch = query.match(
+      /n\.notification_type\s*=\s*'([^']+)'/i,
+    )
+
+    if (notifTypeInMatch) {
+      const types = notifTypeInMatch[1]
+        .split(',')
+        .map((v) => v.trim().replace(/^'|'$/g, ''))
+        .filter(Boolean)
+      if (types.length > 0) {
+        result.notificationFilter =
+          types as TimelineConfigV2['notificationFilter']
+      }
+    } else if (notifTypeSingleMatch) {
+      result.notificationFilter = [
+        notifTypeSingleMatch[1],
+      ] as TimelineConfigV2['notificationFilter']
+    }
   }
 
   // ========================================
@@ -619,6 +722,35 @@ export function parseQueryToConfig(
   }
 
   return Object.keys(result).length > 0 ? result : null
+}
+
+/**
+ * クエリ文字列を通常UIに復元可能かどうか判定する
+ *
+ * パースした結果から再構築したクエリが元のクエリと一致するかを検証する。
+ * Advanced Query をオフにする際の警告表示に使用する。
+ *
+ * @returns true = 復元可能、false = 復元不可（手編集されたクエリ等）
+ */
+export function canParseQuery(
+  query: string,
+  config: TimelineConfigV2,
+): boolean {
+  if (!query.trim()) return true
+
+  const parsed = parseQueryToConfig(query)
+  if (!parsed) return false
+
+  // パース結果 + 既存 config から再構築して比較
+  const rebuiltQuery = buildQueryFromConfig({
+    ...config,
+    ...parsed,
+  })
+
+  // 正規化して比較（スペースを統一）
+  const normalize = (q: string) => q.replace(/\s+/g, ' ').trim().toLowerCase()
+
+  return normalize(rebuiltQuery) === normalize(query)
 }
 
 // ================================================================
