@@ -168,22 +168,21 @@ export async function updateNotificationStatusAction(
   const handle = await getSqliteDb()
   const { db } = handle
 
-  // backendUrl に属する通知の中から status.id が一致するものを探す
+  // backendUrl に属する通知の中から status.id が一致するものをDB側でフィルタ
   const rows = db.exec(
-    `SELECT compositeKey, json FROM notifications WHERE backendUrl = ?;`,
-    { bind: [backendUrl], returnValue: 'resultRows' },
+    `SELECT compositeKey, json FROM notifications
+     WHERE backendUrl = ? AND json_extract(json, '$.status.id') = ?;`,
+    { bind: [backendUrl, statusId], returnValue: 'resultRows' },
   ) as (string | number)[][]
 
   const updates: { key: string; json: string }[] = []
   for (const row of rows) {
     const notification = JSON.parse(row[1] as string) as Entity.Notification
-    if (notification.status?.id === statusId) {
-      ;(notification.status as Record<string, unknown>)[action] = value
-      updates.push({
-        json: JSON.stringify(notification),
-        key: row[0] as string,
-      })
-    }
+    ;(notification.status as Record<string, unknown>)[action] = value
+    updates.push({
+      json: JSON.stringify(notification),
+      key: row[0] as string,
+    })
   }
 
   if (updates.length > 0) {

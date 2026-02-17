@@ -170,6 +170,7 @@ export async function migrateFromIndexedDb(): Promise<void> {
   } catch (error) {
     console.error('Migration from IndexedDB to SQLite failed:', error)
     // マイグレーション失敗時はフラグを立てない（次回再試行）
+    throw error
   }
 }
 

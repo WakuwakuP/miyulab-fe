@@ -55,45 +55,41 @@ export async function enforceMaxLength(): Promise<void> {
       const count = countRows[0][0]
 
       if (count > MAX_LENGTH) {
-        // 古い方から MAX_LENGTH を超えた分のキーを取得
-        const toRemoveRows = db.exec(
-          `SELECT stt.compositeKey
-           FROM statuses_timeline_types stt
-           INNER JOIN statuses s ON s.compositeKey = stt.compositeKey
-           WHERE stt.timelineType = ?
-           ORDER BY s.created_at_ms ASC
-           LIMIT ?;`,
-          { bind: [type, count - MAX_LENGTH], returnValue: 'resultRows' },
-        ) as string[][]
+        // サブクエリで古い方から MAX_LENGTH を超えた分を直接削除（バインド変数上限回避）
 
-        const keys = toRemoveRows
-          .map((row) => row[0])
-          .filter((key) => key != null)
+        // 他のタイムラインに属していないものを物理削除
+        db.exec(
+          `DELETE FROM statuses
+           WHERE compositeKey IN (
+             SELECT stt.compositeKey
+             FROM statuses_timeline_types stt
+             INNER JOIN statuses s ON s.compositeKey = stt.compositeKey
+             WHERE stt.timelineType = ?
+             ORDER BY s.created_at_ms ASC
+             LIMIT ?
+           )
+           AND compositeKey NOT IN (
+             SELECT compositeKey
+             FROM statuses_timeline_types
+             WHERE timelineType <> ?
+           );`,
+          { bind: [type, count - MAX_LENGTH, type] },
+        )
 
-        if (keys.length > 0) {
-          const placeholders = keys.map(() => '?').join(', ')
-
-          // 他のタイムラインに属していないものをまとめて物理削除
-          db.exec(
-            `DELETE FROM statuses
-             WHERE compositeKey IN (${placeholders})
-               AND compositeKey NOT IN (
-                 SELECT compositeKey
-                 FROM statuses_timeline_types
-                 WHERE compositeKey IN (${placeholders})
-                   AND timelineType <> ?
-               );`,
-            { bind: [...keys, ...keys, type] },
-          )
-
-          // このタイムライン種別との関連をまとめて削除
-          db.exec(
-            `DELETE FROM statuses_timeline_types
-             WHERE timelineType = ?
-               AND compositeKey IN (${placeholders});`,
-            { bind: [type, ...keys] },
-          )
-        }
+        // このタイムライン種別との関連を削除
+        db.exec(
+          `DELETE FROM statuses_timeline_types
+           WHERE timelineType = ?
+             AND compositeKey IN (
+               SELECT stt2.compositeKey
+               FROM statuses_timeline_types stt2
+               INNER JOIN statuses s ON s.compositeKey = stt2.compositeKey
+               WHERE stt2.timelineType = ?
+               ORDER BY s.created_at_ms ASC
+               LIMIT ?
+             );`,
+          { bind: [type, type, count - MAX_LENGTH] },
+        )
       }
     }
 

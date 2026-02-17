@@ -104,12 +104,12 @@ export function parseQueryToConfig(
   if (singleTagMatch) {
     result.tagConfig = {
       mode: 'or',
-      tags: [singleTagMatch[1]],
+      tags: [singleTagMatch[1].replace(/''/g, "'")],
     }
   } else if (multiTagMatch) {
     const tags = multiTagMatch[1]
       .split(',')
-      .map((t) => t.trim().replace(/^'|'$/g, ''))
+      .map((t) => t.trim().replace(/^'|'$/g, '').replace(/''/g, "'"))
       .filter(Boolean)
     const mode = andTagMatch ? 'and' : 'or'
     result.tagConfig = { mode, tags }

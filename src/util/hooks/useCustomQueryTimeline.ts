@@ -62,6 +62,12 @@ export function useCustomQueryTimeline(
         setStatuses([])
         return
       }
+      // SQLコメントも拒否（後続の backendUrl 条件のコメントアウト防止）
+      if (/--/.test(customQuery) || /\/\*/.test(customQuery)) {
+        console.error('Custom query contains SQL comments.')
+        setStatuses([])
+        return
+      }
       const sanitized = customQuery
         .replace(/;/g, '')
         .replace(/\bLIMIT\b\s+\d+/gi, '')

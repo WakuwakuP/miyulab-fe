@@ -378,19 +378,18 @@ export async function updateStatusAction(
     throw e
   }
 
-  // この Status を reblog として持つ他の Status も更新
+  // この Status を reblog として持つ他の Status も更新（DB側でフィルタ）
   const relatedRows = db.exec(
-    `SELECT compositeKey, json FROM statuses WHERE backendUrl = ?;`,
-    { bind: [backendUrl], returnValue: 'resultRows' },
+    `SELECT compositeKey, json FROM statuses
+     WHERE backendUrl = ? AND json_extract(json, '$.reblog.id') = ?;`,
+    { bind: [backendUrl, statusId], returnValue: 'resultRows' },
   ) as (string | number)[][]
 
   const updates: { key: string; json: string }[] = []
   for (const row of relatedRows) {
     const json = JSON.parse(row[1] as string) as Entity.Status
-    if (json.reblog?.id === statusId) {
-      ;(json.reblog as Record<string, unknown>)[action] = value
-      updates.push({ json: JSON.stringify(json), key: row[0] as string })
-    }
+    ;(json.reblog as Record<string, unknown>)[action] = value
+    updates.push({ json: JSON.stringify(json), key: row[0] as string })
   }
 
   if (updates.length > 0) {
@@ -584,6 +583,13 @@ function sanitizeWhereClause(input: string): string {
   if (forbidden.test(input)) {
     throw new Error(
       'Custom query contains forbidden SQL statements. Only SELECT-compatible WHERE clauses are allowed.',
+    )
+  }
+
+  // SQLコメントを拒否（後続条件のコメントアウト防止）
+  if (/--/.test(input) || /\/\*/.test(input)) {
+    throw new Error(
+      'Custom query contains SQL comments (-- or /* */). Comments are not allowed.',
     )
   }
 
