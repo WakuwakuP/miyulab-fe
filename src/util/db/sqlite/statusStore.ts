@@ -688,6 +688,11 @@ export const QUERY_COMPLETIONS = {
       query: "json_extract(s.json, '$.media_attachments') != '[]'",
     },
     {
+      description: 'メディアが2枚以上ある投稿を取得する',
+      query:
+        "json_array_length(json_extract(s.json, '$.media_attachments')) >= 2",
+    },
+    {
       description: 'ブーストされた投稿を取得する',
       query: "json_extract(s.json, '$.reblog') IS NOT NULL",
     },
