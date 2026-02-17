@@ -186,9 +186,6 @@ export const TimelineManagement = () => {
   const timelineSettings = useContext(TimelineContext)
   const setTimelineSettings = useContext(SetTimelineContext)
   const [editingId, setEditingId] = useState<string | null>(null)
-  const [addingConfig, setAddingConfig] = useState<TimelineConfigV2 | null>(
-    null,
-  )
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -297,43 +294,29 @@ export const TimelineManagement = () => {
     [timelineSettings.timelines, sortedTimelines, setTimelineSettings],
   )
 
-  const onStartAddTimeline = useCallback((type: TimelineType) => {
-    const newConfig: TimelineConfigV2 = {
-      backendFilter: { mode: 'all' },
-      id: generateId(),
-      onlyMedia: type === 'public',
-      order: 0, // will be set on confirm
-      tagConfig: type === 'tag' ? { mode: 'or', tags: [] } : undefined,
-      type,
-      visible: true,
-    }
-
-    setAddingConfig(newConfig)
-  }, [])
-
-  const onConfirmAddTimeline = useCallback(
-    (updates: Partial<TimelineConfigV2>) => {
-      if (addingConfig == null) return
-
+  const onAddTimeline = useCallback(
+    (type: TimelineType) => {
       const maxOrder = Math.max(
         ...timelineSettings.timelines.map((t) => t.order),
         -1,
       )
 
-      const newTimeline: TimelineConfigV2 = {
-        ...addingConfig,
-        ...updates,
+      const newConfig: TimelineConfigV2 = {
+        backendFilter: { mode: 'all' },
+        id: generateId(),
+        onlyMedia: type === 'public',
         order: maxOrder + 1,
+        tagConfig: type === 'tag' ? { mode: 'or', tags: [] } : undefined,
+        type,
+        visible: true,
       }
 
       setTimelineSettings((prev) => ({
         ...prev,
-        timelines: [...prev.timelines, newTimeline],
+        timelines: [...prev.timelines, newConfig],
       }))
-
-      setAddingConfig(null)
     },
-    [addingConfig, timelineSettings.timelines, setTimelineSettings],
+    [timelineSettings.timelines, setTimelineSettings],
   )
 
   const handleDragEnd = useCallback(
@@ -420,28 +403,15 @@ export const TimelineManagement = () => {
                 ] as TimelineType[]
               ).map((type) => (
                 <button
-                  className={`rounded px-2 py-1 text-xs ${
-                    addingConfig?.type === type
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-slate-600 hover:bg-slate-500'
-                  }`}
+                  className="rounded bg-slate-600 px-2 py-1 text-xs hover:bg-slate-500"
                   key={type}
-                  onClick={() => onStartAddTimeline(type)}
+                  onClick={() => onAddTimeline(type)}
                   type="button"
                 >
                   {type.charAt(0).toUpperCase() + type.slice(1)}
                 </button>
               ))}
             </div>
-
-            {addingConfig != null && (
-              <TimelineEditPanel
-                config={addingConfig}
-                mode="create"
-                onCancel={() => setAddingConfig(null)}
-                onSave={onConfirmAddTimeline}
-              />
-            )}
           </div>
         </div>
       </div>

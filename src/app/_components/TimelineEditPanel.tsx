@@ -12,14 +12,12 @@ import { buildQueryFromConfig, parseQueryToConfig } from 'util/queryBuilder'
 
 type TimelineEditPanelProps = {
   config: TimelineConfigV2
-  mode?: 'create' | 'edit'
   onCancel: () => void
   onSave: (updates: Partial<TimelineConfigV2>) => void
 }
 
 export const TimelineEditPanel = ({
   config,
-  mode = 'edit',
   onCancel,
   onSave,
 }: TimelineEditPanelProps) => {
@@ -179,7 +177,7 @@ export const TimelineEditPanel = ({
   return (
     <div className="border border-gray-600 rounded-md p-3 mt-2 space-y-3 bg-gray-800">
       <h4 className="text-sm font-semibold text-gray-200">
-        {mode === 'create' ? 'Add' : 'Edit'}:{' '}
+        Edit:{' '}
         {config.label ||
           config.type.charAt(0).toUpperCase() + config.type.slice(1)}
       </h4>
@@ -273,7 +271,7 @@ export const TimelineEditPanel = ({
           onClick={handleSave}
           type="button"
         >
-          {mode === 'create' ? 'Create' : 'Save'}
+          Save
         </button>
       </div>
 
