@@ -150,6 +150,7 @@ export function useCustomQueryTimeline(
               ON s.compositeKey = sm.compositeKey
             LEFT JOIN statuses_backends sb
               ON s.compositeKey = sb.compositeKey
+            -- Dummy join: n.* columns resolve to NULL so mixed WHERE clause passes
             LEFT JOIN notifications n
               ON 0 = 1
             WHERE (${sanitized})
@@ -159,6 +160,7 @@ export function useCustomQueryTimeline(
                    n.created_at_ms, n.storedAt, n.json,
                    'notification' AS _type
             FROM notifications n
+            -- Dummy joins: s.*/stt.*/sbt.*/sm.*/sb.* columns resolve to NULL
             LEFT JOIN statuses s
               ON 0 = 1
             LEFT JOIN statuses_timeline_types stt

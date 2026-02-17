@@ -578,8 +578,9 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
         <code className="text-gray-400">sbt</code> (tags),{' '}
         <code className="text-gray-400">sm</code> (mentions),{' '}
         <code className="text-gray-400">sb</code> (backends),{' '}
-        <code className="text-gray-400">n</code> (notifications). OR で statuses
-        と notifications を同時に扱えます。LIMIT/OFFSET are set automatically.
+        <code className="text-gray-400">n</code> (notifications). You can
+        combine statuses and notifications using OR. LIMIT/OFFSET are set
+        automatically.
       </p>
       {QUERY_COMPLETIONS.examples.length > 0 && (
         <details className="text-xs text-gray-500">

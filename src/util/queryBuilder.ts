@@ -23,7 +23,7 @@ export function isNotificationQuery(query: string): boolean {
  * クエリが statuses 関連テーブル（エイリアス s, stt, sbt, sm, sb）を参照しているか判定する
  */
 export function isStatusQuery(query: string): boolean {
-  return /\b(s|stt|sbt|sm|sb)\.\w/.test(query)
+  return /\b(s|stt|sbt|sm|sb)\.[a-zA-Z_]\w*/.test(query)
 }
 
 /**

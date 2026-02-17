@@ -1354,12 +1354,14 @@ export async function validateCustomQuery(
             ON s.compositeKey = sm.compositeKey
           LEFT JOIN statuses_backends sb
             ON s.compositeKey = sb.compositeKey
+          -- Dummy join: n.* columns resolve to NULL so mixed WHERE clause passes
           LEFT JOIN notifications n
             ON 0 = 1
           WHERE (${sanitized})
           UNION ALL
           SELECT n.compositeKey, n.created_at_ms
           FROM notifications n
+          -- Dummy joins: s.*/stt.*/sbt.*/sm.*/sb.* columns resolve to NULL
           LEFT JOIN statuses s
             ON 0 = 1
           LEFT JOIN statuses_timeline_types stt
