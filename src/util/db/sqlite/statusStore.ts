@@ -4,6 +4,9 @@
  * Dexie の statusStore.ts と同じ公開 API を提供する。
  * JSON カラムに Entity.Status 全体をシリアライズし、
  * インデックス用カラムを正規化テーブルで管理する。
+ *
+ * v2 スキーマでは正規化カラム（account_acct, visibility, has_media 等）を
+ * UPSERT / UPDATE 時に同時に書き込み、フィルタ / ソートに利用する。
  */
 
 import type { Entity } from 'megalodon'
@@ -23,6 +26,85 @@ const MAX_QUERY_LIMIT = 2147483647
 
 export function createCompositeKey(backendUrl: string, id: string): string {
   return `${backendUrl}:${id}`
+}
+
+// ================================================================
+// カラム抽出ヘルパー
+// ================================================================
+
+/**
+ * Entity.Status から正規化カラムの値を抽出する
+ *
+ * UPSERT / UPDATE 時に使用する。
+ * json カラムとの二重管理になるが、フィルタ / ソート性能のために許容する。
+ */
+export function extractStatusColumns(status: Entity.Status) {
+  return {
+    account_acct: status.account.acct,
+    account_id: status.account.id,
+    favourites_count: status.favourites_count,
+    has_media: status.media_attachments.length > 0 ? 1 : 0,
+    has_spoiler: (status.spoiler_text ?? '') !== '' ? 1 : 0,
+    in_reply_to_id: status.in_reply_to_id ?? null,
+    is_reblog: status.reblog != null ? 1 : 0,
+    is_sensitive: status.sensitive ? 1 : 0,
+    language: status.language ?? null,
+    media_count: status.media_attachments.length,
+    reblog_of_id: status.reblog?.id ?? null,
+    reblog_of_uri: status.reblog?.uri ?? null,
+    reblogs_count: status.reblogs_count,
+    replies_count: status.replies_count,
+    uri: status.uri,
+    visibility: status.visibility,
+  }
+}
+
+// ================================================================
+// compositeKey 解決ヘルパー（v3）
+// ================================================================
+
+/**
+ * backendUrl + local_id から compositeKey を解決する
+ *
+ * v3 では statuses_backends テーブル経由でルックアップする。
+ * 見つからない場合は null を返す。
+ */
+export function resolveCompositeKey(
+  handle: DbHandle,
+  backendUrl: string,
+  localId: string,
+): string | null {
+  const rows = handle.db.exec(
+    'SELECT compositeKey FROM statuses_backends WHERE backendUrl = ? AND local_id = ?;',
+    { bind: [backendUrl, localId], returnValue: 'resultRows' },
+  ) as string[][]
+  return rows.length > 0 ? (rows[0][0] as string) : null
+}
+
+// ================================================================
+// メンション書き込みヘルパー
+// ================================================================
+
+/**
+ * メンション情報を statuses_mentions テーブルに書き込む
+ *
+ * 既存のメンションを削除してから再挿入する（編集対応）。
+ */
+export function upsertMentions(
+  handle: DbHandle,
+  compositeKey: string,
+  mentions: Entity.Mention[],
+): void {
+  const { db } = handle
+  db.exec('DELETE FROM statuses_mentions WHERE compositeKey = ?;', {
+    bind: [compositeKey],
+  })
+  for (const mention of mentions) {
+    db.exec(
+      'INSERT OR IGNORE INTO statuses_mentions (compositeKey, acct) VALUES (?, ?);',
+      { bind: [compositeKey, mention.acct] },
+    )
+  }
 }
 
 /**
@@ -116,29 +198,132 @@ export async function upsertStatus(
 ): Promise<void> {
   const handle = await getSqliteDb()
   const { db } = handle
-  const compositeKey = createCompositeKey(backendUrl, status.id)
+  const normalizedUri = status.uri?.trim() || ''
   const now = Date.now()
   const created_at_ms = new Date(status.created_at).getTime()
+  const cols = extractStatusColumns(status)
 
   db.exec('BEGIN;')
   try {
-    // UPSERT メイン行
+    // URI で既存行を検索（跨サーバー重複排除）
+    let compositeKey: string
+    const existingRows = normalizedUri
+      ? (db.exec('SELECT compositeKey FROM statuses WHERE uri = ?;', {
+          bind: [normalizedUri],
+          returnValue: 'resultRows',
+        }) as string[][])
+      : []
+
+    if (existingRows.length > 0) {
+      // 既存行を更新（compositeKey を再利用）
+      compositeKey = existingRows[0][0]
+      db.exec(
+        `UPDATE statuses SET
+          storedAt         = ?,
+          account_acct     = ?,
+          account_id       = ?,
+          visibility       = ?,
+          language         = ?,
+          has_media        = ?,
+          media_count      = ?,
+          is_reblog        = ?,
+          reblog_of_id     = ?,
+          reblog_of_uri    = ?,
+          is_sensitive     = ?,
+          has_spoiler      = ?,
+          in_reply_to_id   = ?,
+          favourites_count = ?,
+          reblogs_count    = ?,
+          replies_count    = ?,
+          json             = ?
+        WHERE compositeKey = ?;`,
+        {
+          bind: [
+            now,
+            cols.account_acct,
+            cols.account_id,
+            cols.visibility,
+            cols.language,
+            cols.has_media,
+            cols.media_count,
+            cols.is_reblog,
+            cols.reblog_of_id,
+            cols.reblog_of_uri,
+            cols.is_sensitive,
+            cols.has_spoiler,
+            cols.in_reply_to_id,
+            cols.favourites_count,
+            cols.reblogs_count,
+            cols.replies_count,
+            JSON.stringify(status),
+            compositeKey,
+          ],
+        },
+      )
+    } else {
+      // 新規投稿を INSERT
+      compositeKey = createCompositeKey(backendUrl, status.id)
+      db.exec(
+        `INSERT INTO statuses (
+          compositeKey, backendUrl, created_at_ms, storedAt,
+          uri,
+          account_acct, account_id, visibility, language,
+          has_media, media_count, is_reblog, reblog_of_id, reblog_of_uri,
+          is_sensitive, has_spoiler, in_reply_to_id,
+          favourites_count, reblogs_count, replies_count,
+          json
+        ) VALUES (?,?,?,?, ?, ?,?,?,?, ?,?,?,?,?, ?,?,?, ?,?,?, ?)
+        ON CONFLICT(compositeKey) DO UPDATE SET
+          storedAt         = excluded.storedAt,
+          account_acct     = excluded.account_acct,
+          account_id       = excluded.account_id,
+          visibility       = excluded.visibility,
+          language         = excluded.language,
+          has_media        = excluded.has_media,
+          media_count      = excluded.media_count,
+          is_reblog        = excluded.is_reblog,
+          reblog_of_id     = excluded.reblog_of_id,
+          reblog_of_uri    = excluded.reblog_of_uri,
+          is_sensitive     = excluded.is_sensitive,
+          has_spoiler      = excluded.has_spoiler,
+          in_reply_to_id   = excluded.in_reply_to_id,
+          favourites_count = excluded.favourites_count,
+          reblogs_count    = excluded.reblogs_count,
+          replies_count    = excluded.replies_count,
+          json             = excluded.json;`,
+        {
+          bind: [
+            compositeKey,
+            backendUrl,
+            created_at_ms,
+            now,
+            cols.uri,
+            cols.account_acct,
+            cols.account_id,
+            cols.visibility,
+            cols.language,
+            cols.has_media,
+            cols.media_count,
+            cols.is_reblog,
+            cols.reblog_of_id,
+            cols.reblog_of_uri,
+            cols.is_sensitive,
+            cols.has_spoiler,
+            cols.in_reply_to_id,
+            cols.favourites_count,
+            cols.reblogs_count,
+            cols.replies_count,
+            JSON.stringify(status),
+          ],
+        },
+      )
+    }
+
+    // バックエンド関連を登録（v3: 投稿 × バックエンドの多対多）
     db.exec(
-      `INSERT INTO statuses (compositeKey, backendUrl, created_at_ms, storedAt, json)
-       VALUES (?, ?, ?, ?, ?)
-       ON CONFLICT(compositeKey) DO UPDATE SET
-         created_at_ms = excluded.created_at_ms,
-         storedAt = excluded.storedAt,
-         json = excluded.json;`,
-      {
-        bind: [
-          compositeKey,
-          backendUrl,
-          created_at_ms,
-          now,
-          JSON.stringify(status),
-        ],
-      },
+      `INSERT OR IGNORE INTO statuses_backends (compositeKey, backendUrl, local_id)
+       VALUES (?, ?, ?);`,
+      { bind: [compositeKey, backendUrl, status.id] },
     )
 
     // timeline type を追加（重複無視）
@@ -166,6 +351,9 @@ export async function upsertStatus(
       )
     }
 
+    // メンション書き込み
+    upsertMentions(handle, compositeKey, status.mentions)
+
     db.exec('COMMIT;')
   } catch (e) {
     db.exec('ROLLBACK;')
@@ -190,28 +378,146 @@ export async function bulkUpsertStatuses(
   const { db } = handle
   const now = Date.now()
 
+  // バッチ内での URI → compositeKey キャッシュ
+  const uriCache = new Map<string, string>()
+
   db.exec('BEGIN;')
   try {
     for (const status of statuses) {
-      const compositeKey = createCompositeKey(backendUrl, status.id)
+      const normalizedUri = status.uri?.trim() || ''
       const created_at_ms = new Date(status.created_at).getTime()
+      const cols = extractStatusColumns(status)
 
+      // URI で既存行を検索（キャッシュ優先）
+      let compositeKey: string | undefined = normalizedUri
+        ? uriCache.get(normalizedUri)
+        : undefined
+
+      if (compositeKey === undefined && normalizedUri) {
+        const existingRows = db.exec(
+          'SELECT compositeKey FROM statuses WHERE uri = ?;',
+          {
+            bind: [normalizedUri],
+            returnValue: 'resultRows',
+          },
+        ) as string[][]
+
+        compositeKey = existingRows.length > 0 ? existingRows[0][0] : undefined
+      }
+
+      if (compositeKey !== undefined) {
+        // 既存行を更新
+        db.exec(
+          `UPDATE statuses SET
+            storedAt         = ?,
+            account_acct     = ?,
+            account_id       = ?,
+            visibility       = ?,
+            language         = ?,
+            has_media        = ?,
+            media_count      = ?,
+            is_reblog        = ?,
+            reblog_of_id     = ?,
+            reblog_of_uri    = ?,
+            is_sensitive     = ?,
+            has_spoiler      = ?,
+            in_reply_to_id   = ?,
+            favourites_count = ?,
+            reblogs_count    = ?,
+            replies_count    = ?,
+            json             = ?
+          WHERE compositeKey = ?;`,
+          {
+            bind: [
+              now,
+              cols.account_acct,
+              cols.account_id,
+              cols.visibility,
+              cols.language,
+              cols.has_media,
+              cols.media_count,
+              cols.is_reblog,
+              cols.reblog_of_id,
+              cols.reblog_of_uri,
+              cols.is_sensitive,
+              cols.has_spoiler,
+              cols.in_reply_to_id,
+              cols.favourites_count,
+              cols.reblogs_count,
+              cols.replies_count,
+              JSON.stringify(status),
+              compositeKey,
+            ],
+          },
+        )
+      } else {
+        // 新規投稿を INSERT
+        compositeKey = createCompositeKey(backendUrl, status.id)
+        db.exec(
+          `INSERT INTO statuses (
+            compositeKey, backendUrl, created_at_ms, storedAt,
+            uri,
+            account_acct, account_id, visibility, language,
+            has_media, media_count, is_reblog, reblog_of_id, reblog_of_uri,
+            is_sensitive, has_spoiler, in_reply_to_id,
+            favourites_count, reblogs_count, replies_count,
+            json
+          ) VALUES (?,?,?,?, ?, ?,?,?,?, ?,?,?,?,?, ?,?,?, ?,?,?, ?)
+          ON CONFLICT(compositeKey) DO UPDATE SET
+            storedAt         = excluded.storedAt,
+            account_acct     = excluded.account_acct,
+            account_id       = excluded.account_id,
+            visibility       = excluded.visibility,
+            language         = excluded.language,
+            has_media        = excluded.has_media,
+            media_count      = excluded.media_count,
+            is_reblog        = excluded.is_reblog,
+            reblog_of_id     = excluded.reblog_of_id,
+            reblog_of_uri    = excluded.reblog_of_uri,
+            is_sensitive     = excluded.is_sensitive,
+            has_spoiler      = excluded.has_spoiler,
+            in_reply_to_id   = excluded.in_reply_to_id,
+            favourites_count = excluded.favourites_count,
+            reblogs_count    = excluded.reblogs_count,
+            replies_count    = excluded.replies_count,
+            json             = excluded.json;`,
+          {
+            bind: [
+              compositeKey,
+              backendUrl,
+              created_at_ms,
+              now,
+              cols.uri,
+              cols.account_acct,
+              cols.account_id,
+              cols.visibility,
+              cols.language,
+              cols.has_media,
+              cols.media_count,
+              cols.is_reblog,
+              cols.reblog_of_id,
+              cols.reblog_of_uri,
+              cols.is_sensitive,
+              cols.has_spoiler,
+              cols.in_reply_to_id,
+              cols.favourites_count,
+              cols.reblogs_count,
+              cols.replies_count,
+              JSON.stringify(status),
+            ],
+          },
+        )
+      }
+
+      if (normalizedUri) {
+        uriCache.set(normalizedUri, compositeKey)
+      }
+
+      // バックエンド関連を登録
       db.exec(
-        `INSERT INTO statuses (compositeKey, backendUrl, created_at_ms, storedAt, json)
-         VALUES (?, ?, ?, ?, ?)
-         ON CONFLICT(compositeKey) DO UPDATE SET
-           created_at_ms = excluded.created_at_ms,
-           storedAt = excluded.storedAt,
-           json = excluded.json;`,
-        {
-          bind: [
-            compositeKey,
-            backendUrl,
-            created_at_ms,
-            now,
-            JSON.stringify(status),
-          ],
-        },
+        `INSERT OR IGNORE INTO statuses_backends (compositeKey, backendUrl, local_id)
+         VALUES (?, ?, ?);`,
+        { bind: [compositeKey, backendUrl, status.id] },
       )
 
       db.exec(
@@ -235,6 +541,9 @@ export async function bulkUpsertStatuses(
           { bind: [compositeKey, tag] },
         )
       }
+
+      // メンション書き込み
+      upsertMentions(handle, compositeKey, status.mentions)
     }
     db.exec('COMMIT;')
   } catch (e) {
@@ -256,7 +565,11 @@ export async function removeFromTimeline(
 ): Promise<void> {
   const handle = await getSqliteDb()
   const { db } = handle
-  const compositeKey = createCompositeKey(backendUrl, statusId)
+
+  // v3: statuses_backends 経由で compositeKey を解決
+  const compositeKey =
+    resolveCompositeKey(handle, backendUrl, statusId) ??
+    createCompositeKey(backendUrl, statusId)
 
   db.exec('BEGIN;')
   try {
@@ -315,6 +628,11 @@ export async function removeFromTimeline(
 
 /**
  * delete イベントの処理
+ *
+ * v3: statuses_backends 経由でバックエンド関連を削除し、
+ * 他のバックエンドからの参照がなくなった場合のみ物理削除する。
+ * 他のバックエンドが参照している場合はタイムライン種別を除外し、
+ * どのタイムラインにも属さなくなった場合も物理削除する。
  */
 export async function handleDeleteEvent(
   backendUrl: string,
@@ -322,7 +640,69 @@ export async function handleDeleteEvent(
   sourceTimelineType: TimelineType,
   tag?: string,
 ): Promise<void> {
-  await removeFromTimeline(backendUrl, statusId, sourceTimelineType, tag)
+  const handle = await getSqliteDb()
+  const { db } = handle
+
+  const compositeKey = resolveCompositeKey(handle, backendUrl, statusId)
+  if (!compositeKey) return
+
+  db.exec('BEGIN;')
+  try {
+    // 1. このバックエンドとの関連を削除
+    db.exec(
+      'DELETE FROM statuses_backends WHERE backendUrl = ? AND local_id = ?;',
+      { bind: [backendUrl, statusId] },
+    )
+
+    // 2. 他のバックエンドがまだ参照しているか確認
+    const remainingBackends = (
+      db.exec(
+        'SELECT COUNT(*) FROM statuses_backends WHERE compositeKey = ?;',
+        { bind: [compositeKey], returnValue: 'resultRows' },
+      ) as number[][]
+    )[0][0]
+
+    if (remainingBackends === 0) {
+      // どのバックエンドからも参照されていない → 物理削除
+      db.exec('DELETE FROM statuses WHERE compositeKey = ?;', {
+        bind: [compositeKey],
+      })
+    } else {
+      // 他のバックエンドから参照されている → タイムライン種別を除外
+      db.exec(
+        'DELETE FROM statuses_timeline_types WHERE compositeKey = ? AND timelineType = ?;',
+        { bind: [compositeKey, sourceTimelineType] },
+      )
+
+      if (sourceTimelineType === 'tag' && tag) {
+        db.exec(
+          'DELETE FROM statuses_belonging_tags WHERE compositeKey = ? AND tag = ?;',
+          { bind: [compositeKey, tag] },
+        )
+      }
+
+      // どのタイムラインにも属さなくなったら物理削除
+      const remainingTimelines = (
+        db.exec(
+          'SELECT COUNT(*) FROM statuses_timeline_types WHERE compositeKey = ?;',
+          { bind: [compositeKey], returnValue: 'resultRows' },
+        ) as number[][]
+      )[0][0]
+
+      if (remainingTimelines === 0) {
+        db.exec('DELETE FROM statuses WHERE compositeKey = ?;', {
+          bind: [compositeKey],
+        })
+      }
+    }
+
+    db.exec('COMMIT;')
+  } catch (e) {
+    db.exec('ROLLBACK;')
+    throw e
+  }
+
+  notifyChange('statuses')
 }
 
 /**
@@ -336,38 +716,67 @@ export async function updateStatusAction(
 ): Promise<void> {
   const handle = await getSqliteDb()
   const { db } = handle
-  const compositeKey = createCompositeKey(backendUrl, statusId)
+
+  // v3: statuses_backends 経由で compositeKey を解決
+  const compositeKey = resolveCompositeKey(handle, backendUrl, statusId)
+  if (!compositeKey) return
 
   db.exec('BEGIN;')
   try {
     // メイン Status の json を更新
-    const rows = db.exec('SELECT json FROM statuses WHERE compositeKey = ?;', {
-      bind: [compositeKey],
-      returnValue: 'resultRows',
-    }) as string[][]
+    const rows = db.exec(
+      'SELECT json, uri FROM statuses WHERE compositeKey = ?;',
+      {
+        bind: [compositeKey],
+        returnValue: 'resultRows',
+      },
+    ) as string[][]
 
     if (rows.length > 0) {
       const status = JSON.parse(rows[0][0]) as Entity.Status
+      const statusUri = rows[0][1] as string
       ;(status as Record<string, unknown>)[action] = value
 
       db.exec('UPDATE statuses SET json = ? WHERE compositeKey = ?;', {
         bind: [JSON.stringify(status), compositeKey],
       })
 
-      // reblog の場合、reblog 元も更新
+      // reblog の場合、reblog 元も更新（v3: reblog_of_uri で検索）
       if (status.reblog) {
-        const reblogKey = createCompositeKey(backendUrl, status.reblog.id)
-        const reblogRows = db.exec(
-          'SELECT json FROM statuses WHERE compositeKey = ?;',
-          { bind: [reblogKey], returnValue: 'resultRows' },
-        ) as string[][]
+        const reblogUri = status.reblog.uri
+        if (reblogUri) {
+          const reblogRows = db.exec(
+            'SELECT compositeKey, json FROM statuses WHERE uri = ?;',
+            { bind: [reblogUri], returnValue: 'resultRows' },
+          ) as string[][]
 
-        if (reblogRows.length > 0) {
-          const reblogStatus = JSON.parse(reblogRows[0][0]) as Entity.Status
-          ;(reblogStatus as Record<string, unknown>)[action] = value
-          db.exec('UPDATE statuses SET json = ? WHERE compositeKey = ?;', {
-            bind: [JSON.stringify(reblogStatus), reblogKey],
-          })
+          if (reblogRows.length > 0) {
+            const reblogKey = reblogRows[0][0]
+            const reblogStatus = JSON.parse(reblogRows[0][1]) as Entity.Status
+            ;(reblogStatus as Record<string, unknown>)[action] = value
+            db.exec('UPDATE statuses SET json = ? WHERE compositeKey = ?;', {
+              bind: [JSON.stringify(reblogStatus), reblogKey],
+            })
+          }
+        }
+      }
+
+      // この Status を reblog として持つ他の Status も更新
+      // v3: reblog_of_uri でグローバルに検索（跨サーバー対応）
+      if (statusUri) {
+        const relatedRows = db.exec(
+          `SELECT compositeKey, json FROM statuses WHERE reblog_of_uri = ?;`,
+          { bind: [statusUri], returnValue: 'resultRows' },
+        ) as (string | number)[][]
+
+        for (const row of relatedRows) {
+          const json = JSON.parse(row[1] as string) as Entity.Status
+          if (json.reblog) {
+            ;(json.reblog as Record<string, unknown>)[action] = value
+            db.exec('UPDATE statuses SET json = ? WHERE compositeKey = ?;', {
+              bind: [JSON.stringify(json), row[0] as string],
+            })
+          }
         }
       }
     }
@@ -376,35 +785,6 @@ export async function updateStatusAction(
   } catch (e) {
     db.exec('ROLLBACK;')
     throw e
-  }
-
-  // この Status を reblog として持つ他の Status も更新（DB側でフィルタ）
-  const relatedRows = db.exec(
-    `SELECT compositeKey, json FROM statuses
-     WHERE backendUrl = ? AND json_extract(json, '$.reblog.id') = ?;`,
-    { bind: [backendUrl, statusId], returnValue: 'resultRows' },
-  ) as (string | number)[][]
-
-  const updates: { key: string; json: string }[] = []
-  for (const row of relatedRows) {
-    const json = JSON.parse(row[1] as string) as Entity.Status
-    ;(json.reblog as Record<string, unknown>)[action] = value
-    updates.push({ json: JSON.stringify(json), key: row[0] as string })
-  }
-
-  if (updates.length > 0) {
-    db.exec('BEGIN;')
-    try {
-      for (const u of updates) {
-        db.exec('UPDATE statuses SET json = ? WHERE compositeKey = ?;', {
-          bind: [u.json, u.key],
-        })
-      }
-      db.exec('COMMIT;')
-    } catch (e) {
-      db.exec('ROLLBACK;')
-      throw e
-    }
   }
 
   notifyChange('statuses')
@@ -419,9 +799,14 @@ export async function updateStatus(
 ): Promise<void> {
   const handle = await getSqliteDb()
   const { db } = handle
-  const compositeKey = createCompositeKey(backendUrl, status.id)
   const created_at_ms = new Date(status.created_at).getTime()
   const now = Date.now()
+  const cols = extractStatusColumns(status)
+
+  // v3: statuses_backends 経由で compositeKey を解決
+  const compositeKey =
+    resolveCompositeKey(handle, backendUrl, status.id) ??
+    createCompositeKey(backendUrl, status.id)
 
   // 既存確認
   const existing = db.exec(
@@ -433,14 +818,52 @@ export async function updateStatus(
 
   db.exec('BEGIN;')
   try {
+    // 正規化カラムも同時に更新（v3: uri, reblog_of_uri 含む）
     db.exec(
       `UPDATE statuses SET
-         created_at_ms = ?,
-         storedAt = ?,
-         json = ?
+         created_at_ms    = ?,
+         storedAt         = ?,
+         uri              = ?,
+         account_acct     = ?,
+         account_id       = ?,
+         visibility       = ?,
+         language         = ?,
+         has_media        = ?,
+         media_count      = ?,
+         is_reblog        = ?,
+         reblog_of_id     = ?,
+         reblog_of_uri    = ?,
+         is_sensitive     = ?,
+         has_spoiler      = ?,
+         in_reply_to_id   = ?,
+         favourites_count = ?,
+         reblogs_count    = ?,
+         replies_count    = ?,
+         json             = ?
        WHERE compositeKey = ?;`,
       {
-        bind: [created_at_ms, now, JSON.stringify(status), compositeKey],
+        bind: [
+          created_at_ms,
+          now,
+          cols.uri,
+          cols.account_acct,
+          cols.account_id,
+          cols.visibility,
+          cols.language,
+          cols.has_media,
+          cols.media_count,
+          cols.is_reblog,
+          cols.reblog_of_id,
+          cols.reblog_of_uri,
+          cols.is_sensitive,
+          cols.has_spoiler,
+          cols.in_reply_to_id,
+          cols.favourites_count,
+          cols.reblogs_count,
+          cols.replies_count,
+          JSON.stringify(status),
+          compositeKey,
+        ],
       },
     )
 
@@ -455,6 +878,9 @@ export async function updateStatus(
         { bind: [compositeKey, t.name] },
       )
     }
+
+    // メンションを再構築
+    upsertMentions(handle, compositeKey, status.mentions)
 
     db.exec('COMMIT;')
   } catch (e) {
@@ -486,12 +912,16 @@ export async function getStatusesByTimelineType(
   if (backendUrls && backendUrls.length > 0) {
     const placeholders = backendUrls.map(() => '?').join(',')
     sql = `
-      SELECT s.compositeKey, s.backendUrl, s.created_at_ms, s.storedAt, s.json
+      SELECT s.compositeKey, MIN(sb.backendUrl) AS backendUrl,
+             s.created_at_ms, s.storedAt, s.json
       FROM statuses s
       INNER JOIN statuses_timeline_types stt
         ON s.compositeKey = stt.compositeKey
+      INNER JOIN statuses_backends sb
+        ON s.compositeKey = sb.compositeKey
       WHERE stt.timelineType = ?
-        AND s.backendUrl IN (${placeholders})
+        AND sb.backendUrl IN (${placeholders})
+      GROUP BY s.compositeKey
       ORDER BY s.created_at_ms DESC
       LIMIT ?;
     `
@@ -534,12 +964,16 @@ export async function getStatusesByTag(
   if (backendUrls && backendUrls.length > 0) {
     const placeholders = backendUrls.map(() => '?').join(',')
     sql = `
-      SELECT s.compositeKey, s.backendUrl, s.created_at_ms, s.storedAt, s.json
+      SELECT s.compositeKey, MIN(sb.backendUrl) AS backendUrl,
+             s.created_at_ms, s.storedAt, s.json
       FROM statuses s
       INNER JOIN statuses_belonging_tags sbt
         ON s.compositeKey = sbt.compositeKey
+      INNER JOIN statuses_backends sb
+        ON s.compositeKey = sb.compositeKey
       WHERE sbt.tag = ?
-        AND s.backendUrl IN (${placeholders})
+        AND sb.backendUrl IN (${placeholders})
+      GROUP BY s.compositeKey
       ORDER BY s.created_at_ms DESC
       LIMIT ?;
     `
@@ -631,19 +1065,25 @@ export async function getStatusesByCustomQuery(
 
   if (backendUrls && backendUrls.length > 0) {
     const placeholders = backendUrls.map(() => '?').join(',')
-    backendFilter = `AND s.backendUrl IN (${placeholders})`
+    backendFilter = `AND sb.backendUrl IN (${placeholders})`
     binds.push(...backendUrls)
   }
 
   const sql = `
-    SELECT DISTINCT s.compositeKey, s.backendUrl, s.created_at_ms, s.storedAt, s.json
+    SELECT s.compositeKey, MIN(sb.backendUrl) AS backendUrl,
+           s.created_at_ms, s.storedAt, s.json
     FROM statuses s
     LEFT JOIN statuses_timeline_types stt
       ON s.compositeKey = stt.compositeKey
     LEFT JOIN statuses_belonging_tags sbt
       ON s.compositeKey = sbt.compositeKey
+    LEFT JOIN statuses_mentions sm
+      ON s.compositeKey = sm.compositeKey
+    LEFT JOIN statuses_backends sb
+      ON s.compositeKey = sb.compositeKey
     WHERE (${sanitized || '1=1'})
       ${backendFilter}
+    GROUP BY s.compositeKey
     ORDER BY s.created_at_ms DESC
     LIMIT ?
     OFFSET ?;
@@ -662,13 +1102,85 @@ export async function getStatusesByCustomQuery(
  * テーブルカラム / エイリアス一覧（補完用）
  */
 export const QUERY_COMPLETIONS = {
-  aliases: ['s', 'stt', 'sbt'],
+  aliases: ['s', 'stt', 'sbt', 'sm', 'sb'],
   columns: {
-    s: ['compositeKey', 'backendUrl', 'created_at_ms', 'storedAt', 'json'],
+    s: [
+      'compositeKey',
+      'backendUrl',
+      'created_at_ms',
+      'storedAt',
+      'uri',
+      'account_acct',
+      'account_id',
+      'visibility',
+      'language',
+      'has_media',
+      'media_count',
+      'is_reblog',
+      'reblog_of_id',
+      'reblog_of_uri',
+      'is_sensitive',
+      'has_spoiler',
+      'in_reply_to_id',
+      'favourites_count',
+      'reblogs_count',
+      'replies_count',
+      'json',
+    ],
+    sb: ['compositeKey', 'backendUrl', 'local_id'],
     sbt: ['compositeKey', 'tag'],
+    sm: ['compositeKey', 'acct'],
     stt: ['compositeKey', 'timelineType'],
   },
   examples: [
+    {
+      description: '特定ユーザーの投稿を取得する',
+      query: "s.account_acct = 'user@example.com'",
+    },
+    {
+      description: '添付メディアが存在する投稿を取得する',
+      query: 's.has_media = 1',
+    },
+    {
+      description: 'メディアが2枚以上ある投稿を取得する',
+      query: 's.media_count >= 2',
+    },
+    {
+      description: 'ブーストされた投稿を取得する',
+      query: 's.is_reblog = 1',
+    },
+    {
+      description: 'ブーストを除外する',
+      query: 's.is_reblog = 0',
+    },
+    {
+      description: 'CW（Content Warning）付きの投稿を取得する',
+      query: 's.has_spoiler = 1',
+    },
+    {
+      description: 'リプライを除外する',
+      query: 's.in_reply_to_id IS NULL',
+    },
+    {
+      description: '日本語の投稿のみ取得する',
+      query: "s.language = 'ja'",
+    },
+    {
+      description: '公開投稿のみ取得する',
+      query: "s.visibility = 'public'",
+    },
+    {
+      description: '未収載を含む公開投稿を取得する',
+      query: "s.visibility IN ('public', 'unlisted')",
+    },
+    {
+      description: 'ふぁぼ数が10以上の投稿を取得する',
+      query: 's.favourites_count >= 10',
+    },
+    {
+      description: '特定ユーザーへのメンションを含む投稿を取得する',
+      query: "sm.acct = 'user@example.com'",
+    },
     {
       description: 'ホームタイムラインを取得する',
       query: "stt.timelineType = 'home'",
@@ -678,33 +1190,8 @@ export const QUERY_COMPLETIONS = {
       query: "sbt.tag = 'photo'",
     },
     {
-      description: '複数タグのいずれかを含む投稿を取得する',
-      query: "sbt.tag IN ('photo', 'art')",
-    },
-    {
       description: 'ローカルタイムラインで特定タグの投稿を取得する',
       query: "stt.timelineType = 'local' AND sbt.tag = 'music'",
-    },
-    {
-      description: '特定ユーザーの投稿を取得する',
-      query: "json_extract(s.json, '$.account.acct') = 'user@example.com'",
-    },
-    {
-      description: '添付メディアが存在する投稿を取得する',
-      query: "json_extract(s.json, '$.media_attachments') != '[]'",
-    },
-    {
-      description: 'メディアが2枚以上ある投稿を取得する',
-      query:
-        "json_array_length(json_extract(s.json, '$.media_attachments')) >= 2",
-    },
-    {
-      description: 'ブーストされた投稿を取得する',
-      query: "json_extract(s.json, '$.reblog') IS NOT NULL",
-    },
-    {
-      description: 'CW（Content Warning）付きの投稿を取得する',
-      query: "json_extract(s.json, '$.spoiler_text') != ''",
     },
   ],
   /** json_extract の `$.` パス補完候補 */
@@ -813,7 +1300,7 @@ export async function validateCustomQuery(
     const handle = await getSqliteDb()
     const { db } = handle
 
-    // EXPLAIN でクエリの構文チェック
+    // EXPLAIN でクエリの構文チェック（v3: statuses_backends も LEFT JOIN）
     const sql = `
       EXPLAIN
       SELECT DISTINCT s.compositeKey
@@ -822,6 +1309,10 @@ export async function validateCustomQuery(
         ON s.compositeKey = stt.compositeKey
       LEFT JOIN statuses_belonging_tags sbt
         ON s.compositeKey = sbt.compositeKey
+      LEFT JOIN statuses_mentions sm
+        ON s.compositeKey = sm.compositeKey
+      LEFT JOIN statuses_backends sb
+        ON s.compositeKey = sb.compositeKey
       WHERE (${sanitized})
       LIMIT 1;
     `
@@ -982,8 +1473,17 @@ export async function getDistinctColumnValues(
 ): Promise<string[]> {
   // 許可リスト（安全なテーブル＋カラムの組み合わせ）
   const allowed: Record<string, string[]> = {
-    statuses: ['backendUrl'],
+    statuses: [
+      'backendUrl',
+      'uri',
+      'account_acct',
+      'account_id',
+      'visibility',
+      'language',
+    ],
+    statuses_backends: ['backendUrl', 'local_id'],
     statuses_belonging_tags: ['tag'],
+    statuses_mentions: ['acct'],
     statuses_timeline_types: ['timelineType'],
   }
   if (!allowed[table]?.includes(column)) return []

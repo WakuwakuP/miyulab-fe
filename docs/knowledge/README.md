@@ -174,12 +174,12 @@
 2. **データ操作実装**
 
    ```typescript
-   'use server';
+   "use server";
    // キャッシュキーとタグを適切に設定
    const cachedFunction = unstable_cache(
      fetchFunction,
      [CacheKeys.newData(userId)],
-     { tags: [CacheTags.newData(userId)] }
+     { tags: [CacheTags.newData(userId)] },
    );
    ```
 
@@ -187,14 +187,15 @@
 
    ```typescript
    // コンポーネントとServer Actionsの両方をテスト
-   describe('NewComponent', () => {
-     it('should render correctly', () => {
+   describe("NewComponent", () => {
+     it("should render correctly", () => {
        // テスト実装
      });
    });
    ```
 
 4. **Storybook作成**
+
    ```typescript
    // 各種状態とバリアントを網羅
    export const Default: Story = {
@@ -222,7 +223,7 @@
 - [ ] Server Actions のエラーハンドリング
 - [ ] 包括的なテストの作成
 - [ ] Storybook の Story 作成
-- [ ] フォーマットの実行（`yarn format`）
+- [ ] フォーマットの実行（`yarn check`）
 - [ ] ビルド確認（`yarn build`）
 - [ ] テスト実行（`yarn test:run`）
 
