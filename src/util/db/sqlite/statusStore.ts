@@ -10,7 +10,7 @@
  */
 
 import type { Entity } from 'megalodon'
-import { isNotificationQuery } from 'util/queryBuilder'
+import { isMixedQuery, isNotificationQuery } from 'util/queryBuilder'
 import type { TimelineType } from '../database'
 import { type DbHandle, getSqliteDb, notifyChange } from './connection'
 
@@ -1220,6 +1220,12 @@ export const QUERY_COMPLETIONS = {
       description: '特定ユーザーからの通知を取得する',
       query: "n.account_acct = 'user@example.com'",
     },
+    {
+      description:
+        'ホームタイムラインとお気に入り・ブースト通知を一緒に表示する',
+      query:
+        "stt.timelineType = 'home' OR n.notification_type IN ('favourite', 'reblog')",
+    },
   ],
   /** json_extract の `$.` パス補完候補 */
   jsonPaths: [
@@ -1327,11 +1333,48 @@ export async function validateCustomQuery(
     const handle = await getSqliteDb()
     const { db } = handle
 
-    // クエリが notifications テーブル（エイリアス n）を参照しているか判定
-    const isNotifQuery = isNotificationQuery(sanitized)
+    // クエリが参照するテーブルに基づいて検証クエリを構築
+    const isMixed = isMixedQuery(sanitized)
+    const isNotifQuery = !isMixed && isNotificationQuery(sanitized)
 
     let sql: string
-    if (isNotifQuery) {
+    if (isMixed) {
+      // 混合クエリ: statuses + notifications の両テーブルを UNION で検証
+      // WHERE 句が両テーブルのカラムを参照するため、個別の SELECT で EXPLAIN する
+      sql = `
+        EXPLAIN
+        SELECT compositeKey FROM (
+          SELECT s.compositeKey, s.created_at_ms
+          FROM statuses s
+          LEFT JOIN statuses_timeline_types stt
+            ON s.compositeKey = stt.compositeKey
+          LEFT JOIN statuses_belonging_tags sbt
+            ON s.compositeKey = sbt.compositeKey
+          LEFT JOIN statuses_mentions sm
+            ON s.compositeKey = sm.compositeKey
+          LEFT JOIN statuses_backends sb
+            ON s.compositeKey = sb.compositeKey
+          LEFT JOIN notifications n
+            ON 0 = 1
+          WHERE (${sanitized})
+          UNION ALL
+          SELECT n.compositeKey, n.created_at_ms
+          FROM notifications n
+          LEFT JOIN statuses s
+            ON 0 = 1
+          LEFT JOIN statuses_timeline_types stt
+            ON 0 = 1
+          LEFT JOIN statuses_belonging_tags sbt
+            ON 0 = 1
+          LEFT JOIN statuses_mentions sm
+            ON 0 = 1
+          LEFT JOIN statuses_backends sb
+            ON 0 = 1
+          WHERE (${sanitized})
+        )
+        LIMIT 1;
+      `
+    } else if (isNotifQuery) {
       // notifications テーブル対象のクエリ
       sql = `
         EXPLAIN

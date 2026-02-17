@@ -145,8 +145,9 @@ export type TimelineConfigV2 = {
    * statuses_backends (sb), notifications (n) テーブルを参照可能。
    * LIMIT / OFFSET は自動設定されるため指定不要。
    *
-   * `n.` プレフィックスを含むクエリは notifications テーブルに対して実行され、
-   * それ以外は statuses テーブルに対して実行される。
+   * statuses 関連テーブル (s, stt, sbt, sm, sb) と notifications テーブル (n) を
+   * OR 条件で結合する混合クエリにも対応。例:
+   * `stt.timelineType = 'home' OR n.notification_type IN ('favourite','reblog')`
    */
   customQuery?: string
   /** 一意識別子 */

@@ -11,7 +11,7 @@ import type { SqliteStoredNotification } from 'util/db/sqlite/notificationStore'
 import type { SqliteStoredStatus } from 'util/db/sqlite/statusStore'
 import { MAX_LENGTH } from 'util/environment'
 import { AppsContext } from 'util/provider/AppsProvider'
-import { isNotificationQuery } from 'util/queryBuilder'
+import { isMixedQuery, isNotificationQuery } from 'util/queryBuilder'
 
 /**
  * backendUrl から appIndex を算出するヘルパー
@@ -52,9 +52,11 @@ function hasUnquotedQuestionMark(query: string): boolean {
  * config.customQuery が設定されている場合にのみ使用される。
  * LIMIT / OFFSET は自動設定され、ユーザーが指定した値は無視される。
  *
- * クエリ内で `n.` プレフィックスが使われている場合は notifications テーブルを
- * 対象にしたクエリとして実行し、NotificationAddAppIndex[] を返す。
- * それ以外の場合は statuses テーブルを対象にしたクエリとして実行する。
+ * クエリが statuses と notifications の両方のテーブルを参照する場合（混合クエリ）、
+ * UNION ALL を使用して両テーブルから結果を取得し、created_at_ms でソートして返す。
+ *
+ * クエリ内で `n.` プレフィックスのみが使われている場合は notifications テーブルのみ、
+ * それ以外の場合は statuses テーブルのみを対象にクエリを実行する。
  *
  * ## v2 スキーマ対応
  *
@@ -64,26 +66,28 @@ function hasUnquotedQuestionMark(query: string): boolean {
  */
 export function useCustomQueryTimeline(
   config: TimelineConfigV2,
-): NotificationAddAppIndex[] | StatusAddAppIndex[] {
+): (NotificationAddAppIndex | StatusAddAppIndex)[] {
   const apps = useContext(AppsContext)
-  const [statuses, setStatuses] = useState<SqliteStoredStatus[]>([])
-  const [notifications, setNotifications] = useState<
-    SqliteStoredNotification[]
+  const [results, setResults] = useState<
+    (
+      | (SqliteStoredStatus & { _type: 'status' })
+      | (SqliteStoredNotification & { _type: 'notification' })
+    )[]
   >([])
 
   const customQuery = config.customQuery ?? ''
   const onlyMedia = config.onlyMedia
   const minMediaCount = config.minMediaCount
 
-  const isNotifQuery = useMemo(
-    () => isNotificationQuery(customQuery),
-    [customQuery],
-  )
+  const queryMode = useMemo(() => {
+    if (isMixedQuery(customQuery)) return 'mixed' as const
+    if (isNotificationQuery(customQuery)) return 'notification' as const
+    return 'status' as const
+  }, [customQuery])
 
   const fetchData = useCallback(async () => {
     if (!customQuery.trim()) {
-      setStatuses([])
-      setNotifications([])
+      setResults([])
       return
     }
 
@@ -96,15 +100,13 @@ export function useCustomQueryTimeline(
         /\b(DROP|DELETE|INSERT|UPDATE|ALTER|CREATE|ATTACH|DETACH|PRAGMA|VACUUM|REINDEX)\b/i
       if (forbidden.test(customQuery)) {
         console.error('Custom query contains forbidden SQL statements.')
-        setStatuses([])
-        setNotifications([])
+        setResults([])
         return
       }
       // SQLコメントも拒否（後続の backendUrl 条件のコメントアウト防止）
       if (/--/.test(customQuery) || /\/\*/.test(customQuery)) {
         console.error('Custom query contains SQL comments.')
-        setStatuses([])
-        setNotifications([])
+        setResults([])
         return
       }
       const sanitized = customQuery
@@ -114,20 +116,98 @@ export function useCustomQueryTimeline(
         .trim()
 
       if (!sanitized) {
-        setStatuses([])
-        setNotifications([])
+        setResults([])
         return
       }
 
       // ? プレースホルダーのバインド競合を防止（文字列リテラル内は許可）
       if (hasUnquotedQuestionMark(sanitized)) {
         console.error('Custom query must not contain ? placeholders.')
-        setStatuses([])
-        setNotifications([])
+        setResults([])
         return
       }
 
-      if (isNotifQuery) {
+      if (queryMode === 'mixed') {
+        // ============================
+        // 混合クエリ: statuses + notifications を UNION ALL で結合
+        // ============================
+        // 各サブクエリでは、対象外テーブルのカラムが NULL になるよう
+        // LEFT JOIN ... ON 0 = 1 でダミー結合する
+        const binds: (string | number)[] = [MAX_LENGTH]
+
+        const sql = `
+          SELECT compositeKey, backendUrl, created_at_ms, storedAt, json, _type
+          FROM (
+            SELECT s.compositeKey, MIN(sb.backendUrl) AS backendUrl,
+                   s.created_at_ms, s.storedAt, s.json,
+                   'status' AS _type
+            FROM statuses s
+            LEFT JOIN statuses_timeline_types stt
+              ON s.compositeKey = stt.compositeKey
+            LEFT JOIN statuses_belonging_tags sbt
+              ON s.compositeKey = sbt.compositeKey
+            LEFT JOIN statuses_mentions sm
+              ON s.compositeKey = sm.compositeKey
+            LEFT JOIN statuses_backends sb
+              ON s.compositeKey = sb.compositeKey
+            LEFT JOIN notifications n
+              ON 0 = 1
+            WHERE (${sanitized})
+            GROUP BY s.compositeKey
+            UNION ALL
+            SELECT n.compositeKey, n.backendUrl,
+                   n.created_at_ms, n.storedAt, n.json,
+                   'notification' AS _type
+            FROM notifications n
+            LEFT JOIN statuses s
+              ON 0 = 1
+            LEFT JOIN statuses_timeline_types stt
+              ON 0 = 1
+            LEFT JOIN statuses_belonging_tags sbt
+              ON 0 = 1
+            LEFT JOIN statuses_mentions sm
+              ON 0 = 1
+            LEFT JOIN statuses_backends sb
+              ON 0 = 1
+            WHERE (${sanitized})
+          )
+          ORDER BY created_at_ms DESC
+          LIMIT ?;
+        `
+
+        const rows = db.exec(sql, {
+          bind: binds,
+          returnValue: 'resultRows',
+        }) as (string | number)[][]
+
+        const mixed = rows.map((row) => {
+          const type = row[5] as string
+          if (type === 'notification') {
+            const notification = JSON.parse(row[4] as string)
+            return {
+              ...notification,
+              _type: 'notification' as const,
+              backendUrl: row[1] as string,
+              compositeKey: row[0] as string,
+              created_at_ms: row[2] as number,
+              storedAt: row[3] as number,
+            }
+          }
+          const status = JSON.parse(row[4] as string)
+          return {
+            ...status,
+            _type: 'status' as const,
+            backendUrl: row[1] as string,
+            belongingTags: [],
+            compositeKey: row[0] as string,
+            created_at_ms: row[2] as number,
+            storedAt: row[3] as number,
+            timelineTypes: [],
+          }
+        })
+
+        setResults(mixed)
+      } else if (queryMode === 'notification') {
         // ============================
         // Notifications クエリ
         // ============================
@@ -147,10 +227,11 @@ export function useCustomQueryTimeline(
           returnValue: 'resultRows',
         }) as (string | number)[][]
 
-        const results: SqliteStoredNotification[] = rows.map((row) => {
+        const notifResults = rows.map((row) => {
           const notification = JSON.parse(row[4] as string)
           return {
             ...notification,
+            _type: 'notification' as const,
             backendUrl: row[1] as string,
             compositeKey: row[0] as string,
             created_at_ms: row[2] as number,
@@ -158,8 +239,7 @@ export function useCustomQueryTimeline(
           }
         })
 
-        setNotifications(results)
-        setStatuses([])
+        setResults(notifResults)
       } else {
         // ============================
         // Statuses クエリ
@@ -202,10 +282,11 @@ export function useCustomQueryTimeline(
           returnValue: 'resultRows',
         }) as (string | number)[][]
 
-        const results: SqliteStoredStatus[] = rows.map((row) => {
+        const statusResults = rows.map((row) => {
           const status = JSON.parse(row[4] as string)
           return {
             ...status,
+            _type: 'status' as const,
             backendUrl: row[1] as string,
             belongingTags: [],
             compositeKey: row[0] as string,
@@ -215,43 +296,37 @@ export function useCustomQueryTimeline(
           }
         })
 
-        setStatuses(results)
-        setNotifications([])
+        setResults(statusResults)
       }
     } catch (e) {
       console.error('useCustomQueryTimeline query error:', e)
-      setStatuses([])
-      setNotifications([])
+      setResults([])
     }
-  }, [customQuery, onlyMedia, minMediaCount, isNotifQuery])
+  }, [customQuery, onlyMedia, minMediaCount, queryMode])
 
   useEffect(() => {
     fetchData()
-    // notifications クエリの場合は notifications テーブルの変更も監視する
-    const unsubStatuses = subscribe('statuses', fetchData)
-    const unsubNotifications = isNotifQuery
-      ? subscribe('notifications', fetchData)
-      : undefined
+    // 監視するテーブルはクエリモードに応じて決定
+    const unsubStatuses =
+      queryMode !== 'notification'
+        ? subscribe('statuses', fetchData)
+        : undefined
+    const unsubNotifications =
+      queryMode !== 'status' ? subscribe('notifications', fetchData) : undefined
     return () => {
-      unsubStatuses()
+      unsubStatuses?.()
       unsubNotifications?.()
     }
-  }, [fetchData, isNotifQuery])
+  }, [fetchData, queryMode])
 
-  return useMemo(() => {
-    if (isNotifQuery) {
-      return notifications
-        .map((n) => ({
-          ...n,
-          appIndex: resolveAppIndex(n.backendUrl, apps),
+  return useMemo(
+    () =>
+      results
+        .map((item) => ({
+          ...item,
+          appIndex: resolveAppIndex(item.backendUrl, apps),
         }))
-        .filter((n) => n.appIndex !== -1)
-    }
-    return statuses
-      .map((s) => ({
-        ...s,
-        appIndex: resolveAppIndex(s.backendUrl, apps),
-      }))
-      .filter((s) => s.appIndex !== -1)
-  }, [statuses, notifications, apps, isNotifQuery])
+        .filter((item) => item.appIndex !== -1),
+    [results, apps],
+  )
 }

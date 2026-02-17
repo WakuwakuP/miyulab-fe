@@ -20,6 +20,23 @@ export function isNotificationQuery(query: string): boolean {
 }
 
 /**
+ * クエリが statuses 関連テーブル（エイリアス s, stt, sbt, sm, sb）を参照しているか判定する
+ */
+export function isStatusQuery(query: string): boolean {
+  return /\b(s|stt|sbt|sm|sb)\.\w/.test(query)
+}
+
+/**
+ * クエリが statuses と notifications の両方のテーブルを参照しているか判定する
+ *
+ * OR 条件で `stt.timelineType = 'home' OR n.notification_type IN (...)` のような
+ * 混合クエリを検出する。
+ */
+export function isMixedQuery(query: string): boolean {
+  return isStatusQuery(query) && isNotificationQuery(query)
+}
+
+/**
  * TimelineConfigV2 の UI 設定から SQL WHERE 句を構築する
  *
  * 通常の設定UIをクエリビルダとして機能させるための関数。
@@ -36,7 +53,8 @@ export function isNotificationQuery(query: string): boolean {
  * Hook 側で別途追加する（クエリ文字列には含めない）。
  */
 export function buildQueryFromConfig(config: TimelineConfigV2): string {
-  const conditions: string[] = []
+  const statusConditions: string[] = []
+  const notificationConditions: string[] = []
 
   // ========================================
   // タイムライン種類（既存ロジック）
@@ -45,14 +63,14 @@ export function buildQueryFromConfig(config: TimelineConfigV2): string {
     // tag タイプはタグ条件で表現
     const tagConfig = config.tagConfig
     if (tagConfig && tagConfig.tags.length > 0) {
-      conditions.push(buildTagCondition(tagConfig))
+      statusConditions.push(buildTagCondition(tagConfig))
     }
   } else if (config.type === 'home') {
-    conditions.push("stt.timelineType = 'home'")
+    statusConditions.push("stt.timelineType = 'home'")
   } else if (config.type === 'local') {
-    conditions.push("stt.timelineType = 'local'")
+    statusConditions.push("stt.timelineType = 'local'")
   } else if (config.type === 'public') {
-    conditions.push("stt.timelineType = 'public'")
+    statusConditions.push("stt.timelineType = 'public'")
   }
 
   // ========================================
@@ -60,7 +78,7 @@ export function buildQueryFromConfig(config: TimelineConfigV2): string {
   // ========================================
   const mediaCondition = buildMediaCondition(config)
   if (mediaCondition) {
-    conditions.push(mediaCondition)
+    statusConditions.push(mediaCondition)
   }
 
   // ========================================
@@ -70,57 +88,72 @@ export function buildQueryFromConfig(config: TimelineConfigV2): string {
   // 公開範囲フィルタ
   const visibilityCondition = buildVisibilityCondition(config.visibilityFilter)
   if (visibilityCondition) {
-    conditions.push(visibilityCondition)
+    statusConditions.push(visibilityCondition)
   }
 
   // 言語フィルタ
   const languageCondition = buildLanguageCondition(config.languageFilter)
   if (languageCondition) {
-    conditions.push(languageCondition)
+    statusConditions.push(languageCondition)
   }
 
   // ブースト除外
   if (config.excludeReblogs) {
-    conditions.push('s.is_reblog = 0')
+    statusConditions.push('s.is_reblog = 0')
   }
 
   // リプライ除外
   if (config.excludeReplies) {
-    conditions.push('s.in_reply_to_id IS NULL')
+    statusConditions.push('s.in_reply_to_id IS NULL')
   }
 
   // CW 付き除外
   if (config.excludeSpoiler) {
-    conditions.push('s.has_spoiler = 0')
+    statusConditions.push('s.has_spoiler = 0')
   }
 
   // センシティブ除外
   if (config.excludeSensitive) {
-    conditions.push('s.is_sensitive = 0')
+    statusConditions.push('s.is_sensitive = 0')
   }
 
   // アカウントフィルタ
   const accountCondition = buildAccountCondition(config.accountFilter)
   if (accountCondition) {
-    conditions.push(accountCondition)
+    statusConditions.push(accountCondition)
   }
 
-  // 通知タイプフィルタ
+  // 通知タイプフィルタ（notifications テーブル側の条件）
   const notificationCondition = buildNotificationTypeCondition(
     config.notificationFilter,
   )
   if (notificationCondition) {
-    conditions.push(notificationCondition)
+    notificationConditions.push(notificationCondition)
   }
 
-  // バックエンドフィルタ
+  // バックエンドフィルタ（statuses 側に追加）
   const backendCondition = buildBackendFilterCondition(config.backendFilter)
   if (backendCondition) {
-    conditions.push(backendCondition)
+    statusConditions.push(backendCondition)
   }
 
-  if (conditions.length === 0) return ''
-  return conditions.join(' AND ')
+  // ========================================
+  // クエリの組み立て
+  // ========================================
+  // statuses 条件と notifications 条件を OR で結合する
+  const statusPart =
+    statusConditions.length > 0 ? statusConditions.join(' AND ') : ''
+  const notificationPart =
+    notificationConditions.length > 0
+      ? notificationConditions.join(' AND ')
+      : ''
+
+  if (statusPart && notificationPart) {
+    return `${statusPart} OR ${notificationPart}`
+  }
+  if (statusPart) return statusPart
+  if (notificationPart) return notificationPart
+  return ''
 }
 
 /**
