@@ -68,6 +68,11 @@ export function useCustomQueryTimeline(
         .replace(/\bOFFSET\b\s+\d+/gi, '')
         .trim()
 
+      if (!sanitized) {
+        setStatuses([])
+        return
+      }
+
       const backendPlaceholders = targetBackendUrls.map(() => '?').join(',')
       const binds: (string | number)[] = [...targetBackendUrls, MAX_LENGTH]
 

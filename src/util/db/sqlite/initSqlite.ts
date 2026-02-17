@@ -54,6 +54,7 @@ async function initDb(): Promise<DbHandle> {
   // WAL モード有効化（パフォーマンス向上）
   db.exec('PRAGMA journal_mode=WAL;')
   db.exec('PRAGMA synchronous=NORMAL;')
+  db.exec('PRAGMA foreign_keys = ON;')
 
   return { db, sqlite3 }
 }

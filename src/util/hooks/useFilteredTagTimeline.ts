@@ -53,7 +53,8 @@ export function useFilteredTagTimeline(
 
   const fetchData = useCallback(async () => {
     // tag 以外の type の場合は早期に空配列を返し、不要な DB クエリを防ぐ
-    if (config.type !== 'tag') {
+    // customQuery が設定されている場合も useCustomQueryTimeline に委譲するためスキップ
+    if (config.type !== 'tag' || config.customQuery?.trim()) {
       setStatuses([])
       return
     }
@@ -132,7 +133,14 @@ export function useFilteredTagTimeline(
       console.error('useFilteredTagTimeline query error:', e)
       setStatuses([])
     }
-  }, [tagMode, onlyMedia, config.type, targetBackendUrls, tags])
+  }, [
+    tagMode,
+    onlyMedia,
+    config.type,
+    config.customQuery,
+    targetBackendUrls,
+    tags,
+  ])
 
   // 初回取得 + 変更通知で再取得
   useEffect(() => {

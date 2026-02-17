@@ -58,9 +58,12 @@ export const TimelineEditPanel = ({
   const isTagTimeline = config.type === 'tag'
   const isNotification = config.type === 'notification'
 
-  // バリデーション: tag タイムラインは最低1つのタグが必要（カスタムクエリがない場合）
+  // バリデーション:
+  // - 通常UIモード: tag タイムラインは最低1つのタグが必須
+  // - Advanced Query モード: カスタムクエリがあればタグ無しも許可
   const isValid =
-    !isTagTimeline || tagConfig.tags.length > 0 || Boolean(customQuery.trim())
+    !isTagTimeline ||
+    (showAdvanced ? Boolean(customQuery.trim()) : tagConfig.tags.length > 0)
 
   // Advanced Query トグル
   const handleToggleAdvanced = useCallback(() => {
@@ -141,6 +144,7 @@ export const TimelineEditPanel = ({
           </span>
           <button
             aria-checked={showAdvanced}
+            aria-label="Advanced Query"
             className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out ${
               showAdvanced ? 'bg-blue-600' : 'bg-gray-600'
             }`}

@@ -6,17 +6,19 @@ const nextConfig = {
   async headers() {
     return [
       {
+        // COOP/COEP ヘッダはアプリ本体ページのみに適用
+        // （APIやアセットに適用するとクロスオリジン画像がブロックされる）
         headers: [
           {
             key: 'Cross-Origin-Embedder-Policy',
-            value: 'require-corp',
+            value: 'credentialless',
           },
           {
             key: 'Cross-Origin-Opener-Policy',
             value: 'same-origin',
           },
         ],
-        source: '/(.*)',
+        source: '/',
       },
     ]
   },

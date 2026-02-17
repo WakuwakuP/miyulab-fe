@@ -59,7 +59,12 @@ export function useFilteredTimeline(
   // 2. SQLite からデータ取得
   const fetchData = useCallback(async () => {
     // tag / notification はそれぞれ専用 Hook で処理するためスキップ
-    if (config.type === 'tag' || config.type === 'notification') {
+    // customQuery が設定されている場合も useCustomQueryTimeline に委譲するためスキップ
+    if (
+      config.type === 'tag' ||
+      config.type === 'notification' ||
+      config.customQuery?.trim()
+    ) {
       setStatuses([])
       return
     }
@@ -119,7 +124,7 @@ export function useFilteredTimeline(
       console.error('useFilteredTimeline query error:', e)
       setStatuses([])
     }
-  }, [config.type, config.onlyMedia, targetBackendUrls])
+  }, [config.type, config.onlyMedia, config.customQuery, targetBackendUrls])
 
   // 初回取得 + 変更通知で再取得
   useEffect(() => {

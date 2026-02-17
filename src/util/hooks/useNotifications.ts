@@ -47,7 +47,8 @@ export function useNotifications(
   }, [config, apps])
 
   const fetchData = useCallback(async () => {
-    if (targetBackendUrls.length === 0) {
+    // customQuery が設定されている場合は useCustomQueryTimeline に委譲するためスキップ
+    if (targetBackendUrls.length === 0 || config?.customQuery?.trim()) {
       setNotifications([])
       return
     }
@@ -87,7 +88,7 @@ export function useNotifications(
       console.error('useNotifications query error:', e)
       setNotifications([])
     }
-  }, [targetBackendUrls])
+  }, [targetBackendUrls, config?.customQuery])
 
   // 初回取得 + 変更通知で再取得
   useEffect(() => {

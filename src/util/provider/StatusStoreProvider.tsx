@@ -224,13 +224,15 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
     }
     if (apps.length <= 0) return
 
-    // IndexedDB → SQLite マイグレーション（初回のみ）
-    migrateFromIndexedDb().catch((error) => {
-      console.error('Migration failed:', error)
-    })
-
-    // 定期クリーンアップ開始（TTL管理 + MAX_LENGTH管理）
-    const stopCleanup = startPeriodicCleanup()
+    // IndexedDB → SQLite マイグレーション完了後に定期クリーンアップを開始
+    let stopCleanup: (() => void) | undefined
+    migrateFromIndexedDb()
+      .catch((error) => {
+        console.error('Migration failed:', error)
+      })
+      .then(() => {
+        stopCleanup = startPeriodicCleanup()
+      })
 
     // 各アプリのデータを取得してストリーミング接続
     apps.forEach(async (app, index) => {
@@ -300,7 +302,7 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
 
     // クリーンアップ
     return () => {
-      stopCleanup()
+      stopCleanup?.()
       for (const stream of streamsRef.current.values()) {
         stream.stop()
       }
