@@ -1102,8 +1102,18 @@ export async function getStatusesByCustomQuery(
  * テーブルカラム / エイリアス一覧（補完用）
  */
 export const QUERY_COMPLETIONS = {
-  aliases: ['s', 'stt', 'sbt', 'sm', 'sb'],
+  aliases: ['s', 'stt', 'sbt', 'sm', 'sb', 'n'],
   columns: {
+    n: [
+      'compositeKey',
+      'backendUrl',
+      'created_at_ms',
+      'storedAt',
+      'notification_type',
+      'status_id',
+      'account_acct',
+      'json',
+    ],
     s: [
       'compositeKey',
       'backendUrl',
@@ -1192,6 +1202,22 @@ export const QUERY_COMPLETIONS = {
     {
       description: 'ローカルタイムラインで特定タグの投稿を取得する',
       query: "stt.timelineType = 'local' AND sbt.tag = 'music'",
+    },
+    {
+      description: 'フォロー通知のみ取得する',
+      query: "n.notification_type = 'follow'",
+    },
+    {
+      description: 'メンション通知のみ取得する',
+      query: "n.notification_type = 'mention'",
+    },
+    {
+      description: 'お気に入りとブースト通知を取得する',
+      query: "n.notification_type IN ('favourite', 'reblog')",
+    },
+    {
+      description: '特定ユーザーからの通知を取得する',
+      query: "n.account_acct = 'user@example.com'",
     },
   ],
   /** json_extract の `$.` パス補完候補 */
@@ -1300,22 +1326,37 @@ export async function validateCustomQuery(
     const handle = await getSqliteDb()
     const { db } = handle
 
-    // EXPLAIN でクエリの構文チェック（v3: statuses_backends も LEFT JOIN）
-    const sql = `
-      EXPLAIN
-      SELECT DISTINCT s.compositeKey
-      FROM statuses s
-      LEFT JOIN statuses_timeline_types stt
-        ON s.compositeKey = stt.compositeKey
-      LEFT JOIN statuses_belonging_tags sbt
-        ON s.compositeKey = sbt.compositeKey
-      LEFT JOIN statuses_mentions sm
-        ON s.compositeKey = sm.compositeKey
-      LEFT JOIN statuses_backends sb
-        ON s.compositeKey = sb.compositeKey
-      WHERE (${sanitized})
-      LIMIT 1;
-    `
+    // クエリが notifications テーブル（エイリアス n）を参照しているか判定
+    const isNotifQuery = /\bn\.\w/.test(sanitized)
+
+    let sql: string
+    if (isNotifQuery) {
+      // notifications テーブル対象のクエリ
+      sql = `
+        EXPLAIN
+        SELECT DISTINCT n.compositeKey
+        FROM notifications n
+        WHERE (${sanitized})
+        LIMIT 1;
+      `
+    } else {
+      // statuses テーブル対象のクエリ（v3: statuses_backends も LEFT JOIN）
+      sql = `
+        EXPLAIN
+        SELECT DISTINCT s.compositeKey
+        FROM statuses s
+        LEFT JOIN statuses_timeline_types stt
+          ON s.compositeKey = stt.compositeKey
+        LEFT JOIN statuses_belonging_tags sbt
+          ON s.compositeKey = sbt.compositeKey
+        LEFT JOIN statuses_mentions sm
+          ON s.compositeKey = sm.compositeKey
+        LEFT JOIN statuses_backends sb
+          ON s.compositeKey = sb.compositeKey
+        WHERE (${sanitized})
+        LIMIT 1;
+      `
+    }
     db.exec(sql)
     return null
   } catch (e) {
@@ -1473,6 +1514,12 @@ export async function getDistinctColumnValues(
 ): Promise<string[]> {
   // 許可リスト（安全なテーブル＋カラムの組み合わせ）
   const allowed: Record<string, string[]> = {
+    notifications: [
+      'backendUrl',
+      'notification_type',
+      'status_id',
+      'account_acct',
+    ],
     statuses: [
       'backendUrl',
       'uri',

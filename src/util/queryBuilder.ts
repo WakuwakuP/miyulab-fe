@@ -92,6 +92,14 @@ export function buildQueryFromConfig(config: TimelineConfigV2): string {
     conditions.push(accountCondition)
   }
 
+  // 通知タイプフィルタ
+  const notificationCondition = buildNotificationTypeCondition(
+    config.notificationFilter,
+  )
+  if (notificationCondition) {
+    conditions.push(notificationCondition)
+  }
+
   // バックエンドフィルタ
   const backendCondition = buildBackendFilterCondition(config.backendFilter)
   if (backendCondition) {
@@ -192,6 +200,29 @@ function buildAccountCondition(
     return `s.account_acct IN (${escaped})`
   }
   return `s.account_acct NOT IN (${escaped})`
+}
+
+/**
+ * 通知タイプフィルタ条件を構築する
+ *
+ * 未指定・空配列の場合は null を返す（フィルタなし）。
+ * 全タイプが指定されている場合もフィルタ不要として null を返す。
+ * notifications テーブル（エイリアス n）を参照する。
+ *
+ * @example
+ * buildNotificationTypeCondition(['follow', 'favourite'])
+ * // → "n.notification_type IN ('follow','favourite')"
+ */
+function buildNotificationTypeCondition(
+  filter: import('types/types').NotificationType[] | undefined,
+): string | null {
+  if (filter == null || filter.length === 0) return null
+
+  // 全通知タイプ数（8種類）が指定されている場合はフィルタ不要
+  if (filter.length >= 8) return null
+
+  const escaped = filter.map((v) => `'${escapeSqlString(v)}'`).join(',')
+  return `n.notification_type IN (${escaped})`
 }
 
 /**
@@ -461,10 +492,12 @@ export function parseQueryToConfig(
   // ========================================
   const backendSingleMatch =
     query.match(/sb\.backendUrl\s*=\s*'([^']+)'/i) ??
-    query.match(/s\.backendUrl\s*=\s*'([^']+)'/i)
+    query.match(/s\.backendUrl\s*=\s*'([^']+)'/i) ??
+    query.match(/n\.backendUrl\s*=\s*'([^']+)'/i)
   const backendInMatch =
     query.match(/sb\.backendUrl\s+IN\s*\(\s*((?:'[^']+'\s*,?\s*)+)\)/i) ??
-    query.match(/s\.backendUrl\s+IN\s*\(\s*((?:'[^']+'\s*,?\s*)+)\)/i)
+    query.match(/s\.backendUrl\s+IN\s*\(\s*((?:'[^']+'\s*,?\s*)+)\)/i) ??
+    query.match(/n\.backendUrl\s+IN\s*\(\s*((?:'[^']+'\s*,?\s*)+)\)/i)
 
   if (backendSingleMatch) {
     result.backendFilter = {
@@ -481,6 +514,31 @@ export function parseQueryToConfig(
     } else if (urls.length > 1) {
       result.backendFilter = { backendUrls: urls.sort(), mode: 'composite' }
     }
+  }
+
+  // ========================================
+  // notificationFilter の検出
+  // ========================================
+  const notifTypeInMatch = query.match(
+    /n\.notification_type\s+IN\s*\(\s*((?:'[^']+'\s*,?\s*)+)\)/i,
+  )
+  const notifTypeSingleMatch = query.match(
+    /n\.notification_type\s*=\s*'([^']+)'/i,
+  )
+
+  if (notifTypeInMatch) {
+    const types = notifTypeInMatch[1]
+      .split(',')
+      .map((v) => v.trim().replace(/^'|'$/g, ''))
+      .filter(Boolean)
+    if (types.length > 0) {
+      result.notificationFilter =
+        types as TimelineConfigV2['notificationFilter']
+    }
+  } else if (notifTypeSingleMatch) {
+    result.notificationFilter = [
+      notifTypeSingleMatch[1],
+    ] as TimelineConfigV2['notificationFilter']
   }
 
   // ========================================

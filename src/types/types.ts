@@ -141,8 +141,12 @@ export type TimelineConfigV2 = {
    * カスタム SQL WHERE 句（advanced option）
    *
    * statuses (s), statuses_timeline_types (stt),
-   * statuses_belonging_tags (sbt), statuses_mentions (sm) テーブルを参照可能。
+   * statuses_belonging_tags (sbt), statuses_mentions (sm),
+   * statuses_backends (sb), notifications (n) テーブルを参照可能。
    * LIMIT / OFFSET は自動設定されるため指定不要。
+   *
+   * `n.` プレフィックスを含むクエリは notifications テーブルに対して実行され、
+   * それ以外は statuses テーブルに対して実行される。
    */
   customQuery?: string
   /** 一意識別子 */

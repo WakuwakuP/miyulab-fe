@@ -1,8 +1,13 @@
 'use client'
 
 import { useCallback, useContext, useEffect, useMemo, useState } from 'react'
-import type { StatusAddAppIndex, TimelineConfigV2 } from 'types/types'
+import type {
+  NotificationAddAppIndex,
+  StatusAddAppIndex,
+  TimelineConfigV2,
+} from 'types/types'
 import { getSqliteDb, subscribe } from 'util/db/sqlite/connection'
+import type { SqliteStoredNotification } from 'util/db/sqlite/notificationStore'
 import type { SqliteStoredStatus } from 'util/db/sqlite/statusStore'
 import { MAX_LENGTH } from 'util/environment'
 import { AppsContext } from 'util/provider/AppsProvider'
@@ -41,10 +46,21 @@ function hasUnquotedQuestionMark(query: string): boolean {
 }
 
 /**
- * カスタム SQL WHERE 句でフィルタした Status を返す Hook
+ * クエリが notifications テーブル（エイリアス n）を参照しているか判定する
+ */
+function isNotificationQuery(query: string): boolean {
+  return /\bn\.\w/.test(query)
+}
+
+/**
+ * カスタム SQL WHERE 句でフィルタした Status / Notification を返す Hook
  *
  * config.customQuery が設定されている場合にのみ使用される。
  * LIMIT / OFFSET は自動設定され、ユーザーが指定した値は無視される。
+ *
+ * クエリ内で `n.` プレフィックスが使われている場合は notifications テーブルを
+ * 対象にしたクエリとして実行し、NotificationAddAppIndex[] を返す。
+ * それ以外の場合は statuses テーブルを対象にしたクエリとして実行する。
  *
  * ## v2 スキーマ対応
  *
@@ -54,17 +70,26 @@ function hasUnquotedQuestionMark(query: string): boolean {
  */
 export function useCustomQueryTimeline(
   config: TimelineConfigV2,
-): StatusAddAppIndex[] {
+): NotificationAddAppIndex[] | StatusAddAppIndex[] {
   const apps = useContext(AppsContext)
   const [statuses, setStatuses] = useState<SqliteStoredStatus[]>([])
+  const [notifications, setNotifications] = useState<
+    SqliteStoredNotification[]
+  >([])
 
   const customQuery = config.customQuery ?? ''
   const onlyMedia = config.onlyMedia
   const minMediaCount = config.minMediaCount
 
+  const isNotifQuery = useMemo(
+    () => isNotificationQuery(customQuery),
+    [customQuery],
+  )
+
   const fetchData = useCallback(async () => {
     if (!customQuery.trim()) {
       setStatuses([])
+      setNotifications([])
       return
     }
 
@@ -78,12 +103,14 @@ export function useCustomQueryTimeline(
       if (forbidden.test(customQuery)) {
         console.error('Custom query contains forbidden SQL statements.')
         setStatuses([])
+        setNotifications([])
         return
       }
       // SQLコメントも拒否（後続の backendUrl 条件のコメントアウト防止）
       if (/--/.test(customQuery) || /\/\*/.test(customQuery)) {
         console.error('Custom query contains SQL comments.')
         setStatuses([])
+        setNotifications([])
         return
       }
       const sanitized = customQuery
@@ -94,6 +121,7 @@ export function useCustomQueryTimeline(
 
       if (!sanitized) {
         setStatuses([])
+        setNotifications([])
         return
       }
 
@@ -101,79 +129,135 @@ export function useCustomQueryTimeline(
       if (hasUnquotedQuestionMark(sanitized)) {
         console.error('Custom query must not contain ? placeholders.')
         setStatuses([])
+        setNotifications([])
         return
       }
 
-      // onlyMedia フィルタを SQL 条件として追加
-      let additionalConditions = ''
-      const additionalBinds: (string | number)[] = []
+      if (isNotifQuery) {
+        // ============================
+        // Notifications クエリ
+        // ============================
+        const binds: (string | number)[] = [MAX_LENGTH]
 
-      if (minMediaCount != null && minMediaCount > 0) {
-        additionalConditions += '\n          AND s.media_count >= ?'
-        additionalBinds.push(minMediaCount)
-      } else if (onlyMedia) {
-        additionalConditions += '\n          AND s.has_media = 1'
-      }
+        const sql = `
+          SELECT n.compositeKey, n.backendUrl,
+                 n.created_at_ms, n.storedAt, n.json
+          FROM notifications n
+          WHERE (${sanitized})
+          ORDER BY n.created_at_ms DESC
+          LIMIT ?;
+        `
 
-      const binds: (string | number)[] = [...additionalBinds, MAX_LENGTH]
+        const rows = db.exec(sql, {
+          bind: binds,
+          returnValue: 'resultRows',
+        }) as (string | number)[][]
 
-      // backendUrl フィルタはクエリ自体に含まれるため自動付与しない
-      const sql = `
-        SELECT s.compositeKey, MIN(sb.backendUrl) AS backendUrl,
-               s.created_at_ms, s.storedAt, s.json
-        FROM statuses s
-        LEFT JOIN statuses_timeline_types stt
-          ON s.compositeKey = stt.compositeKey
-        LEFT JOIN statuses_belonging_tags sbt
-          ON s.compositeKey = sbt.compositeKey
-        LEFT JOIN statuses_mentions sm
-          ON s.compositeKey = sm.compositeKey
-        LEFT JOIN statuses_backends sb
-          ON s.compositeKey = sb.compositeKey
-        WHERE (${sanitized})${additionalConditions}
-        GROUP BY s.compositeKey
-        ORDER BY s.created_at_ms DESC
-        LIMIT ?;
-      `
+        const results: SqliteStoredNotification[] = rows.map((row) => {
+          const notification = JSON.parse(row[4] as string)
+          return {
+            ...notification,
+            backendUrl: row[1] as string,
+            compositeKey: row[0] as string,
+            created_at_ms: row[2] as number,
+            storedAt: row[3] as number,
+          }
+        })
 
-      const rows = db.exec(sql, {
-        bind: binds,
-        returnValue: 'resultRows',
-      }) as (string | number)[][]
+        setNotifications(results)
+        setStatuses([])
+      } else {
+        // ============================
+        // Statuses クエリ
+        // ============================
 
-      const results: SqliteStoredStatus[] = rows.map((row) => {
-        const status = JSON.parse(row[4] as string)
-        return {
-          ...status,
-          backendUrl: row[1] as string,
-          belongingTags: [],
-          compositeKey: row[0] as string,
-          created_at_ms: row[2] as number,
-          storedAt: row[3] as number,
-          timelineTypes: [],
+        // onlyMedia フィルタを SQL 条件として追加
+        let additionalConditions = ''
+        const additionalBinds: (string | number)[] = []
+
+        if (minMediaCount != null && minMediaCount > 0) {
+          additionalConditions += '\n          AND s.media_count >= ?'
+          additionalBinds.push(minMediaCount)
+        } else if (onlyMedia) {
+          additionalConditions += '\n          AND s.has_media = 1'
         }
-      })
 
-      setStatuses(results)
+        const binds: (string | number)[] = [...additionalBinds, MAX_LENGTH]
+
+        // backendUrl フィルタはクエリ自体に含まれるため自動付与しない
+        const sql = `
+          SELECT s.compositeKey, MIN(sb.backendUrl) AS backendUrl,
+                 s.created_at_ms, s.storedAt, s.json
+          FROM statuses s
+          LEFT JOIN statuses_timeline_types stt
+            ON s.compositeKey = stt.compositeKey
+          LEFT JOIN statuses_belonging_tags sbt
+            ON s.compositeKey = sbt.compositeKey
+          LEFT JOIN statuses_mentions sm
+            ON s.compositeKey = sm.compositeKey
+          LEFT JOIN statuses_backends sb
+            ON s.compositeKey = sb.compositeKey
+          WHERE (${sanitized})${additionalConditions}
+          GROUP BY s.compositeKey
+          ORDER BY s.created_at_ms DESC
+          LIMIT ?;
+        `
+
+        const rows = db.exec(sql, {
+          bind: binds,
+          returnValue: 'resultRows',
+        }) as (string | number)[][]
+
+        const results: SqliteStoredStatus[] = rows.map((row) => {
+          const status = JSON.parse(row[4] as string)
+          return {
+            ...status,
+            backendUrl: row[1] as string,
+            belongingTags: [],
+            compositeKey: row[0] as string,
+            created_at_ms: row[2] as number,
+            storedAt: row[3] as number,
+            timelineTypes: [],
+          }
+        })
+
+        setStatuses(results)
+        setNotifications([])
+      }
     } catch (e) {
       console.error('useCustomQueryTimeline query error:', e)
       setStatuses([])
+      setNotifications([])
     }
-  }, [customQuery, onlyMedia, minMediaCount])
+  }, [customQuery, onlyMedia, minMediaCount, isNotifQuery])
 
   useEffect(() => {
     fetchData()
-    return subscribe('statuses', fetchData)
-  }, [fetchData])
+    // notifications クエリの場合は notifications テーブルの変更も監視する
+    const unsubStatuses = subscribe('statuses', fetchData)
+    const unsubNotifications = isNotifQuery
+      ? subscribe('notifications', fetchData)
+      : undefined
+    return () => {
+      unsubStatuses()
+      unsubNotifications?.()
+    }
+  }, [fetchData, isNotifQuery])
 
-  return useMemo(
-    () =>
-      statuses
-        .map((s) => ({
-          ...s,
-          appIndex: resolveAppIndex(s.backendUrl, apps),
+  return useMemo(() => {
+    if (isNotifQuery) {
+      return notifications
+        .map((n) => ({
+          ...n,
+          appIndex: resolveAppIndex(n.backendUrl, apps),
         }))
-        .filter((s) => s.appIndex !== -1),
-    [statuses, apps],
-  )
+        .filter((n) => n.appIndex !== -1)
+    }
+    return statuses
+      .map((s) => ({
+        ...s,
+        appIndex: resolveAppIndex(s.backendUrl, apps),
+      }))
+      .filter((s) => s.appIndex !== -1)
+  }, [statuses, notifications, apps, isNotifQuery])
 }
