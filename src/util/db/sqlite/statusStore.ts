@@ -826,3 +826,37 @@ export async function validateCustomQuery(
     return `クエリエラー: ${message}`
   }
 }
+
+/**
+ * DB に保存されている全タグ名を取得する（補完用）
+ */
+export async function getDistinctTags(): Promise<string[]> {
+  try {
+    const handle = await getSqliteDb()
+    const { db } = handle
+    const rows = db.exec(
+      'SELECT DISTINCT tag FROM statuses_belonging_tags ORDER BY tag;',
+      { returnValue: 'resultRows' },
+    ) as string[][]
+    return rows.map((r) => r[0])
+  } catch {
+    return []
+  }
+}
+
+/**
+ * DB に保存されている全タイムラインタイプを取得する（補完用）
+ */
+export async function getDistinctTimelineTypes(): Promise<string[]> {
+  try {
+    const handle = await getSqliteDb()
+    const { db } = handle
+    const rows = db.exec(
+      'SELECT DISTINCT timelineType FROM statuses_timeline_types ORDER BY timelineType;',
+      { returnValue: 'resultRows' },
+    ) as string[][]
+    return rows.map((r) => r[0])
+  } catch {
+    return []
+  }
+}

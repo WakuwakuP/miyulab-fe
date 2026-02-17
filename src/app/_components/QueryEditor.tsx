@@ -10,6 +10,8 @@ import {
   useState,
 } from 'react'
 import {
+  getDistinctTags,
+  getDistinctTimelineTypes,
   QUERY_COMPLETIONS,
   validateCustomQuery,
 } from 'util/db/sqlite/statusStore'
@@ -25,7 +27,9 @@ type QueryEditorProps = {
  * テーブルエイリアス (s., stt., sbt.) を入力すると
  * カラム名の補完候補を表示する。
  * `$.` を入力すると json_extract パスの補完候補を表示する。
- * SQL キーワードの補完も提供する。
+ * `sbt.tag = '` や `stt.timelineType = '` の後に
+ * DB 内の実データ値の補完候補を表示する。
+ * SQL キーワード・関数の補完も提供する。
  */
 export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
   const [suggestions, setSuggestions] = useState<string[]>([])
@@ -33,8 +37,16 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [validationError, setValidationError] = useState<string | null>(null)
   const [isValidating, setIsValidating] = useState(false)
+  const [dynamicTags, setDynamicTags] = useState<string[]>([])
+  const [dynamicTimelineTypes, setDynamicTimelineTypes] = useState<string[]>([])
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const validationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // DB から動的データを取得
+  useEffect(() => {
+    getDistinctTags().then(setDynamicTags)
+    getDistinctTimelineTypes().then(setDynamicTimelineTypes)
+  }, [])
 
   // 全ての補完候補を事前に構築
   const allCompletions = useMemo(() => {
@@ -102,6 +114,40 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
         }
       }
 
+      // タグ値補完: sbt.tag = ' または sbt.tag IN ('..., ' の後
+      const tagValueMatch = beforeCursor.match(
+        /sbt\.tag\s*(?:=|IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
+      )
+      if (tagValueMatch) {
+        const partial = tagValueMatch[1].toLowerCase()
+        const filtered = dynamicTags.filter((t) =>
+          t.toLowerCase().startsWith(partial),
+        )
+        if (filtered.length > 0) {
+          setSuggestions(filtered.slice(0, 8))
+          setSelectedIndex(0)
+          setShowSuggestions(true)
+          return
+        }
+      }
+
+      // タイムラインタイプ値補完: stt.timelineType = ' の後
+      const timelineValueMatch = beforeCursor.match(
+        /stt\.timelineType\s*=\s*'([^']*)$/i,
+      )
+      if (timelineValueMatch) {
+        const partial = timelineValueMatch[1].toLowerCase()
+        const filtered = dynamicTimelineTypes.filter((t) =>
+          t.toLowerCase().startsWith(partial),
+        )
+        if (filtered.length > 0) {
+          setSuggestions(filtered.slice(0, 8))
+          setSelectedIndex(0)
+          setShowSuggestions(true)
+          return
+        }
+      }
+
       const match = beforeCursor.match(/[\w.]*$/)
       const currentWord = match ? match[0] : ''
 
@@ -125,7 +171,7 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
         setShowSuggestions(false)
       }
     },
-    [allCompletions],
+    [allCompletions, dynamicTags, dynamicTimelineTypes],
   )
 
   const applySuggestion = useCallback(
@@ -143,6 +189,31 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
       if (jsonPathMatch) {
         const matchStart = beforeCursor.length - jsonPathMatch[0].length + 1 // `'` の次
         const newBeforeCursor = beforeCursor.slice(0, matchStart)
+        const newValue = `${newBeforeCursor}${suggestion}${afterCursor}`
+        onChange(newValue)
+        setShowSuggestions(false)
+
+        const newPos = newBeforeCursor.length + suggestion.length
+        requestAnimationFrame(() => {
+          textarea.setSelectionRange(newPos, newPos)
+          textarea.focus()
+        })
+        return
+      }
+
+      // タグ値・タイムラインタイプ値補完の場合
+      const tagValueMatch = beforeCursor.match(
+        /sbt\.tag\s*(?:=|IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
+      )
+      const timelineValueMatch = beforeCursor.match(
+        /stt\.timelineType\s*=\s*'([^']*)$/i,
+      )
+      if (tagValueMatch || timelineValueMatch) {
+        const matchedPartial = tagValueMatch
+          ? tagValueMatch[1]
+          : (timelineValueMatch?.[1] ?? '')
+        const replaceStart = beforeCursor.length - matchedPartial.length
+        const newBeforeCursor = beforeCursor.slice(0, replaceStart)
         const newValue = `${newBeforeCursor}${suggestion}${afterCursor}`
         onChange(newValue)
         setShowSuggestions(false)
