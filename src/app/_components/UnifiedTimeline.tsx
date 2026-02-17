@@ -94,7 +94,8 @@ export const UnifiedTimeline = ({ config }: { config: TimelineConfigV2 }) => {
         // 表示上に該当バックエンドの投稿がない場合は DB から直接取得
         // （フィルタリングにより表示されていないが、実際には存在する可能性）
         if (!oldestStatus) {
-          const { db } = await import('util/db/database')
+          const { getSqliteDb } = await import('util/db/sqlite/connection')
+          const handle = await getSqliteDb()
           const timelineType = config.type as
             | 'home'
             | 'local'
@@ -105,32 +106,48 @@ export const UnifiedTimeline = ({ config }: { config: TimelineConfigV2 }) => {
             // タグタイムラインの場合は該当タグの最古投稿を取得
             const tags = config.tagConfig?.tags ?? []
             for (const tag of tags) {
-              const oldest = await db.statuses
-                .where('belongingTags')
-                .equals(tag)
-                .and((s) => s.backendUrl === url)
-                .reverse()
-                .first()
-              if (oldest) {
+              const rows = handle.db.exec(
+                `SELECT s.compositeKey, s.backendUrl, s.created_at_ms, s.storedAt, s.json
+                 FROM statuses s
+                 INNER JOIN statuses_belonging_tags sbt ON s.compositeKey = sbt.compositeKey
+                 WHERE sbt.tag = ? AND s.backendUrl = ?
+                 ORDER BY s.created_at_ms ASC
+                 LIMIT 1;`,
+                { bind: [tag, url], returnValue: 'resultRows' },
+              ) as (string | number)[][]
+              if (rows.length > 0) {
+                const status = JSON.parse(rows[0][4] as string)
                 oldestStatus = {
-                  ...oldest,
+                  ...status,
                   appIndex: apps.findIndex((a) => a.backendUrl === url),
+                  backendUrl: rows[0][1] as string,
+                  compositeKey: rows[0][0] as string,
+                  created_at_ms: rows[0][2] as number,
+                  storedAt: rows[0][3] as number,
                 }
                 break
               }
             }
           } else {
             // 通常のタイムラインの場合
-            const oldest = await db.statuses
-              .where('[backendUrl+created_at_ms]')
-              .between([url, 0], [url, Date.now()])
-              .and((s) => s.timelineTypes.includes(timelineType))
-              .reverse()
-              .first()
-            if (oldest) {
+            const rows = handle.db.exec(
+              `SELECT s.compositeKey, s.backendUrl, s.created_at_ms, s.storedAt, s.json
+               FROM statuses s
+               INNER JOIN statuses_timeline_types stt ON s.compositeKey = stt.compositeKey
+               WHERE s.backendUrl = ? AND stt.timelineType = ?
+               ORDER BY s.created_at_ms ASC
+               LIMIT 1;`,
+              { bind: [url, timelineType], returnValue: 'resultRows' },
+            ) as (string | number)[][]
+            if (rows.length > 0) {
+              const status = JSON.parse(rows[0][4] as string)
               oldestStatus = {
-                ...oldest,
+                ...status,
                 appIndex: apps.findIndex((a) => a.backendUrl === url),
+                backendUrl: rows[0][1] as string,
+                compositeKey: rows[0][0] as string,
+                created_at_ms: rows[0][2] as number,
+                storedAt: rows[0][3] as number,
               }
             }
           }

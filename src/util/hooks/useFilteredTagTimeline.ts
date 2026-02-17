@@ -1,9 +1,9 @@
 'use client'
 
-import { useLiveQuery } from 'dexie-react-hooks'
-import { useContext, useMemo } from 'react'
+import { useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { StatusAddAppIndex, TimelineConfigV2 } from 'types/types'
-import { db, type StoredStatus } from 'util/db/database'
+import { getSqliteDb, subscribe } from 'util/db/sqlite/connection'
+import type { SqliteStoredStatus } from 'util/db/sqlite/statusStore'
 import { MAX_LENGTH } from 'util/environment'
 import { AppsContext } from 'util/provider/AppsProvider'
 import {
@@ -27,25 +27,20 @@ function resolveAppIndex(
 }
 
 /**
- * タグタイムライン用の統合 Hook
+ * タグタイムライン用の統合 Hook (SQLite版)
  *
  * ## OR 条件 (tagConfig.mode === 'or')
- * 各タグに対して belongingTags index でクエリを発行し、
- * compositeKey で重複排除してマージする。
+ * SQL の IN 句で一括クエリし、compositeKey で DISTINCT する。
  *
  * ## AND 条件 (tagConfig.mode === 'and')
- * 最初のタグで belongingTags index クエリを発行し、
- * JS 側で残りのタグの包含を検証する。
- *
- * ## パフォーマンス考慮
- * タグタイムラインは home/local と比較して件数が少ない想定のため、
- * JS 側フィルタでも十分なパフォーマンスが得られる。
+ * HAVING COUNT(DISTINCT tag) = タグ数 で全タグを含む Status のみ取得する。
  */
 export function useFilteredTagTimeline(
   config: TimelineConfigV2,
 ): StatusAddAppIndex[] {
   const apps = useContext(AppsContext)
   const tagConfig = config.tagConfig
+  const [statuses, setStatuses] = useState<SqliteStoredStatus[]>([])
 
   const targetBackendUrls = useMemo(() => {
     const filter = normalizeBackendFilter(config.backendFilter, apps)
@@ -56,47 +51,75 @@ export function useFilteredTagTimeline(
   const tagMode = tagConfig?.mode ?? 'or'
   const onlyMedia = config.onlyMedia ?? false
 
-  // 依存配列用に安定したプリミティブを生成
-  const backendUrlsKey = targetBackendUrls.join(',')
-  const tagsKey = tags.join(',')
+  const fetchData = useCallback(async () => {
+    // tag 以外の type の場合は早期に空配列を返し、不要な DB クエリを防ぐ
+    // customQuery が設定されている場合も useCustomQueryTimeline に委譲するためスキップ
+    if (config.type !== 'tag' || config.customQuery?.trim()) {
+      setStatuses([])
+      return
+    }
+    if (targetBackendUrls.length === 0 || tags.length === 0) {
+      setStatuses([])
+      return
+    }
 
-  const statuses = useLiveQuery(
-    async () => {
-      // tag 以外の type の場合は早期に空配列を返し、不要な DB クエリを防ぐ
-      // （useTimelineData で全 Hook を無条件に呼び出すため、この分岐が必須）
-      if (config.type !== 'tag') return []
-      if (targetBackendUrls.length === 0 || tags.length === 0) return []
+    try {
+      const handle = await getSqliteDb()
+      const { db } = handle
 
-      let results: StoredStatus[]
+      const backendPlaceholders = targetBackendUrls.map(() => '?').join(',')
+      const tagPlaceholders = tags.map(() => '?').join(',')
+
+      let sql: string
+      const binds: (string | number)[] = []
 
       if (tagMode === 'or') {
-        // OR: 各タグで個別クエリ → compositeKey で重複排除
-        const perTagResults = await Promise.all(
-          tags.map((tag) =>
-            db.statuses.where('belongingTags').equals(tag).toArray(),
-          ),
-        )
-        const merged = new Map<string, StoredStatus>()
-        for (const group of perTagResults) {
-          for (const status of group) {
-            if (targetBackendUrls.includes(status.backendUrl)) {
-              merged.set(status.compositeKey, status)
-            }
-          }
-        }
-        results = Array.from(merged.values())
+        // OR: いずれかのタグを含む
+        sql = `
+          SELECT DISTINCT s.compositeKey, s.backendUrl, s.created_at_ms, s.storedAt, s.json
+          FROM statuses s
+          INNER JOIN statuses_belonging_tags sbt
+            ON s.compositeKey = sbt.compositeKey
+          WHERE sbt.tag IN (${tagPlaceholders})
+            AND s.backendUrl IN (${backendPlaceholders})
+          ORDER BY s.created_at_ms DESC
+          LIMIT ?;
+        `
+        binds.push(...tags, ...targetBackendUrls, MAX_LENGTH)
       } else {
-        // AND: 最初のタグでクエリ → JS 側で全タグ包含チェック
-        const baseResults = await db.statuses
-          .where('belongingTags')
-          .equals(tags[0])
-          .filter((s) => targetBackendUrls.includes(s.backendUrl))
-          .toArray()
-
-        results = baseResults.filter((status) =>
-          tags.every((tag) => status.belongingTags.includes(tag)),
-        )
+        // AND: すべてのタグを含む
+        sql = `
+          SELECT s.compositeKey, s.backendUrl, s.created_at_ms, s.storedAt, s.json
+          FROM statuses s
+          INNER JOIN statuses_belonging_tags sbt
+            ON s.compositeKey = sbt.compositeKey
+          WHERE sbt.tag IN (${tagPlaceholders})
+            AND s.backendUrl IN (${backendPlaceholders})
+          GROUP BY s.compositeKey
+          HAVING COUNT(DISTINCT sbt.tag) = ?
+          ORDER BY s.created_at_ms DESC
+          LIMIT ?;
+        `
+        binds.push(...tags, ...targetBackendUrls, tags.length, MAX_LENGTH)
       }
+
+      const rows = db.exec(sql, {
+        bind: binds,
+        returnValue: 'resultRows',
+      }) as (string | number)[][]
+
+      let results: SqliteStoredStatus[] = rows.map((row) => {
+        const status = JSON.parse(row[4] as string)
+        return {
+          ...status,
+          backendUrl: row[1] as string,
+          belongingTags: [],
+          compositeKey: row[0] as string,
+          created_at_ms: row[2] as number,
+          storedAt: row[3] as number,
+          timelineTypes: [],
+        }
+      })
 
       // onlyMedia フィルタ
       if (onlyMedia) {
@@ -105,13 +128,25 @@ export function useFilteredTagTimeline(
         )
       }
 
-      return results
-        .sort((a, b) => b.created_at_ms - a.created_at_ms)
-        .slice(0, MAX_LENGTH)
-    },
-    [backendUrlsKey, tagsKey, tagMode, onlyMedia, config.type],
-    [],
-  )
+      setStatuses(results)
+    } catch (e) {
+      console.error('useFilteredTagTimeline query error:', e)
+      setStatuses([])
+    }
+  }, [
+    tagMode,
+    onlyMedia,
+    config.type,
+    config.customQuery,
+    targetBackendUrls,
+    tags,
+  ])
+
+  // 初回取得 + 変更通知で再取得
+  useEffect(() => {
+    fetchData()
+    return subscribe('statuses', fetchData)
+  }, [fetchData])
 
   return useMemo(
     () =>

@@ -12,7 +12,7 @@ import {
 } from 'react'
 import type { App } from 'types/types'
 import type { TimelineType as DbTimelineType } from 'util/db/database'
-import { handleDeleteEvent, upsertStatus } from 'util/db/statusStore'
+import { handleDeleteEvent, upsertStatus } from 'util/db/sqlite/statusStore'
 import { GetClient } from 'util/GetClient'
 import {
   getRetryDelay,
