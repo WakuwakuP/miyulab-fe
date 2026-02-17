@@ -428,14 +428,9 @@ useEffect(() => {
 
 ## クリーンアップ
 
-### 古いデータの削除
+### MAX_LENGTH によるデータ制限
 
-`storedAt` カラムを使用して、一定期間以上前に格納されたデータを定期的にクリーンアップします。
-
-```sql
--- 例: 7日以上前のデータを削除
-DELETE FROM statuses WHERE storedAt < ?;
-```
+データは TTL（有効期限）を設けず、MAX_LENGTH（デフォルト: 100,000）を超えるまで半永久的に保持されます。MAX_LENGTH を超えた場合、タイムライン種別ごとに古い投稿から削除されます。
 
 `ON DELETE CASCADE` により、`statuses` のレコードが削除されると関連テーブル（`statuses_timeline_types`, `statuses_belonging_tags`, `statuses_backends`, `statuses_mentions`）のレコードも自動的に削除されます。
 
