@@ -35,6 +35,39 @@ export type PollAddAppIndex = Entity.Poll & {
 }
 
 // ========================================
+// Visibility Filter Types
+// ========================================
+
+/**
+ * Mastodon の公開範囲
+ *
+ * - public: 公開（連合TL・ローカルTLに表示）
+ * - unlisted: 未収載（プロフィールには表示、TLには非表示）
+ * - private: フォロワー限定
+ * - direct: ダイレクトメッセージ
+ */
+export type VisibilityType = 'public' | 'unlisted' | 'private' | 'direct'
+
+// ========================================
+// Account Filter Types
+// ========================================
+
+/**
+ * 特定アカウントの包含/除外フィルタ
+ *
+ * - include: 指定したアカウントの投稿のみ表示
+ * - exclude: 指定したアカウントの投稿を除外
+ */
+export type AccountFilterMode = 'include' | 'exclude'
+
+export type AccountFilter = {
+  /** フィルタモード */
+  mode: AccountFilterMode
+  /** 対象アカウントの acct 配列 (例: ['user@mastodon.social', 'admin@example.com']) */
+  accts: string[]
+}
+
+// ========================================
 // Timeline V2 Types
 // ========================================
 
@@ -93,7 +126,7 @@ export type TimelineConfigV2 = {
    * カスタム SQL WHERE 句（advanced option）
    *
    * statuses (s), statuses_timeline_types (stt),
-   * statuses_belonging_tags (sbt) テーブルを参照可能。
+   * statuses_belonging_tags (sbt), statuses_mentions (sm) テーブルを参照可能。
    * LIMIT / OFFSET は自動設定されるため指定不要。
    */
   customQuery?: string
@@ -111,6 +144,115 @@ export type TimelineConfigV2 = {
   type: TimelineType
   /** 表示 / 非表示 */
   visible: boolean
+
+  // ========================================
+  // 新規プロパティ（v2 スキーマ対応フィルタ）
+  // ========================================
+
+  /**
+   * 表示する公開範囲のフィルタ
+   *
+   * 未指定時はすべての公開範囲を表示する。
+   * 配列で指定した公開範囲の投稿のみを表示する。
+   *
+   * @example ['public', 'unlisted'] // 公開 + 未収載のみ表示
+   */
+  visibilityFilter?: VisibilityType[]
+
+  /**
+   * 表示する言語のフィルタ
+   *
+   * 未指定時はすべての言語を表示する。
+   * 配列で指定した言語コードの投稿のみを表示する。
+   * 言語が未設定 (null) の投稿は常に表示する（除外しない）。
+   *
+   * @example ['ja', 'en'] // 日本語 + 英語のみ表示
+   */
+  languageFilter?: string[]
+
+  /**
+   * ブースト投稿を除外するか
+   *
+   * true にすると、他ユーザーの投稿をブースト（リツイート）した投稿を非表示にする。
+   * オリジナル投稿のみを表示したい場合に使用する。
+   *
+   * @default false
+   */
+  excludeReblogs?: boolean
+
+  /**
+   * リプライを除外するか
+   *
+   * true にすると、他の投稿への返信を非表示にする。
+   * トップレベルの投稿のみを表示したい場合に使用する。
+   *
+   * @default false
+   */
+  excludeReplies?: boolean
+
+  /**
+   * CW（Content Warning）付き投稿を除外するか
+   *
+   * true にすると、spoiler_text が設定された投稿を非表示にする。
+   *
+   * @default false
+   */
+  excludeSpoiler?: boolean
+
+  /**
+   * センシティブ投稿を除外するか
+   *
+   * true にすると、sensitive フラグが設定された投稿を非表示にする。
+   *
+   * @default false
+   */
+  excludeSensitive?: boolean
+
+  /**
+   * ミュートしたアカウントの投稿を除外するか
+   *
+   * true にすると、muted_accounts テーブルに登録されたアカウントの投稿を非表示にする。
+   * デフォルトは true（ミュートを適用）。
+   * カスタムクエリモードでは無視される。
+   *
+   * @default true
+   */
+  applyMuteFilter?: boolean
+
+  /**
+   * ブロックしたインスタンスからの投稿を除外するか
+   *
+   * true にすると、blocked_instances テーブルに登録されたインスタンスの投稿を非表示にする。
+   * デフォルトは true（ブロックを適用）。
+   * カスタムクエリモードでは無視される。
+   *
+   * @default true
+   */
+  applyInstanceBlock?: boolean
+
+  /**
+   * メディア添付の最小枚数
+   *
+   * 未指定時は枚数による制限なし。
+   * onlyMedia と併用する場合、minMediaCount が優先される。
+   *
+   * @example 2 // メディアが2枚以上ある投稿のみ表示
+   */
+  minMediaCount?: number
+
+  /**
+   * 特定アカウントの包含/除外フィルタ
+   *
+   * - include モード: 指定アカウントの投稿のみ表示
+   * - exclude モード: 指定アカウントの投稿を除外
+   *
+   * 未指定時はアカウントフィルタなし。
+   * applyMuteFilter とは独立して動作する。
+   *
+   * @example { mode: 'include', accts: ['user@mastodon.social'] }
+   * @example { mode: 'exclude', accts: ['spam@example.com'] }
+   */
+  accountFilter?: AccountFilter
 }
 
 export type TimelineSettingsV2 = {
