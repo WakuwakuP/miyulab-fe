@@ -195,19 +195,21 @@ function parseBackendFilter(query: string): BackendFilter | null {
   }
 
   // composite / single: s.backendUrl IN ('...', '...')
-  const inMatch = query.match(
-    /s\.backendUrl\s+IN\s*\(\s*((?:'(?:''|[^'])+'\s*,?\s*)+)\)/i,
-  )
+  // まず IN (...) の括弧内をキャプチャし、個別の URL は split で抽出する
+  const inMatch = query.match(/s\.backendUrl\s+IN\s*\(([^)]+)\)/i)
   if (inMatch) {
-    const urls = inMatch[1]
-      .split(',')
-      .map((u) => u.trim().replace(/^'|'$/g, '').replace(/''/g, "'"))
-      .filter(Boolean)
-    if (urls.length === 1) {
-      return { backendUrl: urls[0], mode: 'single' }
-    }
-    if (urls.length > 1) {
-      return { backendUrls: urls, mode: 'composite' }
+    // 括弧内の文字列を '...' パターンで個別抽出
+    const urlMatches = inMatch[1].match(/'(?:''|[^'])*'/g)
+    if (urlMatches) {
+      const urls = urlMatches
+        .map((u) => u.replace(/^'|'$/g, '').replace(/''/g, "'"))
+        .filter(Boolean)
+      if (urls.length === 1) {
+        return { backendUrl: urls[0], mode: 'single' }
+      }
+      if (urls.length > 1) {
+        return { backendUrls: urls, mode: 'composite' }
+      }
     }
   }
 
