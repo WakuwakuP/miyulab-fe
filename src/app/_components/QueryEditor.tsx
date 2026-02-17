@@ -10,12 +10,11 @@ import {
   useState,
 } from 'react'
 import {
-  getDistinctColumnValues,
+  ALIAS_TO_TABLE,
   getDistinctJsonValues,
-  getDistinctTags,
-  getDistinctTimelineTypes,
   getJsonKeysFromSample,
   QUERY_COMPLETIONS,
+  searchDistinctColumnValues,
   validateCustomQuery,
 } from 'util/db/sqlite/statusStore'
 import { upgradeQueryToV2 } from 'util/queryBuilder'
@@ -41,36 +40,34 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [validationError, setValidationError] = useState<string | null>(null)
   const [isValidating, setIsValidating] = useState(false)
-  const [dynamicTags, setDynamicTags] = useState<string[]>([])
-  const [dynamicTimelineTypes, setDynamicTimelineTypes] = useState<string[]>([])
   const [dynamicJsonPaths, setDynamicJsonPaths] = useState<string[]>([])
-  const [dynamicVisibilities, setDynamicVisibilities] = useState<string[]>([])
-  const [dynamicLanguages, setDynamicLanguages] = useState<string[]>([])
-  const [dynamicAccountAccts, setDynamicAccountAccts] = useState<string[]>([])
-  const [dynamicNotificationTypes, setDynamicNotificationTypes] = useState<
-    string[]
-  >([])
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const validationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // DB から動的データを取得
+  /** 比較演算子の補完候補 */
+  const comparisonOperators = useMemo(
+    () => [
+      '= ',
+      'IN (',
+      'NOT IN (',
+      'LIKE ',
+      'IS NULL',
+      'IS NOT NULL',
+      '!= ',
+      '> ',
+      '>= ',
+      '< ',
+      '<= ',
+    ],
+    [],
+  )
+
+  /** 論理演算子の補完候補 */
+  const logicalOperators = useMemo(() => ['AND ', 'OR '], [])
+
+  // DB から JSON パスデータを取得
   useEffect(() => {
-    getDistinctTags().then(setDynamicTags)
-    getDistinctTimelineTypes().then(setDynamicTimelineTypes)
     getJsonKeysFromSample(20).then(setDynamicJsonPaths)
-    // v2 カラムの動的補完候補
-    getDistinctColumnValues('statuses', 'visibility', 10).then(
-      setDynamicVisibilities,
-    )
-    getDistinctColumnValues('statuses', 'language', 50).then(
-      setDynamicLanguages,
-    )
-    getDistinctColumnValues('statuses', 'account_acct', 100).then(
-      setDynamicAccountAccts,
-    )
-    getDistinctColumnValues('notifications', 'notification_type', 20).then(
-      setDynamicNotificationTypes,
-    )
   }, [])
 
   // 全ての補完候補を事前に構築
@@ -169,143 +166,85 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
         return
       }
 
-      // タグ値補完: sbt.tag = ' または sbt.tag IN ('..., ' の後
-      const tagValueMatch = beforeCursor.match(
-        /sbt\.tag\s*(?:=|IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
-      )
-      if (tagValueMatch) {
-        const partial = tagValueMatch[1].toLowerCase()
-        const filtered = dynamicTags.filter((t) =>
-          t.toLowerCase().startsWith(partial),
-        )
-        if (filtered.length > 0) {
-          setSuggestions(filtered.slice(0, 12))
-          setSelectedIndex(0)
-          setShowSuggestions(true)
-          return
-        }
-      }
-
-      // タイムラインタイプ値補完: stt.timelineType = ' の後
-      const timelineValueMatch = beforeCursor.match(
-        /stt\.timelineType\s*(?:=|IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
-      )
-      if (timelineValueMatch) {
-        const partial = timelineValueMatch[1].toLowerCase()
-        const filtered = dynamicTimelineTypes.filter((t) =>
-          t.toLowerCase().startsWith(partial),
-        )
-        if (filtered.length > 0) {
-          setSuggestions(filtered.slice(0, 12))
-          setSelectedIndex(0)
-          setShowSuggestions(true)
-          return
-        }
-      }
-
-      // カラム値補完: s.backendUrl = ' または n.backendUrl = ' の後
+      // 汎用カラム値補完: alias.column = '...' or alias.column IN ('...', '...' の後
+      // すべてのエイリアス・カラムの組み合わせで動的 DB 検索を実行
       const columnValueMatch = beforeCursor.match(
-        /[sn]\.backendUrl\s*(?:=|IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
+        /(\w+)\.(\w+)\s*(?:=|!=|<>|IN\s*\((?:'[^']*',\s*)*|NOT\s+IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
       )
       if (columnValueMatch) {
-        const partial = columnValueMatch[1].toLowerCase()
-        void getDistinctColumnValues('statuses', 'backendUrl').then(
-          (values) => {
-            const filtered = values.filter((v) =>
-              v.toLowerCase().startsWith(partial),
-            )
-            if (filtered.length > 0) {
-              setSuggestions(filtered.slice(0, 12))
-              setSelectedIndex(0)
-              setShowSuggestions(true)
-            }
-          },
-        )
-        return
-      }
-
-      // visibility 値補完: s.visibility = ' の後
-      const visibilityValueMatch = beforeCursor.match(
-        /s\.visibility\s*(?:=|IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
-      )
-      if (visibilityValueMatch) {
-        const partial = visibilityValueMatch[1].toLowerCase()
-        const filtered = dynamicVisibilities.filter((v) =>
-          v.toLowerCase().startsWith(partial),
-        )
-        if (filtered.length > 0) {
-          setSuggestions(filtered.slice(0, 12))
-          setSelectedIndex(0)
-          setShowSuggestions(true)
+        const alias = columnValueMatch[1]
+        const column = columnValueMatch[2]
+        const partial = columnValueMatch[3]
+        // ALIAS_TO_TABLE に登録されたエイリアス・カラムの場合のみ DB 検索
+        if (ALIAS_TO_TABLE[alias]?.columns[column]) {
+          void searchDistinctColumnValues(alias, column, partial, 12).then(
+            (values) => {
+              if (values.length > 0) {
+                setSuggestions(values)
+                setSelectedIndex(0)
+                setShowSuggestions(true)
+              } else {
+                setShowSuggestions(false)
+              }
+            },
+          )
           return
         }
       }
 
-      // language 値補完: s.language = ' の後
-      const languageValueMatch = beforeCursor.match(
-        /s\.language\s*(?:=|IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
+      // 論理演算子補完: 完全な条件式の後（閉じクォート、数値、IS NULL/IS NOT NULL、閉じ括弧の後のスペース）
+      const logicalMatch = beforeCursor.match(
+        /(?:'[^']*'|\d+|IS\s+(?:NOT\s+)?NULL|\))\s+(\w*)$/i,
       )
-      if (languageValueMatch) {
-        const partial = languageValueMatch[1].toLowerCase()
-        const filtered = dynamicLanguages.filter((l) =>
-          l.toLowerCase().startsWith(partial),
-        )
-        if (filtered.length > 0) {
-          setSuggestions(filtered.slice(0, 12))
-          setSelectedIndex(0)
-          setShowSuggestions(true)
-          return
+      if (logicalMatch) {
+        const partial = logicalMatch[1]
+        // 入力がない場合（スペースのみ）、またはANDやORの入力中
+        if (partial === '' || /^[A-Za-z]/.test(partial)) {
+          const filtered = logicalOperators.filter((op) =>
+            op.toLowerCase().startsWith(partial.toLowerCase()),
+          )
+          // カラム名やキーワードの候補も含める（通常補完に fallthrough するため、ここではロジカル演算子のみ）
+          if (filtered.length > 0 && partial.length > 0) {
+            // 入力中のプレフィクスに一致する場合のみ表示
+            const allFiltered = [
+              ...filtered,
+              ...allCompletions.filter(
+                (item) =>
+                  item.toLowerCase().startsWith(partial.toLowerCase()) &&
+                  !filtered.includes(item),
+              ),
+            ]
+            setSuggestions(allFiltered.slice(0, 12))
+            setSelectedIndex(0)
+            setShowSuggestions(true)
+            return
+          }
         }
       }
 
-      // account_acct 値補完: s.account_acct = ' の後
-      const accountValueMatch = beforeCursor.match(
-        /s\.account_acct\s*(?:=|IN\s*\((?:'[^']*',\s*)*|NOT\s+IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
+      // 比較演算子補完: alias.column の後のスペース
+      const operatorMatch = beforeCursor.match(
+        /(\w+)\.(\w+)\s+([A-Za-z!><=]*)$/,
       )
-      if (accountValueMatch) {
-        const partial = accountValueMatch[1].toLowerCase()
-        const filtered = dynamicAccountAccts.filter((a) =>
-          a.toLowerCase().startsWith(partial),
-        )
-        if (filtered.length > 0) {
-          setSuggestions(filtered.slice(0, 12))
-          setSelectedIndex(0)
-          setShowSuggestions(true)
-          return
-        }
-      }
-
-      // notification_type 値補完: n.notification_type = ' の後
-      const notifTypeValueMatch = beforeCursor.match(
-        /n\.notification_type\s*(?:=|IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
-      )
-      if (notifTypeValueMatch) {
-        const partial = notifTypeValueMatch[1].toLowerCase()
-        const filtered = dynamicNotificationTypes.filter((t) =>
-          t.toLowerCase().startsWith(partial),
-        )
-        if (filtered.length > 0) {
-          setSuggestions(filtered.slice(0, 12))
-          setSelectedIndex(0)
-          setShowSuggestions(true)
-          return
-        }
-      }
-
-      // notification account_acct 値補完: n.account_acct = ' の後
-      const notifAccountValueMatch = beforeCursor.match(
-        /n\.account_acct\s*(?:=|IN\s*\((?:'[^']*',\s*)*|NOT\s+IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
-      )
-      if (notifAccountValueMatch) {
-        const partial = notifAccountValueMatch[1].toLowerCase()
-        const filtered = dynamicAccountAccts.filter((a) =>
-          a.toLowerCase().startsWith(partial),
-        )
-        if (filtered.length > 0) {
-          setSuggestions(filtered.slice(0, 12))
-          setSelectedIndex(0)
-          setShowSuggestions(true)
-          return
+      if (operatorMatch) {
+        const alias = operatorMatch[1]
+        const column = operatorMatch[2]
+        const partial = operatorMatch[3]
+        // QUERY_COMPLETIONS のエイリアスに登録されたカラムの場合のみ
+        const aliasColumns =
+          QUERY_COMPLETIONS.columns[
+            alias as keyof typeof QUERY_COMPLETIONS.columns
+          ]
+        if ((aliasColumns as readonly string[] | undefined)?.includes(column)) {
+          const filtered = comparisonOperators.filter((op) =>
+            op.toLowerCase().startsWith(partial.toLowerCase()),
+          )
+          if (filtered.length > 0) {
+            setSuggestions(filtered.slice(0, 12))
+            setSelectedIndex(0)
+            setShowSuggestions(true)
+            return
+          }
         }
       }
 
@@ -332,16 +271,7 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
         setShowSuggestions(false)
       }
     },
-    [
-      allCompletions,
-      dynamicTags,
-      dynamicTimelineTypes,
-      dynamicVisibilities,
-      dynamicLanguages,
-      dynamicAccountAccts,
-      dynamicNotificationTypes,
-      mergedJsonPaths,
-    ],
+    [allCompletions, comparisonOperators, logicalOperators, mergedJsonPaths],
   )
 
   const applySuggestion = useCallback(
@@ -371,47 +301,69 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
         return
       }
 
-      // 値補完の場合（タグ、タイムラインタイプ、json_extract値、カラム値）
-      const tagValueMatch = beforeCursor.match(
-        /sbt\.tag\s*(?:=|IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
+      // 汎用カラム値補完の場合
+      const genericColumnValueMatch = beforeCursor.match(
+        /(\w+)\.(\w+)\s*(?:=|!=|<>|IN\s*\((?:'[^']*',\s*)*|NOT\s+IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
       )
-      const timelineValueMatch = beforeCursor.match(
-        /stt\.timelineType\s*(?:=|IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
-      )
+      // json_extract 値補完の場合
       const jsonValueMatch = beforeCursor.match(
         /json_extract\s*\(\s*s\.json\s*,\s*'\$[.\w[\]]+'\s*\)\s*(?:=|!=|<>)\s*'([^']*)$/i,
       )
-      const columnValueMatch = beforeCursor.match(
-        /[sn]\.backendUrl\s*(?:=|IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
-      )
-      const visibilityValueMatch2 = beforeCursor.match(
-        /s\.visibility\s*(?:=|IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
-      )
-      const languageValueMatch2 = beforeCursor.match(
-        /s\.language\s*(?:=|IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
-      )
-      const accountValueMatch2 = beforeCursor.match(
-        /s\.account_acct\s*(?:=|IN\s*\((?:'[^']*',\s*)*|NOT\s+IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
-      )
-      const notifTypeValueMatch2 = beforeCursor.match(
-        /n\.notification_type\s*(?:=|IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
-      )
-      const notifAccountValueMatch2 = beforeCursor.match(
-        /n\.account_acct\s*(?:=|IN\s*\((?:'[^']*',\s*)*|NOT\s+IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
-      )
-      const valueMatch =
-        tagValueMatch ||
-        timelineValueMatch ||
-        jsonValueMatch ||
-        columnValueMatch ||
-        visibilityValueMatch2 ||
-        languageValueMatch2 ||
-        accountValueMatch2 ||
-        notifTypeValueMatch2 ||
-        notifAccountValueMatch2
+      const valueMatch = jsonValueMatch || genericColumnValueMatch
       if (valueMatch) {
-        const matchedPartial = valueMatch[1]
+        // jsonValueMatch の場合はキャプチャグループ1、それ以外はグループ3
+        const matchedPartial = jsonValueMatch ? valueMatch[1] : valueMatch[3]
         const replaceStart = beforeCursor.length - matchedPartial.length
+        const newBeforeCursor = beforeCursor.slice(0, replaceStart)
+        const newValue = `${newBeforeCursor}${suggestion}${afterCursor}`
+        onChange(newValue)
+        setShowSuggestions(false)
+
+        const newPos = newBeforeCursor.length + suggestion.length
+        requestAnimationFrame(() => {
+          textarea.setSelectionRange(newPos, newPos)
+          textarea.focus()
+        })
+        return
+      }
+
+      // 比較演算子補完の場合: alias.column の後のスペース + 部分入力
+      const operatorMatch = beforeCursor.match(
+        /(\w+)\.(\w+)\s+([A-Za-z!><=]*)$/,
+      )
+      if (
+        operatorMatch &&
+        comparisonOperators.some((op) =>
+          op.toLowerCase().startsWith(operatorMatch[3].toLowerCase()),
+        )
+      ) {
+        const partial = operatorMatch[3]
+        const replaceStart = beforeCursor.length - partial.length
+        const newBeforeCursor = beforeCursor.slice(0, replaceStart)
+        const newValue = `${newBeforeCursor}${suggestion}${afterCursor}`
+        onChange(newValue)
+        setShowSuggestions(false)
+
+        const newPos = newBeforeCursor.length + suggestion.length
+        requestAnimationFrame(() => {
+          textarea.setSelectionRange(newPos, newPos)
+          textarea.focus()
+        })
+        return
+      }
+
+      // 論理演算子補完の場合: 完全条件式の後
+      const logicalMatch = beforeCursor.match(
+        /(?:'[^']*'|\d+|IS\s+(?:NOT\s+)?NULL|\))\s+(\w*)$/i,
+      )
+      if (
+        logicalMatch &&
+        logicalOperators.some((op) =>
+          op.toLowerCase().startsWith(logicalMatch[1].toLowerCase()),
+        )
+      ) {
+        const partial = logicalMatch[1]
+        const replaceStart = beforeCursor.length - partial.length
         const newBeforeCursor = beforeCursor.slice(0, replaceStart)
         const newValue = `${newBeforeCursor}${suggestion}${afterCursor}`
         onChange(newValue)
@@ -446,7 +398,7 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
         textarea.focus()
       })
     },
-    [value, onChange],
+    [value, onChange, comparisonOperators, logicalOperators],
   )
 
   const handleChange = useCallback(
