@@ -4,8 +4,9 @@ import { BackendFilterSelector } from 'app/_components/BackendFilterSelector'
 import { MediaFilterToggle } from 'app/_components/MediaFilterToggle'
 import { QueryEditor } from 'app/_components/QueryEditor'
 import { TagConfigEditor } from 'app/_components/TagConfigEditor'
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { BackendFilter, TagConfig, TimelineConfigV2 } from 'types/types'
+import { buildQueryFromConfig, parseQueryToConfig } from 'util/queryBuilder'
 
 type TimelineEditPanelProps = {
   config: TimelineConfigV2
@@ -26,10 +27,30 @@ export const TimelineEditPanel = ({
   const [tagConfig, setTagConfig] = useState<TagConfig>(
     config.tagConfig ?? { mode: 'or', tags: [] },
   )
-  const [customQuery, setCustomQuery] = useState(config.customQuery ?? '')
-  const [showAdvanced, setShowAdvanced] = useState(
-    Boolean(config.customQuery?.trim()),
+  const [showAdvanced, setShowAdvanced] = useState(false)
+
+  // UI 設定から構築されたクエリ
+  const builtQuery = useMemo(
+    () =>
+      buildQueryFromConfig({
+        ...config,
+        onlyMedia,
+        tagConfig,
+      }),
+    [config, onlyMedia, tagConfig],
   )
+
+  // カスタムクエリ: 初期値は保存済みクエリ or UI から構築
+  const [customQuery, setCustomQuery] = useState(
+    config.customQuery ?? builtQuery,
+  )
+
+  // 通常UIモード時は UI 変更に連動してクエリを更新
+  useEffect(() => {
+    if (!showAdvanced) {
+      setCustomQuery(builtQuery)
+    }
+  }, [builtQuery, showAdvanced])
 
   const isTagTimeline = config.type === 'tag'
   const isNotification = config.type === 'notification'
@@ -37,6 +58,25 @@ export const TimelineEditPanel = ({
   // バリデーション: tag タイムラインは最低1つのタグが必要（カスタムクエリがない場合）
   const isValid =
     !isTagTimeline || tagConfig.tags.length > 0 || Boolean(customQuery.trim())
+
+  // Advanced Query トグル
+  const handleToggleAdvanced = useCallback(() => {
+    setShowAdvanced((prev) => {
+      const next = !prev
+      if (next) {
+        // 通常UI → Advanced: 現在の UI 設定からクエリを生成して反映
+        setCustomQuery(builtQuery)
+      } else {
+        // Advanced → 通常UI: クエリから UI 設定を逆算（ベストエフォート）
+        const parsed = parseQueryToConfig(customQuery)
+        if (parsed) {
+          if (parsed.onlyMedia !== undefined) setOnlyMedia(parsed.onlyMedia)
+          if (parsed.tagConfig) setTagConfig(parsed.tagConfig)
+        }
+      }
+      return next
+    })
+  }, [builtQuery, customQuery])
 
   const handleSave = useCallback(() => {
     if (!isValid) return
@@ -94,28 +134,31 @@ export const TimelineEditPanel = ({
         value={backendFilter}
       />
 
-      {/* Media Filter (notification 以外) */}
-      {!isNotification && (
-        <MediaFilterToggle onChange={setOnlyMedia} value={onlyMedia} />
+      {/* 通常UIモード: Media Filter + Tag Config */}
+      {!isNotification && !showAdvanced && (
+        <>
+          <MediaFilterToggle onChange={setOnlyMedia} value={onlyMedia} />
+
+          {isTagTimeline && (
+            <TagConfigEditor onChange={setTagConfig} value={tagConfig} />
+          )}
+        </>
       )}
 
-      {/* Tag Config (tag タイムラインのみ) */}
-      {isTagTimeline && (
-        <TagConfigEditor onChange={setTagConfig} value={tagConfig} />
-      )}
-
-      {/* Advanced Query Option */}
+      {/* Advanced Query トグル */}
       {!isNotification && (
         <div className="space-y-1">
-          <button
-            className={`text-xs font-semibold ${
-              showAdvanced ? 'text-blue-400' : 'text-gray-400'
-            } hover:text-blue-300`}
-            onClick={() => setShowAdvanced(!showAdvanced)}
-            type="button"
-          >
-            {showAdvanced ? '▼ Advanced Query' : '▶ Advanced Query'}
-          </button>
+          <label className="flex items-center space-x-2 cursor-pointer text-sm">
+            <input
+              checked={showAdvanced}
+              className="cursor-pointer"
+              onChange={handleToggleAdvanced}
+              type="checkbox"
+            />
+            <span className="text-xs font-semibold text-gray-300">
+              Advanced Query
+            </span>
+          </label>
           {showAdvanced && (
             <QueryEditor onChange={setCustomQuery} value={customQuery} />
           )}
