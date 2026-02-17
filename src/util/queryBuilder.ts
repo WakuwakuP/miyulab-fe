@@ -186,7 +186,7 @@ export function parseQueryToConfig(
  */
 function parseBackendFilter(query: string): BackendFilter | null {
   // single: s.backendUrl = '...'
-  const singleMatch = query.match(/s\.backendUrl\s*=\s*'([^']+)'/i)
+  const singleMatch = query.match(/s\.backendUrl\s*=\s*'((?:''|[^'])+)'/i)
   if (singleMatch) {
     return {
       backendUrl: singleMatch[1].replace(/''/g, "'"),
@@ -196,7 +196,7 @@ function parseBackendFilter(query: string): BackendFilter | null {
 
   // composite / single: s.backendUrl IN ('...', '...')
   const inMatch = query.match(
-    /s\.backendUrl\s+IN\s*\(\s*((?:'[^']+'\s*,?\s*)+)\)/i,
+    /s\.backendUrl\s+IN\s*\(\s*((?:'(?:''|[^'])+'\s*,?\s*)+)\)/i,
   )
   if (inMatch) {
     const urls = inMatch[1]
