@@ -2,9 +2,11 @@
 
 import { BackendFilterSelector } from 'app/_components/BackendFilterSelector'
 import { MediaFilterToggle } from 'app/_components/MediaFilterToggle'
+import { QueryEditor } from 'app/_components/QueryEditor'
 import { TagConfigEditor } from 'app/_components/TagConfigEditor'
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { BackendFilter, TagConfig, TimelineConfigV2 } from 'types/types'
+import { buildQueryFromConfig, parseQueryToConfig } from 'util/queryBuilder'
 
 type TimelineEditPanelProps = {
   config: TimelineConfigV2
@@ -25,18 +27,70 @@ export const TimelineEditPanel = ({
   const [tagConfig, setTagConfig] = useState<TagConfig>(
     config.tagConfig ?? { mode: 'or', tags: [] },
   )
+  // Advanced Query モードの永続化: config から初期値を復元
+  const [showAdvanced, setShowAdvanced] = useState(
+    config.advancedQuery ?? false,
+  )
+
+  // UI 設定から構築されたクエリ
+  const builtQuery = useMemo(
+    () =>
+      buildQueryFromConfig({
+        ...config,
+        onlyMedia,
+        tagConfig,
+      }),
+    [config, onlyMedia, tagConfig],
+  )
+
+  // カスタムクエリ: 初期値は保存済みクエリ or UI から構築
+  const [customQuery, setCustomQuery] = useState(
+    config.customQuery ?? builtQuery,
+  )
+
+  // 通常UIモード時は UI 変更に連動してクエリを更新
+  useEffect(() => {
+    if (!showAdvanced) {
+      setCustomQuery(builtQuery)
+    }
+  }, [builtQuery, showAdvanced])
 
   const isTagTimeline = config.type === 'tag'
   const isNotification = config.type === 'notification'
 
-  // バリデーション: tag タイムラインは最低1つのタグが必要
-  const isValid = !isTagTimeline || tagConfig.tags.length > 0
+  // バリデーション:
+  // - 通常UIモード: tag タイムラインは最低1つのタグが必須
+  // - Advanced Query モード: カスタムクエリがあればタグ無しも許可
+  const isValid =
+    !isTagTimeline ||
+    (showAdvanced ? Boolean(customQuery.trim()) : tagConfig.tags.length > 0)
+
+  // Advanced Query トグル
+  const handleToggleAdvanced = useCallback(() => {
+    setShowAdvanced((prev) => {
+      const next = !prev
+      if (next) {
+        // 通常UI → Advanced: 現在の UI 設定からクエリを生成して反映
+        setCustomQuery(builtQuery)
+      } else {
+        // Advanced → 通常UI: クエリから UI 設定を逆算（ベストエフォート）
+        const parsed = parseQueryToConfig(customQuery)
+        if (parsed) {
+          if (parsed.onlyMedia !== undefined) setOnlyMedia(parsed.onlyMedia)
+          if (parsed.tagConfig) setTagConfig(parsed.tagConfig)
+        }
+      }
+      return next
+    })
+  }, [builtQuery, customQuery])
 
   const handleSave = useCallback(() => {
     if (!isValid) return
 
     const updates: Partial<TimelineConfigV2> = {
+      advancedQuery: showAdvanced,
       backendFilter,
+      customQuery: customQuery.trim() || undefined,
       label: label.trim() || undefined,
       onlyMedia,
     }
@@ -48,11 +102,13 @@ export const TimelineEditPanel = ({
     onSave(updates)
   }, [
     backendFilter,
+    customQuery,
     isTagTimeline,
     isValid,
     label,
     onSave,
     onlyMedia,
+    showAdvanced,
     tagConfig,
   ])
 
@@ -80,20 +136,51 @@ export const TimelineEditPanel = ({
         />
       </div>
 
+      {/* Advanced Query トグルスイッチ（表示名の直下） */}
+      {!isNotification && (
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-semibold text-gray-300">
+            Advanced Query
+          </span>
+          <button
+            aria-checked={showAdvanced}
+            aria-label="Advanced Query"
+            className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out ${
+              showAdvanced ? 'bg-blue-600' : 'bg-gray-600'
+            }`}
+            onClick={handleToggleAdvanced}
+            role="switch"
+            type="button"
+          >
+            <span
+              className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out mt-0.5 ${
+                showAdvanced ? 'translate-x-4 ml-0.5' : 'translate-x-0 ml-0.5'
+              }`}
+            />
+          </button>
+        </div>
+      )}
+
       {/* Backend Filter */}
       <BackendFilterSelector
         onChange={setBackendFilter}
         value={backendFilter}
       />
 
-      {/* Media Filter (notification 以外) */}
-      {!isNotification && (
-        <MediaFilterToggle onChange={setOnlyMedia} value={onlyMedia} />
+      {/* 通常UIモード: Media Filter + Tag Config */}
+      {!isNotification && !showAdvanced && (
+        <>
+          <MediaFilterToggle onChange={setOnlyMedia} value={onlyMedia} />
+
+          {isTagTimeline && (
+            <TagConfigEditor onChange={setTagConfig} value={tagConfig} />
+          )}
+        </>
       )}
 
-      {/* Tag Config (tag タイムラインのみ) */}
-      {isTagTimeline && (
-        <TagConfigEditor onChange={setTagConfig} value={tagConfig} />
+      {/* Advanced Query エディタ */}
+      {!isNotification && showAdvanced && (
+        <QueryEditor onChange={setCustomQuery} value={customQuery} />
       )}
 
       {/* Actions */}

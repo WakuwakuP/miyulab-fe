@@ -85,8 +85,18 @@ export type TagConfig = {
 }
 
 export type TimelineConfigV2 = {
+  /** Advanced Query モードが有効か（トグル状態の永続化） */
+  advancedQuery?: boolean
   /** バックエンドフィルタ（未指定時は 'all' として扱う） */
   backendFilter?: BackendFilter
+  /**
+   * カスタム SQL WHERE 句（advanced option）
+   *
+   * statuses (s), statuses_timeline_types (stt),
+   * statuses_belonging_tags (sbt) テーブルを参照可能。
+   * LIMIT / OFFSET は自動設定されるため指定不要。
+   */
+  customQuery?: string
   /** 一意識別子 */
   id: string
   /** 表示名（ユーザーがカスタマイズ可能、未設定時はデフォルト名を使用） */

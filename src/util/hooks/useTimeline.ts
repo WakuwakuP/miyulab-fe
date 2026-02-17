@@ -1,10 +1,10 @@
 'use client'
 
-import Dexie from 'dexie'
-import { useLiveQuery } from 'dexie-react-hooks'
-import { useContext, useMemo } from 'react'
+import { useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { StatusAddAppIndex } from 'types/types'
-import { db, type TimelineType } from 'util/db/database'
+import type { TimelineType } from 'util/db/database'
+import { getSqliteDb, subscribe } from 'util/db/sqlite/connection'
+import type { SqliteStoredStatus } from 'util/db/sqlite/statusStore'
 import { MAX_LENGTH } from 'util/environment'
 import { AppsContext } from 'util/provider/AppsProvider'
 
@@ -26,46 +26,72 @@ function resolveAppIndex(
 }
 
 /**
- * タイムライン種類に応じたStatusをリアクティブに取得するHook
- *
- * 複合インデックス [backendUrl+created_at_ms] を活用し、
- * 可能な限りDB側でソート・フィルタを行う。
- *
- * created_at_ms は数値型（UnixTime ms）のため、
- * ソート順が確実に時系列となる（文字列ソートの不確実性を排除）。
+ * タイムライン種類に応じたStatusをリアクティブに取得するHook (SQLite版)
  *
  * @deprecated useFilteredTimeline を使用してください
  */
 export function useTimeline(timelineType: TimelineType): StatusAddAppIndex[] {
   const apps = useContext(AppsContext)
+  const [statuses, setStatuses] = useState<SqliteStoredStatus[]>([])
 
   const backendUrls = useMemo(() => apps.map((app) => app.backendUrl), [apps])
 
-  const statuses = useLiveQuery(
-    async () => {
-      if (backendUrls.length === 0) return []
+  const fetchData = useCallback(async () => {
+    if (backendUrls.length === 0) {
+      setStatuses([])
+      return
+    }
 
-      // 各backendUrl別に複合インデックスで降順取得し、マージする
-      const perUrlResults = await Promise.all(
-        backendUrls.map((url) =>
-          db.statuses
-            .where('[backendUrl+created_at_ms]')
-            .between([url, Dexie.minKey], [url, Dexie.maxKey])
-            .reverse()
-            .filter((s) => s.timelineTypes.includes(timelineType))
-            .limit(MAX_LENGTH)
-            .toArray(),
-        ),
-      )
+    try {
+      const handle = await getSqliteDb()
+      const { db } = handle
 
-      const merged = perUrlResults.flat()
-      return merged
-        .sort((a, b) => b.created_at_ms - a.created_at_ms)
-        .slice(0, MAX_LENGTH)
-    },
-    [backendUrls, timelineType],
-    [],
-  )
+      const placeholders = backendUrls.map(() => '?').join(',')
+      const sql = `
+        SELECT s.compositeKey, s.backendUrl, s.created_at_ms, s.storedAt, s.json
+        FROM statuses s
+        INNER JOIN statuses_timeline_types stt
+          ON s.compositeKey = stt.compositeKey
+        WHERE stt.timelineType = ?
+          AND s.backendUrl IN (${placeholders})
+        ORDER BY s.created_at_ms DESC
+        LIMIT ?;
+      `
+      const binds: (string | number)[] = [
+        timelineType,
+        ...backendUrls,
+        MAX_LENGTH,
+      ]
+
+      const rows = db.exec(sql, {
+        bind: binds,
+        returnValue: 'resultRows',
+      }) as (string | number)[][]
+
+      const results: SqliteStoredStatus[] = rows.map((row) => {
+        const status = JSON.parse(row[4] as string)
+        return {
+          ...status,
+          backendUrl: row[1] as string,
+          belongingTags: [],
+          compositeKey: row[0] as string,
+          created_at_ms: row[2] as number,
+          storedAt: row[3] as number,
+          timelineTypes: [],
+        }
+      })
+
+      setStatuses(results)
+    } catch (e) {
+      console.error('useTimeline query error:', e)
+      setStatuses([])
+    }
+  }, [backendUrls, timelineType])
+
+  useEffect(() => {
+    fetchData()
+    return subscribe('statuses', fetchData)
+  }, [fetchData])
 
   // appIndex を都度算出して付与し、解決できなかったレコードは除外する
   return useMemo(
@@ -81,19 +107,7 @@ export function useTimeline(timelineType: TimelineType): StatusAddAppIndex[] {
 }
 
 /**
- * タグに応じたStatusをリアクティブに取得するHook
- *
- * ## クエリ方式
- * belongingTags の multi-entry インデックスで該当タグの全件を取得し、
- * JS側で backendUrl フィルタとソートを行う。
- *
- * タグタイムラインは通常 home/local と比較して件数が少ないため、
- * この方式で十分なパフォーマンスが得られる想定。
- *
- * ## メディアフィルタ
- * onlyMedia オプションにより、メディア付き投稿のみに絞り込むことができる。
- * このフィルタはストレージ層ではなく表示層（この Hook）で行う。
- * データ保存時には全投稿を保存し、フィルタの切り替えに対応できるようにする。
+ * タグに応じたStatusをリアクティブに取得するHook (SQLite版)
  *
  * @deprecated useFilteredTagTimeline を使用してください
  */
@@ -103,33 +117,68 @@ export function useTagTimeline(
 ): StatusAddAppIndex[] {
   const apps = useContext(AppsContext)
   const onlyMedia = options?.onlyMedia ?? false
+  const [statuses, setStatuses] = useState<SqliteStoredStatus[]>([])
 
   const backendUrls = useMemo(() => apps.map((app) => app.backendUrl), [apps])
 
-  const statuses = useLiveQuery(
-    async () => {
-      if (backendUrls.length === 0) return []
+  const fetchData = useCallback(async () => {
+    if (backendUrls.length === 0) {
+      setStatuses([])
+      return
+    }
 
-      let results = await db.statuses
-        .where('belongingTags')
-        .equals(tag)
-        .filter((s) => backendUrls.includes(s.backendUrl))
-        .toArray()
+    try {
+      const handle = await getSqliteDb()
+      const { db } = handle
 
-      // メディアフィルタ（表示層でのフィルタリング）
+      const placeholders = backendUrls.map(() => '?').join(',')
+      const sql = `
+        SELECT s.compositeKey, s.backendUrl, s.created_at_ms, s.storedAt, s.json
+        FROM statuses s
+        INNER JOIN statuses_belonging_tags sbt
+          ON s.compositeKey = sbt.compositeKey
+        WHERE sbt.tag = ?
+          AND s.backendUrl IN (${placeholders})
+        ORDER BY s.created_at_ms DESC
+        LIMIT ?;
+      `
+      const binds: (string | number)[] = [tag, ...backendUrls, MAX_LENGTH]
+
+      const rows = db.exec(sql, {
+        bind: binds,
+        returnValue: 'resultRows',
+      }) as (string | number)[][]
+
+      let results: SqliteStoredStatus[] = rows.map((row) => {
+        const status = JSON.parse(row[4] as string)
+        return {
+          ...status,
+          backendUrl: row[1] as string,
+          belongingTags: [],
+          compositeKey: row[0] as string,
+          created_at_ms: row[2] as number,
+          storedAt: row[3] as number,
+          timelineTypes: [],
+        }
+      })
+
       if (onlyMedia) {
         results = results.filter(
           (s) => s.media_attachments && s.media_attachments.length > 0,
         )
       }
 
-      return results
-        .sort((a, b) => b.created_at_ms - a.created_at_ms)
-        .slice(0, MAX_LENGTH)
-    },
-    [backendUrls, tag, onlyMedia],
-    [],
-  )
+      setStatuses(results)
+    } catch (e) {
+      console.error('useTagTimeline query error:', e)
+      setStatuses([])
+    }
+  }, [backendUrls, tag, onlyMedia])
+
+  useEffect(() => {
+    fetchData()
+    return subscribe('statuses', fetchData)
+  }, [fetchData])
 
   // appIndex を都度算出して付与し、解決できなかったレコードは除外する
   return useMemo(
