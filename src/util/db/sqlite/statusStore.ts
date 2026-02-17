@@ -10,6 +10,7 @@
  */
 
 import type { Entity } from 'megalodon'
+import { isNotificationQuery } from 'util/queryBuilder'
 import type { TimelineType } from '../database'
 import { type DbHandle, getSqliteDb, notifyChange } from './connection'
 
@@ -1327,7 +1328,7 @@ export async function validateCustomQuery(
     const { db } = handle
 
     // クエリが notifications テーブル（エイリアス n）を参照しているか判定
-    const isNotifQuery = /\bn\.\w/.test(sanitized)
+    const isNotifQuery = isNotificationQuery(sanitized)
 
     let sql: string
     if (isNotifQuery) {

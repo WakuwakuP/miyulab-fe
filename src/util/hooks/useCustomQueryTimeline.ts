@@ -11,6 +11,7 @@ import type { SqliteStoredNotification } from 'util/db/sqlite/notificationStore'
 import type { SqliteStoredStatus } from 'util/db/sqlite/statusStore'
 import { MAX_LENGTH } from 'util/environment'
 import { AppsContext } from 'util/provider/AppsProvider'
+import { isNotificationQuery } from 'util/queryBuilder'
 
 /**
  * backendUrl から appIndex を算出するヘルパー
@@ -43,13 +44,6 @@ function hasUnquotedQuestionMark(query: string): boolean {
   }
 
   return false
-}
-
-/**
- * クエリが notifications テーブル（エイリアス n）を参照しているか判定する
- */
-function isNotificationQuery(query: string): boolean {
-  return /\bn\.\w/.test(query)
 }
 
 /**

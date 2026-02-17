@@ -1,10 +1,23 @@
 import type {
   AccountFilter,
   BackendFilter,
+  NotificationType,
   TagConfig,
   TimelineConfigV2,
   VisibilityType,
 } from 'types/types'
+
+/** 全通知タイプの数（NotificationType の全列挙数） */
+const ALL_NOTIFICATION_TYPES_COUNT = 8 satisfies number
+
+/**
+ * クエリが notifications テーブル（エイリアス n）を参照しているか判定する
+ *
+ * `n.` プレフィックス付きのカラム参照が存在する場合に true を返す。
+ */
+export function isNotificationQuery(query: string): boolean {
+  return /\bn\.\w/.test(query)
+}
 
 /**
  * TimelineConfigV2 の UI 設定から SQL WHERE 句を構築する
@@ -214,12 +227,12 @@ function buildAccountCondition(
  * // → "n.notification_type IN ('follow','favourite')"
  */
 function buildNotificationTypeCondition(
-  filter: import('types/types').NotificationType[] | undefined,
+  filter: NotificationType[] | undefined,
 ): string | null {
   if (filter == null || filter.length === 0) return null
 
-  // 全通知タイプ数（8種類）が指定されている場合はフィルタ不要
-  if (filter.length >= 8) return null
+  // 全通知タイプが指定されている場合はフィルタ不要
+  if (filter.length >= ALL_NOTIFICATION_TYPES_COUNT) return null
 
   const escaped = filter.map((v) => `'${escapeSqlString(v)}'`).join(',')
   return `n.notification_type IN (${escaped})`
