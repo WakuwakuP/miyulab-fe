@@ -10,6 +10,7 @@ tools:
   cache-memory: true
 network:
   allowed:
+    - defaults
     - node
 steps:
   - uses: actions/setup-node@v4
@@ -34,12 +35,25 @@ The project uses **Yarn 4** (with corepack) as the package manager and **Biome**
 
 Systematically upgrade outdated npm packages, verify each upgrade works, and create a pull request with all successful upgrades.
 
-## Step 0: Check Cache Memory
+## Step 0: Configure Yarn Proxy
+
+The agent runs inside a sandboxed environment with a network firewall proxy. Yarn 4 does not correctly use the `HTTP_PROXY`/`HTTPS_PROXY` environment variables, so you **must** configure Yarn's proxy settings explicitly before running any yarn network commands.
+
+Run the following commands at the start:
+
+```bash
+yarn config set httpProxy "$HTTP_PROXY"
+yarn config set httpsProxy "$HTTPS_PROXY"
+```
+
+This ensures Yarn can reach the npm registry through the firewall. **Do not clear or override these proxy settings later.**
+
+## Step 1: Check Cache Memory
 
 Read cache memory to check if there were any previously failed upgrades or packages that should be skipped.
 Use this information to avoid retrying known-incompatible upgrades.
 
-## Step 1: Check for Outdated Packages
+## Step 2: Check for Outdated Packages
 
 Run the following command to identify outdated packages:
 
@@ -49,7 +63,7 @@ yarn outdated || true
 
 If there are no outdated packages, call the `noop` safe output with the message: "All packages are already up to date. No upgrades needed." and stop.
 
-## Step 2: Create a Working Branch
+## Step 3: Create a Working Branch
 
 Create a branch for the upgrades:
 
@@ -58,7 +72,7 @@ BRANCH_NAME="weekly-package-upgrade-$(date +%Y%m%d)"
 git checkout -b "$BRANCH_NAME"
 ```
 
-## Step 3: Upgrade Packages One by One
+## Step 4: Upgrade Packages One by One
 
 For each outdated package, follow this procedure. Process packages **one at a time** (or as related groups):
 
@@ -119,7 +133,7 @@ git add .
 git commit -m "chore: upgrade [package-name] to [new-version]"
 ```
 
-## Step 4: Handle Major Version Upgrades with Extra Care
+## Step 5: Handle Major Version Upgrades with Extra Care
 
 For **major version upgrades** (e.g., v1.x → v2.x):
 
@@ -131,7 +145,7 @@ For **major version upgrades** (e.g., v1.x → v2.x):
   - **Tailwind CSS**: Configuration or plugin changes may be needed
   - **Biome**: Configuration schema changes may be needed
 
-## Step 5: Create the Pull Request
+## Step 6: Create the Pull Request
 
 After all upgrades are complete, push the branch and create a pull request:
 
@@ -143,7 +157,7 @@ Use the `create-pull-request` safe output with:
 - **Title**: `📦 Weekly Package Upgrade (YYYY-MM-DD)` (use today's date)
 - **Body**: Include a summary of all upgraded packages with their old and new versions, and note any packages that were skipped or reverted due to issues
 
-## Step 6: Update Cache Memory
+## Step 7: Update Cache Memory
 
 Before finishing, update the cache memory with:
 - List of successfully upgraded packages and their versions
