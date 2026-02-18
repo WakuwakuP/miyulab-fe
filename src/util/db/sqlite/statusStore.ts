@@ -1226,6 +1226,12 @@ export const QUERY_COMPLETIONS = {
       query:
         "stt.timelineType = 'home' OR n.notification_type IN ('favourite', 'reblog')",
     },
+    {
+      description:
+        'ふぁぼ・リアクション・ブースト通知と通知元ユーザーの投稿をまとめて表示する',
+      query:
+        "n.notification_type IN ('favourite', 'reaction', 'reblog') OR s.account_acct IN (SELECT account_acct FROM notifications WHERE notification_type IN ('favourite', 'reaction', 'reblog'))",
+    },
   ],
   /** json_extract の `$.` パス補完候補 */
   jsonPaths: [
