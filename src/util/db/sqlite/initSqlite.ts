@@ -11,6 +11,7 @@ import type {
   OpfsDatabase,
   Sqlite3Static,
 } from '@sqlite.org/sqlite-wasm'
+import { installDevTools } from './devtools'
 
 let dbPromise: Promise<DbHandle> | null = null
 
@@ -57,6 +58,8 @@ async function initDb(): Promise<DbHandle> {
   db.exec('PRAGMA journal_mode=WAL;')
   db.exec('PRAGMA synchronous=NORMAL;')
   db.exec('PRAGMA foreign_keys = ON;')
+
+  installDevTools(db, sqlite3)
 
   return { db, sqlite3 }
 }

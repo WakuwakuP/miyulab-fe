@@ -546,3 +546,40 @@ function backfillStatusesV2(handle: DbHandle): void {
 ```
 
 バックフィル処理は既存データの量に応じて時間がかかる可能性がありますが、ブラウザの SQLite（OPFS）はシングルスレッドのため、UI のブロッキングを最小限に抑えるよう設計されています。
+
+## デバッグ
+
+### DevTools コンソールからの SQL 実行
+
+開発モード（`NODE_ENV=development`）では、SQLite の DB ハンドルが `window.__MIYULAB_SQLITE__` に自動的に公開されます。ブラウザの DevTools コンソールから直接 SQL クエリを実行してデータを検証できます。
+
+```js
+// テーブル一覧を取得
+__MIYULAB_SQLITE__.tables()
+
+// 任意の SQL を実行（結果をオブジェクト配列で返す）
+__MIYULAB_SQLITE__.query('SELECT * FROM statuses LIMIT 5')
+
+// 投稿数を確認
+__MIYULAB_SQLITE__.query('SELECT COUNT(*) as count FROM statuses')
+
+// テーブルのカラム情報を取得
+__MIYULAB_SQLITE__.schema('statuses')
+
+// 生の exec を呼ぶ（sqlite3 の低レベル API）
+__MIYULAB_SQLITE__.exec('PRAGMA table_info(statuses)')
+
+// DB ハンドルに直接アクセス
+__MIYULAB_SQLITE__.db
+__MIYULAB_SQLITE__.sqlite3
+```
+
+DB 初期化完了時にコンソールへ使い方のガイドが表示されます。
+
+### OPFS Explorer Chrome 拡張機能
+
+OPFS（Origin Private File System）上の SQLite ファイルを直接閲覧・ダウンロードするには「OPFS Explorer」Chrome 拡張機能が便利です。
+
+- Chrome Web Store: https://chromewebstore.google.com/detail/opfs-explorer/acndjpgkpaclldomagafnognkcgjignd
+- DevTools に「OPFS Explorer」タブが追加され、OPFS 上のファイルツリーを視覚的に確認できます
+- SQLite ファイル（`/miyulab-fe.sqlite3`）をダウンロードし、DB Browser for SQLite 等の外部ツールで詳細に分析することも可能です
