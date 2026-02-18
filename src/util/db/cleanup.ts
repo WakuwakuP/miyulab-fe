@@ -1,20 +1,6 @@
 import { MAX_LENGTH } from 'util/environment'
 import { db, type TimelineType } from './database'
 
-const TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7日
-
-/**
- * 古いデータをクリーンアップ（TTLベース）
- */
-export async function cleanupOldData(): Promise<void> {
-  const threshold = Date.now() - TTL_MS
-
-  await db.transaction('rw', [db.statuses, db.notifications], async () => {
-    await db.statuses.where('storedAt').below(threshold).delete()
-    await db.notifications.where('storedAt').below(threshold).delete()
-  })
-}
-
 /**
  * MAX_LENGTHを超えるデータを削除（タイムライン種類ごと）
  *
@@ -91,7 +77,6 @@ export function startPeriodicCleanup(): () => void {
   // 初回実行
   void (async () => {
     try {
-      await cleanupOldData()
       await enforceMaxLength()
     } catch (error) {
       console.error('Failed to perform initial periodic cleanup', error)
@@ -103,7 +88,6 @@ export function startPeriodicCleanup(): () => void {
     () => {
       void (async () => {
         try {
-          await cleanupOldData()
           await enforceMaxLength()
         } catch (error) {
           console.error('Failed to perform periodic cleanup', error)
