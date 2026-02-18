@@ -58,7 +58,11 @@ export const TimelineSummary = ({ config }: TimelineSummaryProps) => {
     return tags.length > 1 ? `${tagList} (${modeLabel})` : tagList
   }, [config.tagConfig])
 
-  const parts = [backendLabel, mediaLabel, tagLabel].filter(Boolean)
+  const tabGroupLabel = config.tabGroup ? `🗂 ${config.tabGroup}` : null
+
+  const parts = [backendLabel, mediaLabel, tagLabel, tabGroupLabel].filter(
+    Boolean,
+  )
 
   if (parts.length === 0) return null
 

@@ -26,6 +26,7 @@ export const TimelineEditPanel = ({
   onSave,
 }: TimelineEditPanelProps) => {
   const [label, setLabel] = useState(config.label ?? '')
+  const [tabGroup, setTabGroup] = useState(config.tabGroup ?? '')
   const [backendFilter, setBackendFilter] = useState<BackendFilter>(
     config.backendFilter ?? { mode: 'all' },
   )
@@ -155,6 +156,7 @@ export const TimelineEditPanel = ({
       customQuery: customQuery.trim() || undefined,
       label: label.trim() || undefined,
       onlyMedia,
+      tabGroup: tabGroup.trim() || undefined,
       tagConfig,
       // v2 フィルタオプション
       ...filterUpdates,
@@ -169,6 +171,7 @@ export const TimelineEditPanel = ({
     onSave,
     onlyMedia,
     showAdvanced,
+    tabGroup,
     tagConfig,
   ])
 
@@ -196,6 +199,27 @@ export const TimelineEditPanel = ({
           type="text"
           value={label}
         />
+      </div>
+
+      {/* Tab Group */}
+      <div className="space-y-1">
+        <label
+          className="text-xs font-semibold text-gray-300"
+          htmlFor={`tabGroup-${config.id}`}
+        >
+          Tab Group
+        </label>
+        <input
+          className="w-full rounded bg-gray-700 px-2 py-1 text-sm text-white"
+          id={`tabGroup-${config.id}`}
+          onChange={(e) => setTabGroup(e.target.value)}
+          placeholder="Empty = standalone column"
+          type="text"
+          value={tabGroup}
+        />
+        <p className="text-xs text-gray-500">
+          同じグループ名を持つタイムラインがタブで切り替え可能になります
+        </p>
       </div>
 
       {/* Advanced Query トグルスイッチ（表示名の直下） */}
