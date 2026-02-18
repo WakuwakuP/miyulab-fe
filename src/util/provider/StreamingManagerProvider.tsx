@@ -276,21 +276,33 @@ export const StreamingManagerProvider = ({
     }
 
     // tag タイムラインの初期データ取得（tagConfig を持つ全設定が対象）
+    // 同一 tag × backendUrl の組み合わせは重複フェッチを防止する
+    const fetchedTags = new Set<string>()
     for (const config of timelineSettings.timelines) {
       if (!config.tagConfig || config.tagConfig.tags.length === 0) continue
 
       const filter = normalizeBackendFilter(config.backendFilter, apps)
       const targetUrls = resolveBackendUrls(filter, apps)
 
-      // fetchInitialData は config.type で分岐するため、type を 'tag' に強制する
-      const tagFetchConfig: TimelineConfigV2 = {
-        ...config,
-        type: 'tag',
-      }
-
       for (const url of targetUrls) {
+        // 未フェッチのタグのみ抽出
+        const newTags = config.tagConfig.tags.filter((tag) => {
+          const key = `${tag}|${url}`
+          if (fetchedTags.has(key)) return false
+          fetchedTags.add(key)
+          return true
+        })
+        if (newTags.length === 0) continue
+
         const app = apps.find((a) => a.backendUrl === url)
         if (!app) continue
+
+        // fetchInitialData は config.type で分岐するため、type を 'tag' に強制する
+        const tagFetchConfig: TimelineConfigV2 = {
+          ...config,
+          tagConfig: { ...config.tagConfig, tags: newTags },
+          type: 'tag',
+        }
 
         const client = GetClient(app)
         fetchInitialData(client, tagFetchConfig, url).catch((error) => {
