@@ -244,6 +244,8 @@ const FolderSection = ({
   allFolderKeys,
   children,
   collapsedFolders,
+  dragAttributes,
+  dragListeners,
   groupKey,
   isDragging,
   isDropTarget,
@@ -255,6 +257,9 @@ const FolderSection = ({
   allFolderKeys: string[]
   children: React.ReactNode
   collapsedFolders: Set<string>
+  dragAttributes?: React.HTMLAttributes<HTMLElement>
+  // biome-ignore lint/complexity/noBannedTypes: matches @dnd-kit SyntheticListenerMap type
+  dragListeners?: Record<string, Function> | undefined
   groupKey: string
   isDragging?: boolean
   isDropTarget?: boolean
@@ -277,23 +282,33 @@ const FolderSection = ({
       className={`rounded-md border ${highlighted ? 'border-white ring-2 ring-white/30' : colors.border} overflow-hidden ${isDragging ? 'opacity-50' : ''} transition-all`}
       ref={setNodeRef}
     >
-      <button
+      <div
         className={`flex items-center justify-between w-full px-3 py-2 ${highlighted ? 'bg-white/10' : colors.header} transition-colors`}
-        onClick={() => onToggleCollapse(groupKey)}
-        type="button"
       >
         <div className="flex items-center space-x-2">
-          {isCollapsed ? (
-            <>
-              <RiArrowRightSLine className={colors.text} size={16} />
-              <RiFolderLine className={colors.text} size={16} />
-            </>
-          ) : (
-            <>
-              <RiArrowDownSLine className={colors.text} size={16} />
-              <RiFolderOpenLine className={colors.text} size={16} />
-            </>
-          )}
+          <button onClick={() => onToggleCollapse(groupKey)} type="button">
+            <div className="flex items-center space-x-1">
+              {isCollapsed ? (
+                <>
+                  <RiArrowRightSLine className={colors.text} size={16} />
+                  <RiFolderLine className={colors.text} size={16} />
+                </>
+              ) : (
+                <>
+                  <RiArrowDownSLine className={colors.text} size={16} />
+                  <RiFolderOpenLine className={colors.text} size={16} />
+                </>
+              )}
+            </div>
+          </button>
+          <div
+            className="cursor-move text-gray-400 hover:text-white"
+            onClick={(e) => e.stopPropagation()}
+            {...dragAttributes}
+            {...dragListeners}
+          >
+            <RiDragMove2Line size={16} />
+          </div>
           {isRenaming ? (
             <input
               className="bg-gray-700 text-sm text-white rounded px-1 py-0.5 w-24"
@@ -349,7 +364,7 @@ const FolderSection = ({
         >
           <RiDeleteBinLine size={14} />
         </button>
-      </button>
+      </div>
       {!isCollapsed && <div className="p-2 space-y-1">{children}</div>}
     </div>
   )
@@ -360,7 +375,12 @@ const SortableFolderWrapper = ({
   children,
   id,
 }: {
-  children: React.ReactNode
+  children: (props: {
+    attributes: React.HTMLAttributes<HTMLElement>
+    isDragging: boolean
+    // biome-ignore lint/complexity/noBannedTypes: matches @dnd-kit SyntheticListenerMap type
+    listeners: Record<string, Function> | undefined
+  }) => React.ReactNode
   id: string
 }) => {
   const {
@@ -379,16 +399,7 @@ const SortableFolderWrapper = ({
 
   return (
     <div ref={setNodeRef} style={style}>
-      <div className="flex items-start gap-1">
-        <div
-          className={`flex items-center mt-2 cursor-move text-gray-400 hover:text-white ${isDragging ? 'opacity-50' : ''}`}
-          {...attributes}
-          {...listeners}
-        >
-          <RiDragMove2Line size={16} />
-        </div>
-        <div className="flex-1">{children}</div>
-      </div>
+      {children({ attributes, isDragging, listeners })}
     </div>
   )
 }
@@ -1008,51 +1019,58 @@ export const TimelineManagement = () => {
                         id={`folder-${column.groupKey}`}
                         key={`folder-${column.groupKey}`}
                       >
-                        <FolderSection
-                          allFolderKeys={allFolderKeys}
-                          collapsedFolders={collapsedFolders}
-                          groupKey={column.groupKey}
-                          isDropTarget={
-                            overFolderKey === column.groupKey &&
-                            activeId != null &&
-                            !activeId.startsWith('folder-')
-                          }
-                          memberCount={column.members.length}
-                          onDeleteFolder={(key) => {
-                            onDeleteFolder(key)
-                            setEmptyFolders((prev) =>
-                              prev.filter((ef) => ef.key !== key),
-                            )
-                          }}
-                          onRenameFolder={(oldKey, newKey) => {
-                            onRenameFolder(oldKey, newKey)
-                            setEmptyFolders((prev) =>
-                              prev.map((ef) =>
-                                ef.key === oldKey ? { ...ef, key: newKey } : ef,
-                              ),
-                            )
-                          }}
-                          onToggleCollapse={onToggleCollapse}
-                        >
-                          {column.members.map((timeline) => (
-                            <TimelineItem
-                              editingId={editingId}
-                              folderGroupKey={column.groupKey}
-                              key={timeline.id}
-                              onDelete={onDelete}
-                              onRemoveFromFolder={onRemoveFromFolder}
-                              onToggleEdit={onToggleEdit}
-                              onToggleVisibility={onToggleVisibility}
-                              onUpdate={onUpdate}
-                              timeline={timeline}
-                            />
-                          ))}
-                          {column.members.length === 0 && (
-                            <p className="text-xs text-gray-500 py-1">
-                              Empty folder — drag timelines here
-                            </p>
-                          )}
-                        </FolderSection>
+                        {({ attributes, isDragging, listeners }) => (
+                          <FolderSection
+                            allFolderKeys={allFolderKeys}
+                            collapsedFolders={collapsedFolders}
+                            dragAttributes={attributes}
+                            dragListeners={listeners}
+                            groupKey={column.groupKey}
+                            isDragging={isDragging}
+                            isDropTarget={
+                              overFolderKey === column.groupKey &&
+                              activeId != null &&
+                              !activeId.startsWith('folder-')
+                            }
+                            memberCount={column.members.length}
+                            onDeleteFolder={(key) => {
+                              onDeleteFolder(key)
+                              setEmptyFolders((prev) =>
+                                prev.filter((ef) => ef.key !== key),
+                              )
+                            }}
+                            onRenameFolder={(oldKey, newKey) => {
+                              onRenameFolder(oldKey, newKey)
+                              setEmptyFolders((prev) =>
+                                prev.map((ef) =>
+                                  ef.key === oldKey
+                                    ? { ...ef, key: newKey }
+                                    : ef,
+                                ),
+                              )
+                            }}
+                            onToggleCollapse={onToggleCollapse}
+                          >
+                            {column.members.map((timeline) => (
+                              <TimelineItem
+                                editingId={editingId}
+                                folderGroupKey={column.groupKey}
+                                key={timeline.id}
+                                onDelete={onDelete}
+                                onRemoveFromFolder={onRemoveFromFolder}
+                                onToggleEdit={onToggleEdit}
+                                onToggleVisibility={onToggleVisibility}
+                                onUpdate={onUpdate}
+                                timeline={timeline}
+                              />
+                            ))}
+                            {column.members.length === 0 && (
+                              <p className="text-xs text-gray-500 py-1">
+                                Empty folder — drag timelines here
+                              </p>
+                            )}
+                          </FolderSection>
+                        )}
                       </SortableFolderWrapper>
                     )
                   }
