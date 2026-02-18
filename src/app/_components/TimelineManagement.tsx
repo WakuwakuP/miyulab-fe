@@ -534,11 +534,10 @@ export const TimelineManagement = () => {
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(
     new Set(),
   )
-  const [assigningToFolder, setAssigningToFolder] = useState<string | null>(
-    null,
-  )
-  // 空フォルダを管理する state
-  const [emptyFolders, setEmptyFolders] = useState<string[]>([])
+  // 空フォルダを管理する state (key と sortOrder)
+  const [emptyFolders, setEmptyFolders] = useState<
+    { key: string; sortOrder: number }[]
+  >([])
   // ドラッグ中のアクティブID
   const [activeId, setActiveId] = useState<string | null>(null)
   // ドラッグ中にホバーしているフォルダキー
@@ -618,19 +617,6 @@ export const TimelineManagement = () => {
   const onToggleEdit = useCallback((id: string) => {
     setEditingId((prev) => (prev === id ? null : id))
   }, [])
-
-  const onMoveToFolder = useCallback(
-    (id: string, groupKey: string) => {
-      setTimelineSettings((prev) => ({
-        ...prev,
-        timelines: prev.timelines.map((timeline) =>
-          timeline.id === id ? { ...timeline, tabGroup: groupKey } : timeline,
-        ),
-      }))
-      setAssigningToFolder(null)
-    },
-    [setTimelineSettings],
-  )
 
   const onRemoveFromFolder = useCallback(
     (id: string) => {
@@ -767,20 +753,19 @@ export const TimelineManagement = () => {
   // columns に空フォルダを含める
   const columnsWithEmptyFolders = useMemo(() => {
     const activeEmptyFolders = emptyFolders.filter(
-      (key) => !folderGroups.has(key),
+      (ef) => !folderGroups.has(ef.key),
     )
-    const maxSortOrder =
-      columns.length > 0 ? Math.max(...columns.map((c) => c.sortOrder)) : -1
 
     const result = [...columns]
-    for (let i = 0; i < activeEmptyFolders.length; i++) {
+    for (const ef of activeEmptyFolders) {
       result.push({
-        groupKey: activeEmptyFolders[i],
+        groupKey: ef.key,
         members: [],
-        sortOrder: maxSortOrder + 1 + i,
+        sortOrder: ef.sortOrder,
         type: 'folder' as const,
       })
     }
+    result.sort((a, b) => a.sortOrder - b.sortOrder)
     return result
   }, [columns, emptyFolders, folderGroups])
 
@@ -885,15 +870,23 @@ export const TimelineManagement = () => {
         // 新しい order を再計算
         const newTimelines: TimelineConfigV2[] = []
         let order = 0
+        const newEmptyFolders: { key: string; sortOrder: number }[] = []
         for (const col of currentColumns) {
           if (col.type === 'single') {
             newTimelines.push({ ...col.timeline, order: order++ })
           } else {
-            for (const member of col.members) {
-              newTimelines.push({ ...member, order: order++ })
+            if (col.members.length === 0) {
+              // 空フォルダの sortOrder を更新
+              newEmptyFolders.push({ key: col.groupKey, sortOrder: order++ })
+            } else {
+              for (const member of col.members) {
+                newTimelines.push({ ...member, order: order++ })
+              }
             }
           }
         }
+
+        setEmptyFolders(newEmptyFolders)
 
         setTimelineSettings((prev) => ({
           ...prev,
@@ -945,13 +938,24 @@ export const TimelineManagement = () => {
 
   const onAddFolder = useCallback(() => {
     let index = 1
-    const usedKeys = new Set([...folderGroups.keys(), ...emptyFolders])
+    const usedKeys = new Set([
+      ...folderGroups.keys(),
+      ...emptyFolders.map((ef) => ef.key),
+    ])
     while (usedKeys.has(`Folder ${index}`)) {
       index++
     }
     const newKey = `Folder ${index}`
-    setEmptyFolders((prev) => [...prev, newKey])
-  }, [folderGroups, emptyFolders])
+    // 最大 sortOrder を取得して末尾に追加
+    const maxOrder = Math.max(
+      ...columnsWithEmptyFolders.map((c) => c.sortOrder),
+      -1,
+    )
+    setEmptyFolders((prev) => [
+      ...prev,
+      { key: newKey, sortOrder: maxOrder + 1 },
+    ])
+  }, [folderGroups, emptyFolders, columnsWithEmptyFolders])
 
   // 全フォルダキー一覧（色の割り当てに使用）
   const allFolderKeys = useMemo(() => {
@@ -1017,13 +1021,15 @@ export const TimelineManagement = () => {
                           onDeleteFolder={(key) => {
                             onDeleteFolder(key)
                             setEmptyFolders((prev) =>
-                              prev.filter((k) => k !== key),
+                              prev.filter((ef) => ef.key !== key),
                             )
                           }}
                           onRenameFolder={(oldKey, newKey) => {
                             onRenameFolder(oldKey, newKey)
                             setEmptyFolders((prev) =>
-                              prev.map((k) => (k === oldKey ? newKey : k)),
+                              prev.map((ef) =>
+                                ef.key === oldKey ? { ...ef, key: newKey } : ef,
+                              ),
                             )
                           }}
                           onToggleCollapse={onToggleCollapse}
@@ -1052,56 +1058,15 @@ export const TimelineManagement = () => {
                   }
                   const timeline = column.timeline
                   return (
-                    <div key={timeline.id}>
-                      <TimelineItem
-                        editingId={editingId}
-                        onDelete={onDelete}
-                        onToggleEdit={onToggleEdit}
-                        onToggleVisibility={onToggleVisibility}
-                        onUpdate={onUpdate}
-                        timeline={timeline}
-                      />
-                      {/* フォルダ振り分けUI */}
-                      {assigningToFolder === timeline.id ? (
-                        <div className="flex items-center gap-2 py-1 pl-6 flex-wrap">
-                          <span className="text-xs text-gray-400">
-                            Move to:
-                          </span>
-                          {allFolderKeys.map((key) => {
-                            const colors = getFolderColors(key, allFolderKeys)
-                            return (
-                              <button
-                                className={`rounded px-2 py-0.5 text-xs border ${colors.border} ${colors.text} hover:opacity-80`}
-                                key={key}
-                                onClick={() => onMoveToFolder(timeline.id, key)}
-                                type="button"
-                              >
-                                {key}
-                              </button>
-                            )
-                          })}
-                          <button
-                            className="text-xs text-gray-500 hover:text-gray-300"
-                            onClick={() => setAssigningToFolder(null)}
-                            type="button"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      ) : (
-                        allFolderKeys.length > 0 && (
-                          <button
-                            className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-300 pl-6 py-0.5"
-                            onClick={() => setAssigningToFolder(timeline.id)}
-                            title="Add to folder"
-                            type="button"
-                          >
-                            <RiFolderAddLine size={14} />
-                            <span>Add to folder</span>
-                          </button>
-                        )
-                      )}
-                    </div>
+                    <TimelineItem
+                      editingId={editingId}
+                      key={timeline.id}
+                      onDelete={onDelete}
+                      onToggleEdit={onToggleEdit}
+                      onToggleVisibility={onToggleVisibility}
+                      onUpdate={onUpdate}
+                      timeline={timeline}
+                    />
                   )
                 })}
               </div>
