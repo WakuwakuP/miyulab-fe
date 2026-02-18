@@ -11,14 +11,11 @@ import { TimelineContext } from 'util/provider/TimelineProvider'
 
 import { Player } from './_components/Player'
 
-/** 1つのタブグループに含められるタイムラインの最大数 */
-const MAX_TABS_PER_GROUP = 3
-
 /**
  * 表示可能なタイムラインをカラム単位にグループ化する。
  *
  * - tabGroup が未設定のタイムラインは単独カラムとして扱う
- * - 同じ tabGroup を持つタイムラインは1つのカラムにまとめる（最大 MAX_TABS_PER_GROUP まで）
+ * - 同じ tabGroup を持つタイムラインは1つのカラムにまとめる
  * - グループ内の順序は order 順を維持する
  * - グループの表示位置はグループ内の最小 order で決定する
  */
@@ -43,9 +40,7 @@ function groupTimelines(
     if (tl.tabGroup) {
       const existing = groupMap.get(tl.tabGroup)
       if (existing) {
-        if (existing.length < MAX_TABS_PER_GROUP) {
-          existing.push(tl)
-        }
+        existing.push(tl)
       } else {
         groupMap.set(tl.tabGroup, [tl])
       }
