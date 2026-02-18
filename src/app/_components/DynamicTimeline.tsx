@@ -6,7 +6,13 @@ import type { TimelineConfigV2 } from 'types/types'
 import { isMixedQuery, isNotificationQuery } from 'util/queryBuilder'
 import { MixedTimeline } from './MixedTimeline'
 
-export const DynamicTimeline = ({ config }: { config: TimelineConfigV2 }) => {
+export const DynamicTimeline = ({
+  config,
+  headerOffset,
+}: {
+  config: TimelineConfigV2
+  headerOffset?: string
+}) => {
   if (!config.visible) {
     return null
   }
@@ -15,14 +21,14 @@ export const DynamicTimeline = ({ config }: { config: TimelineConfigV2 }) => {
 
   // 混合クエリ: statuses と notifications の両方を参照する場合は MixedTimeline を使用
   if (isMixedQuery(query)) {
-    return <MixedTimeline config={config} />
+    return <MixedTimeline config={config} headerOffset={headerOffset} />
   }
 
   // notification タイプ、または Advanced Query で n. テーブルを参照している場合は
   // NotificationTimeline を使用（表示形式が大きく異なるため）
   if (config.type === 'notification' || isNotificationQuery(query)) {
-    return <NotificationTimeline config={config} />
+    return <NotificationTimeline config={config} headerOffset={headerOffset} />
   }
 
-  return <UnifiedTimeline config={config} />
+  return <UnifiedTimeline config={config} headerOffset={headerOffset} />
 }

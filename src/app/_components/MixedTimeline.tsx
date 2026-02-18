@@ -28,7 +28,13 @@ import { getDefaultTimelineName } from 'util/timelineDisplayName'
  * statuses と notifications の両方を含むクエリ結果を表示する。
  * 各アイテムの `_type` フィールドに基づいて Status / Notification を描き分ける。
  */
-export const MixedTimeline = ({ config }: { config: TimelineConfigV2 }) => {
+export const MixedTimeline = ({
+  config,
+  headerOffset,
+}: {
+  config: TimelineConfigV2
+  headerOffset?: string
+}) => {
   const { data: timeline, averageDuration } = useTimelineData(config)
   const scrollerRef = useRef<VirtuosoHandle>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -80,6 +86,7 @@ export const MixedTimeline = ({ config }: { config: TimelineConfigV2 }) => {
     <Panel
       averageDuration={averageDuration}
       className="relative"
+      headerOffset={headerOffset}
       name={displayName}
       onClickHeader={() => scrollToTop()}
     >
