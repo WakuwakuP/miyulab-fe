@@ -25,9 +25,10 @@ import { useNotifications } from 'util/hooks/useNotifications'
  *   不要な DB クエリは発行されない。例えば type === 'tag' の場合、
  *   useFilteredTimeline は DB クエリをスキップして空配列を返す。
  */
-export function useTimelineData(
-  config: TimelineConfigV2,
-): (NotificationAddAppIndex | StatusAddAppIndex)[] {
+export function useTimelineData(config: TimelineConfigV2): {
+  data: (NotificationAddAppIndex | StatusAddAppIndex)[]
+  averageDuration: number | null
+} {
   // 全 Hook を無条件に呼び出す（Hook ルール遵守）
   const filteredTimeline = useFilteredTimeline(config)
   const filteredTagTimeline = useFilteredTagTimeline(config)
@@ -49,6 +50,6 @@ export function useTimelineData(
     case 'tag':
       return filteredTagTimeline
     default:
-      return []
+      return { averageDuration: null, data: [] }
   }
 }

@@ -5,6 +5,7 @@ import type { NotificationAddAppIndex, TimelineConfigV2 } from 'types/types'
 import { getSqliteDb, subscribe } from 'util/db/sqlite/connection'
 import type { SqliteStoredNotification } from 'util/db/sqlite/notificationStore'
 import { MAX_LENGTH } from 'util/environment'
+import { useQueryDuration } from 'util/hooks/useQueryDuration'
 import { AppsContext } from 'util/provider/AppsProvider'
 import {
   normalizeBackendFilter,
@@ -29,13 +30,15 @@ function resolveAppIndex(
  *
  * subscribe/notifyChange による変更通知で再クエリする。
  */
-export function useNotifications(
-  config?: TimelineConfigV2,
-): NotificationAddAppIndex[] {
+export function useNotifications(config?: TimelineConfigV2): {
+  data: NotificationAddAppIndex[]
+  averageDuration: number | null
+} {
   const apps = useContext(AppsContext)
   const [notifications, setNotifications] = useState<
     SqliteStoredNotification[]
   >([])
+  const { averageDuration, recordDuration } = useQueryDuration()
 
   // configが渡された場合はbackendFilterを適用、なければ全バックエンド
   const targetBackendUrls = useMemo(() => {
@@ -83,10 +86,12 @@ export function useNotifications(
       `
       binds.push(MAX_LENGTH)
 
+      const start = performance.now()
       const rows = db.exec(sql, {
         bind: binds,
         returnValue: 'resultRows',
       }) as (string | number)[][]
+      recordDuration(performance.now() - start)
 
       const results: SqliteStoredNotification[] = rows.map((row) => {
         const notification = JSON.parse(row[4] as string)
@@ -104,7 +109,12 @@ export function useNotifications(
       console.error('useNotifications query error:', e)
       setNotifications([])
     }
-  }, [targetBackendUrls, config?.customQuery, config?.notificationFilter])
+  }, [
+    targetBackendUrls,
+    config?.customQuery,
+    config?.notificationFilter,
+    recordDuration,
+  ])
 
   // 初回取得 + 変更通知で再取得
   useEffect(() => {
@@ -113,7 +123,7 @@ export function useNotifications(
   }, [fetchData])
 
   // appIndex を都度算出して付与し、解決できなかったレコードは除外する
-  return useMemo(
+  const data = useMemo(
     () =>
       notifications
         .map((n) => ({
@@ -123,4 +133,6 @@ export function useNotifications(
         .filter((n) => n.appIndex !== -1),
     [notifications, apps],
   )
+
+  return { averageDuration, data }
 }
