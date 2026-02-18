@@ -159,7 +159,14 @@ export function buildQueryFromConfig(config: TimelineConfigV2): string {
   }
 
   // バックエンドフィルタ
-  const backendCondition = buildBackendFilterCondition(config.backendFilter)
+  // クエリコンテキストに応じて適切なテーブル別名を使用する
+  const hasTimeline = timelineCondition != null
+  const hasNotification = notificationCondition != null
+  const backendCondition = buildBackendFilterCondition(
+    config.backendFilter,
+    hasTimeline,
+    hasNotification,
+  )
   if (backendCondition) {
     filterConditions.push(backendCondition)
   }
@@ -370,26 +377,49 @@ function buildNotificationTypeCondition(
 /**
  * バックエンドフィルタ条件を構築する
  *
- * v3: statuses_backends テーブル（エイリアス sb）経由で参照する。
+ * クエリコンテキストに応じて適切なテーブル別名を使用する:
+ * - statuses のみ: sb.backendUrl（statuses_backends テーブル）
+ * - notifications のみ: n.backendUrl（notifications テーブル）
+ * - 混合: 両方の条件を OR で結合
  *
  * - mode: 'all' → 条件なし（全バックエンド対象）
- * - mode: 'single' → sb.backendUrl = 'xxx'
- * - mode: 'composite' → sb.backendUrl IN ('xxx', 'yyy')
+ * - mode: 'single' → {alias}.backendUrl = 'xxx'
+ * - mode: 'composite' → {alias}.backendUrl IN ('xxx', 'yyy')
  */
 function buildBackendFilterCondition(
   filter: BackendFilter | undefined,
+  hasTimeline: boolean,
+  hasNotification: boolean,
 ): string | null {
   if (!filter || filter.mode === 'all') return null
 
+  // コンテキストに応じたテーブル別名リスト
+  const aliases: string[] = []
+  if (hasTimeline || (!hasTimeline && !hasNotification)) {
+    aliases.push('sb')
+  }
+  if (hasNotification) {
+    aliases.push('n')
+  }
+
   if (filter.mode === 'single') {
-    return `sb.backendUrl = '${escapeSqlString(filter.backendUrl)}'`
+    const escaped = escapeSqlString(filter.backendUrl)
+    if (aliases.length === 1) {
+      return `${aliases[0]}.backendUrl = '${escaped}'`
+    }
+    // 混合クエリ: 両テーブルの条件を OR で結合
+    return `(${aliases.map((a) => `${a}.backendUrl = '${escaped}'`).join(' OR ')})`
   }
 
   if (filter.mode === 'composite' && filter.backendUrls.length > 0) {
-    const escaped = filter.backendUrls
+    const escapedList = filter.backendUrls
       .map((url) => `'${escapeSqlString(url)}'`)
       .join(', ')
-    return `sb.backendUrl IN (${escaped})`
+    if (aliases.length === 1) {
+      return `${aliases[0]}.backendUrl IN (${escapedList})`
+    }
+    // 混合クエリ: 両テーブルの条件を OR で結合
+    return `(${aliases.map((a) => `${a}.backendUrl IN (${escapedList})`).join(' OR ')})`
   }
 
   return null
