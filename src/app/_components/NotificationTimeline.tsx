@@ -18,8 +18,10 @@ import { useTimelineData } from 'util/hooks/useTimelineData'
 
 export const NotificationTimeline = ({
   config,
+  headerOffset,
 }: {
   config: TimelineConfigV2
+  headerOffset?: string
 }) => {
   const { data: rawData, averageDuration } = useTimelineData(config)
   // Runtime type guard: filter out any non-notification items that may slip through
@@ -76,6 +78,7 @@ export const NotificationTimeline = ({
     <Panel
       averageDuration={averageDuration}
       className="relative"
+      headerOffset={headerOffset}
       name={config.label ?? 'Notification'}
       onClickHeader={() => {
         scrollToTop()

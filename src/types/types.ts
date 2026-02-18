@@ -146,6 +146,14 @@ export type TimelineConfigV2 = {
   /** バックエンドフィルタ（未指定時は 'all' として扱う） */
   backendFilter?: BackendFilter
   /**
+   * タブグループ名
+   *
+   * 同じ tabGroup を持つタイムラインは1つのカラムにまとめられ、
+   * タブUIで切り替えて表示される。
+   * 未設定の場合は従来どおり独立したカラムとして表示される。
+   */
+  tabGroup?: string
+  /**
    * カスタム SQL WHERE 句（advanced option）
    *
    * statuses (s), statuses_timeline_types (stt),

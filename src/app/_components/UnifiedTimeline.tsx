@@ -48,7 +48,13 @@ import { fetchInitialData, fetchMoreData } from 'util/timelineFetcher'
  * config.label が設定されている場合はそれを使用し、
  * 未設定の場合は type + backendFilter から自動生成する。
  */
-export const UnifiedTimeline = ({ config }: { config: TimelineConfigV2 }) => {
+export const UnifiedTimeline = ({
+  config,
+  headerOffset,
+}: {
+  config: TimelineConfigV2
+  headerOffset?: string
+}) => {
   const apps = useContext(AppsContext)
   const scrollerRef = useRef<VirtuosoHandle>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -219,6 +225,7 @@ export const UnifiedTimeline = ({ config }: { config: TimelineConfigV2 }) => {
     <Panel
       averageDuration={averageDuration}
       className="relative"
+      headerOffset={headerOffset}
       name={displayName}
       onClickHeader={() => scrollToTop()}
     >

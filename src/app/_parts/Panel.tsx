@@ -8,18 +8,21 @@ export const Panel = ({
   onClickHeader,
   className,
   averageDuration,
+  headerOffset,
 }: {
   children: ReactNode
   onClickHeader?: () => void
   name?: string
   className?: HTMLProps<HTMLElement>['className']
   averageDuration?: number | null
+  headerOffset?: string
 }) => {
   const ref = useRef<HTMLDivElement>(null)
-  const mainAreaStyle =
+  const offset = headerOffset ?? '0px'
+  const mainAreaHeight =
     name === undefined
-      ? 'h-[calc(100vh-0.75rem)]'
-      : 'h-[calc(100vh-0.75rem-2rem)]'
+      ? `calc(100vh - 0.75rem - ${offset})`
+      : `calc(100vh - 0.75rem - 2rem - ${offset})`
 
   const durationTitle =
     averageDuration != null
@@ -41,7 +44,7 @@ export const Panel = ({
           {name}
         </h2>
       )}
-      <div className={[mainAreaStyle, className].join(' ')} ref={ref}>
+      <div className={className} ref={ref} style={{ height: mainAreaHeight }}>
         {children}
       </div>
     </section>
