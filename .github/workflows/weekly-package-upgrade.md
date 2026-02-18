@@ -43,9 +43,11 @@ The agent runs inside a sandboxed environment with a network firewall proxy. Yar
 Run the following commands at the start:
 
 ```bash
-yarn config set httpProxy "$HTTP_PROXY"
-yarn config set httpsProxy "$HTTPS_PROXY"
+yarn config set --home httpProxy "$HTTP_PROXY"
+yarn config set --home httpsProxy "$HTTPS_PROXY"
 ```
+
+The `--home` flag writes the proxy settings to `~/.yarnrc.yml` (user-level config) instead of the project's `.yarnrc.yml`, so the proxy configuration stays local to the agent environment and does not pollute the repository.
 
 This ensures Yarn can reach the npm registry through the firewall. **Do not clear or override these proxy settings later.**
 
