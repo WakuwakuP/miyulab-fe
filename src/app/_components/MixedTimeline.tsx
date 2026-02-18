@@ -29,7 +29,7 @@ import { getDefaultTimelineName } from 'util/timelineDisplayName'
  * 各アイテムの `_type` フィールドに基づいて Status / Notification を描き分ける。
  */
 export const MixedTimeline = ({ config }: { config: TimelineConfigV2 }) => {
-  const timeline = useTimelineData(config)
+  const { data: timeline, averageDuration } = useTimelineData(config)
   const scrollerRef = useRef<VirtuosoHandle>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -78,6 +78,7 @@ export const MixedTimeline = ({ config }: { config: TimelineConfigV2 }) => {
 
   return (
     <Panel
+      averageDuration={averageDuration}
       className="relative"
       name={displayName}
       onClickHeader={() => scrollToTop()}

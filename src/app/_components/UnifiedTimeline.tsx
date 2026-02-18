@@ -54,7 +54,10 @@ export const UnifiedTimeline = ({ config }: { config: TimelineConfigV2 }) => {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // データ取得
-  const timeline = useTimelineData(config) as StatusAddAppIndex[]
+  const { data: timeline, averageDuration } = useTimelineData(config) as {
+    data: StatusAddAppIndex[]
+    averageDuration: number | null
+  }
 
   const [enableScrollToTop, setEnableScrollToTop] = useState(true)
   const [isScrolling, setIsScrolling] = useState(false)
@@ -214,6 +217,7 @@ export const UnifiedTimeline = ({ config }: { config: TimelineConfigV2 }) => {
 
   return (
     <Panel
+      averageDuration={averageDuration}
       className="relative"
       name={displayName}
       onClickHeader={() => scrollToTop()}

@@ -47,7 +47,7 @@ export const HomeTimelineProvider = ({ children }: { children: ReactNode }) => {
   // IndexedDBからリアクティブにデータ取得
   // appIndex は useTimeline / useNotifications 内で backendUrl から都度算出される
   const homeTimeline = useTimeline('home')
-  const notifications = useNotifications()
+  const { data: notifications } = useNotifications()
 
   // 既存APIとの互換性を保つためのラッパー
   // appIndex → backendUrl への変換をここで行う

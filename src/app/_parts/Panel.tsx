@@ -7,17 +7,25 @@ export const Panel = ({
   name,
   onClickHeader,
   className,
+  averageDuration,
 }: {
   children: ReactNode
   onClickHeader?: () => void
   name?: string
   className?: HTMLProps<HTMLElement>['className']
+  averageDuration?: number | null
 }) => {
   const ref = useRef<HTMLDivElement>(null)
   const mainAreaStyle =
     name === undefined
       ? 'h-[calc(100vh-0.75rem)]'
       : 'h-[calc(100vh-0.75rem-2rem)]'
+
+  const durationTitle =
+    averageDuration != null
+      ? `Query: ${averageDuration.toFixed(2)} ms`
+      : undefined
+
   return (
     <section>
       {name === undefined ? null : (
@@ -28,6 +36,7 @@ export const Panel = ({
               onClickHeader()
             }
           }}
+          title={durationTitle}
         >
           {name}
         </h2>
