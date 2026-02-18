@@ -3,7 +3,10 @@
 import {
   DndContext,
   type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent,
   PointerSensor,
+  useDroppable,
   useSensor,
   useSensors,
 } from '@dnd-kit/core'
@@ -243,6 +246,7 @@ const FolderSection = ({
   collapsedFolders,
   groupKey,
   isDragging,
+  isDropTarget,
   memberCount,
   onDeleteFolder,
   onRenameFolder,
@@ -253,22 +257,28 @@ const FolderSection = ({
   collapsedFolders: Set<string>
   groupKey: string
   isDragging?: boolean
+  isDropTarget?: boolean
   memberCount: number
   onDeleteFolder: (groupKey: string) => void
   onRenameFolder: (groupKey: string, newName: string) => void
   onToggleCollapse: (groupKey: string) => void
 }) => {
+  const { isOver, setNodeRef } = useDroppable({
+    id: `droppable-folder-${groupKey}`,
+  })
   const colors = getFolderColors(groupKey, allFolderKeys)
   const isCollapsed = collapsedFolders.has(groupKey)
   const [isRenaming, setIsRenaming] = useState(false)
   const [renameValue, setRenameValue] = useState(groupKey)
+  const highlighted = isDropTarget || isOver
 
   return (
     <div
-      className={`rounded-md border ${colors.border} overflow-hidden ${isDragging ? 'opacity-50' : ''}`}
+      className={`rounded-md border ${highlighted ? 'border-white ring-2 ring-white/30' : colors.border} overflow-hidden ${isDragging ? 'opacity-50' : ''} transition-all`}
+      ref={setNodeRef}
     >
       <button
-        className={`flex items-center justify-between w-full px-3 py-2 ${colors.header}`}
+        className={`flex items-center justify-between w-full px-3 py-2 ${highlighted ? 'bg-white/10' : colors.header} transition-colors`}
         onClick={() => onToggleCollapse(groupKey)}
         type="button"
       >
@@ -529,7 +539,10 @@ export const TimelineManagement = () => {
   )
   // 空フォルダを管理する state
   const [emptyFolders, setEmptyFolders] = useState<string[]>([])
-
+  // ドラッグ中のアクティブID
+  const [activeId, setActiveId] = useState<string | null>(null)
+  // ドラッグ中にホバーしているフォルダキー
+  const [overFolderKey, setOverFolderKey] = useState<string | null>(null)
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -771,20 +784,79 @@ export const TimelineManagement = () => {
     return result
   }, [columns, emptyFolders, folderGroups])
 
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    setActiveId(String(event.active.id))
+    setOverFolderKey(null)
+  }, [])
+
+  const handleDragOver = useCallback((event: DragOverEvent) => {
+    const { over } = event
+    if (over == null) {
+      setOverFolderKey(null)
+      return
+    }
+    const overId = String(over.id)
+    // droppable-folder-* のドロップターゲットにホバー中
+    if (overId.startsWith('droppable-folder-')) {
+      setOverFolderKey(overId.slice('droppable-folder-'.length))
+    } else {
+      setOverFolderKey(null)
+    }
+  }, [])
+
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       const { active, over } = event
+      setActiveId(null)
+      setOverFolderKey(null)
 
       if (over == null || active.id === over.id) {
         return
       }
 
-      const activeId = String(active.id)
+      const draggedId = String(active.id)
       const overId = String(over.id)
 
       // フォルダ prefix のチェック
-      const isActiveFolder = activeId.startsWith('folder-')
+      const isActiveFolder = draggedId.startsWith('folder-')
+      const isOverDroppableFolder = overId.startsWith('droppable-folder-')
       const isOverFolder = overId.startsWith('folder-')
+
+      // タイムラインをフォルダのドロップゾーンにドロップ
+      if (!isActiveFolder && isOverDroppableFolder) {
+        const folderKey = overId.slice('droppable-folder-'.length)
+        const activeTimeline = sortedTimelines.find((t) => t.id === draggedId)
+        if (!activeTimeline) return
+
+        // フォルダ内の最大 order を取得して末尾に追加
+        const folderMembers = folderGroups.get(folderKey) ?? []
+        const maxFolderOrder =
+          folderMembers.length > 0
+            ? Math.max(...folderMembers.map((m) => m.order))
+            : Math.min(
+                ...sortedTimelines
+                  .filter((t) => t.id !== draggedId)
+                  .map((t) => t.order),
+              ) - 1
+
+        const updatedTimelines = sortedTimelines.map((t) => {
+          if (t.id === draggedId) {
+            return { ...t, order: maxFolderOrder + 0.5, tabGroup: folderKey }
+          }
+          return t
+        })
+
+        // order を正規化
+        const normalized = [...updatedTimelines]
+          .sort((a, b) => a.order - b.order)
+          .map((t, i) => ({ ...t, order: i }))
+
+        setTimelineSettings((prev) => ({
+          ...prev,
+          timelines: normalized,
+        }))
+        return
+      }
 
       // columnsWithEmptyFolders ベースで並べ替え
       const currentColumns = [...columnsWithEmptyFolders]
@@ -801,44 +873,8 @@ export const TimelineManagement = () => {
       }
 
       if (isActiveFolder || isOverFolder) {
-        // 個別タイムラインをフォルダにドロップ
-        if (!isActiveFolder && isOverFolder) {
-          const folderKey = overId.slice('folder-'.length)
-          const activeTimeline = sortedTimelines.find((t) => t.id === activeId)
-          if (!activeTimeline) return
-
-          // フォルダ内の最大 order を取得して末尾に追加
-          const folderMembers = folderGroups.get(folderKey) ?? []
-          const maxFolderOrder =
-            folderMembers.length > 0
-              ? Math.max(...folderMembers.map((m) => m.order))
-              : Math.min(
-                  ...sortedTimelines
-                    .filter((t) => t.id !== activeId)
-                    .map((t) => t.order),
-                ) - 1
-
-          const updatedTimelines = sortedTimelines.map((t) => {
-            if (t.id === activeId) {
-              return { ...t, order: maxFolderOrder + 0.5, tabGroup: folderKey }
-            }
-            return t
-          })
-
-          // order を正規化
-          const normalized = [...updatedTimelines]
-            .sort((a, b) => a.order - b.order)
-            .map((t, i) => ({ ...t, order: i }))
-
-          setTimelineSettings((prev) => ({
-            ...prev,
-            timelines: normalized,
-          }))
-          return
-        }
-
-        // フォルダまたはフォルダへの移動
-        const oldIndex = getColumnIndex(activeId)
+        // フォルダの並べ替え
+        const oldIndex = getColumnIndex(draggedId)
         const newIndex = getColumnIndex(overId)
 
         if (oldIndex === -1 || newIndex === -1) return
@@ -866,7 +902,7 @@ export const TimelineManagement = () => {
       } else {
         // 個別タイムラインの移動
         const oldIndex = sortedTimelines.findIndex(
-          (timeline) => timeline.id === activeId,
+          (timeline) => timeline.id === draggedId,
         )
         const newIndex = sortedTimelines.findIndex(
           (timeline) => timeline.id === overId,
@@ -950,7 +986,12 @@ export const TimelineManagement = () => {
         {/* カラム順にタイムライン & フォルダを表示 */}
         <div>
           <h4 className="mb-2 text-sm font-semibold">Timelines</h4>
-          <DndContext onDragEnd={handleDragEnd} sensors={sensors}>
+          <DndContext
+            onDragEnd={handleDragEnd}
+            onDragOver={handleDragOver}
+            onDragStart={handleDragStart}
+            sensors={sensors}
+          >
             <SortableContext
               items={sortableIdsWithFolders}
               strategy={verticalListSortingStrategy}
@@ -967,6 +1008,11 @@ export const TimelineManagement = () => {
                           allFolderKeys={allFolderKeys}
                           collapsedFolders={collapsedFolders}
                           groupKey={column.groupKey}
+                          isDropTarget={
+                            overFolderKey === column.groupKey &&
+                            activeId != null &&
+                            !activeId.startsWith('folder-')
+                          }
                           memberCount={column.members.length}
                           onDeleteFolder={(key) => {
                             onDeleteFolder(key)
