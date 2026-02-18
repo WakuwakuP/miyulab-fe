@@ -561,35 +561,56 @@ export const TimelineManagement = () => {
     [timelineSettings.timelines, setTimelineSettings],
   )
 
-  // 使われていないフォルダキーの中から次に作成可能なものを返す
-  const sortedGroupKeys = useMemo(() => {
-    return [...folderGroups.keys()].sort()
-  }, [folderGroups])
+  // 表示順にカラム（単体 or フォルダ）を構築
+  const columns = useMemo(() => {
+    const result: (
+      | {
+          type: 'single'
+          timeline: TimelineConfigV2
+          sortOrder: number
+        }
+      | {
+          type: 'folder'
+          groupKey: string
+          members: TimelineConfigV2[]
+          sortOrder: number
+        }
+    )[] = []
+
+    for (const tl of ungroupedTimelines) {
+      result.push({ sortOrder: tl.order, timeline: tl, type: 'single' })
+    }
+    for (const [groupKey, members] of folderGroups) {
+      const sortOrder = Math.min(...members.map((m) => m.order))
+      result.push({ groupKey, members, sortOrder, type: 'folder' })
+    }
+    result.sort((a, b) => a.sortOrder - b.sortOrder)
+    return result
+  }, [ungroupedTimelines, folderGroups])
 
   return (
     <div className="p-2 pt-4 h-full overflow-y-auto">
       <h3 className="mb-4 text-lg font-semibold">Timeline Management</h3>
       <div className="space-y-4">
-        {/* フォルダ（タブグループ） */}
-        {sortedGroupKeys.length > 0 && (
-          <div>
-            <h4 className="mb-2 text-sm font-semibold">Folders</h4>
-            <div className="space-y-2">
-              {sortedGroupKeys.map((groupKey) => {
-                const members = folderGroups.get(groupKey) ?? []
+        {/* カラム順にタイムライン & フォルダを表示 */}
+        <div>
+          <h4 className="mb-2 text-sm font-semibold">Timelines</h4>
+          <div className="space-y-2">
+            {columns.map((column) => {
+              if (column.type === 'folder') {
                 return (
                   <FolderSection
                     collapsedFolders={collapsedFolders}
-                    groupKey={groupKey}
-                    key={groupKey}
-                    memberCount={members.length}
+                    groupKey={column.groupKey}
+                    key={`folder-${column.groupKey}`}
+                    memberCount={column.members.length}
                     onDeleteFolder={onDeleteFolder}
                     onToggleCollapse={onToggleCollapse}
                   >
-                    {members.map((timeline) => (
+                    {column.members.map((timeline) => (
                       <TimelineItem
                         editingId={editingId}
-                        folderGroupKey={groupKey}
+                        folderGroupKey={column.groupKey}
                         key={timeline.id}
                         onDelete={onDelete}
                         onRemoveFromFolder={onRemoveFromFolder}
@@ -599,73 +620,66 @@ export const TimelineManagement = () => {
                         timeline={timeline}
                       />
                     ))}
-                    {members.length === 0 && (
+                    {column.members.length === 0 && (
                       <p className="text-xs text-gray-500 py-1">
                         Empty folder — add timelines below
                       </p>
                     )}
                   </FolderSection>
                 )
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* 未グループのタイムライン */}
-        <div>
-          <h4 className="mb-2 text-sm font-semibold">Timelines</h4>
-          <div className="space-y-2">
-            {ungroupedTimelines.map((timeline) => (
-              <div key={timeline.id}>
-                <TimelineItem
-                  editingId={editingId}
-                  key={timeline.id}
-                  onDelete={onDelete}
-                  onToggleEdit={onToggleEdit}
-                  onToggleVisibility={onToggleVisibility}
-                  onUpdate={onUpdate}
-                  timeline={timeline}
-                />
-                {/* フォルダ振り分けUI */}
-                {assigningToFolder === timeline.id ? (
-                  <div className="flex items-center gap-2 py-1 pl-6">
-                    <span className="text-xs text-gray-400">Move to:</span>
-                    {availableFolderKeys.map((key) => {
-                      const colors = TAB_GROUP_COLORS[key]
-                      return (
-                        <button
-                          className={`rounded px-2 py-0.5 text-xs border ${colors.border} ${colors.text} hover:opacity-80`}
-                          key={key}
-                          onClick={() => onMoveToFolder(timeline.id, key)}
-                          type="button"
-                        >
-                          {key}
-                        </button>
-                      )
-                    })}
-                    <button
-                      className="text-xs text-gray-500 hover:text-gray-300"
-                      onClick={() => setAssigningToFolder(null)}
-                      type="button"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                ) : (
-                  availableFolderKeys.length > 0 && (
-                    <button
-                      className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-300 pl-6 py-0.5"
-                      onClick={() => setAssigningToFolder(timeline.id)}
-                      title="Add to folder"
-                      type="button"
-                    >
-                      <RiFolderAddLine size={14} />
-                      <span>Add to folder</span>
-                    </button>
-                  )
-                )}
-              </div>
-            ))}
+              }
+              const timeline = column.timeline
+              return (
+                <div key={timeline.id}>
+                  <TimelineItem
+                    editingId={editingId}
+                    onDelete={onDelete}
+                    onToggleEdit={onToggleEdit}
+                    onToggleVisibility={onToggleVisibility}
+                    onUpdate={onUpdate}
+                    timeline={timeline}
+                  />
+                  {/* フォルダ振り分けUI */}
+                  {assigningToFolder === timeline.id ? (
+                    <div className="flex items-center gap-2 py-1 pl-6">
+                      <span className="text-xs text-gray-400">Move to:</span>
+                      {availableFolderKeys.map((key) => {
+                        const colors = TAB_GROUP_COLORS[key]
+                        return (
+                          <button
+                            className={`rounded px-2 py-0.5 text-xs border ${colors.border} ${colors.text} hover:opacity-80`}
+                            key={key}
+                            onClick={() => onMoveToFolder(timeline.id, key)}
+                            type="button"
+                          >
+                            {key}
+                          </button>
+                        )
+                      })}
+                      <button
+                        className="text-xs text-gray-500 hover:text-gray-300"
+                        onClick={() => setAssigningToFolder(null)}
+                        type="button"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    availableFolderKeys.length > 0 && (
+                      <button
+                        className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-300 pl-6 py-0.5"
+                        onClick={() => setAssigningToFolder(timeline.id)}
+                        title="Add to folder"
+                        type="button"
+                      >
+                        <RiFolderAddLine size={14} />
+                        <span>Add to folder</span>
+                      </button>
+                    )
+                  )}
+                </div>
+              )
+            })}
           </div>
         </div>
 

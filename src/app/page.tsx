@@ -55,8 +55,12 @@ function groupTimelines(
   }
 
   for (const [groupKey, configs] of groupMap) {
-    const sortOrder = Math.min(...configs.map((c) => c.order))
-    result.push({ configs, groupKey, sortOrder, type: 'tabbed' })
+    const sortedConfigs = [...configs].sort((a, b) => a.order - b.order)
+    const sortOrder =
+      sortedConfigs.length > 0
+        ? sortedConfigs[0].order
+        : Number.POSITIVE_INFINITY
+    result.push({ configs: sortedConfigs, groupKey, sortOrder, type: 'tabbed' })
   }
 
   result.sort((a, b) => a.sortOrder - b.sortOrder)
@@ -77,9 +81,13 @@ export default function Home() {
   const timelineSettings = useContext(TimelineContext)
 
   // Sort timelines by order and filter visible ones
-  const visibleTimelines = timelineSettings.timelines
-    .filter((timeline) => timeline.visible)
-    .sort((a, b) => a.order - b.order)
+  const visibleTimelines = useMemo(
+    () =>
+      timelineSettings.timelines
+        .filter((timeline) => timeline.visible)
+        .sort((a, b) => a.order - b.order),
+    [timelineSettings.timelines],
+  )
 
   const columns = useMemo(
     () => groupTimelines(visibleTimelines),
