@@ -52,6 +52,7 @@ function generateId(): string {
 }
 
 const SortableTimelineItem = ({
+  allTimelines,
   canMoveDown,
   canMoveUp,
   editingId,
@@ -63,6 +64,7 @@ const SortableTimelineItem = ({
   onUpdate,
   timeline,
 }: {
+  allTimelines: TimelineConfigV2[]
   canMoveDown: boolean
   canMoveUp: boolean
   editingId: string | null
@@ -172,6 +174,7 @@ const SortableTimelineItem = ({
 
       {isEditing && (
         <TimelineEditPanel
+          allTimelines={allTimelines}
           config={timeline}
           onCancel={() => onToggleEdit(timeline.id)}
           onSave={(updates) => {
@@ -534,6 +537,7 @@ export const TimelineManagement = () => {
               <div className="space-y-2">
                 {sortedTimelines.map((timeline, index) => (
                   <SortableTimelineItem
+                    allTimelines={timelineSettings.timelines}
                     canMoveDown={index < sortedTimelines.length - 1}
                     canMoveUp={index > 0}
                     editingId={editingId}

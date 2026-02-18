@@ -14,13 +14,43 @@ import {
   parseQueryToConfig,
 } from 'util/queryBuilder'
 
+/** 1つのタブグループに含められるタイムラインの最大数 */
+const MAX_TABS_PER_GROUP = 3
+
+/** タブグループの色テーマ */
+const TAB_GROUP_COLORS: Record<
+  string,
+  { bg: string; border: string; hover: string; text: string }
+> = {
+  A: {
+    bg: 'bg-blue-900/40',
+    border: 'border-blue-500',
+    hover: 'hover:text-blue-400',
+    text: 'text-blue-400',
+  },
+  B: {
+    bg: 'bg-emerald-900/40',
+    border: 'border-emerald-500',
+    hover: 'hover:text-emerald-400',
+    text: 'text-emerald-400',
+  },
+  C: {
+    bg: 'bg-amber-900/40',
+    border: 'border-amber-500',
+    hover: 'hover:text-amber-400',
+    text: 'text-amber-400',
+  },
+}
+
 type TimelineEditPanelProps = {
+  allTimelines: TimelineConfigV2[]
   config: TimelineConfigV2
   onCancel: () => void
   onSave: (updates: Partial<TimelineConfigV2>) => void
 }
 
 export const TimelineEditPanel = ({
+  allTimelines,
   config,
   onCancel,
   onSave,
@@ -203,23 +233,57 @@ export const TimelineEditPanel = ({
 
       {/* Tab Group */}
       <div className="space-y-1">
-        <label
-          className="text-xs font-semibold text-gray-300"
-          htmlFor={`tabGroup-${config.id}`}
-        >
-          Tab Group
-        </label>
-        <input
-          className="w-full rounded bg-gray-700 px-2 py-1 text-sm text-white"
-          id={`tabGroup-${config.id}`}
-          onChange={(e) => setTabGroup(e.target.value)}
-          placeholder="Empty = standalone column"
-          type="text"
-          value={tabGroup}
-        />
-        <p className="text-xs text-gray-500">
-          同じグループ名を持つタイムラインがタブで切り替え可能になります
-        </p>
+        <span className="text-xs font-semibold text-gray-300">Tab Group</span>
+        <div className="flex flex-wrap gap-2">
+          {/* None ボタン */}
+          <button
+            className={`rounded px-3 py-1 text-xs border transition-colors ${
+              !tabGroup
+                ? 'border-gray-400 bg-gray-700 text-white'
+                : 'border-gray-600 bg-gray-800 text-gray-400 hover:text-gray-200'
+            }`}
+            onClick={() => setTabGroup('')}
+            type="button"
+          >
+            None
+          </button>
+          {/* グループ A / B / C ボタン */}
+          {Object.entries(TAB_GROUP_COLORS).map(([groupKey, colors]) => {
+            const membersInGroup = allTimelines.filter(
+              (t) => t.tabGroup === groupKey && t.id !== config.id,
+            )
+            const isFull = membersInGroup.length >= MAX_TABS_PER_GROUP
+            const isSelected = tabGroup === groupKey
+            return (
+              <button
+                className={`rounded px-3 py-1 text-xs border transition-colors ${
+                  isSelected
+                    ? `${colors.border} ${colors.bg} ${colors.text}`
+                    : isFull
+                      ? 'border-gray-700 bg-gray-900 text-gray-600 cursor-not-allowed'
+                      : `border-gray-600 bg-gray-800 text-gray-400 ${colors.hover}`
+                }`}
+                disabled={isFull && !isSelected}
+                key={groupKey}
+                onClick={() => setTabGroup(groupKey)}
+                title={
+                  isFull && !isSelected
+                    ? `Group ${groupKey} is full (max ${MAX_TABS_PER_GROUP})`
+                    : `Assign to Group ${groupKey}`
+                }
+                type="button"
+              >
+                {groupKey}
+                {membersInGroup.length > 0 && (
+                  <span className="ml-1 opacity-60">
+                    ({membersInGroup.length + (isSelected ? 1 : 0)}/
+                    {MAX_TABS_PER_GROUP})
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </div>
       </div>
 
       {/* Advanced Query トグルスイッチ（表示名の直下） */}
