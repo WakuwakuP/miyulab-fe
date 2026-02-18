@@ -301,17 +301,19 @@ const FolderSection = ({
               )}
             </div>
           </button>
-          <div
+          <button
+            aria-label="Reorder folder"
             className="cursor-move text-gray-400 hover:text-white"
             onClick={(e) => e.stopPropagation()}
+            type="button"
             {...dragAttributes}
             {...dragListeners}
           >
             <RiDragMove2Line size={16} />
-          </div>
+          </button>
           {isRenaming ? (
             <input
-              className="bg-gray-700 text-sm text-white rounded px-1 py-0.5 w-24"
+              className="bg-gray-700 text-sm text-white rounded px-1 py-0.5 max-w-full"
               onBlur={() => {
                 const trimmed = renameValue.trim()
                 if (trimmed && trimmed !== groupKey) {
@@ -336,6 +338,7 @@ const FolderSection = ({
                   setIsRenaming(false)
                 }
               }}
+              ref={(el) => el?.focus()}
               type="text"
               value={renameValue}
             />
@@ -826,14 +829,15 @@ export const TimelineManagement = () => {
 
         // フォルダ内の最大 order を取得して末尾に追加
         const folderMembers = folderGroups.get(folderKey) ?? []
+        const otherOrders = sortedTimelines
+          .filter((t) => t.id !== draggedId)
+          .map((t) => t.order)
+        const baseOrder =
+          otherOrders.length > 0 ? Math.min(...otherOrders) - 1 : 0
         const maxFolderOrder =
           folderMembers.length > 0
             ? Math.max(...folderMembers.map((m) => m.order))
-            : Math.min(
-                ...sortedTimelines
-                  .filter((t) => t.id !== draggedId)
-                  .map((t) => t.order),
-              ) - 1
+            : baseOrder
 
         const updatedTimelines = sortedTimelines.map((t) => {
           if (t.id === draggedId) {
@@ -1065,8 +1069,12 @@ export const TimelineManagement = () => {
                               />
                             ))}
                             {column.members.length === 0 && (
-                              <p className="text-xs text-gray-500 py-1">
-                                Empty folder — drag timelines here
+                              <p className="flex items-center gap-1 text-xs text-gray-500 py-1">
+                                <RiDragMove2Line aria-hidden="true" />
+                                <span>
+                                  Empty folder — drag and drop timelines here to
+                                  organize them
+                                </span>
                               </p>
                             )}
                           </FolderSection>
