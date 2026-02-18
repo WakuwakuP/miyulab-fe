@@ -10,7 +10,7 @@ import {
   useEffectEvent,
   useRef,
 } from 'react'
-import type { App } from 'types/types'
+import type { App, TimelineConfigV2 } from 'types/types'
 import type { TimelineType as DbTimelineType } from 'util/db/database'
 import { handleDeleteEvent, upsertStatus } from 'util/db/sqlite/statusStore'
 import { GetClient } from 'util/GetClient'
@@ -248,23 +248,65 @@ export const StreamingManagerProvider = ({
   // 初期データ取得（ストリーム接続に伴う）
   // =============================================
   const fetchInitialDataForTimelines = useEffectEvent(() => {
+    // local / public は全 backendUrl に対してデフォルトで初期データを取得
+    const fetchedLocalPublic = new Set<string>()
+    for (const app of apps) {
+      const { backendUrl } = app
+      const client = GetClient(app)
+      for (const type of ['local', 'public'] as const) {
+        const key = `${type}|${backendUrl}`
+        if (!fetchedLocalPublic.has(key)) {
+          fetchedLocalPublic.add(key)
+          // fetchInitialData は config.type に基づいて動作するため、
+          // local/public 用の最小限の設定を構築して渡す
+          const config: TimelineConfigV2 = {
+            id: `__default_${type}`,
+            order: 0,
+            type,
+            visible: false,
+          }
+          fetchInitialData(client, config, backendUrl).catch((error) => {
+            console.error(
+              `Failed to fetch initial data for ${type} (${backendUrl}):`,
+              error,
+            )
+          })
+        }
+      }
+    }
+
+    // tag タイムラインの初期データ取得（tagConfig を持つ全設定が対象）
+    // 同一 tag × backendUrl の組み合わせは重複フェッチを防止する
+    const fetchedTags = new Set<string>()
     for (const config of timelineSettings.timelines) {
-      // home は StatusStoreProvider が担当、notification は対象外
-      if (config.type === 'home' || config.type === 'notification') continue
+      if (!config.tagConfig || config.tagConfig.tags.length === 0) continue
 
       const filter = normalizeBackendFilter(config.backendFilter, apps)
       const targetUrls = resolveBackendUrls(filter, apps)
 
       for (const url of targetUrls) {
+        // 未フェッチのタグのみ抽出
+        const newTags = config.tagConfig.tags.filter((tag) => {
+          const key = `${tag}|${url}`
+          if (fetchedTags.has(key)) return false
+          fetchedTags.add(key)
+          return true
+        })
+        if (newTags.length === 0) continue
+
         const app = apps.find((a) => a.backendUrl === url)
         if (!app) continue
 
+        // fetchInitialData は config.type で分岐するため、type を 'tag' に強制する
+        const tagFetchConfig: TimelineConfigV2 = {
+          ...config,
+          tagConfig: { ...config.tagConfig, tags: newTags },
+          type: 'tag',
+        }
+
         const client = GetClient(app)
-        fetchInitialData(client, config, url).catch((error) => {
-          console.error(
-            `Failed to fetch initial data for ${config.type} (${url}):`,
-            error,
-          )
+        fetchInitialData(client, tagFetchConfig, url).catch((error) => {
+          console.error(`Failed to fetch initial data for tag (${url}):`, error)
         })
       }
     }
