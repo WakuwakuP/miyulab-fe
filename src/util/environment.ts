@@ -27,6 +27,6 @@ assert(
 export const BACKEND_SNS: Backend =
   process.env.NEXT_PUBLIC_BACKEND_SNS ?? 'pleroma'
 
-export const MAX_LENGTH = Number(process.env.NEXT_PUBLIC_MAX_LENGTH ?? 10000)
+export const MAX_LENGTH = Number(process.env.NEXT_PUBLIC_MAX_LENGTH ?? 100000)
 
 export const CENTER_INDEX = Math.floor(Number.MAX_SAFE_INTEGER / 2)

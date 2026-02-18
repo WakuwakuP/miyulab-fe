@@ -4,7 +4,6 @@
 
 // Cleanup
 export {
-  cleanupOldData,
   enforceMaxLength,
   startPeriodicCleanup,
 } from './cleanup'

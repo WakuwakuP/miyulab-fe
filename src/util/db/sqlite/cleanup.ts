@@ -1,40 +1,13 @@
 /**
  * SQLite ベースのクリーンアップ
  *
- * TTL + MAX_LENGTH 管理を SQL で効率的に行う。
+ * MAX_LENGTH 管理を SQL で効率的に行う。
+ * TTL は設けず、MAX_LENGTH を超えるまでデータを半永久的に保持する。
  */
 
 import { MAX_LENGTH } from 'util/environment'
 import type { TimelineType } from '../database'
 import { getSqliteDb, notifyChange } from './connection'
-
-const TTL_MS = 7 * 24 * 60 * 60 * 1000 // 7日
-
-/**
- * 古いデータをクリーンアップ（TTLベース）
- */
-export async function cleanupOldData(): Promise<void> {
-  const handle = await getSqliteDb()
-  const { db } = handle
-  const threshold = Date.now() - TTL_MS
-
-  db.exec('BEGIN;')
-  try {
-    db.exec('DELETE FROM statuses WHERE storedAt < ?;', {
-      bind: [threshold],
-    })
-    db.exec('DELETE FROM notifications WHERE storedAt < ?;', {
-      bind: [threshold],
-    })
-    db.exec('COMMIT;')
-  } catch (e) {
-    db.exec('ROLLBACK;')
-    throw e
-  }
-
-  notifyChange('statuses')
-  notifyChange('notifications')
-}
 
 /**
  * MAX_LENGTH を超えるデータを削除（タイムライン種類ごと）
@@ -128,7 +101,6 @@ export function startPeriodicCleanup(): () => void {
   // 初回実行
   void (async () => {
     try {
-      await cleanupOldData()
       await enforceMaxLength()
     } catch (error) {
       console.error('Failed to perform initial periodic cleanup', error)
@@ -140,7 +112,6 @@ export function startPeriodicCleanup(): () => void {
     () => {
       void (async () => {
         try {
-          await cleanupOldData()
           await enforceMaxLength()
         } catch (error) {
           console.error('Failed to perform periodic cleanup', error)
