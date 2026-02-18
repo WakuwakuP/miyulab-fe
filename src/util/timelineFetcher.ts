@@ -5,13 +5,12 @@ import { bulkUpsertStatuses } from 'util/db/sqlite/statusStore'
 /**
  * タイムライン種別に応じた初期データ取得
  *
- * API の only_media パラメータが使える場合は API 側でフィルタし、
- * 使えない場合は全件取得して表示層でフィルタする。
+ * 全件取得して表示層でフィルタする（only_media 等の API パラメータは使用しない）。
  *
  * - home: StatusStoreProvider が userStreaming + getHomeTimeline で管理するため対象外
- * - local: only_media 対応 → API パラメータ使用
- * - public: only_media 対応 → API パラメータ使用
- * - tag: only_media 非対応 → 全件取得（表示層フィルタ）
+ * - local: 全件取得（表示層フィルタ）
+ * - public: 全件取得（表示層フィルタ）
+ * - tag: 全件取得（表示層フィルタ）
  *
  * ## home タイムラインについて
  * home タイムラインの初期データ取得は StatusStoreProvider が
@@ -33,19 +32,13 @@ export async function fetchInitialData(
       break
 
     case 'local': {
-      const res = await client.getLocalTimeline({
-        limit,
-        only_media: config.onlyMedia ?? false,
-      })
+      const res = await client.getLocalTimeline({ limit })
       await bulkUpsertStatuses(res.data, backendUrl, 'local')
       break
     }
 
     case 'public': {
-      const res = await client.getPublicTimeline({
-        limit,
-        only_media: config.onlyMedia ?? false,
-      })
+      const res = await client.getPublicTimeline({ limit })
       await bulkUpsertStatuses(res.data, backendUrl, 'public')
       break
     }
@@ -88,7 +81,6 @@ export async function fetchMoreData(
       const res = await client.getLocalTimeline({
         limit,
         max_id: maxId,
-        only_media: config.onlyMedia ?? false,
       })
       await bulkUpsertStatuses(res.data, backendUrl, 'local')
       return res.data.length
@@ -98,7 +90,6 @@ export async function fetchMoreData(
       const res = await client.getPublicTimeline({
         limit,
         max_id: maxId,
-        only_media: config.onlyMedia ?? false,
       })
       await bulkUpsertStatuses(res.data, backendUrl, 'public')
       return res.data.length
