@@ -801,6 +801,42 @@ export const TimelineManagement = () => {
       }
 
       if (isActiveFolder || isOverFolder) {
+        // 個別タイムラインをフォルダにドロップ
+        if (!isActiveFolder && isOverFolder) {
+          const folderKey = overId.slice('folder-'.length)
+          const activeTimeline = sortedTimelines.find((t) => t.id === activeId)
+          if (!activeTimeline) return
+
+          // フォルダ内の最大 order を取得して末尾に追加
+          const folderMembers = folderGroups.get(folderKey) ?? []
+          const maxFolderOrder =
+            folderMembers.length > 0
+              ? Math.max(...folderMembers.map((m) => m.order))
+              : Math.min(
+                  ...sortedTimelines
+                    .filter((t) => t.id !== activeId)
+                    .map((t) => t.order),
+                ) - 1
+
+          const updatedTimelines = sortedTimelines.map((t) => {
+            if (t.id === activeId) {
+              return { ...t, order: maxFolderOrder + 0.5, tabGroup: folderKey }
+            }
+            return t
+          })
+
+          // order を正規化
+          const normalized = [...updatedTimelines]
+            .sort((a, b) => a.order - b.order)
+            .map((t, i) => ({ ...t, order: i }))
+
+          setTimelineSettings((prev) => ({
+            ...prev,
+            timelines: normalized,
+          }))
+          return
+        }
+
         // フォルダまたはフォルダへの移動
         const oldIndex = getColumnIndex(activeId)
         const newIndex = getColumnIndex(overId)
@@ -863,18 +899,23 @@ export const TimelineManagement = () => {
         }))
       }
     },
-    [sortedTimelines, columnsWithEmptyFolders, setTimelineSettings],
+    [
+      sortedTimelines,
+      columnsWithEmptyFolders,
+      folderGroups,
+      setTimelineSettings,
+    ],
   )
 
   const onAddFolder = useCallback(() => {
     let index = 1
-    const usedKeys = new Set(folderGroups.keys())
+    const usedKeys = new Set([...folderGroups.keys(), ...emptyFolders])
     while (usedKeys.has(`Folder ${index}`)) {
       index++
     }
     const newKey = `Folder ${index}`
     setEmptyFolders((prev) => [...prev, newKey])
-  }, [folderGroups])
+  }, [folderGroups, emptyFolders])
 
   // 全フォルダキー一覧（色の割り当てに使用）
   const allFolderKeys = useMemo(() => {
