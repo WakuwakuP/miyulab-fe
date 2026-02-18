@@ -2,3 +2,5 @@
 /.yarn/releases/*    binary
 /.yarn/plugins/**/*  binary
 /.pnp.*              binary linguist-generated
+
+.github/workflows/*.lock.yml linguist-generated=true merge=ours
