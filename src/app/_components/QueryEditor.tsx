@@ -543,13 +543,15 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
             {QUERY_COMPLETIONS.examples.map((example) => (
               <li key={example.query}>
                 <button
-                  className="text-left font-mono text-gray-400 hover:text-white"
+                  className="text-left hover:text-white"
                   onClick={() => onChange(example.query)}
                   type="button"
                 >
-                  {example.query}
+                  <p>{example.description}</p>
+                  <p className="font-mono text-gray-400 ml-2 line-clamp-1">
+                    {example.query}
+                  </p>
                 </button>
-                <p className="text-gray-500 ml-2">{example.description}</p>
               </li>
             ))}
           </ul>
