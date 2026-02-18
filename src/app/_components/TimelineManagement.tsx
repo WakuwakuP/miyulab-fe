@@ -1,5 +1,18 @@
 'use client'
 
+import {
+  DndContext,
+  type DragEndEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 import { TimelineEditPanel } from 'app/_components/TimelineEditPanel'
 import { TimelineSummary } from 'app/_components/TimelineSummary'
 import {
@@ -14,6 +27,7 @@ import {
   RiArrowDownSLine,
   RiArrowRightSLine,
   RiDeleteBinLine,
+  RiDragMove2Line,
   RiEditLine,
   RiEyeLine,
   RiEyeOffLine,
@@ -93,12 +107,30 @@ const TimelineItem = ({
   onUpdate: (id: string, updates: Partial<TimelineConfigV2>) => void
   timeline: TimelineConfigV2
 }) => {
+  const {
+    attributes,
+    isDragging,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+  } = useSortable({ id: timeline.id })
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  }
+
   const displayName = timeline.label || getDefaultTimelineName(timeline)
 
   const isEditing = editingId === timeline.id
 
   return (
-    <div className="border-b border-gray-600 pb-2">
+    <div
+      className={`border-b border-gray-600 pb-2 ${isDragging ? 'opacity-50' : ''}`}
+      ref={setNodeRef}
+      style={style}
+    >
       <div className="flex items-center justify-between py-1">
         <div className="flex items-center space-x-2 flex-1 min-w-0">
           <button
@@ -113,6 +145,13 @@ const TimelineItem = ({
               <RiEyeOffLine size={20} />
             )}
           </button>
+          <div
+            className="flex items-center space-x-2 cursor-move"
+            {...attributes}
+            {...listeners}
+          >
+            <RiDragMove2Line className="text-gray-400" size={16} />
+          </div>
           <div className="min-w-0 flex-1">
             <span className={timeline.visible ? '' : 'text-gray-500'}>
               {displayName}
@@ -378,6 +417,14 @@ export const TimelineManagement = () => {
     null,
   )
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+  )
+
   const sortedTimelines = [...timelineSettings.timelines].sort(
     (a, b) => a.order - b.order,
   )
@@ -561,6 +608,44 @@ export const TimelineManagement = () => {
     [timelineSettings.timelines, setTimelineSettings],
   )
 
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event
+
+      if (over == null || active.id === over.id) {
+        return
+      }
+
+      const oldIndex = sortedTimelines.findIndex(
+        (timeline) => timeline.id === active.id,
+      )
+      const newIndex = sortedTimelines.findIndex(
+        (timeline) => timeline.id === over.id,
+      )
+
+      if (oldIndex === -1 || newIndex === -1) {
+        return
+      }
+
+      // Create new order values
+      const updatedTimelines = [...sortedTimelines]
+      const [movedTimeline] = updatedTimelines.splice(oldIndex, 1)
+      updatedTimelines.splice(newIndex, 0, movedTimeline)
+
+      // Update orders
+      const newTimelineSettings = updatedTimelines.map((timeline, index) => ({
+        ...timeline,
+        order: index,
+      }))
+
+      setTimelineSettings((prev) => ({
+        ...prev,
+        timelines: newTimelineSettings,
+      }))
+    },
+    [sortedTimelines, setTimelineSettings],
+  )
+
   // 表示順にカラム（単体 or フォルダ）を構築
   const columns = useMemo(() => {
     const result: (
@@ -595,92 +680,101 @@ export const TimelineManagement = () => {
         {/* カラム順にタイムライン & フォルダを表示 */}
         <div>
           <h4 className="mb-2 text-sm font-semibold">Timelines</h4>
-          <div className="space-y-2">
-            {columns.map((column) => {
-              if (column.type === 'folder') {
-                return (
-                  <FolderSection
-                    collapsedFolders={collapsedFolders}
-                    groupKey={column.groupKey}
-                    key={`folder-${column.groupKey}`}
-                    memberCount={column.members.length}
-                    onDeleteFolder={onDeleteFolder}
-                    onToggleCollapse={onToggleCollapse}
-                  >
-                    {column.members.map((timeline) => (
+          <DndContext onDragEnd={handleDragEnd} sensors={sensors}>
+            <SortableContext
+              items={sortedTimelines.map((t) => t.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <div className="space-y-2">
+                {columns.map((column) => {
+                  if (column.type === 'folder') {
+                    return (
+                      <FolderSection
+                        collapsedFolders={collapsedFolders}
+                        groupKey={column.groupKey}
+                        key={`folder-${column.groupKey}`}
+                        memberCount={column.members.length}
+                        onDeleteFolder={onDeleteFolder}
+                        onToggleCollapse={onToggleCollapse}
+                      >
+                        {column.members.map((timeline) => (
+                          <TimelineItem
+                            editingId={editingId}
+                            folderGroupKey={column.groupKey}
+                            key={timeline.id}
+                            onDelete={onDelete}
+                            onRemoveFromFolder={onRemoveFromFolder}
+                            onToggleEdit={onToggleEdit}
+                            onToggleVisibility={onToggleVisibility}
+                            onUpdate={onUpdate}
+                            timeline={timeline}
+                          />
+                        ))}
+                        {column.members.length === 0 && (
+                          <p className="text-xs text-gray-500 py-1">
+                            Empty folder — add timelines below
+                          </p>
+                        )}
+                      </FolderSection>
+                    )
+                  }
+                  const timeline = column.timeline
+                  return (
+                    <div key={timeline.id}>
                       <TimelineItem
                         editingId={editingId}
-                        folderGroupKey={column.groupKey}
-                        key={timeline.id}
                         onDelete={onDelete}
-                        onRemoveFromFolder={onRemoveFromFolder}
                         onToggleEdit={onToggleEdit}
                         onToggleVisibility={onToggleVisibility}
                         onUpdate={onUpdate}
                         timeline={timeline}
                       />
-                    ))}
-                    {column.members.length === 0 && (
-                      <p className="text-xs text-gray-500 py-1">
-                        Empty folder — add timelines below
-                      </p>
-                    )}
-                  </FolderSection>
-                )
-              }
-              const timeline = column.timeline
-              return (
-                <div key={timeline.id}>
-                  <TimelineItem
-                    editingId={editingId}
-                    onDelete={onDelete}
-                    onToggleEdit={onToggleEdit}
-                    onToggleVisibility={onToggleVisibility}
-                    onUpdate={onUpdate}
-                    timeline={timeline}
-                  />
-                  {/* フォルダ振り分けUI */}
-                  {assigningToFolder === timeline.id ? (
-                    <div className="flex items-center gap-2 py-1 pl-6">
-                      <span className="text-xs text-gray-400">Move to:</span>
-                      {availableFolderKeys.map((key) => {
-                        const colors = TAB_GROUP_COLORS[key]
-                        return (
+                      {/* フォルダ振り分けUI */}
+                      {assigningToFolder === timeline.id ? (
+                        <div className="flex items-center gap-2 py-1 pl-6">
+                          <span className="text-xs text-gray-400">
+                            Move to:
+                          </span>
+                          {availableFolderKeys.map((key) => {
+                            const colors = TAB_GROUP_COLORS[key]
+                            return (
+                              <button
+                                className={`rounded px-2 py-0.5 text-xs border ${colors.border} ${colors.text} hover:opacity-80`}
+                                key={key}
+                                onClick={() => onMoveToFolder(timeline.id, key)}
+                                type="button"
+                              >
+                                {key}
+                              </button>
+                            )
+                          })}
                           <button
-                            className={`rounded px-2 py-0.5 text-xs border ${colors.border} ${colors.text} hover:opacity-80`}
-                            key={key}
-                            onClick={() => onMoveToFolder(timeline.id, key)}
+                            className="text-xs text-gray-500 hover:text-gray-300"
+                            onClick={() => setAssigningToFolder(null)}
                             type="button"
                           >
-                            {key}
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        availableFolderKeys.length > 0 && (
+                          <button
+                            className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-300 pl-6 py-0.5"
+                            onClick={() => setAssigningToFolder(timeline.id)}
+                            title="Add to folder"
+                            type="button"
+                          >
+                            <RiFolderAddLine size={14} />
+                            <span>Add to folder</span>
                           </button>
                         )
-                      })}
-                      <button
-                        className="text-xs text-gray-500 hover:text-gray-300"
-                        onClick={() => setAssigningToFolder(null)}
-                        type="button"
-                      >
-                        Cancel
-                      </button>
+                      )}
                     </div>
-                  ) : (
-                    availableFolderKeys.length > 0 && (
-                      <button
-                        className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-300 pl-6 py-0.5"
-                        onClick={() => setAssigningToFolder(timeline.id)}
-                        title="Add to folder"
-                        type="button"
-                      >
-                        <RiFolderAddLine size={14} />
-                        <span>Add to folder</span>
-                      </button>
-                    )
-                  )}
-                </div>
-              )
-            })}
-          </div>
+                  )
+                })}
+              </div>
+            </SortableContext>
+          </DndContext>
         </div>
 
         <div>
