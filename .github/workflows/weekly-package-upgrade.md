@@ -12,6 +12,7 @@ network:
   allowed:
     - defaults
     - node
+    - fonts
 steps:
   - uses: actions/setup-node@v4
     with:
