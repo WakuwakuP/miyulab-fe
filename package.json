@@ -30,12 +30,12 @@
     "rich-textarea": "0.27.0",
     "sharp": "0.34.5",
     "slick-carousel": "^1.8.1",
-    "tailwind-merge": "3.4.0",
+    "tailwind-merge": "3.4.1",
     "tailwindcss-animate": "^1.0.7",
     "unicode-emoji-json": "^0.8.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.0",
+    "@biomejs/biome": "^2.4.2",
     "@tailwindcss/postcss": "^4.1.18",
     "@types/node": "^25.2.3",
     "@types/react": "^19.2.14",
