@@ -159,7 +159,10 @@ export function buildQueryFromConfig(config: TimelineConfigV2): string {
   }
 
   // バックエンドフィルタ
-  const backendCondition = buildBackendFilterCondition(config.backendFilter)
+  const backendCondition = buildBackendFilterCondition(
+    config.backendFilter,
+    isMixed,
+  )
   if (backendCondition) {
     filterConditions.push(backendCondition)
   }
@@ -371,25 +374,41 @@ function buildNotificationTypeCondition(
  * バックエンドフィルタ条件を構築する
  *
  * v3: statuses_backends テーブル（エイリアス sb）経由で参照する。
+ * 混合クエリの場合は notifications テーブル（エイリアス n）の
+ * backendUrl も含めた条件を生成する。
  *
  * - mode: 'all' → 条件なし（全バックエンド対象）
- * - mode: 'single' → sb.backendUrl = 'xxx'
- * - mode: 'composite' → sb.backendUrl IN ('xxx', 'yyy')
+ * - mode: 'single' → sb.backendUrl = 'xxx' (混合時は OR n.backendUrl = 'xxx')
+ * - mode: 'composite' → sb.backendUrl IN ('xxx', 'yyy') (混合時は OR n.backendUrl IN (...))
+ *
+ * @param filter BackendFilter 設定
+ * @param isMixed 混合クエリ（statuses + notifications）かどうか
  */
 function buildBackendFilterCondition(
   filter: BackendFilter | undefined,
+  isMixed: boolean,
 ): string | null {
   if (!filter || filter.mode === 'all') return null
 
   if (filter.mode === 'single') {
-    return `sb.backendUrl = '${escapeSqlString(filter.backendUrl)}'`
+    const statusCondition = `sb.backendUrl = '${escapeSqlString(filter.backendUrl)}'`
+    if (isMixed) {
+      const notificationCondition = `n.backendUrl = '${escapeSqlString(filter.backendUrl)}'`
+      return `(${statusCondition} OR ${notificationCondition})`
+    }
+    return statusCondition
   }
 
   if (filter.mode === 'composite' && filter.backendUrls.length > 0) {
     const escaped = filter.backendUrls
       .map((url) => `'${escapeSqlString(url)}'`)
       .join(', ')
-    return `sb.backendUrl IN (${escaped})`
+    const statusCondition = `sb.backendUrl IN (${escaped})`
+    if (isMixed) {
+      const notificationCondition = `n.backendUrl IN (${escaped})`
+      return `(${statusCondition} OR ${notificationCondition})`
+    }
+    return statusCondition
   }
 
   return null
