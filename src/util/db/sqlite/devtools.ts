@@ -86,7 +86,8 @@ export function installDevTools(
     },
 
     schema(tableName: string): Record<string, unknown>[] {
-      const rows = db.exec(`PRAGMA table_info('${tableName}');`, {
+      const sanitized = tableName.replace(/'/g, "''")
+      const rows = db.exec(`PRAGMA table_info('${sanitized}');`, {
         returnValue: 'resultRows',
         rowMode: 'object',
       })
