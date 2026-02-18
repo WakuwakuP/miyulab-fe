@@ -6,6 +6,7 @@ import { getSqliteDb, subscribe } from 'util/db/sqlite/connection'
 import type { SqliteStoredStatus } from 'util/db/sqlite/statusStore'
 import { MAX_LENGTH } from 'util/environment'
 import { buildFilterConditions } from 'util/hooks/timelineFilterBuilder'
+import { useQueryDuration } from 'util/hooks/useQueryDuration'
 import { AppsContext } from 'util/provider/AppsProvider'
 import {
   normalizeBackendFilter,
@@ -42,13 +43,14 @@ function resolveAppIndex(
  * 正規化カラムを使って SQL の WHERE 句で直接フィルタする。
  * これにより LIMIT の精度が向上し、JS 側フィルタが不要になる。
  */
-export function useFilteredTagTimeline(
-  config: TimelineConfigV2,
-): StatusAddAppIndex[] {
+export function useFilteredTagTimeline(config: TimelineConfigV2): {
+  data: StatusAddAppIndex[]
+  averageDuration: number | null
+} {
   const apps = useContext(AppsContext)
   const tagConfig = config.tagConfig
   const [statuses, setStatuses] = useState<SqliteStoredStatus[]>([])
-
+  const { averageDuration, recordDuration } = useQueryDuration()
   const targetBackendUrls = useMemo(() => {
     const filter = normalizeBackendFilter(config.backendFilter, apps)
     return resolveBackendUrls(filter, apps)
@@ -186,10 +188,12 @@ export function useFilteredTagTimeline(
         )
       }
 
+      const start = performance.now()
       const rows = db.exec(sql, {
         bind: binds,
         returnValue: 'resultRows',
       }) as (string | number)[][]
+      recordDuration(performance.now() - start)
 
       const results: SqliteStoredStatus[] = rows.map((row) => {
         const status = JSON.parse(row[4] as string)
@@ -217,6 +221,7 @@ export function useFilteredTagTimeline(
     tags,
     filterConditions,
     filterBinds,
+    recordDuration,
   ])
 
   // 初回取得 + 変更通知で再取得
@@ -225,7 +230,7 @@ export function useFilteredTagTimeline(
     return subscribe('statuses', fetchData)
   }, [fetchData])
 
-  return useMemo(
+  const data = useMemo(
     () =>
       statuses
         .map((s) => ({
@@ -235,4 +240,6 @@ export function useFilteredTagTimeline(
         .filter((s) => s.appIndex !== -1),
     [statuses, apps],
   )
+
+  return { averageDuration, data }
 }

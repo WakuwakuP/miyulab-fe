@@ -21,7 +21,7 @@ export const NotificationTimeline = ({
 }: {
   config: TimelineConfigV2
 }) => {
-  const rawData = useTimelineData(config)
+  const { data: rawData, averageDuration } = useTimelineData(config)
   // Runtime type guard: filter out any non-notification items that may slip through
   const notifications = useMemo(
     () =>
@@ -74,6 +74,7 @@ export const NotificationTimeline = ({
 
   return (
     <Panel
+      averageDuration={averageDuration}
       className="relative"
       name={config.label ?? 'Notification'}
       onClickHeader={() => {

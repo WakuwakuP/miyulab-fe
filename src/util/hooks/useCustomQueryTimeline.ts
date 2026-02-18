@@ -10,6 +10,7 @@ import { getSqliteDb, subscribe } from 'util/db/sqlite/connection'
 import type { SqliteStoredNotification } from 'util/db/sqlite/notificationStore'
 import type { SqliteStoredStatus } from 'util/db/sqlite/statusStore'
 import { MAX_LENGTH } from 'util/environment'
+import { useQueryDuration } from 'util/hooks/useQueryDuration'
 import { AppsContext } from 'util/provider/AppsProvider'
 import { isMixedQuery, isNotificationQuery } from 'util/queryBuilder'
 
@@ -64,9 +65,10 @@ function hasUnquotedQuestionMark(query: string): boolean {
  * - onlyMedia フィルタは SQL の has_media カラムで処理（JS 側フィルタ不要）
  * - カスタムクエリモードでは applyMuteFilter / applyInstanceBlock は適用しない
  */
-export function useCustomQueryTimeline(
-  config: TimelineConfigV2,
-): (NotificationAddAppIndex | StatusAddAppIndex)[] {
+export function useCustomQueryTimeline(config: TimelineConfigV2): {
+  data: (NotificationAddAppIndex | StatusAddAppIndex)[]
+  averageDuration: number | null
+} {
   const apps = useContext(AppsContext)
   const [results, setResults] = useState<
     (
@@ -74,6 +76,7 @@ export function useCustomQueryTimeline(
       | (SqliteStoredNotification & { _type: 'notification' })
     )[]
   >([])
+  const { averageDuration, recordDuration } = useQueryDuration()
 
   const customQuery = config.customQuery ?? ''
   const onlyMedia = config.onlyMedia
@@ -188,10 +191,12 @@ export function useCustomQueryTimeline(
           LIMIT ?;
         `
 
+        const start = performance.now()
         const rows = db.exec(sql, {
           bind: binds,
           returnValue: 'resultRows',
         }) as (string | number)[][]
+        recordDuration(performance.now() - start)
 
         const mixed = rows.map((row) => {
           const type = row[5] as string
@@ -235,10 +240,12 @@ export function useCustomQueryTimeline(
           LIMIT ?;
         `
 
+        const start = performance.now()
         const rows = db.exec(sql, {
           bind: binds,
           returnValue: 'resultRows',
         }) as (string | number)[][]
+        recordDuration(performance.now() - start)
 
         const notifResults = rows.map((row) => {
           const notification = JSON.parse(row[4] as string)
@@ -290,10 +297,12 @@ export function useCustomQueryTimeline(
           LIMIT ?;
         `
 
+        const start = performance.now()
         const rows = db.exec(sql, {
           bind: binds,
           returnValue: 'resultRows',
         }) as (string | number)[][]
+        recordDuration(performance.now() - start)
 
         const statusResults = rows.map((row) => {
           const status = JSON.parse(row[4] as string)
@@ -315,7 +324,7 @@ export function useCustomQueryTimeline(
       console.error('useCustomQueryTimeline query error:', e)
       setResults([])
     }
-  }, [customQuery, onlyMedia, minMediaCount, queryMode])
+  }, [customQuery, onlyMedia, minMediaCount, queryMode, recordDuration])
 
   useEffect(() => {
     fetchData()
@@ -332,7 +341,7 @@ export function useCustomQueryTimeline(
     }
   }, [fetchData, queryMode])
 
-  return useMemo(
+  const data = useMemo(
     () =>
       results
         .map((item) => ({
@@ -342,4 +351,6 @@ export function useCustomQueryTimeline(
         .filter((item) => item.appIndex !== -1),
     [results, apps],
   )
+
+  return { averageDuration, data }
 }
