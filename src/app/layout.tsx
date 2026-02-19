@@ -1,7 +1,7 @@
+import { Analytics } from '@vercel/analytics/next'
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import { type ReactNode, Suspense } from 'react'
-
 import { Toaster } from 'react-hot-toast'
 
 import { APP_NAME } from 'util/environment'
@@ -66,6 +66,7 @@ export default function RootLayout({
             </SettingProvider>
           </AppsProvider>
         </SuspenseProvider>
+        <Analytics />
       </body>
     </html>
   )
