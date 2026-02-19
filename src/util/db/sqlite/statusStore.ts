@@ -70,15 +70,15 @@ export function extractStatusColumns(status: Entity.Status) {
  * v3 では statuses_backends テーブル経由でルックアップする。
  * 見つからない場合は null を返す。
  */
-export function resolveCompositeKey(
+export async function resolveCompositeKey(
   handle: DbHandle,
   backendUrl: string,
   localId: string,
-): string | null {
-  const rows = handle.db.exec(
+): Promise<string | null> {
+  const rows = (await handle.exec(
     'SELECT compositeKey FROM statuses_backends WHERE backendUrl = ? AND local_id = ?;',
     { bind: [backendUrl, localId], returnValue: 'resultRows' },
-  ) as string[][]
+  )) as string[][]
   return rows.length > 0 ? (rows[0][0] as string) : null
 }
 
@@ -91,17 +91,16 @@ export function resolveCompositeKey(
  *
  * 既存のメンションを削除してから再挿入する（編集対応）。
  */
-export function upsertMentions(
+export async function upsertMentions(
   handle: DbHandle,
   compositeKey: string,
   mentions: Entity.Mention[],
-): void {
-  const { db } = handle
-  db.exec('DELETE FROM statuses_mentions WHERE compositeKey = ?;', {
+): Promise<void> {
+  await handle.exec('DELETE FROM statuses_mentions WHERE compositeKey = ?;', {
     bind: [compositeKey],
   })
   for (const mention of mentions) {
-    db.exec(
+    await handle.exec(
       'INSERT OR IGNORE INTO statuses_mentions (compositeKey, acct) VALUES (?, ?);',
       { bind: [compositeKey, mention.acct] },
     )
@@ -124,29 +123,29 @@ export interface SqliteStoredStatus extends Entity.Status {
 // 内部ユーティリティ
 // ================================================================
 
-function getTimelineTypes(
+async function getTimelineTypes(
   handle: DbHandle,
   compositeKey: string,
-): TimelineType[] {
-  const rows = handle.db.exec(
+): Promise<TimelineType[]> {
+  const rows = (await handle.exec(
     'SELECT timelineType FROM statuses_timeline_types WHERE compositeKey = ?;',
     { bind: [compositeKey], returnValue: 'resultRows' },
-  ) as string[][]
+  )) as string[][]
   return rows.map((r) => r[0] as TimelineType)
 }
 
-function getBelongingTags(handle: DbHandle, compositeKey: string): string[] {
-  const rows = handle.db.exec(
+async function getBelongingTags(handle: DbHandle, compositeKey: string): Promise<string[]> {
+  const rows = (await handle.exec(
     'SELECT tag FROM statuses_belonging_tags WHERE compositeKey = ?;',
     { bind: [compositeKey], returnValue: 'resultRows' },
-  ) as string[][]
+  )) as string[][]
   return rows.map((r) => r[0])
 }
 
-function rowToStoredStatus(
+async function rowToStoredStatus(
   handle: DbHandle,
   row: (string | number)[],
-): SqliteStoredStatus {
+): Promise<SqliteStoredStatus> {
   const compositeKey = row[0] as string
   const backendUrl = row[1] as string
   const created_at_ms = row[2] as number
@@ -157,11 +156,11 @@ function rowToStoredStatus(
   return {
     ...status,
     backendUrl,
-    belongingTags: getBelongingTags(handle, compositeKey),
+    belongingTags: await getBelongingTags(handle, compositeKey),
     compositeKey,
     created_at_ms,
     storedAt,
-    timelineTypes: getTimelineTypes(handle, compositeKey),
+    timelineTypes: await getTimelineTypes(handle, compositeKey),
   }
 }
 
@@ -198,27 +197,26 @@ export async function upsertStatus(
   tag?: string,
 ): Promise<void> {
   const handle = await getSqliteDb()
-  const { db } = handle
   const normalizedUri = status.uri?.trim() || ''
   const now = Date.now()
   const created_at_ms = new Date(status.created_at).getTime()
   const cols = extractStatusColumns(status)
 
-  db.exec('BEGIN;')
+  await handle.exec('BEGIN;')
   try {
     // URI で既存行を検索（跨サーバー重複排除）
     let compositeKey: string
     const existingRows = normalizedUri
-      ? (db.exec('SELECT compositeKey FROM statuses WHERE uri = ?;', {
+      ? ((await handle.exec('SELECT compositeKey FROM statuses WHERE uri = ?;', {
           bind: [normalizedUri],
           returnValue: 'resultRows',
-        }) as string[][])
+        })) as string[][])
       : []
 
     if (existingRows.length > 0) {
       // 既存行を更新（compositeKey を再利用）
       compositeKey = existingRows[0][0]
-      db.exec(
+      await handle.exec(
         `UPDATE statuses SET
           storedAt         = ?,
           account_acct     = ?,
@@ -264,7 +262,7 @@ export async function upsertStatus(
     } else {
       // 新規投稿を INSERT
       compositeKey = createCompositeKey(backendUrl, status.id)
-      db.exec(
+      await handle.exec(
         `INSERT INTO statuses (
           compositeKey, backendUrl, created_at_ms, storedAt,
           uri,
@@ -321,14 +319,14 @@ export async function upsertStatus(
     }
 
     // バックエンド関連を登録（v3: 投稿 × バックエンドの多対多）
-    db.exec(
+    await handle.exec(
       `INSERT OR IGNORE INTO statuses_backends (compositeKey, backendUrl, local_id)
        VALUES (?, ?, ?);`,
       { bind: [compositeKey, backendUrl, status.id] },
     )
 
     // timeline type を追加（重複無視）
-    db.exec(
+    await handle.exec(
       `INSERT OR IGNORE INTO statuses_timeline_types (compositeKey, timelineType)
        VALUES (?, ?);`,
       { bind: [compositeKey, timelineType] },
@@ -336,7 +334,7 @@ export async function upsertStatus(
 
     // タグを追加
     for (const t of status.tags) {
-      db.exec(
+      await handle.exec(
         `INSERT OR IGNORE INTO statuses_belonging_tags (compositeKey, tag)
          VALUES (?, ?);`,
         { bind: [compositeKey, t.name] },
@@ -345,7 +343,7 @@ export async function upsertStatus(
 
     // 追加タグ（ストリーミングからのタグ指定）
     if (tag) {
-      db.exec(
+      await handle.exec(
         `INSERT OR IGNORE INTO statuses_belonging_tags (compositeKey, tag)
          VALUES (?, ?);`,
         { bind: [compositeKey, tag] },
@@ -353,11 +351,11 @@ export async function upsertStatus(
     }
 
     // メンション書き込み
-    upsertMentions(handle, compositeKey, status.mentions)
+    await upsertMentions(handle, compositeKey, status.mentions)
 
-    db.exec('COMMIT;')
+    await handle.exec('COMMIT;')
   } catch (e) {
-    db.exec('ROLLBACK;')
+    await handle.exec('ROLLBACK;')
     throw e
   }
 
@@ -376,13 +374,12 @@ export async function bulkUpsertStatuses(
   if (statuses.length === 0) return
 
   const handle = await getSqliteDb()
-  const { db } = handle
   const now = Date.now()
 
   // バッチ内での URI → compositeKey キャッシュ
   const uriCache = new Map<string, string>()
 
-  db.exec('BEGIN;')
+  await handle.exec('BEGIN;')
   try {
     for (const status of statuses) {
       const normalizedUri = status.uri?.trim() || ''
@@ -395,20 +392,20 @@ export async function bulkUpsertStatuses(
         : undefined
 
       if (compositeKey === undefined && normalizedUri) {
-        const existingRows = db.exec(
+        const existingRows = (await handle.exec(
           'SELECT compositeKey FROM statuses WHERE uri = ?;',
           {
             bind: [normalizedUri],
             returnValue: 'resultRows',
           },
-        ) as string[][]
+        )) as string[][]
 
         compositeKey = existingRows.length > 0 ? existingRows[0][0] : undefined
       }
 
       if (compositeKey !== undefined) {
         // 既存行を更新
-        db.exec(
+        await handle.exec(
           `UPDATE statuses SET
             storedAt         = ?,
             account_acct     = ?,
@@ -454,7 +451,7 @@ export async function bulkUpsertStatuses(
       } else {
         // 新規投稿を INSERT
         compositeKey = createCompositeKey(backendUrl, status.id)
-        db.exec(
+        await handle.exec(
           `INSERT INTO statuses (
             compositeKey, backendUrl, created_at_ms, storedAt,
             uri,
@@ -515,20 +512,20 @@ export async function bulkUpsertStatuses(
       }
 
       // バックエンド関連を登録
-      db.exec(
+      await handle.exec(
         `INSERT OR IGNORE INTO statuses_backends (compositeKey, backendUrl, local_id)
          VALUES (?, ?, ?);`,
         { bind: [compositeKey, backendUrl, status.id] },
       )
 
-      db.exec(
+      await handle.exec(
         `INSERT OR IGNORE INTO statuses_timeline_types (compositeKey, timelineType)
          VALUES (?, ?);`,
         { bind: [compositeKey, timelineType] },
       )
 
       for (const t of status.tags) {
-        db.exec(
+        await handle.exec(
           `INSERT OR IGNORE INTO statuses_belonging_tags (compositeKey, tag)
            VALUES (?, ?);`,
           { bind: [compositeKey, t.name] },
@@ -536,7 +533,7 @@ export async function bulkUpsertStatuses(
       }
 
       if (tag) {
-        db.exec(
+        await handle.exec(
           `INSERT OR IGNORE INTO statuses_belonging_tags (compositeKey, tag)
            VALUES (?, ?);`,
           { bind: [compositeKey, tag] },
@@ -544,11 +541,11 @@ export async function bulkUpsertStatuses(
       }
 
       // メンション書き込み
-      upsertMentions(handle, compositeKey, status.mentions)
+      await upsertMentions(handle, compositeKey, status.mentions)
     }
-    db.exec('COMMIT;')
+    await handle.exec('COMMIT;')
   } catch (e) {
-    db.exec('ROLLBACK;')
+    await handle.exec('ROLLBACK;')
     throw e
   }
 
@@ -565,38 +562,37 @@ export async function removeFromTimeline(
   tag?: string,
 ): Promise<void> {
   const handle = await getSqliteDb()
-  const { db } = handle
 
   // v3: statuses_backends 経由で compositeKey を解決
   const compositeKey =
-    resolveCompositeKey(handle, backendUrl, statusId) ??
+    (await resolveCompositeKey(handle, backendUrl, statusId)) ??
     createCompositeKey(backendUrl, statusId)
 
-  db.exec('BEGIN;')
+  await handle.exec('BEGIN;')
   try {
     // タイムライン種別を削除
-    db.exec(
+    await handle.exec(
       'DELETE FROM statuses_timeline_types WHERE compositeKey = ? AND timelineType = ?;',
       { bind: [compositeKey, timelineType] },
     )
 
     // tag TL 除外時は belongingTags も更新
     if (timelineType === 'tag' && tag) {
-      db.exec(
+      await handle.exec(
         'DELETE FROM statuses_belonging_tags WHERE compositeKey = ? AND tag = ?;',
         { bind: [compositeKey, tag] },
       )
 
       // まだ他のタグが残っている場合は 'tag' タイプを復元
       const remainingTags = (
-        db.exec(
+        (await handle.exec(
           'SELECT COUNT(*) FROM statuses_belonging_tags WHERE compositeKey = ?;',
           { bind: [compositeKey], returnValue: 'resultRows' },
-        ) as number[][]
+        )) as number[][]
       )[0][0]
 
       if (remainingTags > 0) {
-        db.exec(
+        await handle.exec(
           `INSERT OR IGNORE INTO statuses_timeline_types (compositeKey, timelineType)
            VALUES (?, 'tag');`,
           { bind: [compositeKey] },
@@ -606,21 +602,21 @@ export async function removeFromTimeline(
 
     // どのタイムラインにも属さなくなったら物理削除
     const remaining = (
-      db.exec(
+      (await handle.exec(
         'SELECT COUNT(*) FROM statuses_timeline_types WHERE compositeKey = ?;',
         { bind: [compositeKey], returnValue: 'resultRows' },
-      ) as number[][]
+      )) as number[][]
     )[0][0]
 
     if (remaining === 0) {
-      db.exec('DELETE FROM statuses WHERE compositeKey = ?;', {
+      await handle.exec('DELETE FROM statuses WHERE compositeKey = ?;', {
         bind: [compositeKey],
       })
     }
 
-    db.exec('COMMIT;')
+    await handle.exec('COMMIT;')
   } catch (e) {
-    db.exec('ROLLBACK;')
+    await handle.exec('ROLLBACK;')
     throw e
   }
 
@@ -642,41 +638,40 @@ export async function handleDeleteEvent(
   tag?: string,
 ): Promise<void> {
   const handle = await getSqliteDb()
-  const { db } = handle
 
-  const compositeKey = resolveCompositeKey(handle, backendUrl, statusId)
+  const compositeKey = await resolveCompositeKey(handle, backendUrl, statusId)
   if (!compositeKey) return
 
-  db.exec('BEGIN;')
+  await handle.exec('BEGIN;')
   try {
     // 1. このバックエンドとの関連を削除
-    db.exec(
+    await handle.exec(
       'DELETE FROM statuses_backends WHERE backendUrl = ? AND local_id = ?;',
       { bind: [backendUrl, statusId] },
     )
 
     // 2. 他のバックエンドがまだ参照しているか確認
     const remainingBackends = (
-      db.exec(
+      (await handle.exec(
         'SELECT COUNT(*) FROM statuses_backends WHERE compositeKey = ?;',
         { bind: [compositeKey], returnValue: 'resultRows' },
-      ) as number[][]
+      )) as number[][]
     )[0][0]
 
     if (remainingBackends === 0) {
       // どのバックエンドからも参照されていない → 物理削除
-      db.exec('DELETE FROM statuses WHERE compositeKey = ?;', {
+      await handle.exec('DELETE FROM statuses WHERE compositeKey = ?;', {
         bind: [compositeKey],
       })
     } else {
       // 他のバックエンドから参照されている → タイムライン種別を除外
-      db.exec(
+      await handle.exec(
         'DELETE FROM statuses_timeline_types WHERE compositeKey = ? AND timelineType = ?;',
         { bind: [compositeKey, sourceTimelineType] },
       )
 
       if (sourceTimelineType === 'tag' && tag) {
-        db.exec(
+        await handle.exec(
           'DELETE FROM statuses_belonging_tags WHERE compositeKey = ? AND tag = ?;',
           { bind: [compositeKey, tag] },
         )
@@ -684,22 +679,22 @@ export async function handleDeleteEvent(
 
       // どのタイムラインにも属さなくなったら物理削除
       const remainingTimelines = (
-        db.exec(
+        (await handle.exec(
           'SELECT COUNT(*) FROM statuses_timeline_types WHERE compositeKey = ?;',
           { bind: [compositeKey], returnValue: 'resultRows' },
-        ) as number[][]
+        )) as number[][]
       )[0][0]
 
       if (remainingTimelines === 0) {
-        db.exec('DELETE FROM statuses WHERE compositeKey = ?;', {
+        await handle.exec('DELETE FROM statuses WHERE compositeKey = ?;', {
           bind: [compositeKey],
         })
       }
     }
 
-    db.exec('COMMIT;')
+    await handle.exec('COMMIT;')
   } catch (e) {
-    db.exec('ROLLBACK;')
+    await handle.exec('ROLLBACK;')
     throw e
   }
 
@@ -716,29 +711,28 @@ export async function updateStatusAction(
   value: boolean,
 ): Promise<void> {
   const handle = await getSqliteDb()
-  const { db } = handle
 
   // v3: statuses_backends 経由で compositeKey を解決
-  const compositeKey = resolveCompositeKey(handle, backendUrl, statusId)
+  const compositeKey = await resolveCompositeKey(handle, backendUrl, statusId)
   if (!compositeKey) return
 
-  db.exec('BEGIN;')
+  await handle.exec('BEGIN;')
   try {
     // メイン Status の json を更新
-    const rows = db.exec(
+    const rows = (await handle.exec(
       'SELECT json, uri FROM statuses WHERE compositeKey = ?;',
       {
         bind: [compositeKey],
         returnValue: 'resultRows',
       },
-    ) as string[][]
+    )) as string[][]
 
     if (rows.length > 0) {
       const status = JSON.parse(rows[0][0]) as Entity.Status
       const statusUri = rows[0][1] as string
       ;(status as Record<string, unknown>)[action] = value
 
-      db.exec('UPDATE statuses SET json = ? WHERE compositeKey = ?;', {
+      await handle.exec('UPDATE statuses SET json = ? WHERE compositeKey = ?;', {
         bind: [JSON.stringify(status), compositeKey],
       })
 
@@ -746,16 +740,16 @@ export async function updateStatusAction(
       if (status.reblog) {
         const reblogUri = status.reblog.uri
         if (reblogUri) {
-          const reblogRows = db.exec(
+          const reblogRows = (await handle.exec(
             'SELECT compositeKey, json FROM statuses WHERE uri = ?;',
             { bind: [reblogUri], returnValue: 'resultRows' },
-          ) as string[][]
+          )) as string[][]
 
           if (reblogRows.length > 0) {
             const reblogKey = reblogRows[0][0]
             const reblogStatus = JSON.parse(reblogRows[0][1]) as Entity.Status
             ;(reblogStatus as Record<string, unknown>)[action] = value
-            db.exec('UPDATE statuses SET json = ? WHERE compositeKey = ?;', {
+            await handle.exec('UPDATE statuses SET json = ? WHERE compositeKey = ?;', {
               bind: [JSON.stringify(reblogStatus), reblogKey],
             })
           }
@@ -765,16 +759,16 @@ export async function updateStatusAction(
       // この Status を reblog として持つ他の Status も更新
       // v3: reblog_of_uri でグローバルに検索（跨サーバー対応）
       if (statusUri) {
-        const relatedRows = db.exec(
+        const relatedRows = (await handle.exec(
           `SELECT compositeKey, json FROM statuses WHERE reblog_of_uri = ?;`,
           { bind: [statusUri], returnValue: 'resultRows' },
-        ) as (string | number)[][]
+        )) as (string | number)[][]
 
         for (const row of relatedRows) {
           const json = JSON.parse(row[1] as string) as Entity.Status
           if (json.reblog) {
             ;(json.reblog as Record<string, unknown>)[action] = value
-            db.exec('UPDATE statuses SET json = ? WHERE compositeKey = ?;', {
+            await handle.exec('UPDATE statuses SET json = ? WHERE compositeKey = ?;', {
               bind: [JSON.stringify(json), row[0] as string],
             })
           }
@@ -782,9 +776,9 @@ export async function updateStatusAction(
       }
     }
 
-    db.exec('COMMIT;')
+    await handle.exec('COMMIT;')
   } catch (e) {
-    db.exec('ROLLBACK;')
+    await handle.exec('ROLLBACK;')
     throw e
   }
 
@@ -799,28 +793,27 @@ export async function updateStatus(
   backendUrl: string,
 ): Promise<void> {
   const handle = await getSqliteDb()
-  const { db } = handle
   const created_at_ms = new Date(status.created_at).getTime()
   const now = Date.now()
   const cols = extractStatusColumns(status)
 
   // v3: statuses_backends 経由で compositeKey を解決
   const compositeKey =
-    resolveCompositeKey(handle, backendUrl, status.id) ??
+    (await resolveCompositeKey(handle, backendUrl, status.id)) ??
     createCompositeKey(backendUrl, status.id)
 
   // 既存確認
-  const existing = db.exec(
+  const existing = (await handle.exec(
     'SELECT compositeKey FROM statuses WHERE compositeKey = ?;',
     { bind: [compositeKey], returnValue: 'resultRows' },
-  ) as string[][]
+  )) as string[][]
 
   if (existing.length === 0) return
 
-  db.exec('BEGIN;')
+  await handle.exec('BEGIN;')
   try {
     // 正規化カラムも同時に更新（v3: uri, reblog_of_uri 含む）
-    db.exec(
+    await handle.exec(
       `UPDATE statuses SET
          created_at_ms    = ?,
          storedAt         = ?,
@@ -869,11 +862,11 @@ export async function updateStatus(
     )
 
     // タグを再構築
-    db.exec('DELETE FROM statuses_belonging_tags WHERE compositeKey = ?;', {
+    await handle.exec('DELETE FROM statuses_belonging_tags WHERE compositeKey = ?;', {
       bind: [compositeKey],
     })
     for (const t of status.tags) {
-      db.exec(
+      await handle.exec(
         `INSERT OR IGNORE INTO statuses_belonging_tags (compositeKey, tag)
          VALUES (?, ?);`,
         { bind: [compositeKey, t.name] },
@@ -881,11 +874,11 @@ export async function updateStatus(
     }
 
     // メンションを再構築
-    upsertMentions(handle, compositeKey, status.mentions)
+    await upsertMentions(handle, compositeKey, status.mentions)
 
-    db.exec('COMMIT;')
+    await handle.exec('COMMIT;')
   } catch (e) {
-    db.exec('ROLLBACK;')
+    await handle.exec('ROLLBACK;')
     throw e
   }
 
@@ -905,7 +898,6 @@ export async function getStatusesByTimelineType(
   limit?: number,
 ): Promise<SqliteStoredStatus[]> {
   const handle = await getSqliteDb()
-  const { db } = handle
 
   let sql: string
   const binds: (string | number)[] = []
@@ -940,12 +932,12 @@ export async function getStatusesByTimelineType(
     binds.push(timelineType, limit ?? MAX_QUERY_LIMIT)
   }
 
-  const rows = db.exec(sql, {
+  const rows = (await handle.exec(sql, {
     bind: binds,
     returnValue: 'resultRows',
-  }) as (string | number)[][]
+  })) as (string | number)[][]
 
-  return rows.map((row) => rowToStoredStatus(handle, row))
+  return Promise.all(rows.map((row) => rowToStoredStatus(handle, row)))
 }
 
 /**
@@ -957,7 +949,6 @@ export async function getStatusesByTag(
   limit?: number,
 ): Promise<SqliteStoredStatus[]> {
   const handle = await getSqliteDb()
-  const { db } = handle
 
   let sql: string
   const binds: (string | number)[] = []
@@ -992,12 +983,12 @@ export async function getStatusesByTag(
     binds.push(tag, limit ?? MAX_QUERY_LIMIT)
   }
 
-  const rows = db.exec(sql, {
+  const rows = (await handle.exec(sql, {
     bind: binds,
     returnValue: 'resultRows',
-  }) as (string | number)[][]
+  })) as (string | number)[][]
 
-  return rows.map((row) => rowToStoredStatus(handle, row))
+  return Promise.all(rows.map((row) => rowToStoredStatus(handle, row)))
 }
 
 /**
@@ -1057,7 +1048,6 @@ export async function getStatusesByCustomQuery(
   offset?: number,
 ): Promise<SqliteStoredStatus[]> {
   const handle = await getSqliteDb()
-  const { db } = handle
 
   const sanitized = sanitizeWhereClause(whereClause)
 
@@ -1091,12 +1081,12 @@ export async function getStatusesByCustomQuery(
   `
   binds.push(limit ?? MAX_QUERY_LIMIT, offset ?? 0)
 
-  const rows = db.exec(sql, {
+  const rows = (await handle.exec(sql, {
     bind: binds,
     returnValue: 'resultRows',
-  }) as (string | number)[][]
+  })) as (string | number)[][]
 
-  return rows.map((row) => rowToStoredStatus(handle, row))
+  return Promise.all(rows.map((row) => rowToStoredStatus(handle, row)))
 }
 
 /**
@@ -1337,7 +1327,6 @@ export async function validateCustomQuery(
 
   try {
     const handle = await getSqliteDb()
-    const { db } = handle
 
     // クエリが参照するテーブルに基づいて検証クエリを構築
     const isMixed = isMixedQuery(sanitized)
@@ -1409,7 +1398,7 @@ export async function validateCustomQuery(
         LIMIT 1;
       `
     }
-    db.exec(sql)
+    await handle.exec(sql)
     return null
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)
@@ -1423,11 +1412,10 @@ export async function validateCustomQuery(
 export async function getDistinctTags(): Promise<string[]> {
   try {
     const handle = await getSqliteDb()
-    const { db } = handle
-    const rows = db.exec(
+    const rows = (await handle.exec(
       'SELECT DISTINCT tag FROM statuses_belonging_tags ORDER BY tag;',
       { returnValue: 'resultRows' },
-    ) as string[][]
+    )) as string[][]
     return rows.map((r) => r[0])
   } catch {
     return []
@@ -1440,11 +1428,10 @@ export async function getDistinctTags(): Promise<string[]> {
 export async function getDistinctTimelineTypes(): Promise<string[]> {
   try {
     const handle = await getSqliteDb()
-    const { db } = handle
-    const rows = db.exec(
+    const rows = (await handle.exec(
       'SELECT DISTINCT timelineType FROM statuses_timeline_types ORDER BY timelineType;',
       { returnValue: 'resultRows' },
-    ) as string[][]
+    )) as string[][]
     return rows.map((r) => r[0])
   } catch {
     return []
@@ -1462,11 +1449,10 @@ export async function getJsonKeysFromSample(
 ): Promise<string[]> {
   try {
     const handle = await getSqliteDb()
-    const { db } = handle
-    const rows = db.exec(
+    const rows = (await handle.exec(
       `SELECT json FROM statuses ORDER BY created_at_ms DESC LIMIT ?;`,
       { bind: [sampleSize], returnValue: 'resultRows' },
-    ) as string[][]
+    )) as string[][]
 
     const paths = new Set<string>()
 
@@ -1530,13 +1516,12 @@ export async function getDistinctJsonValues(
 ): Promise<string[]> {
   try {
     const handle = await getSqliteDb()
-    const { db } = handle
 
     // パスのバリデーション: $. で始まり、正しいJSONパス構文のみ許可
     // [N] (配列アクセス)、.key (オブジェクトキー) のみ許可。連続ドットや不正ブラケットを拒否
     if (!/^\$(\.[a-zA-Z_]\w*|\[\d+\])*$/.test(jsonPath)) return []
 
-    const rows = db.exec(
+    const rows = (await handle.exec(
       `WITH vals AS (
          SELECT json_extract(json, ?) AS val
          FROM statuses
@@ -1547,7 +1532,7 @@ export async function getDistinctJsonValues(
        ORDER BY val
        LIMIT ?;`,
       { bind: [jsonPath, maxResults], returnValue: 'resultRows' },
-    ) as string[][]
+    )) as string[][]
     return rows.map((r) => r[0])
   } catch {
     return []
@@ -1642,11 +1627,10 @@ export async function getDistinctColumnValues(
 
   try {
     const handle = await getSqliteDb()
-    const { db } = handle
-    const rows = db.exec(
+    const rows = (await handle.exec(
       `SELECT DISTINCT "${column}" FROM "${table}" WHERE "${column}" IS NOT NULL AND "${column}" != '' ORDER BY "${column}" LIMIT ?;`,
       { bind: [maxResults], returnValue: 'resultRows' },
-    ) as string[][]
+    )) as string[][]
     return rows.map((r) => r[0])
   } catch {
     return []
@@ -1674,13 +1658,12 @@ export async function searchDistinctColumnValues(
 
   try {
     const handle = await getSqliteDb()
-    const { db } = handle
     // LIKE でプレフィクスフィルタ（ESCAPE でワイルドカード文字を安全にエスケープ）
     const escaped = prefix.replace(/[%_\\]/g, (c) => `\\${c}`)
-    const rows = db.exec(
+    const rows = (await handle.exec(
       `SELECT DISTINCT "${realColumn}" FROM "${table}" WHERE "${realColumn}" IS NOT NULL AND "${realColumn}" != '' AND "${realColumn}" LIKE ? ESCAPE '\\' ORDER BY "${realColumn}" LIMIT ?;`,
       { bind: [`${escaped}%`, maxResults], returnValue: 'resultRows' },
-    ) as string[][]
+    )) as string[][]
     return rows.map((r) => r[0])
   } catch {
     return []

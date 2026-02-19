@@ -115,7 +115,7 @@ export const UnifiedTimeline = ({
             // タグタイムラインの場合は該当タグの最古投稿を取得
             const tags = config.tagConfig?.tags ?? []
             for (const tag of tags) {
-              const rows = handle.db.exec(
+              const rows = (await handle.exec(
                 `SELECT s.compositeKey, s.backendUrl, s.created_at_ms, s.storedAt, s.json
                  FROM statuses s
                  INNER JOIN statuses_belonging_tags sbt ON s.compositeKey = sbt.compositeKey
@@ -123,7 +123,7 @@ export const UnifiedTimeline = ({
                  ORDER BY s.created_at_ms ASC
                  LIMIT 1;`,
                 { bind: [tag, url], returnValue: 'resultRows' },
-              ) as (string | number)[][]
+              )) as (string | number)[][]
               if (rows.length > 0) {
                 const status = JSON.parse(rows[0][4] as string)
                 oldestStatus = {
@@ -139,7 +139,7 @@ export const UnifiedTimeline = ({
             }
           } else {
             // 通常のタイムラインの場合
-            const rows = handle.db.exec(
+            const rows = (await handle.exec(
               `SELECT s.compositeKey, s.backendUrl, s.created_at_ms, s.storedAt, s.json
                FROM statuses s
                INNER JOIN statuses_timeline_types stt ON s.compositeKey = stt.compositeKey
@@ -147,7 +147,7 @@ export const UnifiedTimeline = ({
                ORDER BY s.created_at_ms ASC
                LIMIT 1;`,
               { bind: [url, timelineType], returnValue: 'resultRows' },
-            ) as (string | number)[][]
+            )) as (string | number)[][]
             if (rows.length > 0) {
               const status = JSON.parse(rows[0][4] as string)
               oldestStatus = {
