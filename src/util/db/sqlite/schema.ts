@@ -26,33 +26,33 @@ const SCHEMA_VERSION = 3
  *
  * user_version PRAGMA を用いてバージョン管理する。
  */
-export function ensureSchema(handle: DbHandle): void {
-  const { db } = handle
-
+export async function ensureSchema(handle: DbHandle): Promise<void> {
   const currentVersion = (
-    db.exec('PRAGMA user_version;', { returnValue: 'resultRows' }) as number[][]
+    (await handle.exec('PRAGMA user_version;', {
+      returnValue: 'resultRows',
+    })) as number[][]
   )[0][0]
 
   if (currentVersion >= SCHEMA_VERSION) return
 
-  db.exec('BEGIN;')
+  await handle.exec('BEGIN;')
   try {
     if (currentVersion < 1) {
       // フレッシュインストール: v3 スキーマを直接作成
-      createSchemaV3(handle)
+      await createSchemaV3(handle)
     } else if (currentVersion < 2) {
       // v1 → v2 → v3 マイグレーション
-      migrateV1toV2(handle)
-      migrateV2toV3(handle)
+      await migrateV1toV2(handle)
+      await migrateV2toV3(handle)
     } else if (currentVersion < 3) {
       // v2 → v3 マイグレーション
-      migrateV2toV3(handle)
+      await migrateV2toV3(handle)
     }
 
-    db.exec(`PRAGMA user_version = ${SCHEMA_VERSION};`)
-    db.exec('COMMIT;')
+    await handle.exec(`PRAGMA user_version = ${SCHEMA_VERSION};`)
+    await handle.exec('COMMIT;')
   } catch (e) {
-    db.exec('ROLLBACK;')
+    await handle.exec('ROLLBACK;')
     throw e
   }
 }
@@ -67,13 +67,11 @@ export function ensureSchema(handle: DbHandle): void {
  * v2 の正規化カラムに加え、uri / reblog_of_uri カラムと
  * statuses_backends テーブルを含む。
  */
-function createSchemaV3(handle: DbHandle): void {
-  const { db } = handle
-
+async function createSchemaV3(handle: DbHandle): Promise<void> {
   // ============================================
   // statuses テーブル（正規化カラム + uri 含む）
   // ============================================
-  db.exec(`
+  await handle.exec(`
     CREATE TABLE IF NOT EXISTS statuses (
       compositeKey      TEXT PRIMARY KEY,
       backendUrl        TEXT NOT NULL,
@@ -100,45 +98,45 @@ function createSchemaV3(handle: DbHandle): void {
   `)
 
   // statuses インデックス（既存 + v2 + v3）
-  db.exec(
+  await handle.exec(
     'CREATE INDEX IF NOT EXISTS idx_statuses_backendUrl ON statuses(backendUrl);',
   )
-  db.exec(
+  await handle.exec(
     'CREATE INDEX IF NOT EXISTS idx_statuses_backend_created ON statuses(backendUrl, created_at_ms DESC);',
   )
-  db.exec(
+  await handle.exec(
     'CREATE INDEX IF NOT EXISTS idx_statuses_storedAt ON statuses(storedAt);',
   )
-  db.exec(
+  await handle.exec(
     'CREATE INDEX IF NOT EXISTS idx_statuses_account_acct ON statuses(account_acct);',
   )
-  db.exec(
+  await handle.exec(
     'CREATE INDEX IF NOT EXISTS idx_statuses_reblog_of_id ON statuses(reblog_of_id);',
   )
-  db.exec(
+  await handle.exec(
     'CREATE INDEX IF NOT EXISTS idx_statuses_media_filter ON statuses(backendUrl, has_media, created_at_ms DESC);',
   )
-  db.exec(
+  await handle.exec(
     'CREATE INDEX IF NOT EXISTS idx_statuses_visibility_filter ON statuses(backendUrl, visibility, created_at_ms DESC);',
   )
-  db.exec(
+  await handle.exec(
     'CREATE INDEX IF NOT EXISTS idx_statuses_language_filter ON statuses(backendUrl, language, created_at_ms DESC);',
   )
-  db.exec(
+  await handle.exec(
     'CREATE INDEX IF NOT EXISTS idx_statuses_reblog_filter ON statuses(backendUrl, is_reblog, created_at_ms DESC);',
   )
   // v3 インデックス
-  db.exec(
+  await handle.exec(
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_statuses_uri ON statuses(uri) WHERE uri != '';",
   )
-  db.exec(
+  await handle.exec(
     'CREATE INDEX IF NOT EXISTS idx_statuses_reblog_of_uri ON statuses(reblog_of_uri);',
   )
 
   // ============================================
   // statuses_timeline_types (多対多)
   // ============================================
-  db.exec(`
+  await handle.exec(`
     CREATE TABLE IF NOT EXISTS statuses_timeline_types (
       compositeKey  TEXT NOT NULL,
       timelineType  TEXT NOT NULL,
@@ -146,14 +144,14 @@ function createSchemaV3(handle: DbHandle): void {
       FOREIGN KEY (compositeKey) REFERENCES statuses(compositeKey) ON DELETE CASCADE
     );
   `)
-  db.exec(
+  await handle.exec(
     'CREATE INDEX IF NOT EXISTS idx_stt_type ON statuses_timeline_types(timelineType);',
   )
 
   // ============================================
   // statuses_belonging_tags (多対多)
   // ============================================
-  db.exec(`
+  await handle.exec(`
     CREATE TABLE IF NOT EXISTS statuses_belonging_tags (
       compositeKey  TEXT NOT NULL,
       tag           TEXT NOT NULL,
@@ -161,14 +159,14 @@ function createSchemaV3(handle: DbHandle): void {
       FOREIGN KEY (compositeKey) REFERENCES statuses(compositeKey) ON DELETE CASCADE
     );
   `)
-  db.exec(
+  await handle.exec(
     'CREATE INDEX IF NOT EXISTS idx_sbt_tag ON statuses_belonging_tags(tag);',
   )
 
   // ============================================
   // statuses_mentions (v2: メンション多対多)
   // ============================================
-  db.exec(`
+  await handle.exec(`
     CREATE TABLE IF NOT EXISTS statuses_mentions (
       compositeKey  TEXT NOT NULL,
       acct          TEXT NOT NULL,
@@ -176,12 +174,14 @@ function createSchemaV3(handle: DbHandle): void {
       FOREIGN KEY (compositeKey) REFERENCES statuses(compositeKey) ON DELETE CASCADE
     );
   `)
-  db.exec('CREATE INDEX IF NOT EXISTS idx_sm_acct ON statuses_mentions(acct);')
+  await handle.exec(
+    'CREATE INDEX IF NOT EXISTS idx_sm_acct ON statuses_mentions(acct);',
+  )
 
   // ============================================
   // statuses_backends (v3: 投稿 × バックエンドの多対多)
   // ============================================
-  db.exec(`
+  await handle.exec(`
     CREATE TABLE IF NOT EXISTS statuses_backends (
       compositeKey  TEXT NOT NULL,
       backendUrl    TEXT NOT NULL,
@@ -190,17 +190,17 @@ function createSchemaV3(handle: DbHandle): void {
       FOREIGN KEY (compositeKey) REFERENCES statuses(compositeKey) ON DELETE CASCADE
     );
   `)
-  db.exec(
+  await handle.exec(
     'CREATE INDEX IF NOT EXISTS idx_sb_compositeKey ON statuses_backends(compositeKey);',
   )
-  db.exec(
+  await handle.exec(
     'CREATE INDEX IF NOT EXISTS idx_sb_backendUrl ON statuses_backends(backendUrl);',
   )
 
   // ============================================
   // muted_accounts (v2)
   // ============================================
-  db.exec(`
+  await handle.exec(`
     CREATE TABLE IF NOT EXISTS muted_accounts (
       backendUrl    TEXT NOT NULL,
       account_acct  TEXT NOT NULL,
@@ -212,7 +212,7 @@ function createSchemaV3(handle: DbHandle): void {
   // ============================================
   // blocked_instances (v2)
   // ============================================
-  db.exec(`
+  await handle.exec(`
     CREATE TABLE IF NOT EXISTS blocked_instances (
       instance_domain TEXT PRIMARY KEY,
       blocked_at      INTEGER NOT NULL
@@ -222,7 +222,7 @@ function createSchemaV3(handle: DbHandle): void {
   // ============================================
   // notifications テーブル（正規化カラム含む）
   // ============================================
-  db.exec(`
+  await handle.exec(`
     CREATE TABLE IF NOT EXISTS notifications (
       compositeKey      TEXT PRIMARY KEY,
       backendUrl        TEXT NOT NULL,
@@ -234,22 +234,22 @@ function createSchemaV3(handle: DbHandle): void {
       json              TEXT NOT NULL
     );
   `)
-  db.exec(
+  await handle.exec(
     'CREATE INDEX IF NOT EXISTS idx_notifications_backendUrl ON notifications(backendUrl);',
   )
-  db.exec(
+  await handle.exec(
     'CREATE INDEX IF NOT EXISTS idx_notifications_backend_created ON notifications(backendUrl, created_at_ms DESC);',
   )
-  db.exec(
+  await handle.exec(
     'CREATE INDEX IF NOT EXISTS idx_notifications_storedAt ON notifications(storedAt);',
   )
-  db.exec(
+  await handle.exec(
     'CREATE INDEX IF NOT EXISTS idx_notifications_type ON notifications(notification_type);',
   )
-  db.exec(
+  await handle.exec(
     'CREATE INDEX IF NOT EXISTS idx_notifications_status_id ON notifications(backendUrl, status_id);',
   )
-  db.exec(
+  await handle.exec(
     'CREATE INDEX IF NOT EXISTS idx_notifications_account_acct ON notifications(account_acct);',
   )
 }
@@ -264,9 +264,7 @@ function createSchemaV3(handle: DbHandle): void {
  * ALTER TABLE ADD COLUMN で正規化カラムを追加し、
  * 既存データを json_extract() でバックフィルする。
  */
-function migrateV1toV2(handle: DbHandle): void {
-  const { db } = handle
-
+async function migrateV1toV2(handle: DbHandle): Promise<void> {
   // ============================================
   // Step 1: statuses テーブルへのカラム追加
   // ============================================
@@ -287,7 +285,7 @@ function migrateV1toV2(handle: DbHandle): void {
     'replies_count INTEGER NOT NULL DEFAULT 0',
   ]
   for (const col of statusColumns) {
-    db.exec(`ALTER TABLE statuses ADD COLUMN ${col};`)
+    await handle.exec(`ALTER TABLE statuses ADD COLUMN ${col};`)
   }
 
   // ============================================
@@ -299,13 +297,13 @@ function migrateV1toV2(handle: DbHandle): void {
     "account_acct TEXT NOT NULL DEFAULT ''",
   ]
   for (const col of notifColumns) {
-    db.exec(`ALTER TABLE notifications ADD COLUMN ${col};`)
+    await handle.exec(`ALTER TABLE notifications ADD COLUMN ${col};`)
   }
 
   // ============================================
   // Step 3: 新規テーブルの作成
   // ============================================
-  db.exec(`
+  await handle.exec(`
     CREATE TABLE IF NOT EXISTS statuses_mentions (
       compositeKey  TEXT NOT NULL,
       acct          TEXT NOT NULL,
@@ -314,7 +312,7 @@ function migrateV1toV2(handle: DbHandle): void {
     );
   `)
 
-  db.exec(`
+  await handle.exec(`
     CREATE TABLE IF NOT EXISTS muted_accounts (
       backendUrl    TEXT NOT NULL,
       account_acct  TEXT NOT NULL,
@@ -323,7 +321,7 @@ function migrateV1toV2(handle: DbHandle): void {
     );
   `)
 
-  db.exec(`
+  await handle.exec(`
     CREATE TABLE IF NOT EXISTS blocked_instances (
       instance_domain TEXT PRIMARY KEY,
       blocked_at      INTEGER NOT NULL
@@ -333,41 +331,43 @@ function migrateV1toV2(handle: DbHandle): void {
   // ============================================
   // Step 4: 新規インデックスの作成
   // ============================================
-  db.exec(
+  await handle.exec(
     'CREATE INDEX IF NOT EXISTS idx_statuses_account_acct ON statuses(account_acct);',
   )
-  db.exec(
+  await handle.exec(
     'CREATE INDEX IF NOT EXISTS idx_statuses_reblog_of_id ON statuses(reblog_of_id);',
   )
-  db.exec(
+  await handle.exec(
     'CREATE INDEX IF NOT EXISTS idx_statuses_media_filter ON statuses(backendUrl, has_media, created_at_ms DESC);',
   )
-  db.exec(
+  await handle.exec(
     'CREATE INDEX IF NOT EXISTS idx_statuses_visibility_filter ON statuses(backendUrl, visibility, created_at_ms DESC);',
   )
-  db.exec(
+  await handle.exec(
     'CREATE INDEX IF NOT EXISTS idx_statuses_language_filter ON statuses(backendUrl, language, created_at_ms DESC);',
   )
-  db.exec(
+  await handle.exec(
     'CREATE INDEX IF NOT EXISTS idx_statuses_reblog_filter ON statuses(backendUrl, is_reblog, created_at_ms DESC);',
   )
-  db.exec('CREATE INDEX IF NOT EXISTS idx_sm_acct ON statuses_mentions(acct);')
-  db.exec(
+  await handle.exec(
+    'CREATE INDEX IF NOT EXISTS idx_sm_acct ON statuses_mentions(acct);',
+  )
+  await handle.exec(
     'CREATE INDEX IF NOT EXISTS idx_notifications_type ON notifications(notification_type);',
   )
-  db.exec(
+  await handle.exec(
     'CREATE INDEX IF NOT EXISTS idx_notifications_status_id ON notifications(backendUrl, status_id);',
   )
-  db.exec(
+  await handle.exec(
     'CREATE INDEX IF NOT EXISTS idx_notifications_account_acct ON notifications(account_acct);',
   )
 
   // ============================================
   // Step 5: バックフィル
   // ============================================
-  backfillStatusesV2(handle)
-  backfillNotificationsV2(handle)
-  backfillMentionsV2(handle)
+  await backfillStatusesV2(handle)
+  await backfillNotificationsV2(handle)
+  await backfillMentionsV2(handle)
 }
 
 // ================================================================
@@ -384,19 +384,19 @@ function migrateV1toV2(handle: DbHandle): void {
  * 3. 既存データのバックフィル（uri, reblog_of_uri, statuses_backends）
  * 4. 同一 URI の重複行を1行に集約（デデュプリケーション）
  */
-function migrateV2toV3(handle: DbHandle): void {
-  const { db } = handle
-
+async function migrateV2toV3(handle: DbHandle): Promise<void> {
   // ============================================
   // Step 1: statuses テーブルへのカラム追加
   // ============================================
-  db.exec("ALTER TABLE statuses ADD COLUMN uri TEXT NOT NULL DEFAULT '';")
-  db.exec('ALTER TABLE statuses ADD COLUMN reblog_of_uri TEXT;')
+  await handle.exec(
+    "ALTER TABLE statuses ADD COLUMN uri TEXT NOT NULL DEFAULT '';",
+  )
+  await handle.exec('ALTER TABLE statuses ADD COLUMN reblog_of_uri TEXT;')
 
   // ============================================
   // Step 2: statuses_backends テーブルの作成
   // ============================================
-  db.exec(`
+  await handle.exec(`
     CREATE TABLE IF NOT EXISTS statuses_backends (
       compositeKey  TEXT NOT NULL,
       backendUrl    TEXT NOT NULL,
@@ -409,20 +409,20 @@ function migrateV2toV3(handle: DbHandle): void {
   // ============================================
   // Step 3: 非UNIQUEインデックスの作成
   // ============================================
-  db.exec(
+  await handle.exec(
     'CREATE INDEX IF NOT EXISTS idx_statuses_reblog_of_uri ON statuses(reblog_of_uri);',
   )
-  db.exec(
+  await handle.exec(
     'CREATE INDEX IF NOT EXISTS idx_sb_compositeKey ON statuses_backends(compositeKey);',
   )
-  db.exec(
+  await handle.exec(
     'CREATE INDEX IF NOT EXISTS idx_sb_backendUrl ON statuses_backends(backendUrl);',
   )
 
   // ============================================
   // Step 4: uri / reblog_of_uri のバックフィル
   // ============================================
-  backfillStatusesV3(handle)
+  await backfillStatusesV3(handle)
 
   // ============================================
   // Step 5: statuses_backends のバックフィル
@@ -430,7 +430,7 @@ function migrateV2toV3(handle: DbHandle): void {
   // compositeKey は "backendUrl:statusId" 形式。
   // backendUrl の長さ + 1（':' の分）以降が local_id。
   // ============================================
-  db.exec(`
+  await handle.exec(`
     INSERT OR IGNORE INTO statuses_backends (compositeKey, backendUrl, local_id)
     SELECT
       compositeKey,
@@ -442,12 +442,12 @@ function migrateV2toV3(handle: DbHandle): void {
   // ============================================
   // Step 6: 同一 URI の重複排除（デデュプリケーション）
   // ============================================
-  deduplicateByUri(handle)
+  await deduplicateByUri(handle)
 
   // ============================================
   // Step 7: UNIQUEインデックスの作成（重複排除後）
   // ============================================
-  db.exec(
+  await handle.exec(
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_statuses_uri ON statuses(uri) WHERE uri != '';",
   )
 }
@@ -461,10 +461,8 @@ function migrateV2toV3(handle: DbHandle): void {
  *
  * json カラムから json_extract で値を抽出して正規化カラムに書き込む。
  */
-function backfillStatusesV2(handle: DbHandle): void {
-  const { db } = handle
-
-  db.exec(`
+async function backfillStatusesV2(handle: DbHandle): Promise<void> {
+  await handle.exec(`
     UPDATE statuses SET
       account_acct     = COALESCE(json_extract(json, '$.account.acct'), ''),
       account_id       = COALESCE(json_extract(json, '$.account.id'), ''),
@@ -499,10 +497,8 @@ function backfillStatusesV2(handle: DbHandle): void {
 /**
  * notifications テーブルの v2 バックフィル
  */
-function backfillNotificationsV2(handle: DbHandle): void {
-  const { db } = handle
-
-  db.exec(`
+async function backfillNotificationsV2(handle: DbHandle): Promise<void> {
+  await handle.exec(`
     UPDATE notifications SET
       notification_type = COALESCE(json_extract(json, '$.type'), ''),
       status_id         = json_extract(json, '$.status.id'),
@@ -514,10 +510,8 @@ function backfillNotificationsV2(handle: DbHandle): void {
 /**
  * statuses_mentions テーブルの v2 バックフィル
  */
-function backfillMentionsV2(handle: DbHandle): void {
-  const { db } = handle
-
-  db.exec(`
+async function backfillMentionsV2(handle: DbHandle): Promise<void> {
+  await handle.exec(`
     INSERT OR IGNORE INTO statuses_mentions (compositeKey, acct)
     SELECT
       s.compositeKey,
@@ -533,18 +527,16 @@ function backfillMentionsV2(handle: DbHandle): void {
  *
  * json カラムから uri / reblog_of_uri を抽出して正規化カラムに書き込む。
  */
-function backfillStatusesV3(handle: DbHandle): void {
-  const { db } = handle
-
+async function backfillStatusesV3(handle: DbHandle): Promise<void> {
   // uri のバックフィル
-  db.exec(`
+  await handle.exec(`
     UPDATE statuses SET
       uri = COALESCE(json_extract(json, '$.uri'), '')
     WHERE uri = '';
   `)
 
   // reblog_of_uri のバックフィル
-  db.exec(`
+  await handle.exec(`
     UPDATE statuses SET
       reblog_of_uri = json_extract(json, '$.reblog.uri')
     WHERE is_reblog = 1 AND reblog_of_uri IS NULL;
@@ -566,28 +558,26 @@ function backfillStatusesV3(handle: DbHandle): void {
  * ジャンクションテーブルの行も自動的に削除される。
  * ただしマージは CASCADE 前に行うため、データは失われない。
  */
-function deduplicateByUri(handle: DbHandle): void {
-  const { db } = handle
-
+async function deduplicateByUri(handle: DbHandle): Promise<void> {
   // 重複 URI を検出（空文字列は除外）
-  const dupes = db.exec(
+  const dupes = (await handle.exec(
     `SELECT uri FROM statuses
      WHERE uri != ''
      GROUP BY uri
      HAVING COUNT(*) > 1;`,
     { returnValue: 'resultRows' },
-  ) as string[][]
+  )) as string[][]
 
   if (dupes.length === 0) return
 
   for (const [uri] of dupes) {
     // storedAt 降順で全行取得（最新が先頭 = 勝者）
-    const rows = db.exec(
+    const rows = (await handle.exec(
       `SELECT compositeKey FROM statuses
        WHERE uri = ?
        ORDER BY storedAt DESC;`,
       { bind: [uri], returnValue: 'resultRows' },
-    ) as string[][]
+    )) as string[][]
 
     if (rows.length < 2) continue
 
@@ -596,21 +586,21 @@ function deduplicateByUri(handle: DbHandle): void {
 
     for (const loserKey of loserKeys) {
       // タイムライン種別をマージ
-      db.exec(
+      await handle.exec(
         `INSERT OR IGNORE INTO statuses_timeline_types (compositeKey, timelineType)
          SELECT ?, timelineType FROM statuses_timeline_types WHERE compositeKey = ?;`,
         { bind: [winnerKey, loserKey] },
       )
 
       // タグをマージ
-      db.exec(
+      await handle.exec(
         `INSERT OR IGNORE INTO statuses_belonging_tags (compositeKey, tag)
          SELECT ?, tag FROM statuses_belonging_tags WHERE compositeKey = ?;`,
         { bind: [winnerKey, loserKey] },
       )
 
       // メンションをマージ
-      db.exec(
+      await handle.exec(
         `INSERT OR IGNORE INTO statuses_mentions (compositeKey, acct)
          SELECT ?, acct FROM statuses_mentions WHERE compositeKey = ?;`,
         { bind: [winnerKey, loserKey] },
@@ -618,7 +608,7 @@ function deduplicateByUri(handle: DbHandle): void {
 
       // バックエンド情報をマージ（compositeKey を勝者に付け替え）
       // PK は (backendUrl, local_id) なので compositeKey の変更は一意性に影響しない
-      db.exec(
+      await handle.exec(
         `UPDATE OR IGNORE statuses_backends
          SET compositeKey = ?
          WHERE compositeKey = ?;`,
@@ -626,7 +616,7 @@ function deduplicateByUri(handle: DbHandle): void {
       )
 
       // 敗者行を削除（CASCADE で関連テーブルの残留行も削除）
-      db.exec('DELETE FROM statuses WHERE compositeKey = ?;', {
+      await handle.exec('DELETE FROM statuses WHERE compositeKey = ?;', {
         bind: [loserKey],
       })
     }
