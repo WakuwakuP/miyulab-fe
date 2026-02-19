@@ -14,24 +14,23 @@ import { getSqliteDb, notifyChange } from './connection'
  */
 export async function enforceMaxLength(): Promise<void> {
   const handle = await getSqliteDb()
-  const { db } = handle
   const timelineTypes: TimelineType[] = ['home', 'local', 'public', 'tag']
 
-  db.exec('BEGIN;')
+  await handle.exec('BEGIN;')
   try {
     for (const type of timelineTypes) {
       // このタイムラインに属する Status の数を取得
-      const countRows = db.exec(
+      const countRows = (await handle.exec(
         'SELECT COUNT(*) FROM statuses_timeline_types WHERE timelineType = ?;',
         { bind: [type], returnValue: 'resultRows' },
-      ) as number[][]
+      )) as number[][]
       const count = countRows[0][0]
 
       if (count > MAX_LENGTH) {
         // サブクエリで古い方から MAX_LENGTH を超えた分を直接削除（バインド変数上限回避）
 
         // 他のタイムラインに属していないものを物理削除
-        db.exec(
+        await handle.exec(
           `DELETE FROM statuses
            WHERE compositeKey IN (
              SELECT stt.compositeKey
@@ -50,7 +49,7 @@ export async function enforceMaxLength(): Promise<void> {
         )
 
         // このタイムライン種別との関連を削除
-        db.exec(
+        await handle.exec(
           `DELETE FROM statuses_timeline_types
            WHERE timelineType = ?
              AND compositeKey IN (
@@ -68,13 +67,13 @@ export async function enforceMaxLength(): Promise<void> {
 
     // notifications の MAX_LENGTH 制限
     const notifCount = (
-      db.exec('SELECT COUNT(*) FROM notifications;', {
+      (await handle.exec('SELECT COUNT(*) FROM notifications;', {
         returnValue: 'resultRows',
-      }) as number[][]
+      })) as number[][]
     )[0][0]
 
     if (notifCount > MAX_LENGTH) {
-      db.exec(
+      await handle.exec(
         `DELETE FROM notifications WHERE compositeKey IN (
           SELECT compositeKey FROM notifications
           ORDER BY created_at_ms ASC
@@ -84,9 +83,9 @@ export async function enforceMaxLength(): Promise<void> {
       )
     }
 
-    db.exec('COMMIT;')
+    await handle.exec('COMMIT;')
   } catch (e) {
-    db.exec('ROLLBACK;')
+    await handle.exec('ROLLBACK;')
     throw e
   }
 
