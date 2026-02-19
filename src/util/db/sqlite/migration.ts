@@ -4,16 +4,16 @@
  * 初回起動時に IndexedDB (Dexie) のデータを SQLite に移行する。
  * マイグレーション完了後はフラグを立て、再実行しない。
  *
- * v2 スキーマ対応: マイグレーション時に正規化カラムも同時に書き込む。
- * v3 スキーマ対応: uri / reblog_of_uri カラムと statuses_backends テーブルにも書き込む。
- * これにより、マイグレーション後にバックフィルを実行する必要がなくなる。
+ * Worker モードでは Dexie の読み取りはメインスレッドで行い、
+ * SQLite への書き込みは sendCommand('migrationWrite') で Worker に委譲する。
  */
 
-import type { Entity } from 'megalodon'
 import { db as dexieDb } from '../database'
-import { getSqliteDb, notifyChange } from './connection'
-import { extractNotificationColumns } from './notificationStore'
-import { extractStatusColumns, upsertMentions } from './statusStore'
+import { getSqliteDb } from './connection'
+import type {
+  MigrationNotificationBatch,
+  MigrationStatusBatch,
+} from './protocol'
 
 const MIGRATION_KEY = 'miyulab-fe:sqlite-migrated'
 
@@ -31,15 +31,8 @@ export function isMigrated(): boolean {
  * - Dexie が空ならスキップ
  * - 既にマイグレーション済みならスキップ
  *
- * v2 スキーマ対応:
- * - statuses: 正規化カラム (account_acct, visibility, has_media 等) を同時に書き込む
- * - statuses_mentions: メンション情報を statuses_mentions テーブルに書き込む
- * - notifications: 正規化カラム (notification_type, status_id, account_acct) を同時に書き込む
- *
- * v3 スキーマ対応:
- * - statuses: uri / reblog_of_uri カラムを同時に書き込む
- * - statuses_backends: 投稿 × バックエンドの多対多関連を書き込む
- * - URI ベースの重複排除により、同一投稿は1行に集約される
+ * Dexie の読み取りはメインスレッドで行い、
+ * バッチ単位で Worker に migrationWrite コマンドを送信する。
  */
 export async function migrateFromIndexedDb(): Promise<void> {
   if (isMigrated()) return
@@ -60,7 +53,6 @@ export async function migrateFromIndexedDb(): Promise<void> {
     )
 
     const handle = await getSqliteDb()
-    const { db } = handle
 
     // ---- statuses ----
     const BATCH_SIZE = 500
@@ -75,156 +67,33 @@ export async function migrateFromIndexedDb(): Promise<void> {
 
       if (batch.length === 0) break
 
-      db.exec('BEGIN;')
-      try {
-        for (const s of batch) {
-          // Entity.Status 部分を抽出（インデックスフィールドを除外）
-          const {
-            backendUrl,
-            belongingTags,
-            compositeKey,
-            created_at_ms,
-            storedAt,
-            timelineTypes,
-            ...entityStatus
-          } = s
+      const statusBatches: MigrationStatusBatch[] = batch.map((s) => {
+        const {
+          backendUrl,
+          belongingTags,
+          compositeKey,
+          created_at_ms,
+          storedAt,
+          timelineTypes,
+          ...entityStatus
+        } = s
 
-          // v2 + v3 正規化カラムを抽出
-          const cols = extractStatusColumns(entityStatus as Entity.Status)
-          const status = entityStatus as Entity.Status
-
-          // v3: URI ベースの重複排除
-          // 同一 URI の投稿が既に存在する場合は既存の compositeKey を再利用
-          let effectiveCompositeKey = compositeKey
-          const uri = status.uri
-          if (uri) {
-            const existingRows = db.exec(
-              'SELECT compositeKey FROM statuses WHERE uri = ?;',
-              { bind: [uri], returnValue: 'resultRows' },
-            ) as string[][]
-            if (existingRows.length > 0) {
-              effectiveCompositeKey = existingRows[0][0]
-            }
-          }
-
-          if (effectiveCompositeKey !== compositeKey) {
-            // 既存行を更新
-            db.exec(
-              `UPDATE statuses SET
-                storedAt         = ?,
-                account_acct     = ?,
-                account_id       = ?,
-                visibility       = ?,
-                language         = ?,
-                has_media        = ?,
-                media_count      = ?,
-                is_reblog        = ?,
-                reblog_of_id     = ?,
-                reblog_of_uri    = ?,
-                is_sensitive     = ?,
-                has_spoiler      = ?,
-                in_reply_to_id   = ?,
-                favourites_count = ?,
-                reblogs_count    = ?,
-                replies_count    = ?,
-                json             = ?
-              WHERE compositeKey = ?;`,
-              {
-                bind: [
-                  storedAt,
-                  cols.account_acct,
-                  cols.account_id,
-                  cols.visibility,
-                  cols.language,
-                  cols.has_media,
-                  cols.media_count,
-                  cols.is_reblog,
-                  cols.reblog_of_id,
-                  cols.reblog_of_uri,
-                  cols.is_sensitive,
-                  cols.has_spoiler,
-                  cols.in_reply_to_id,
-                  cols.favourites_count,
-                  cols.reblogs_count,
-                  cols.replies_count,
-                  JSON.stringify(entityStatus),
-                  effectiveCompositeKey,
-                ],
-              },
-            )
-          } else {
-            // 新規行を INSERT
-            db.exec(
-              `INSERT OR REPLACE INTO statuses (
-                compositeKey, backendUrl, created_at_ms, storedAt,
-                uri, reblog_of_uri,
-                account_acct, account_id, visibility, language,
-                has_media, media_count, is_reblog, reblog_of_id,
-                is_sensitive, has_spoiler, in_reply_to_id,
-                favourites_count, reblogs_count, replies_count,
-                json
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
-              {
-                bind: [
-                  compositeKey,
-                  backendUrl,
-                  created_at_ms,
-                  storedAt,
-                  cols.uri,
-                  cols.reblog_of_uri,
-                  cols.account_acct,
-                  cols.account_id,
-                  cols.visibility,
-                  cols.language,
-                  cols.has_media,
-                  cols.media_count,
-                  cols.is_reblog,
-                  cols.reblog_of_id,
-                  cols.is_sensitive,
-                  cols.has_spoiler,
-                  cols.in_reply_to_id,
-                  cols.favourites_count,
-                  cols.reblogs_count,
-                  cols.replies_count,
-                  JSON.stringify(entityStatus),
-                ],
-              },
-            )
-          }
-
-          // v3: statuses_backends に登録
-          db.exec(
-            `INSERT OR IGNORE INTO statuses_backends (compositeKey, backendUrl, local_id)
-             VALUES (?, ?, ?);`,
-            { bind: [effectiveCompositeKey, backendUrl, status.id] },
-          )
-
-          for (const tt of timelineTypes) {
-            db.exec(
-              `INSERT OR IGNORE INTO statuses_timeline_types (compositeKey, timelineType)
-               VALUES (?, ?);`,
-              { bind: [effectiveCompositeKey, tt] },
-            )
-          }
-
-          for (const tag of belongingTags) {
-            db.exec(
-              `INSERT OR IGNORE INTO statuses_belonging_tags (compositeKey, tag)
-               VALUES (?, ?);`,
-              { bind: [effectiveCompositeKey, tag] },
-            )
-          }
-
-          // v2: メンション情報を statuses_mentions テーブルに書き込む
-          if (status.mentions && status.mentions.length > 0) {
-            upsertMentions(handle, effectiveCompositeKey, status.mentions)
-          }
+        return {
+          backendUrl,
+          belongingTags,
+          compositeKey,
+          created_at_ms,
+          entityJson: JSON.stringify(entityStatus),
+          storedAt,
+          timelineTypes,
         }
-        db.exec('COMMIT;')
-      } catch (e) {
-        db.exec('ROLLBACK;')
-        throw e
-      }
+      })
+
+      await handle.sendCommand({
+        notificationBatches: [],
+        statusBatches,
+        type: 'migrationWrite',
+      })
 
       offset += batch.length
       console.info(
@@ -243,9 +112,8 @@ export async function migrateFromIndexedDb(): Promise<void> {
 
       if (batch.length === 0) break
 
-      db.exec('BEGIN;')
-      try {
-        for (const n of batch) {
+      const notificationBatches: MigrationNotificationBatch[] = batch.map(
+        (n) => {
           const {
             backendUrl,
             compositeKey,
@@ -254,34 +122,21 @@ export async function migrateFromIndexedDb(): Promise<void> {
             ...entity
           } = n
 
-          // v2 + v3 正規化カラムを抽出
-          const cols = extractNotificationColumns(entity as Entity.Notification)
+          return {
+            backendUrl,
+            compositeKey,
+            created_at_ms,
+            entityJson: JSON.stringify(entity),
+            storedAt,
+          }
+        },
+      )
 
-          db.exec(
-            `INSERT OR REPLACE INTO notifications (
-              compositeKey, backendUrl, created_at_ms, storedAt,
-              notification_type, status_id, account_acct,
-              json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
-            {
-              bind: [
-                compositeKey,
-                backendUrl,
-                created_at_ms,
-                storedAt,
-                cols.notification_type,
-                cols.status_id,
-                cols.account_acct,
-                JSON.stringify(entity),
-              ],
-            },
-          )
-        }
-        db.exec('COMMIT;')
-      } catch (e) {
-        db.exec('ROLLBACK;')
-        throw e
-      }
+      await handle.sendCommand({
+        notificationBatches,
+        statusBatches: [],
+        type: 'migrationWrite',
+      })
 
       offset += batch.length
       console.info(
@@ -292,8 +147,6 @@ export async function migrateFromIndexedDb(): Promise<void> {
     markMigrated()
 
     console.info('Migration from IndexedDB to SQLite completed successfully.')
-    notifyChange('statuses')
-    notifyChange('notifications')
   } catch (error) {
     console.error('Migration from IndexedDB to SQLite failed:', error)
     // マイグレーション失敗時はフラグを立てない（次回再試行）

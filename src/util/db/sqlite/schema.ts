@@ -16,7 +16,7 @@
  * - blocked_instances: ブロックしたインスタンス
  */
 
-import type { DbHandle } from './initSqlite'
+import type { SchemaDbHandle as DbHandle } from './worker/workerSchema'
 
 /** 現在のスキーマバージョン */
 const SCHEMA_VERSION = 3

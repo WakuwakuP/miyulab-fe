@@ -1,18 +1,20 @@
 /**
- * SQLite ベースの Status ストア
+ * SQLite ベースの Status ストア（薄いラッパー）
  *
- * Dexie の statusStore.ts と同じ公開 API を提供する。
- * JSON カラムに Entity.Status 全体をシリアライズし、
- * インデックス用カラムを正規化テーブルで管理する。
+ * 書き込み操作は Worker 側の専用ハンドラに委譲し、
+ * 読み取り操作のみ execAsync で直接実行する。
  *
- * v2 スキーマでは正規化カラム（account_acct, visibility, has_media 等）を
- * UPSERT / UPDATE 時に同時に書き込み、フィルタ / ソートに利用する。
+ * notifyChange は workerClient が changedTables を元に自動発火するため、
+ * このモジュールからは呼ばない。
  */
 
 import type { Entity } from 'megalodon'
 import { isMixedQuery, isNotificationQuery } from 'util/queryBuilder'
 import type { TimelineType } from '../database'
-import { type DbHandle, getSqliteDb, notifyChange } from './connection'
+import { getSqliteDb } from './connection'
+import { createCompositeKey } from './shared'
+
+export { createCompositeKey }
 
 // ================================================================
 // 定数
@@ -22,95 +24,8 @@ import { type DbHandle, getSqliteDb, notifyChange } from './connection'
 const MAX_QUERY_LIMIT = 2147483647
 
 // ================================================================
-// ヘルパー
+// StoredStatus 型
 // ================================================================
-
-export function createCompositeKey(backendUrl: string, id: string): string {
-  return `${backendUrl}:${id}`
-}
-
-// ================================================================
-// カラム抽出ヘルパー
-// ================================================================
-
-/**
- * Entity.Status から正規化カラムの値を抽出する
- *
- * UPSERT / UPDATE 時に使用する。
- * json カラムとの二重管理になるが、フィルタ / ソート性能のために許容する。
- */
-export function extractStatusColumns(status: Entity.Status) {
-  return {
-    account_acct: status.account.acct,
-    account_id: status.account.id,
-    favourites_count: status.favourites_count,
-    has_media: status.media_attachments.length > 0 ? 1 : 0,
-    has_spoiler: (status.spoiler_text ?? '') !== '' ? 1 : 0,
-    in_reply_to_id: status.in_reply_to_id ?? null,
-    is_reblog: status.reblog != null ? 1 : 0,
-    is_sensitive: status.sensitive ? 1 : 0,
-    language: status.language ?? null,
-    media_count: status.media_attachments.length,
-    reblog_of_id: status.reblog?.id ?? null,
-    reblog_of_uri: status.reblog?.uri ?? null,
-    reblogs_count: status.reblogs_count,
-    replies_count: status.replies_count,
-    uri: status.uri,
-    visibility: status.visibility,
-  }
-}
-
-// ================================================================
-// compositeKey 解決ヘルパー（v3）
-// ================================================================
-
-/**
- * backendUrl + local_id から compositeKey を解決する
- *
- * v3 では statuses_backends テーブル経由でルックアップする。
- * 見つからない場合は null を返す。
- */
-export function resolveCompositeKey(
-  handle: DbHandle,
-  backendUrl: string,
-  localId: string,
-): string | null {
-  const rows = handle.db.exec(
-    'SELECT compositeKey FROM statuses_backends WHERE backendUrl = ? AND local_id = ?;',
-    { bind: [backendUrl, localId], returnValue: 'resultRows' },
-  ) as string[][]
-  return rows.length > 0 ? (rows[0][0] as string) : null
-}
-
-// ================================================================
-// メンション書き込みヘルパー
-// ================================================================
-
-/**
- * メンション情報を statuses_mentions テーブルに書き込む
- *
- * 既存のメンションを削除してから再挿入する（編集対応）。
- */
-export function upsertMentions(
-  handle: DbHandle,
-  compositeKey: string,
-  mentions: Entity.Mention[],
-): void {
-  const { db } = handle
-  db.exec('DELETE FROM statuses_mentions WHERE compositeKey = ?;', {
-    bind: [compositeKey],
-  })
-  for (const mention of mentions) {
-    db.exec(
-      'INSERT OR IGNORE INTO statuses_mentions (compositeKey, acct) VALUES (?, ?);',
-      { bind: [compositeKey, mention.acct] },
-    )
-  }
-}
-
-/**
- * StoredStatus 互換の型（SQLite から組み立てる）
- */
 export interface SqliteStoredStatus extends Entity.Status {
   compositeKey: string
   backendUrl: string
@@ -124,29 +39,34 @@ export interface SqliteStoredStatus extends Entity.Status {
 // 内部ユーティリティ
 // ================================================================
 
-function getTimelineTypes(
+import type { DbHandle } from './types'
+
+async function getTimelineTypes(
   handle: DbHandle,
   compositeKey: string,
-): TimelineType[] {
-  const rows = handle.db.exec(
+): Promise<TimelineType[]> {
+  const rows = (await handle.execAsync(
     'SELECT timelineType FROM statuses_timeline_types WHERE compositeKey = ?;',
     { bind: [compositeKey], returnValue: 'resultRows' },
-  ) as string[][]
+  )) as string[][]
   return rows.map((r) => r[0] as TimelineType)
 }
 
-function getBelongingTags(handle: DbHandle, compositeKey: string): string[] {
-  const rows = handle.db.exec(
+async function getBelongingTags(
+  handle: DbHandle,
+  compositeKey: string,
+): Promise<string[]> {
+  const rows = (await handle.execAsync(
     'SELECT tag FROM statuses_belonging_tags WHERE compositeKey = ?;',
     { bind: [compositeKey], returnValue: 'resultRows' },
-  ) as string[][]
+  )) as string[][]
   return rows.map((r) => r[0])
 }
 
-function rowToStoredStatus(
+async function rowToStoredStatus(
   handle: DbHandle,
   row: (string | number)[],
-): SqliteStoredStatus {
+): Promise<SqliteStoredStatus> {
   const compositeKey = row[0] as string
   const backendUrl = row[1] as string
   const created_at_ms = row[2] as number
@@ -157,11 +77,11 @@ function rowToStoredStatus(
   return {
     ...status,
     backendUrl,
-    belongingTags: getBelongingTags(handle, compositeKey),
+    belongingTags: await getBelongingTags(handle, compositeKey),
     compositeKey,
     created_at_ms,
     storedAt,
-    timelineTypes: getTimelineTypes(handle, compositeKey),
+    timelineTypes: await getTimelineTypes(handle, compositeKey),
   }
 }
 
@@ -198,170 +118,13 @@ export async function upsertStatus(
   tag?: string,
 ): Promise<void> {
   const handle = await getSqliteDb()
-  const { db } = handle
-  const normalizedUri = status.uri?.trim() || ''
-  const now = Date.now()
-  const created_at_ms = new Date(status.created_at).getTime()
-  const cols = extractStatusColumns(status)
-
-  db.exec('BEGIN;')
-  try {
-    // URI で既存行を検索（跨サーバー重複排除）
-    let compositeKey: string
-    const existingRows = normalizedUri
-      ? (db.exec('SELECT compositeKey FROM statuses WHERE uri = ?;', {
-          bind: [normalizedUri],
-          returnValue: 'resultRows',
-        }) as string[][])
-      : []
-
-    if (existingRows.length > 0) {
-      // 既存行を更新（compositeKey を再利用）
-      compositeKey = existingRows[0][0]
-      db.exec(
-        `UPDATE statuses SET
-          storedAt         = ?,
-          account_acct     = ?,
-          account_id       = ?,
-          visibility       = ?,
-          language         = ?,
-          has_media        = ?,
-          media_count      = ?,
-          is_reblog        = ?,
-          reblog_of_id     = ?,
-          reblog_of_uri    = ?,
-          is_sensitive     = ?,
-          has_spoiler      = ?,
-          in_reply_to_id   = ?,
-          favourites_count = ?,
-          reblogs_count    = ?,
-          replies_count    = ?,
-          json             = ?
-        WHERE compositeKey = ?;`,
-        {
-          bind: [
-            now,
-            cols.account_acct,
-            cols.account_id,
-            cols.visibility,
-            cols.language,
-            cols.has_media,
-            cols.media_count,
-            cols.is_reblog,
-            cols.reblog_of_id,
-            cols.reblog_of_uri,
-            cols.is_sensitive,
-            cols.has_spoiler,
-            cols.in_reply_to_id,
-            cols.favourites_count,
-            cols.reblogs_count,
-            cols.replies_count,
-            JSON.stringify(status),
-            compositeKey,
-          ],
-        },
-      )
-    } else {
-      // 新規投稿を INSERT
-      compositeKey = createCompositeKey(backendUrl, status.id)
-      db.exec(
-        `INSERT INTO statuses (
-          compositeKey, backendUrl, created_at_ms, storedAt,
-          uri,
-          account_acct, account_id, visibility, language,
-          has_media, media_count, is_reblog, reblog_of_id, reblog_of_uri,
-          is_sensitive, has_spoiler, in_reply_to_id,
-          favourites_count, reblogs_count, replies_count,
-          json
-        ) VALUES (?,?,?,?, ?, ?,?,?,?, ?,?,?,?,?, ?,?,?, ?,?,?, ?)
-        ON CONFLICT(compositeKey) DO UPDATE SET
-          storedAt         = excluded.storedAt,
-          account_acct     = excluded.account_acct,
-          account_id       = excluded.account_id,
-          visibility       = excluded.visibility,
-          language         = excluded.language,
-          has_media        = excluded.has_media,
-          media_count      = excluded.media_count,
-          is_reblog        = excluded.is_reblog,
-          reblog_of_id     = excluded.reblog_of_id,
-          reblog_of_uri    = excluded.reblog_of_uri,
-          is_sensitive     = excluded.is_sensitive,
-          has_spoiler      = excluded.has_spoiler,
-          in_reply_to_id   = excluded.in_reply_to_id,
-          favourites_count = excluded.favourites_count,
-          reblogs_count    = excluded.reblogs_count,
-          replies_count    = excluded.replies_count,
-          json             = excluded.json;`,
-        {
-          bind: [
-            compositeKey,
-            backendUrl,
-            created_at_ms,
-            now,
-            cols.uri,
-            cols.account_acct,
-            cols.account_id,
-            cols.visibility,
-            cols.language,
-            cols.has_media,
-            cols.media_count,
-            cols.is_reblog,
-            cols.reblog_of_id,
-            cols.reblog_of_uri,
-            cols.is_sensitive,
-            cols.has_spoiler,
-            cols.in_reply_to_id,
-            cols.favourites_count,
-            cols.reblogs_count,
-            cols.replies_count,
-            JSON.stringify(status),
-          ],
-        },
-      )
-    }
-
-    // バックエンド関連を登録（v3: 投稿 × バックエンドの多対多）
-    db.exec(
-      `INSERT OR IGNORE INTO statuses_backends (compositeKey, backendUrl, local_id)
-       VALUES (?, ?, ?);`,
-      { bind: [compositeKey, backendUrl, status.id] },
-    )
-
-    // timeline type を追加（重複無視）
-    db.exec(
-      `INSERT OR IGNORE INTO statuses_timeline_types (compositeKey, timelineType)
-       VALUES (?, ?);`,
-      { bind: [compositeKey, timelineType] },
-    )
-
-    // タグを追加
-    for (const t of status.tags) {
-      db.exec(
-        `INSERT OR IGNORE INTO statuses_belonging_tags (compositeKey, tag)
-         VALUES (?, ?);`,
-        { bind: [compositeKey, t.name] },
-      )
-    }
-
-    // 追加タグ（ストリーミングからのタグ指定）
-    if (tag) {
-      db.exec(
-        `INSERT OR IGNORE INTO statuses_belonging_tags (compositeKey, tag)
-         VALUES (?, ?);`,
-        { bind: [compositeKey, tag] },
-      )
-    }
-
-    // メンション書き込み
-    upsertMentions(handle, compositeKey, status.mentions)
-
-    db.exec('COMMIT;')
-  } catch (e) {
-    db.exec('ROLLBACK;')
-    throw e
-  }
-
-  notifyChange('statuses')
+  await handle.sendCommand({
+    backendUrl,
+    statusJson: JSON.stringify(status),
+    tag,
+    timelineType,
+    type: 'upsertStatus',
+  })
 }
 
 /**
@@ -376,183 +139,13 @@ export async function bulkUpsertStatuses(
   if (statuses.length === 0) return
 
   const handle = await getSqliteDb()
-  const { db } = handle
-  const now = Date.now()
-
-  // バッチ内での URI → compositeKey キャッシュ
-  const uriCache = new Map<string, string>()
-
-  db.exec('BEGIN;')
-  try {
-    for (const status of statuses) {
-      const normalizedUri = status.uri?.trim() || ''
-      const created_at_ms = new Date(status.created_at).getTime()
-      const cols = extractStatusColumns(status)
-
-      // URI で既存行を検索（キャッシュ優先）
-      let compositeKey: string | undefined = normalizedUri
-        ? uriCache.get(normalizedUri)
-        : undefined
-
-      if (compositeKey === undefined && normalizedUri) {
-        const existingRows = db.exec(
-          'SELECT compositeKey FROM statuses WHERE uri = ?;',
-          {
-            bind: [normalizedUri],
-            returnValue: 'resultRows',
-          },
-        ) as string[][]
-
-        compositeKey = existingRows.length > 0 ? existingRows[0][0] : undefined
-      }
-
-      if (compositeKey !== undefined) {
-        // 既存行を更新
-        db.exec(
-          `UPDATE statuses SET
-            storedAt         = ?,
-            account_acct     = ?,
-            account_id       = ?,
-            visibility       = ?,
-            language         = ?,
-            has_media        = ?,
-            media_count      = ?,
-            is_reblog        = ?,
-            reblog_of_id     = ?,
-            reblog_of_uri    = ?,
-            is_sensitive     = ?,
-            has_spoiler      = ?,
-            in_reply_to_id   = ?,
-            favourites_count = ?,
-            reblogs_count    = ?,
-            replies_count    = ?,
-            json             = ?
-          WHERE compositeKey = ?;`,
-          {
-            bind: [
-              now,
-              cols.account_acct,
-              cols.account_id,
-              cols.visibility,
-              cols.language,
-              cols.has_media,
-              cols.media_count,
-              cols.is_reblog,
-              cols.reblog_of_id,
-              cols.reblog_of_uri,
-              cols.is_sensitive,
-              cols.has_spoiler,
-              cols.in_reply_to_id,
-              cols.favourites_count,
-              cols.reblogs_count,
-              cols.replies_count,
-              JSON.stringify(status),
-              compositeKey,
-            ],
-          },
-        )
-      } else {
-        // 新規投稿を INSERT
-        compositeKey = createCompositeKey(backendUrl, status.id)
-        db.exec(
-          `INSERT INTO statuses (
-            compositeKey, backendUrl, created_at_ms, storedAt,
-            uri,
-            account_acct, account_id, visibility, language,
-            has_media, media_count, is_reblog, reblog_of_id, reblog_of_uri,
-            is_sensitive, has_spoiler, in_reply_to_id,
-            favourites_count, reblogs_count, replies_count,
-            json
-          ) VALUES (?,?,?,?, ?, ?,?,?,?, ?,?,?,?,?, ?,?,?, ?,?,?, ?)
-          ON CONFLICT(compositeKey) DO UPDATE SET
-            storedAt         = excluded.storedAt,
-            account_acct     = excluded.account_acct,
-            account_id       = excluded.account_id,
-            visibility       = excluded.visibility,
-            language         = excluded.language,
-            has_media        = excluded.has_media,
-            media_count      = excluded.media_count,
-            is_reblog        = excluded.is_reblog,
-            reblog_of_id     = excluded.reblog_of_id,
-            reblog_of_uri    = excluded.reblog_of_uri,
-            is_sensitive     = excluded.is_sensitive,
-            has_spoiler      = excluded.has_spoiler,
-            in_reply_to_id   = excluded.in_reply_to_id,
-            favourites_count = excluded.favourites_count,
-            reblogs_count    = excluded.reblogs_count,
-            replies_count    = excluded.replies_count,
-            json             = excluded.json;`,
-          {
-            bind: [
-              compositeKey,
-              backendUrl,
-              created_at_ms,
-              now,
-              cols.uri,
-              cols.account_acct,
-              cols.account_id,
-              cols.visibility,
-              cols.language,
-              cols.has_media,
-              cols.media_count,
-              cols.is_reblog,
-              cols.reblog_of_id,
-              cols.reblog_of_uri,
-              cols.is_sensitive,
-              cols.has_spoiler,
-              cols.in_reply_to_id,
-              cols.favourites_count,
-              cols.reblogs_count,
-              cols.replies_count,
-              JSON.stringify(status),
-            ],
-          },
-        )
-      }
-
-      if (normalizedUri) {
-        uriCache.set(normalizedUri, compositeKey)
-      }
-
-      // バックエンド関連を登録
-      db.exec(
-        `INSERT OR IGNORE INTO statuses_backends (compositeKey, backendUrl, local_id)
-         VALUES (?, ?, ?);`,
-        { bind: [compositeKey, backendUrl, status.id] },
-      )
-
-      db.exec(
-        `INSERT OR IGNORE INTO statuses_timeline_types (compositeKey, timelineType)
-         VALUES (?, ?);`,
-        { bind: [compositeKey, timelineType] },
-      )
-
-      for (const t of status.tags) {
-        db.exec(
-          `INSERT OR IGNORE INTO statuses_belonging_tags (compositeKey, tag)
-           VALUES (?, ?);`,
-          { bind: [compositeKey, t.name] },
-        )
-      }
-
-      if (tag) {
-        db.exec(
-          `INSERT OR IGNORE INTO statuses_belonging_tags (compositeKey, tag)
-           VALUES (?, ?);`,
-          { bind: [compositeKey, tag] },
-        )
-      }
-
-      // メンション書き込み
-      upsertMentions(handle, compositeKey, status.mentions)
-    }
-    db.exec('COMMIT;')
-  } catch (e) {
-    db.exec('ROLLBACK;')
-    throw e
-  }
-
-  notifyChange('statuses')
+  await handle.sendCommand({
+    backendUrl,
+    statusesJson: statuses.map((s) => JSON.stringify(s)),
+    tag,
+    timelineType,
+    type: 'bulkUpsertStatuses',
+  })
 }
 
 /**
@@ -565,75 +158,17 @@ export async function removeFromTimeline(
   tag?: string,
 ): Promise<void> {
   const handle = await getSqliteDb()
-  const { db } = handle
-
-  // v3: statuses_backends 経由で compositeKey を解決
-  const compositeKey =
-    resolveCompositeKey(handle, backendUrl, statusId) ??
-    createCompositeKey(backendUrl, statusId)
-
-  db.exec('BEGIN;')
-  try {
-    // タイムライン種別を削除
-    db.exec(
-      'DELETE FROM statuses_timeline_types WHERE compositeKey = ? AND timelineType = ?;',
-      { bind: [compositeKey, timelineType] },
-    )
-
-    // tag TL 除外時は belongingTags も更新
-    if (timelineType === 'tag' && tag) {
-      db.exec(
-        'DELETE FROM statuses_belonging_tags WHERE compositeKey = ? AND tag = ?;',
-        { bind: [compositeKey, tag] },
-      )
-
-      // まだ他のタグが残っている場合は 'tag' タイプを復元
-      const remainingTags = (
-        db.exec(
-          'SELECT COUNT(*) FROM statuses_belonging_tags WHERE compositeKey = ?;',
-          { bind: [compositeKey], returnValue: 'resultRows' },
-        ) as number[][]
-      )[0][0]
-
-      if (remainingTags > 0) {
-        db.exec(
-          `INSERT OR IGNORE INTO statuses_timeline_types (compositeKey, timelineType)
-           VALUES (?, 'tag');`,
-          { bind: [compositeKey] },
-        )
-      }
-    }
-
-    // どのタイムラインにも属さなくなったら物理削除
-    const remaining = (
-      db.exec(
-        'SELECT COUNT(*) FROM statuses_timeline_types WHERE compositeKey = ?;',
-        { bind: [compositeKey], returnValue: 'resultRows' },
-      ) as number[][]
-    )[0][0]
-
-    if (remaining === 0) {
-      db.exec('DELETE FROM statuses WHERE compositeKey = ?;', {
-        bind: [compositeKey],
-      })
-    }
-
-    db.exec('COMMIT;')
-  } catch (e) {
-    db.exec('ROLLBACK;')
-    throw e
-  }
-
-  notifyChange('statuses')
+  await handle.sendCommand({
+    backendUrl,
+    statusId,
+    tag,
+    timelineType,
+    type: 'removeFromTimeline',
+  })
 }
 
 /**
  * delete イベントの処理
- *
- * v3: statuses_backends 経由でバックエンド関連を削除し、
- * 他のバックエンドからの参照がなくなった場合のみ物理削除する。
- * 他のバックエンドが参照している場合はタイムライン種別を除外し、
- * どのタイムラインにも属さなくなった場合も物理削除する。
  */
 export async function handleDeleteEvent(
   backendUrl: string,
@@ -642,68 +177,13 @@ export async function handleDeleteEvent(
   tag?: string,
 ): Promise<void> {
   const handle = await getSqliteDb()
-  const { db } = handle
-
-  const compositeKey = resolveCompositeKey(handle, backendUrl, statusId)
-  if (!compositeKey) return
-
-  db.exec('BEGIN;')
-  try {
-    // 1. このバックエンドとの関連を削除
-    db.exec(
-      'DELETE FROM statuses_backends WHERE backendUrl = ? AND local_id = ?;',
-      { bind: [backendUrl, statusId] },
-    )
-
-    // 2. 他のバックエンドがまだ参照しているか確認
-    const remainingBackends = (
-      db.exec(
-        'SELECT COUNT(*) FROM statuses_backends WHERE compositeKey = ?;',
-        { bind: [compositeKey], returnValue: 'resultRows' },
-      ) as number[][]
-    )[0][0]
-
-    if (remainingBackends === 0) {
-      // どのバックエンドからも参照されていない → 物理削除
-      db.exec('DELETE FROM statuses WHERE compositeKey = ?;', {
-        bind: [compositeKey],
-      })
-    } else {
-      // 他のバックエンドから参照されている → タイムライン種別を除外
-      db.exec(
-        'DELETE FROM statuses_timeline_types WHERE compositeKey = ? AND timelineType = ?;',
-        { bind: [compositeKey, sourceTimelineType] },
-      )
-
-      if (sourceTimelineType === 'tag' && tag) {
-        db.exec(
-          'DELETE FROM statuses_belonging_tags WHERE compositeKey = ? AND tag = ?;',
-          { bind: [compositeKey, tag] },
-        )
-      }
-
-      // どのタイムラインにも属さなくなったら物理削除
-      const remainingTimelines = (
-        db.exec(
-          'SELECT COUNT(*) FROM statuses_timeline_types WHERE compositeKey = ?;',
-          { bind: [compositeKey], returnValue: 'resultRows' },
-        ) as number[][]
-      )[0][0]
-
-      if (remainingTimelines === 0) {
-        db.exec('DELETE FROM statuses WHERE compositeKey = ?;', {
-          bind: [compositeKey],
-        })
-      }
-    }
-
-    db.exec('COMMIT;')
-  } catch (e) {
-    db.exec('ROLLBACK;')
-    throw e
-  }
-
-  notifyChange('statuses')
+  await handle.sendCommand({
+    backendUrl,
+    sourceTimelineType,
+    statusId,
+    tag,
+    type: 'handleDeleteEvent',
+  })
 }
 
 /**
@@ -716,79 +196,13 @@ export async function updateStatusAction(
   value: boolean,
 ): Promise<void> {
   const handle = await getSqliteDb()
-  const { db } = handle
-
-  // v3: statuses_backends 経由で compositeKey を解決
-  const compositeKey = resolveCompositeKey(handle, backendUrl, statusId)
-  if (!compositeKey) return
-
-  db.exec('BEGIN;')
-  try {
-    // メイン Status の json を更新
-    const rows = db.exec(
-      'SELECT json, uri FROM statuses WHERE compositeKey = ?;',
-      {
-        bind: [compositeKey],
-        returnValue: 'resultRows',
-      },
-    ) as string[][]
-
-    if (rows.length > 0) {
-      const status = JSON.parse(rows[0][0]) as Entity.Status
-      const statusUri = rows[0][1] as string
-      ;(status as Record<string, unknown>)[action] = value
-
-      db.exec('UPDATE statuses SET json = ? WHERE compositeKey = ?;', {
-        bind: [JSON.stringify(status), compositeKey],
-      })
-
-      // reblog の場合、reblog 元も更新（v3: reblog_of_uri で検索）
-      if (status.reblog) {
-        const reblogUri = status.reblog.uri
-        if (reblogUri) {
-          const reblogRows = db.exec(
-            'SELECT compositeKey, json FROM statuses WHERE uri = ?;',
-            { bind: [reblogUri], returnValue: 'resultRows' },
-          ) as string[][]
-
-          if (reblogRows.length > 0) {
-            const reblogKey = reblogRows[0][0]
-            const reblogStatus = JSON.parse(reblogRows[0][1]) as Entity.Status
-            ;(reblogStatus as Record<string, unknown>)[action] = value
-            db.exec('UPDATE statuses SET json = ? WHERE compositeKey = ?;', {
-              bind: [JSON.stringify(reblogStatus), reblogKey],
-            })
-          }
-        }
-      }
-
-      // この Status を reblog として持つ他の Status も更新
-      // v3: reblog_of_uri でグローバルに検索（跨サーバー対応）
-      if (statusUri) {
-        const relatedRows = db.exec(
-          `SELECT compositeKey, json FROM statuses WHERE reblog_of_uri = ?;`,
-          { bind: [statusUri], returnValue: 'resultRows' },
-        ) as (string | number)[][]
-
-        for (const row of relatedRows) {
-          const json = JSON.parse(row[1] as string) as Entity.Status
-          if (json.reblog) {
-            ;(json.reblog as Record<string, unknown>)[action] = value
-            db.exec('UPDATE statuses SET json = ? WHERE compositeKey = ?;', {
-              bind: [JSON.stringify(json), row[0] as string],
-            })
-          }
-        }
-      }
-    }
-
-    db.exec('COMMIT;')
-  } catch (e) {
-    db.exec('ROLLBACK;')
-    throw e
-  }
-
-  notifyChange('statuses')
+  await handle.sendCommand({
+    action,
+    backendUrl,
+    statusId,
+    type: 'updateStatusAction',
+    value,
+  })
 }
 
 /**
@@ -799,97 +213,11 @@ export async function updateStatus(
   backendUrl: string,
 ): Promise<void> {
   const handle = await getSqliteDb()
-  const { db } = handle
-  const created_at_ms = new Date(status.created_at).getTime()
-  const now = Date.now()
-  const cols = extractStatusColumns(status)
-
-  // v3: statuses_backends 経由で compositeKey を解決
-  const compositeKey =
-    resolveCompositeKey(handle, backendUrl, status.id) ??
-    createCompositeKey(backendUrl, status.id)
-
-  // 既存確認
-  const existing = db.exec(
-    'SELECT compositeKey FROM statuses WHERE compositeKey = ?;',
-    { bind: [compositeKey], returnValue: 'resultRows' },
-  ) as string[][]
-
-  if (existing.length === 0) return
-
-  db.exec('BEGIN;')
-  try {
-    // 正規化カラムも同時に更新（v3: uri, reblog_of_uri 含む）
-    db.exec(
-      `UPDATE statuses SET
-         created_at_ms    = ?,
-         storedAt         = ?,
-         uri              = ?,
-         account_acct     = ?,
-         account_id       = ?,
-         visibility       = ?,
-         language         = ?,
-         has_media        = ?,
-         media_count      = ?,
-         is_reblog        = ?,
-         reblog_of_id     = ?,
-         reblog_of_uri    = ?,
-         is_sensitive     = ?,
-         has_spoiler      = ?,
-         in_reply_to_id   = ?,
-         favourites_count = ?,
-         reblogs_count    = ?,
-         replies_count    = ?,
-         json             = ?
-       WHERE compositeKey = ?;`,
-      {
-        bind: [
-          created_at_ms,
-          now,
-          cols.uri,
-          cols.account_acct,
-          cols.account_id,
-          cols.visibility,
-          cols.language,
-          cols.has_media,
-          cols.media_count,
-          cols.is_reblog,
-          cols.reblog_of_id,
-          cols.reblog_of_uri,
-          cols.is_sensitive,
-          cols.has_spoiler,
-          cols.in_reply_to_id,
-          cols.favourites_count,
-          cols.reblogs_count,
-          cols.replies_count,
-          JSON.stringify(status),
-          compositeKey,
-        ],
-      },
-    )
-
-    // タグを再構築
-    db.exec('DELETE FROM statuses_belonging_tags WHERE compositeKey = ?;', {
-      bind: [compositeKey],
-    })
-    for (const t of status.tags) {
-      db.exec(
-        `INSERT OR IGNORE INTO statuses_belonging_tags (compositeKey, tag)
-         VALUES (?, ?);`,
-        { bind: [compositeKey, t.name] },
-      )
-    }
-
-    // メンションを再構築
-    upsertMentions(handle, compositeKey, status.mentions)
-
-    db.exec('COMMIT;')
-  } catch (e) {
-    db.exec('ROLLBACK;')
-    throw e
-  }
-
-  notifyChange('statuses')
+  await handle.sendCommand({
+    backendUrl,
+    statusJson: JSON.stringify(status),
+    type: 'updateStatus',
+  })
 }
 
 // ================================================================
@@ -905,7 +233,6 @@ export async function getStatusesByTimelineType(
   limit?: number,
 ): Promise<SqliteStoredStatus[]> {
   const handle = await getSqliteDb()
-  const { db } = handle
 
   let sql: string
   const binds: (string | number)[] = []
@@ -940,12 +267,12 @@ export async function getStatusesByTimelineType(
     binds.push(timelineType, limit ?? MAX_QUERY_LIMIT)
   }
 
-  const rows = db.exec(sql, {
+  const rows = (await handle.execAsync(sql, {
     bind: binds,
     returnValue: 'resultRows',
-  }) as (string | number)[][]
+  })) as (string | number)[][]
 
-  return rows.map((row) => rowToStoredStatus(handle, row))
+  return Promise.all(rows.map((row) => rowToStoredStatus(handle, row)))
 }
 
 /**
@@ -957,7 +284,6 @@ export async function getStatusesByTag(
   limit?: number,
 ): Promise<SqliteStoredStatus[]> {
   const handle = await getSqliteDb()
-  const { db } = handle
 
   let sql: string
   const binds: (string | number)[] = []
@@ -992,12 +318,12 @@ export async function getStatusesByTag(
     binds.push(tag, limit ?? MAX_QUERY_LIMIT)
   }
 
-  const rows = db.exec(sql, {
+  const rows = (await handle.execAsync(sql, {
     bind: binds,
     returnValue: 'resultRows',
-  }) as (string | number)[][]
+  })) as (string | number)[][]
 
-  return rows.map((row) => rowToStoredStatus(handle, row))
+  return Promise.all(rows.map((row) => rowToStoredStatus(handle, row)))
 }
 
 /**
@@ -1057,7 +383,6 @@ export async function getStatusesByCustomQuery(
   offset?: number,
 ): Promise<SqliteStoredStatus[]> {
   const handle = await getSqliteDb()
-  const { db } = handle
 
   const sanitized = sanitizeWhereClause(whereClause)
 
@@ -1091,12 +416,12 @@ export async function getStatusesByCustomQuery(
   `
   binds.push(limit ?? MAX_QUERY_LIMIT, offset ?? 0)
 
-  const rows = db.exec(sql, {
+  const rows = (await handle.execAsync(sql, {
     bind: binds,
     returnValue: 'resultRows',
-  }) as (string | number)[][]
+  })) as (string | number)[][]
 
-  return rows.map((row) => rowToStoredStatus(handle, row))
+  return Promise.all(rows.map((row) => rowToStoredStatus(handle, row)))
 }
 
 /**
@@ -1337,7 +662,6 @@ export async function validateCustomQuery(
 
   try {
     const handle = await getSqliteDb()
-    const { db } = handle
 
     // クエリが参照するテーブルに基づいて検証クエリを構築
     const isMixed = isMixedQuery(sanitized)
@@ -1409,7 +733,7 @@ export async function validateCustomQuery(
         LIMIT 1;
       `
     }
-    db.exec(sql)
+    await handle.execAsync(sql)
     return null
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e)
@@ -1423,11 +747,10 @@ export async function validateCustomQuery(
 export async function getDistinctTags(): Promise<string[]> {
   try {
     const handle = await getSqliteDb()
-    const { db } = handle
-    const rows = db.exec(
+    const rows = (await handle.execAsync(
       'SELECT DISTINCT tag FROM statuses_belonging_tags ORDER BY tag;',
       { returnValue: 'resultRows' },
-    ) as string[][]
+    )) as string[][]
     return rows.map((r) => r[0])
   } catch {
     return []
@@ -1440,11 +763,10 @@ export async function getDistinctTags(): Promise<string[]> {
 export async function getDistinctTimelineTypes(): Promise<string[]> {
   try {
     const handle = await getSqliteDb()
-    const { db } = handle
-    const rows = db.exec(
+    const rows = (await handle.execAsync(
       'SELECT DISTINCT timelineType FROM statuses_timeline_types ORDER BY timelineType;',
       { returnValue: 'resultRows' },
-    ) as string[][]
+    )) as string[][]
     return rows.map((r) => r[0])
   } catch {
     return []
@@ -1462,11 +784,10 @@ export async function getJsonKeysFromSample(
 ): Promise<string[]> {
   try {
     const handle = await getSqliteDb()
-    const { db } = handle
-    const rows = db.exec(
+    const rows = (await handle.execAsync(
       `SELECT json FROM statuses ORDER BY created_at_ms DESC LIMIT ?;`,
       { bind: [sampleSize], returnValue: 'resultRows' },
-    ) as string[][]
+    )) as string[][]
 
     const paths = new Set<string>()
 
@@ -1530,13 +851,12 @@ export async function getDistinctJsonValues(
 ): Promise<string[]> {
   try {
     const handle = await getSqliteDb()
-    const { db } = handle
 
     // パスのバリデーション: $. で始まり、正しいJSONパス構文のみ許可
     // [N] (配列アクセス)、.key (オブジェクトキー) のみ許可。連続ドットや不正ブラケットを拒否
     if (!/^\$(\.[a-zA-Z_]\w*|\[\d+\])*$/.test(jsonPath)) return []
 
-    const rows = db.exec(
+    const rows = (await handle.execAsync(
       `WITH vals AS (
          SELECT json_extract(json, ?) AS val
          FROM statuses
@@ -1547,7 +867,7 @@ export async function getDistinctJsonValues(
        ORDER BY val
        LIMIT ?;`,
       { bind: [jsonPath, maxResults], returnValue: 'resultRows' },
-    ) as string[][]
+    )) as string[][]
     return rows.map((r) => r[0])
   } catch {
     return []
@@ -1642,11 +962,10 @@ export async function getDistinctColumnValues(
 
   try {
     const handle = await getSqliteDb()
-    const { db } = handle
-    const rows = db.exec(
+    const rows = (await handle.execAsync(
       `SELECT DISTINCT "${column}" FROM "${table}" WHERE "${column}" IS NOT NULL AND "${column}" != '' ORDER BY "${column}" LIMIT ?;`,
       { bind: [maxResults], returnValue: 'resultRows' },
-    ) as string[][]
+    )) as string[][]
     return rows.map((r) => r[0])
   } catch {
     return []
@@ -1674,13 +993,12 @@ export async function searchDistinctColumnValues(
 
   try {
     const handle = await getSqliteDb()
-    const { db } = handle
     // LIKE でプレフィクスフィルタ（ESCAPE でワイルドカード文字を安全にエスケープ）
     const escaped = prefix.replace(/[%_\\]/g, (c) => `\\${c}`)
-    const rows = db.exec(
+    const rows = (await handle.execAsync(
       `SELECT DISTINCT "${realColumn}" FROM "${table}" WHERE "${realColumn}" IS NOT NULL AND "${realColumn}" != '' AND "${realColumn}" LIKE ? ESCAPE '\\' ORDER BY "${realColumn}" LIMIT ?;`,
       { bind: [`${escaped}%`, maxResults], returnValue: 'resultRows' },
-    ) as string[][]
+    )) as string[][]
     return rows.map((r) => r[0])
   } catch {
     return []
