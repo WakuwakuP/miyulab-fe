@@ -1,20 +1,19 @@
 /**
  * SQLite データベース シングルトン
  *
- * getDb() + ensureSchema() をラップし、
- * 変更通知 (change notification) を提供する。
- *
+ * getDb() をラップし、変更通知 (change notification) を提供する。
  * React Hook はこの通知を subscribe して再クエリする。
+ *
+ * Worker モードでは changedTables レスポンスにより workerClient が
+ * notifyChange を自動発火するため、Store 関数からの明示呼び出しは不要。
  */
 
-import type { DbHandle } from './initSqlite'
 import { getDb } from './initSqlite'
-import { ensureSchema } from './schema'
+import type { TableName } from './protocol'
+import type { DbHandle } from './types'
 
 export type { DbHandle }
-
-/** 変更対象テーブル */
-export type TableName = 'statuses' | 'notifications'
+export type { TableName }
 
 /** 変更リスナー */
 type ChangeListener = () => void
@@ -37,7 +36,11 @@ export function subscribe(table: TableName, fn: ChangeListener): () => void {
 }
 
 /**
- * テーブル変更を通知する（書き込み操作の後に呼ぶ）
+ * テーブル変更を通知する
+ *
+ * Worker モードでは workerClient が changedTables を元に自動発火する。
+ * フォールバックモードでは initSqlite.ts の sendCommand 内で発火する。
+ * コンポーネント/Hook から直接呼ぶ場面（mute/block 等）でも使用可能。
  */
 export function notifyChange(table: TableName): void {
   const set = listeners.get(table)
@@ -55,14 +58,10 @@ export function notifyChange(table: TableName): void {
 let ready: Promise<DbHandle> | null = null
 
 /**
- * 初期化済みの DB ハンドルを返す（スキーマ保証付き）
+ * 初期化済みの DB ハンドルを返す（スキーマはWorker/フォールバックで初期化済み）
  */
 export function getSqliteDb(): Promise<DbHandle> {
   if (ready) return ready
-  ready = (async () => {
-    const handle = await getDb()
-    ensureSchema(handle)
-    return handle
-  })()
+  ready = getDb(notifyChange)
   return ready
 }

@@ -5,11 +5,13 @@
  * 追加・更新時に同時に書き込み、フィルタ / 逆引きに利用する。
  *
  * v3 スキーマでは statuses_backends テーブルを利用した compositeKey 解決を行う。
+ *
+ * Worker モードでは write 系は sendCommand で Worker に委譲し、
+ * read 系は execAsync で直接クエリを発行する。
  */
 
 import type { Entity } from 'megalodon'
-import { getSqliteDb, notifyChange } from './connection'
-import { createCompositeKey, resolveCompositeKey } from './statusStore'
+import { getSqliteDb } from './connection'
 
 /** クエリの最大行数上限 */
 const MAX_QUERY_LIMIT = 2147483647
@@ -25,14 +27,9 @@ export interface SqliteStoredNotification extends Entity.Notification {
  * Entity.Notification から正規化カラムの値を抽出する
  *
  * UPSERT 時に使用する。
+ * (shared.ts の extractNotificationColumns と同等だが互換性のため残す)
  */
-export function extractNotificationColumns(notification: Entity.Notification) {
-  return {
-    account_acct: notification.account?.acct ?? '',
-    notification_type: notification.type,
-    status_id: notification.status?.id ?? null,
-  }
-}
+export { extractNotificationColumns } from './shared'
 
 function rowToStoredNotification(
   row: (string | number)[],
@@ -54,52 +51,22 @@ function rowToStoredNotification(
 }
 
 /**
- * Notification を追加
+ * Notification を追加 — Worker に委譲
  */
 export async function addNotification(
   notification: Entity.Notification,
   backendUrl: string,
 ): Promise<void> {
   const handle = await getSqliteDb()
-  const { db } = handle
-  const compositeKey = createCompositeKey(backendUrl, notification.id)
-  const created_at_ms = new Date(notification.created_at).getTime()
-  const now = Date.now()
-
-  const cols = extractNotificationColumns(notification)
-
-  db.exec(
-    `INSERT INTO notifications (
-      compositeKey, backendUrl, created_at_ms, storedAt,
-      notification_type, status_id, account_acct,
-      json
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(compositeKey) DO UPDATE SET
-      created_at_ms     = excluded.created_at_ms,
-      storedAt          = excluded.storedAt,
-      notification_type = excluded.notification_type,
-      status_id         = excluded.status_id,
-      account_acct      = excluded.account_acct,
-      json              = excluded.json;`,
-    {
-      bind: [
-        compositeKey,
-        backendUrl,
-        created_at_ms,
-        now,
-        cols.notification_type,
-        cols.status_id,
-        cols.account_acct,
-        JSON.stringify(notification),
-      ],
-    },
-  )
-
-  notifyChange('notifications')
+  await handle.sendCommand({
+    backendUrl,
+    notificationJson: JSON.stringify(notification),
+    type: 'addNotification',
+  })
 }
 
 /**
- * 複数の Notification を一括追加
+ * 複数の Notification を一括追加 — Worker に委譲
  */
 export async function bulkAddNotifications(
   notifications: Entity.Notification[],
@@ -108,61 +75,21 @@ export async function bulkAddNotifications(
   if (notifications.length === 0) return
 
   const handle = await getSqliteDb()
-  const { db } = handle
-  const now = Date.now()
-
-  db.exec('BEGIN;')
-  try {
-    for (const notification of notifications) {
-      const compositeKey = createCompositeKey(backendUrl, notification.id)
-      const created_at_ms = new Date(notification.created_at).getTime()
-      const cols = extractNotificationColumns(notification)
-
-      db.exec(
-        `INSERT INTO notifications (
-          compositeKey, backendUrl, created_at_ms, storedAt,
-          notification_type, status_id, account_acct,
-          json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(compositeKey) DO UPDATE SET
-          created_at_ms     = excluded.created_at_ms,
-          storedAt          = excluded.storedAt,
-          notification_type = excluded.notification_type,
-          status_id         = excluded.status_id,
-          account_acct      = excluded.account_acct,
-          json              = excluded.json;`,
-        {
-          bind: [
-            compositeKey,
-            backendUrl,
-            created_at_ms,
-            now,
-            cols.notification_type,
-            cols.status_id,
-            cols.account_acct,
-            JSON.stringify(notification),
-          ],
-        },
-      )
-    }
-    db.exec('COMMIT;')
-  } catch (e) {
-    db.exec('ROLLBACK;')
-    throw e
-  }
-
-  notifyChange('notifications')
+  await handle.sendCommand({
+    backendUrl,
+    notificationsJson: notifications.map((n) => JSON.stringify(n)),
+    type: 'bulkAddNotifications',
+  })
 }
 
 /**
- * Notification を取得
+ * Notification を取得 — execAsync で直接クエリ
  */
 export async function getNotifications(
   backendUrls?: string[],
   limit?: number,
 ): Promise<SqliteStoredNotification[]> {
   const handle = await getSqliteDb()
-  const { db } = handle
 
   let sql: string
   const binds: (string | number)[] = []
@@ -187,16 +114,16 @@ export async function getNotifications(
     binds.push(limit ?? MAX_QUERY_LIMIT)
   }
 
-  const rows = db.exec(sql, {
+  const rows = (await handle.execAsync(sql, {
     bind: binds,
     returnValue: 'resultRows',
-  }) as (string | number)[][]
+  })) as (string | number)[][]
 
   return rows.map(rowToStoredNotification)
 }
 
 /**
- * Notification 内の Status アクション状態を更新
+ * Notification 内の Status アクション状態を更新 — Worker に委譲
  *
  * v3: statusId は特定バックエンドのローカル ID のため、
  * statuses_backends 経由でグローバルな status を特定し、
@@ -209,62 +136,11 @@ export async function updateNotificationStatusAction(
   value: boolean,
 ): Promise<void> {
   const handle = await getSqliteDb()
-  const { db } = handle
-
-  // v3: statuses_backends 経由で status の uri を取得し、
-  // その uri に対応する全ての status_id（ローカル ID）を収集して通知を検索する。
-  // これにより跨サーバーで同一投稿に対する通知も正しく更新できる。
-  const statusCompositeKey = resolveCompositeKey(handle, backendUrl, statusId)
-
-  // 検索対象の status_id リストを構築
-  const statusIds: string[] = [statusId]
-
-  if (statusCompositeKey) {
-    // 同一投稿の他バックエンドでの local_id も収集
-    const localIdRows = db.exec(
-      'SELECT local_id FROM statuses_backends WHERE compositeKey = ?;',
-      { bind: [statusCompositeKey], returnValue: 'resultRows' },
-    ) as string[][]
-    for (const r of localIdRows) {
-      if (!statusIds.includes(r[0])) {
-        statusIds.push(r[0])
-      }
-    }
-  }
-
-  // 収集した全 status_id で通知を検索
-  const placeholders = statusIds.map(() => '?').join(',')
-  const rows = db.exec(
-    `SELECT compositeKey, json FROM notifications
-     WHERE status_id IN (${placeholders});`,
-    { bind: statusIds, returnValue: 'resultRows' },
-  ) as (string | number)[][]
-
-  const updates: { key: string; json: string }[] = []
-  for (const row of rows) {
-    const notification = JSON.parse(row[1] as string) as Entity.Notification
-    if (notification.status) {
-      ;(notification.status as Record<string, unknown>)[action] = value
-      updates.push({
-        json: JSON.stringify(notification),
-        key: row[0] as string,
-      })
-    }
-  }
-
-  if (updates.length > 0) {
-    db.exec('BEGIN;')
-    try {
-      for (const u of updates) {
-        db.exec('UPDATE notifications SET json = ? WHERE compositeKey = ?;', {
-          bind: [u.json, u.key],
-        })
-      }
-      db.exec('COMMIT;')
-    } catch (e) {
-      db.exec('ROLLBACK;')
-      throw e
-    }
-    notifyChange('notifications')
-  }
+  await handle.sendCommand({
+    action,
+    backendUrl,
+    statusId,
+    type: 'updateNotificationStatusAction',
+    value,
+  })
 }

@@ -370,11 +370,14 @@ export const StreamingManagerProvider = ({
   // =============================================
   // biome-ignore lint/correctness/useExhaustiveDependencies: timelineSettings is intentionally included to trigger re-sync when settings change. syncStreamsEvent/fetchInitialDataForTimelines are useEffectEvent and capture the latest values.
   useEffect(() => {
-    if (apps.length <= 0) return
+    // StrictMode ガードを apps.length チェックより先に消費する。
+    // apps.length を先にチェックすると、初回レンダで apps=[] の時に
+    // refFirstRef が消費されず、apps が読み込まれた時にスキップされてしまう。
     if (process.env.NODE_ENV === 'development' && refFirstRef.current) {
       refFirstRef.current = false
       return
     }
+    if (apps.length <= 0) return
 
     syncStreamsEvent()
     fetchInitialDataForTimelines()
