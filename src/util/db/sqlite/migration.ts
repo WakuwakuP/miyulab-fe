@@ -60,7 +60,6 @@ export async function migrateFromIndexedDb(): Promise<void> {
     )
 
     const handle = await getSqliteDb()
-    const { db } = handle
 
     // ---- statuses ----
     const BATCH_SIZE = 500
@@ -75,7 +74,7 @@ export async function migrateFromIndexedDb(): Promise<void> {
 
       if (batch.length === 0) break
 
-      db.exec('BEGIN;')
+      await handle.exec('BEGIN;')
       try {
         for (const s of batch) {
           // Entity.Status 部分を抽出（インデックスフィールドを除外）
@@ -98,10 +97,10 @@ export async function migrateFromIndexedDb(): Promise<void> {
           let effectiveCompositeKey = compositeKey
           const uri = status.uri
           if (uri) {
-            const existingRows = db.exec(
+            const existingRows = (await handle.exec(
               'SELECT compositeKey FROM statuses WHERE uri = ?;',
               { bind: [uri], returnValue: 'resultRows' },
-            ) as string[][]
+            )) as string[][]
             if (existingRows.length > 0) {
               effectiveCompositeKey = existingRows[0][0]
             }
@@ -109,7 +108,7 @@ export async function migrateFromIndexedDb(): Promise<void> {
 
           if (effectiveCompositeKey !== compositeKey) {
             // 既存行を更新
-            db.exec(
+            await handle.exec(
               `UPDATE statuses SET
                 storedAt         = ?,
                 account_acct     = ?,
@@ -154,7 +153,7 @@ export async function migrateFromIndexedDb(): Promise<void> {
             )
           } else {
             // 新規行を INSERT
-            db.exec(
+            await handle.exec(
               `INSERT OR REPLACE INTO statuses (
                 compositeKey, backendUrl, created_at_ms, storedAt,
                 uri, reblog_of_uri,
@@ -193,14 +192,14 @@ export async function migrateFromIndexedDb(): Promise<void> {
           }
 
           // v3: statuses_backends に登録
-          db.exec(
+          await handle.exec(
             `INSERT OR IGNORE INTO statuses_backends (compositeKey, backendUrl, local_id)
              VALUES (?, ?, ?);`,
             { bind: [effectiveCompositeKey, backendUrl, status.id] },
           )
 
           for (const tt of timelineTypes) {
-            db.exec(
+            await handle.exec(
               `INSERT OR IGNORE INTO statuses_timeline_types (compositeKey, timelineType)
                VALUES (?, ?);`,
               { bind: [effectiveCompositeKey, tt] },
@@ -208,7 +207,7 @@ export async function migrateFromIndexedDb(): Promise<void> {
           }
 
           for (const tag of belongingTags) {
-            db.exec(
+            await handle.exec(
               `INSERT OR IGNORE INTO statuses_belonging_tags (compositeKey, tag)
                VALUES (?, ?);`,
               { bind: [effectiveCompositeKey, tag] },
@@ -217,12 +216,12 @@ export async function migrateFromIndexedDb(): Promise<void> {
 
           // v2: メンション情報を statuses_mentions テーブルに書き込む
           if (status.mentions && status.mentions.length > 0) {
-            upsertMentions(handle, effectiveCompositeKey, status.mentions)
+            await upsertMentions(handle, effectiveCompositeKey, status.mentions)
           }
         }
-        db.exec('COMMIT;')
+        await handle.exec('COMMIT;')
       } catch (e) {
-        db.exec('ROLLBACK;')
+        await handle.exec('ROLLBACK;')
         throw e
       }
 
@@ -243,7 +242,7 @@ export async function migrateFromIndexedDb(): Promise<void> {
 
       if (batch.length === 0) break
 
-      db.exec('BEGIN;')
+      await handle.exec('BEGIN;')
       try {
         for (const n of batch) {
           const {
@@ -257,7 +256,7 @@ export async function migrateFromIndexedDb(): Promise<void> {
           // v2 + v3 正規化カラムを抽出
           const cols = extractNotificationColumns(entity as Entity.Notification)
 
-          db.exec(
+          await handle.exec(
             `INSERT OR REPLACE INTO notifications (
               compositeKey, backendUrl, created_at_ms, storedAt,
               notification_type, status_id, account_acct,
@@ -277,9 +276,9 @@ export async function migrateFromIndexedDb(): Promise<void> {
             },
           )
         }
-        db.exec('COMMIT;')
+        await handle.exec('COMMIT;')
       } catch (e) {
-        db.exec('ROLLBACK;')
+        await handle.exec('ROLLBACK;')
         throw e
       }
 

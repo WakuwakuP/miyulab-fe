@@ -105,14 +105,14 @@ export async function fetchMoreData(
         // このタグの最古の投稿を取得 (SQLite)
         const { getSqliteDb } = await import('util/db/sqlite/connection')
         const handle = await getSqliteDb()
-        const rows = handle.db.exec(
+        const rows = (await handle.exec(
           `SELECT s.json FROM statuses s
            INNER JOIN statuses_belonging_tags sbt ON s.compositeKey = sbt.compositeKey
            WHERE sbt.tag = ? AND s.backendUrl = ?
            ORDER BY s.created_at_ms ASC
            LIMIT 1;`,
           { bind: [tag, backendUrl], returnValue: 'resultRows' },
-        ) as string[][]
+        )) as string[][]
 
         let tagMaxId = maxId
         if (rows.length > 0) {

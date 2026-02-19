@@ -44,7 +44,6 @@ export function useTimeline(timelineType: TimelineType): StatusAddAppIndex[] {
 
     try {
       const handle = await getSqliteDb()
-      const { db } = handle
 
       const placeholders = backendUrls.map(() => '?').join(',')
       const sql = `
@@ -63,10 +62,10 @@ export function useTimeline(timelineType: TimelineType): StatusAddAppIndex[] {
         MAX_LENGTH,
       ]
 
-      const rows = db.exec(sql, {
+      const rows = (await handle.exec(sql, {
         bind: binds,
         returnValue: 'resultRows',
-      }) as (string | number)[][]
+      })) as (string | number)[][]
 
       const results: SqliteStoredStatus[] = rows.map((row) => {
         const status = JSON.parse(row[4] as string)
@@ -129,7 +128,6 @@ export function useTagTimeline(
 
     try {
       const handle = await getSqliteDb()
-      const { db } = handle
 
       const placeholders = backendUrls.map(() => '?').join(',')
       const sql = `
@@ -144,10 +142,10 @@ export function useTagTimeline(
       `
       const binds: (string | number)[] = [tag, ...backendUrls, MAX_LENGTH]
 
-      const rows = db.exec(sql, {
+      const rows = (await handle.exec(sql, {
         bind: binds,
         returnValue: 'resultRows',
-      }) as (string | number)[][]
+      })) as (string | number)[][]
 
       let results: SqliteStoredStatus[] = rows.map((row) => {
         const status = JSON.parse(row[4] as string)

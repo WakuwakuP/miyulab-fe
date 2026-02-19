@@ -96,7 +96,6 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
 
     try {
       const handle = await getSqliteDb()
-      const { db } = handle
 
       // サニタイズ: DML/DDL拒否, セミコロン除去, LIMIT/OFFSET除去
       const forbidden =
@@ -192,10 +191,10 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         `
 
         const start = performance.now()
-        const rows = db.exec(sql, {
+        const rows = (await handle.exec(sql, {
           bind: binds,
           returnValue: 'resultRows',
-        }) as (string | number)[][]
+        })) as (string | number)[][]
         recordDuration(performance.now() - start)
 
         const mixed = rows.map((row) => {
@@ -241,10 +240,10 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         `
 
         const start = performance.now()
-        const rows = db.exec(sql, {
+        const rows = (await handle.exec(sql, {
           bind: binds,
           returnValue: 'resultRows',
-        }) as (string | number)[][]
+        })) as (string | number)[][]
         recordDuration(performance.now() - start)
 
         const notifResults = rows.map((row) => {
@@ -298,10 +297,10 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         `
 
         const start = performance.now()
-        const rows = db.exec(sql, {
+        const rows = (await handle.exec(sql, {
           bind: binds,
           returnValue: 'resultRows',
-        }) as (string | number)[][]
+        })) as (string | number)[][]
         recordDuration(performance.now() - start)
 
         const statusResults = rows.map((row) => {
