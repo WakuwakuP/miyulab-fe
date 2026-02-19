@@ -47,10 +47,9 @@ async function initDb(): Promise<DbHandle> {
     throw new Error('SQLite Worker requires a browser environment')
   }
 
-  const worker = new Worker(
-    new URL('./sqlite.worker.ts', import.meta.url),
-    { type: 'module' },
-  )
+  const worker = new Worker(new URL('./sqlite.worker.ts', import.meta.url), {
+    type: 'module',
+  })
 
   // リクエスト/レスポンスの対応管理
   const pending = new Map<
@@ -86,21 +85,21 @@ async function initDb(): Promise<DbHandle> {
   // Worker を初期化（OPFS / メモリDB の判定は Worker 内で行う）
   await new Promise<unknown>((resolve, reject) => {
     const id = nextId++
-    pending.set(id, { resolve, reject })
-    worker.postMessage({ type: 'init', id })
+    pending.set(id, { reject, resolve })
+    worker.postMessage({ id, type: 'init' })
   })
 
   // exec プロキシ: メインスレッドから Worker へ SQL 実行を委譲
   const exec = (sql: string, opts?: ExecOptions): Promise<unknown> => {
     return new Promise((resolve, reject) => {
       const id = nextId++
-      pending.set(id, { resolve, reject })
+      pending.set(id, { reject, resolve })
       worker.postMessage({
-        type: 'exec',
-        id,
-        sql,
         bind: opts?.bind,
+        id,
         returnValue: opts?.returnValue,
+        sql,
+        type: 'exec',
       })
     })
   }

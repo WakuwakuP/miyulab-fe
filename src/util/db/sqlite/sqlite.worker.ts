@@ -50,12 +50,12 @@ async function handleInit(id: number): Promise<void> {
     db.exec('PRAGMA synchronous=NORMAL;')
     db.exec('PRAGMA foreign_keys = ON;')
 
-    self.postMessage({ type: 'init-result', id, opfs } satisfies WorkerResponse)
+    self.postMessage({ id, opfs, type: 'init-result' } satisfies WorkerResponse)
   } catch (error) {
     self.postMessage({
-      type: 'init-error',
-      id,
       error: error instanceof Error ? error.message : String(error),
+      id,
+      type: 'init-error',
     } satisfies WorkerResponse)
   }
 }
@@ -63,9 +63,9 @@ async function handleInit(id: number): Promise<void> {
 function handleExec(msg: WorkerRequest & { type: 'exec' }): void {
   if (!db) {
     self.postMessage({
-      type: 'exec-error',
-      id: msg.id,
       error: 'DB not initialized',
+      id: msg.id,
+      type: 'exec-error',
     } satisfies WorkerResponse)
     return
   }
@@ -76,24 +76,22 @@ function handleExec(msg: WorkerRequest & { type: 'exec' }): void {
     if (msg.returnValue) opts.returnValue = msg.returnValue
 
     const raw =
-      Object.keys(opts).length > 0
-        ? db.exec(msg.sql, opts)
-        : db.exec(msg.sql)
+      Object.keys(opts).length > 0 ? db.exec(msg.sql, opts) : db.exec(msg.sql)
 
     // db.exec() without returnValue returns the db object (for chaining).
     // Only forward meaningful results (arrays) to the main thread.
     const result = msg.returnValue ? raw : undefined
 
     self.postMessage({
-      type: 'exec-result',
       id: msg.id,
       result,
+      type: 'exec-result',
     } satisfies WorkerResponse)
   } catch (error) {
     self.postMessage({
-      type: 'exec-error',
-      id: msg.id,
       error: error instanceof Error ? error.message : String(error),
+      id: msg.id,
+      type: 'exec-error',
     } satisfies WorkerResponse)
   }
 }
