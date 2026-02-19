@@ -134,7 +134,10 @@ async function getTimelineTypes(
   return rows.map((r) => r[0] as TimelineType)
 }
 
-async function getBelongingTags(handle: DbHandle, compositeKey: string): Promise<string[]> {
+async function getBelongingTags(
+  handle: DbHandle,
+  compositeKey: string,
+): Promise<string[]> {
   const rows = (await handle.exec(
     'SELECT tag FROM statuses_belonging_tags WHERE compositeKey = ?;',
     { bind: [compositeKey], returnValue: 'resultRows' },
@@ -207,10 +210,13 @@ export async function upsertStatus(
     // URI で既存行を検索（跨サーバー重複排除）
     let compositeKey: string
     const existingRows = normalizedUri
-      ? ((await handle.exec('SELECT compositeKey FROM statuses WHERE uri = ?;', {
-          bind: [normalizedUri],
-          returnValue: 'resultRows',
-        })) as string[][])
+      ? ((await handle.exec(
+          'SELECT compositeKey FROM statuses WHERE uri = ?;',
+          {
+            bind: [normalizedUri],
+            returnValue: 'resultRows',
+          },
+        )) as string[][])
       : []
 
     if (existingRows.length > 0) {
@@ -732,9 +738,12 @@ export async function updateStatusAction(
       const statusUri = rows[0][1] as string
       ;(status as Record<string, unknown>)[action] = value
 
-      await handle.exec('UPDATE statuses SET json = ? WHERE compositeKey = ?;', {
-        bind: [JSON.stringify(status), compositeKey],
-      })
+      await handle.exec(
+        'UPDATE statuses SET json = ? WHERE compositeKey = ?;',
+        {
+          bind: [JSON.stringify(status), compositeKey],
+        },
+      )
 
       // reblog の場合、reblog 元も更新（v3: reblog_of_uri で検索）
       if (status.reblog) {
@@ -749,9 +758,12 @@ export async function updateStatusAction(
             const reblogKey = reblogRows[0][0]
             const reblogStatus = JSON.parse(reblogRows[0][1]) as Entity.Status
             ;(reblogStatus as Record<string, unknown>)[action] = value
-            await handle.exec('UPDATE statuses SET json = ? WHERE compositeKey = ?;', {
-              bind: [JSON.stringify(reblogStatus), reblogKey],
-            })
+            await handle.exec(
+              'UPDATE statuses SET json = ? WHERE compositeKey = ?;',
+              {
+                bind: [JSON.stringify(reblogStatus), reblogKey],
+              },
+            )
           }
         }
       }
@@ -768,9 +780,12 @@ export async function updateStatusAction(
           const json = JSON.parse(row[1] as string) as Entity.Status
           if (json.reblog) {
             ;(json.reblog as Record<string, unknown>)[action] = value
-            await handle.exec('UPDATE statuses SET json = ? WHERE compositeKey = ?;', {
-              bind: [JSON.stringify(json), row[0] as string],
-            })
+            await handle.exec(
+              'UPDATE statuses SET json = ? WHERE compositeKey = ?;',
+              {
+                bind: [JSON.stringify(json), row[0] as string],
+              },
+            )
           }
         }
       }
@@ -862,9 +877,12 @@ export async function updateStatus(
     )
 
     // タグを再構築
-    await handle.exec('DELETE FROM statuses_belonging_tags WHERE compositeKey = ?;', {
-      bind: [compositeKey],
-    })
+    await handle.exec(
+      'DELETE FROM statuses_belonging_tags WHERE compositeKey = ?;',
+      {
+        bind: [compositeKey],
+      },
+    )
     for (const t of status.tags) {
       await handle.exec(
         `INSERT OR IGNORE INTO statuses_belonging_tags (compositeKey, tag)
