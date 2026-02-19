@@ -14,10 +14,10 @@ type MutedAccount = {
  */
 async function getMutedAccounts(backendUrl: string): Promise<MutedAccount[]> {
   const handle = await getSqliteDb()
-  const rows = handle.db.exec(
+  const rows = (await handle.execAsync(
     'SELECT account_acct, muted_at FROM muted_accounts WHERE backendUrl = ? ORDER BY muted_at DESC;',
     { bind: [backendUrl], returnValue: 'resultRows' },
-  ) as (string | number)[][]
+  )) as (string | number)[][]
 
   return rows.map((row) => ({
     account_acct: row[0] as string,
@@ -33,7 +33,7 @@ async function muteAccount(
   accountAcct: string,
 ): Promise<void> {
   const handle = await getSqliteDb()
-  handle.db.exec(
+  await handle.execAsync(
     `INSERT OR IGNORE INTO muted_accounts (backendUrl, account_acct, muted_at)
      VALUES (?, ?, ?);`,
     { bind: [backendUrl, accountAcct, Date.now()] },
@@ -49,7 +49,7 @@ async function unmuteAccount(
   accountAcct: string,
 ): Promise<void> {
   const handle = await getSqliteDb()
-  handle.db.exec(
+  await handle.execAsync(
     'DELETE FROM muted_accounts WHERE backendUrl = ? AND account_acct = ?;',
     { bind: [backendUrl, accountAcct] },
   )

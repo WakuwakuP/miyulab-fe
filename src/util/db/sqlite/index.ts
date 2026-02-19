@@ -17,14 +17,16 @@ export type { SqliteStoredNotification } from './notificationStore'
 export {
   addNotification,
   bulkAddNotifications,
+  extractNotificationColumns,
   getNotifications,
   updateNotificationStatusAction,
 } from './notificationStore'
+// Shared pure functions
+export { createCompositeKey } from './shared'
 export type { SqliteStoredStatus } from './statusStore'
 // Status store
 export {
   bulkUpsertStatuses,
-  createCompositeKey,
   getStatusesByCustomQuery,
   getStatusesByTag,
   getStatusesByTimelineType,

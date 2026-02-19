@@ -127,7 +127,6 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
 
     try {
       const handle = await getSqliteDb()
-      const { db } = handle
 
       const backendPlaceholders = targetBackendUrls.map(() => '?').join(',')
       const tagPlaceholders = tags.map(() => '?').join(',')
@@ -189,10 +188,10 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
       }
 
       const start = performance.now()
-      const rows = db.exec(sql, {
+      const rows = (await handle.execAsync(sql, {
         bind: binds,
         returnValue: 'resultRows',
-      }) as (string | number)[][]
+      })) as (string | number)[][]
       recordDuration(performance.now() - start)
 
       const results: SqliteStoredStatus[] = rows.map((row) => {

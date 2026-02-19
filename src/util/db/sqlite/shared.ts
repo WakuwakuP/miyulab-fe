@@ -1,0 +1,50 @@
+/**
+ * Worker / メインスレッド共有の純粋関数
+ *
+ * DB アクセス不要な純粋関数をここに配置し、
+ * Worker 側とメインスレッド側の両方から import できるようにする。
+ */
+
+import type { Entity } from 'megalodon'
+
+/**
+ * compositeKey を生成する
+ */
+export function createCompositeKey(backendUrl: string, id: string): string {
+  return `${backendUrl}:${id}`
+}
+
+/**
+ * Entity.Status から正規化カラムの値を抽出する
+ */
+export function extractStatusColumns(status: Entity.Status) {
+  return {
+    account_acct: status.account.acct,
+    account_id: status.account.id,
+    favourites_count: status.favourites_count,
+    has_media: status.media_attachments.length > 0 ? 1 : 0,
+    has_spoiler: (status.spoiler_text ?? '') !== '' ? 1 : 0,
+    in_reply_to_id: status.in_reply_to_id ?? null,
+    is_reblog: status.reblog != null ? 1 : 0,
+    is_sensitive: status.sensitive ? 1 : 0,
+    language: status.language ?? null,
+    media_count: status.media_attachments.length,
+    reblog_of_id: status.reblog?.id ?? null,
+    reblog_of_uri: status.reblog?.uri ?? null,
+    reblogs_count: status.reblogs_count,
+    replies_count: status.replies_count,
+    uri: status.uri,
+    visibility: status.visibility,
+  }
+}
+
+/**
+ * Entity.Notification から正規化カラムの値を抽出する
+ */
+export function extractNotificationColumns(notification: Entity.Notification) {
+  return {
+    account_acct: notification.account?.acct ?? '',
+    notification_type: notification.type,
+    status_id: notification.status?.id ?? null,
+  }
+}
