@@ -41,10 +41,10 @@ function validateDomain(input: string): string | null {
  */
 async function getBlockedInstances(): Promise<BlockedInstance[]> {
   const handle = await getSqliteDb()
-  const rows = handle.db.exec(
+  const rows = (await handle.exec(
     'SELECT instance_domain, blocked_at FROM blocked_instances ORDER BY blocked_at DESC;',
     { returnValue: 'resultRows' },
-  ) as (string | number)[][]
+  )) as (string | number)[][]
 
   return rows.map((row) => ({
     blocked_at: row[1] as number,
@@ -57,7 +57,7 @@ async function getBlockedInstances(): Promise<BlockedInstance[]> {
  */
 async function blockInstance(domain: string): Promise<void> {
   const handle = await getSqliteDb()
-  handle.db.exec(
+  await handle.exec(
     `INSERT OR IGNORE INTO blocked_instances (instance_domain, blocked_at)
      VALUES (?, ?);`,
     { bind: [domain, Date.now()] },
@@ -70,9 +70,12 @@ async function blockInstance(domain: string): Promise<void> {
  */
 async function unblockInstance(domain: string): Promise<void> {
   const handle = await getSqliteDb()
-  handle.db.exec('DELETE FROM blocked_instances WHERE instance_domain = ?;', {
-    bind: [domain],
-  })
+  await handle.exec(
+    'DELETE FROM blocked_instances WHERE instance_domain = ?;',
+    {
+      bind: [domain],
+    },
+  )
   notifyChange('statuses')
 }
 

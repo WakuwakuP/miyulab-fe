@@ -61,7 +61,7 @@ export function getSqliteDb(): Promise<DbHandle> {
   if (ready) return ready
   ready = (async () => {
     const handle = await getDb()
-    ensureSchema(handle)
+    await ensureSchema(handle)
     return handle
   })()
   return ready
