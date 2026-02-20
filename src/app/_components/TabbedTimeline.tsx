@@ -42,13 +42,10 @@ export const TabbedTimeline = ({
 
   // activeIndex が範囲外になった場合の安全策
   const safeIndex = activeIndex < configs.length ? activeIndex : 0
-  const activeConfig = configs[safeIndex]
 
-  if (configs.length === 0 || !activeConfig) {
+  if (configs.length === 0) {
     return null
   }
-
-  const panelId = `tabpanel-${activeConfig.id}`
 
   return (
     <section>
@@ -62,7 +59,7 @@ export const TabbedTimeline = ({
           const isActive = index === safeIndex
           return (
             <button
-              aria-controls={isActive ? panelId : undefined}
+              aria-controls={`tabpanel-${config.id}`}
               aria-selected={isActive}
               className={`px-3 py-1 text-sm whitespace-nowrap border-b-2 transition-colors ${
                 isActive
@@ -84,10 +81,20 @@ export const TabbedTimeline = ({
           )
         })}
       </div>
-      {/* アクティブなタイムライン */}
-      <div id={panelId} role="tabpanel">
-        <DynamicTimeline config={activeConfig} headerOffset="2rem" />
-      </div>
+      {/* すべてのタイムラインを維持し、非アクティブなものは非表示にする */}
+      {configs.map((config, index) => {
+        const isActive = index === safeIndex
+        return (
+          <div
+            hidden={!isActive}
+            id={`tabpanel-${config.id}`}
+            key={config.id}
+            role="tabpanel"
+          >
+            <DynamicTimeline config={config} headerOffset="2rem" />
+          </div>
+        )
+      })}
     </section>
   )
 }
