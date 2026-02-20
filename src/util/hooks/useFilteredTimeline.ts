@@ -5,7 +5,7 @@ import type { StatusAddAppIndex, TimelineConfigV2 } from 'types/types'
 import type { TimelineType as DbTimelineType } from 'util/db/database'
 import { getSqliteDb, subscribe } from 'util/db/sqlite/connection'
 import type { SqliteStoredStatus } from 'util/db/sqlite/statusStore'
-import { MAX_LENGTH } from 'util/environment'
+import { TIMELINE_QUERY_LIMIT } from 'util/environment'
 import { buildFilterConditions } from 'util/hooks/timelineFilterBuilder'
 import { useQueryDuration } from 'util/hooks/useQueryDuration'
 import { AppsContext } from 'util/provider/AppsProvider'
@@ -163,7 +163,7 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
         configType as DbTimelineType,
         ...targetBackendUrls,
         ...filterBinds,
-        MAX_LENGTH,
+        TIMELINE_QUERY_LIMIT,
       ]
 
       const start = performance.now()

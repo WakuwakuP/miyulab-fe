@@ -4,7 +4,7 @@ import { useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { NotificationAddAppIndex, TimelineConfigV2 } from 'types/types'
 import { getSqliteDb, subscribe } from 'util/db/sqlite/connection'
 import type { SqliteStoredNotification } from 'util/db/sqlite/notificationStore'
-import { MAX_LENGTH } from 'util/environment'
+import { TIMELINE_QUERY_LIMIT } from 'util/environment'
 import { useQueryDuration } from 'util/hooks/useQueryDuration'
 import { AppsContext } from 'util/provider/AppsProvider'
 import {
@@ -83,7 +83,7 @@ export function useNotifications(config?: TimelineConfigV2): {
         ORDER BY created_at_ms DESC
         LIMIT ?;
       `
-      binds.push(MAX_LENGTH)
+      binds.push(TIMELINE_QUERY_LIMIT)
 
       const start = performance.now()
       const rows = (await handle.execAsync(sql, {

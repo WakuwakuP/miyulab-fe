@@ -4,7 +4,7 @@ import { useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { StatusAddAppIndex, TimelineConfigV2 } from 'types/types'
 import { getSqliteDb, subscribe } from 'util/db/sqlite/connection'
 import type { SqliteStoredStatus } from 'util/db/sqlite/statusStore'
-import { MAX_LENGTH } from 'util/environment'
+import { TIMELINE_QUERY_LIMIT } from 'util/environment'
 import { buildFilterConditions } from 'util/hooks/timelineFilterBuilder'
 import { useQueryDuration } from 'util/hooks/useQueryDuration'
 import { AppsContext } from 'util/provider/AppsProvider'
@@ -155,7 +155,12 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
           ORDER BY s.created_at_ms DESC
           LIMIT ?;
         `
-        binds.push(...tags, ...targetBackendUrls, ...filterBinds, MAX_LENGTH)
+        binds.push(
+          ...tags,
+          ...targetBackendUrls,
+          ...filterBinds,
+          TIMELINE_QUERY_LIMIT,
+        )
       } else {
         // AND: すべてのタグを含む
         const whereConditions = [
@@ -183,7 +188,7 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
           ...targetBackendUrls,
           ...filterBinds,
           tags.length,
-          MAX_LENGTH,
+          TIMELINE_QUERY_LIMIT,
         )
       }
 

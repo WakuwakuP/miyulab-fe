@@ -9,7 +9,7 @@ import type {
 import { getSqliteDb, subscribe } from 'util/db/sqlite/connection'
 import type { SqliteStoredNotification } from 'util/db/sqlite/notificationStore'
 import type { SqliteStoredStatus } from 'util/db/sqlite/statusStore'
-import { MAX_LENGTH } from 'util/environment'
+import { TIMELINE_QUERY_LIMIT } from 'util/environment'
 import { useQueryDuration } from 'util/hooks/useQueryDuration'
 import { AppsContext } from 'util/provider/AppsProvider'
 import { isMixedQuery, isNotificationQuery } from 'util/queryBuilder'
@@ -146,7 +146,10 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           statusMediaConditions += '\n              AND s.has_media = 1'
         }
 
-        const binds: (string | number)[] = [...statusMediaBinds, MAX_LENGTH]
+        const binds: (string | number)[] = [
+          ...statusMediaBinds,
+          TIMELINE_QUERY_LIMIT,
+        ]
 
         const sql = `
           SELECT compositeKey, backendUrl, created_at_ms, storedAt, json, _type
@@ -228,7 +231,7 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         // ============================
         // Notifications クエリ
         // ============================
-        const binds: (string | number)[] = [MAX_LENGTH]
+        const binds: (string | number)[] = [TIMELINE_QUERY_LIMIT]
 
         const sql = `
           SELECT n.compositeKey, n.backendUrl,
@@ -275,7 +278,10 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           additionalConditions += '\n          AND s.has_media = 1'
         }
 
-        const binds: (string | number)[] = [...additionalBinds, MAX_LENGTH]
+        const binds: (string | number)[] = [
+          ...additionalBinds,
+          TIMELINE_QUERY_LIMIT,
+        ]
 
         // backendUrl フィルタはクエリ自体に含まれるため自動付与しない
         const sql = `
