@@ -64,6 +64,7 @@ export const StreamingManagerProvider = ({
   const apps = useContext(AppsContext)
   const timelineSettings = useContext(TimelineContext)
   const registryRef = useRef<StreamRegistry>(new Map())
+  const initIdCounterRef = useRef(0)
   const refFirstRef = useRef(true)
 
   // =============================================
@@ -172,6 +173,7 @@ export const StreamingManagerProvider = ({
       backendUrl: string,
       app: App,
       options?: { tag?: string },
+      initId?: number,
     ): Promise<void> => {
       try {
         const client = GetClient(app)
@@ -195,13 +197,15 @@ export const StreamingManagerProvider = ({
         }
 
         // レジストリにまだ必要か確認（非同期処理中に syncStreamsEvent が発火している可能性）
-        if (!registryRef.current.has(key)) {
+        const entry = registryRef.current.get(key)
+        if (!entry || (initId !== undefined && entry.initId !== initId)) {
           stream.stop()
           return
         }
 
         // レジストリを更新
         registryRef.current.set(key, {
+          initId: entry.initId,
           retryCount: 0,
           retryTimer: null,
           status: 'connecting',
@@ -217,7 +221,7 @@ export const StreamingManagerProvider = ({
         )
         // エラー発生時もレジストリを更新（リトライ可能な状態にする）
         const entry = registryRef.current.get(key)
-        if (entry) {
+        if (entry && (initId === undefined || entry.initId === initId)) {
           entry.status = 'error'
           entry.retryCount += 1
 
@@ -231,11 +235,15 @@ export const StreamingManagerProvider = ({
           const delay = getRetryDelay(entry.retryCount - 1)
           // 初期化失敗時もリトライをスケジュール
           entry.retryTimer = setTimeout(() => {
-            if (registryRef.current.has(key)) {
+            const currentEntry = registryRef.current.get(key)
+            if (
+              currentEntry &&
+              (initId === undefined || currentEntry.initId === initId)
+            ) {
               console.info(
                 `Retrying initialization for ${key} (retry ${entry.retryCount}/${MAX_RETRY_COUNT}, delay ${delay}ms)`,
               )
-              initializeStream(key, type, backendUrl, app, options)
+              initializeStream(key, type, backendUrl, app, options, initId)
             }
           }, delay)
         }
@@ -352,14 +360,16 @@ export const StreamingManagerProvider = ({
         const { backendUrl, tag, type } = parseStreamKey(key)
         const app = apps.find((a) => a.backendUrl === backendUrl)
         if (app) {
+          const initId = ++initIdCounterRef.current
           // プレースホルダーエントリを先に登録（重複接続防止）
           registry.set(key, {
+            initId,
             retryCount: 0,
             retryTimer: null,
             status: 'connecting',
             stream: null,
           })
-          initializeStream(key, type, backendUrl, app, { tag })
+          initializeStream(key, type, backendUrl, app, { tag }, initId)
         }
       }
     }
