@@ -5,7 +5,7 @@ import type { StatusAddAppIndex } from 'types/types'
 import type { TimelineType } from 'util/db/database'
 import { getSqliteDb, subscribe } from 'util/db/sqlite/connection'
 import type { SqliteStoredStatus } from 'util/db/sqlite/statusStore'
-import { MAX_LENGTH } from 'util/environment'
+import { TIMELINE_QUERY_LIMIT } from 'util/environment'
 import { AppsContext } from 'util/provider/AppsProvider'
 
 /**
@@ -59,7 +59,7 @@ export function useTimeline(timelineType: TimelineType): StatusAddAppIndex[] {
       const binds: (string | number)[] = [
         timelineType,
         ...backendUrls,
-        MAX_LENGTH,
+        TIMELINE_QUERY_LIMIT,
       ]
 
       const rows = (await handle.execAsync(sql, {
@@ -140,7 +140,11 @@ export function useTagTimeline(
         ORDER BY s.created_at_ms DESC
         LIMIT ?;
       `
-      const binds: (string | number)[] = [tag, ...backendUrls, MAX_LENGTH]
+      const binds: (string | number)[] = [
+        tag,
+        ...backendUrls,
+        TIMELINE_QUERY_LIMIT,
+      ]
 
       const rows = (await handle.execAsync(sql, {
         bind: binds,

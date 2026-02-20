@@ -60,14 +60,40 @@ export const UnifiedTimeline = ({
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // データ取得
-  const { data: timeline, averageDuration } = useTimelineData(config) as {
+  const {
+    data: timeline,
+    averageDuration,
+    loadMore,
+  } = useTimelineData(config) as {
     data: StatusAddAppIndex[]
     averageDuration: number | null
+    loadMore: () => void
   }
 
   const [enableScrollToTop, setEnableScrollToTop] = useState(true)
   const [isScrolling, setIsScrolling] = useState(false)
-  const [moreCount, setMoreCount] = useState(0)
+
+  // loadMore() やAPIフェッチで末尾に追加されたアイテム数を同期的に追跡し、
+  // firstItemIndex を安定させる（Virtuoso が誤ってプリペンドと解釈しないようにする）
+  // useEffect ではなく ref でレンダー中に同期計算することで、1フレームのズレを防ぐ
+  const bottomExpansionRef = useRef(0)
+  const prevLengthRef = useRef(timeline.length)
+
+  // config 変更時に bottomExpansion をリセット
+  const configId = config.id
+  useEffect(() => {
+    void configId
+    bottomExpansionRef.current = 0
+  }, [configId])
+
+  const currentLength = timeline.length
+  if (currentLength !== prevLengthRef.current) {
+    const diff = currentLength - prevLengthRef.current
+    if (diff > 0 && !enableScrollToTop) {
+      bottomExpansionRef.current += diff
+    }
+    prevLengthRef.current = currentLength
+  }
 
   // 表示名の解決
   const displayName = useMemo(() => {
@@ -75,13 +101,23 @@ export const UnifiedTimeline = ({
     return getDefaultTimelineName(config)
   }, [config])
 
-  const internalIndex = useMemo(() => {
-    return CENTER_INDEX - timeline.length + moreCount
-  }, [timeline.length, moreCount])
+  const internalIndex =
+    CENTER_INDEX - currentLength + bottomExpansionRef.current
 
   // 追加読み込み（マルチバックエンド対応）
+  //
+  // 2つのページネーション機構を並行して実行する:
+  // 1. loadMore(): SQLite クエリの LIMIT を拡張し、DB に既にある古い投稿を表示に含める
+  // 2. fetchMoreData(): API から max_id ベースで追加データを取得し、DB に保存する
+  //
+  // SQLite に十分なデータがある場合は loadMore() だけで表示が増える。
+  // API フェッチは DB にない古い投稿を補充するために常に実行される。
+  // 両者は独立して動作し、DB への upsert は subscribe 経由で自動的に反映される。
   const moreLoad = useCallback(async () => {
     if (apps.length <= 0 || timeline.length === 0) return
+
+    // SQLite クエリの表示件数を拡張
+    loadMore()
 
     const targetUrls = resolveBackendUrls(
       normalizeBackendFilter(config.backendFilter, apps),
@@ -89,7 +125,7 @@ export const UnifiedTimeline = ({
     )
 
     // 各 backendUrl ごとに最古の投稿 ID を算出して追加データをフェッチ
-    const results = await Promise.all(
+    await Promise.all(
       targetUrls.map(async (url) => {
         const app = apps.find((a) => a.backendUrl === url)
         if (!app) return 0
@@ -184,10 +220,7 @@ export const UnifiedTimeline = ({
         }
       }),
     )
-
-    const totalFetched = results.reduce((sum, count) => sum + count, 0)
-    setMoreCount((prev) => prev + totalFetched)
-  }, [apps, timeline, config])
+  }, [apps, timeline, config, loadMore])
 
   // UIロジック
   const onWheel = useCallback<WheelEventHandler<HTMLDivElement>>((e) => {
@@ -236,6 +269,7 @@ export const UnifiedTimeline = ({
         data={timeline}
         endReached={moreLoad}
         firstItemIndex={internalIndex}
+        increaseViewportBy={200}
         isScrolling={setIsScrolling}
         itemContent={(_, status) => (
           <Status
