@@ -42,27 +42,28 @@ export const MixedTimeline = ({
   const [enableScrollToTop, setEnableScrollToTop] = useState(true)
   const [isScrolling, setIsScrolling] = useState(false)
 
-  // loadMore() で末尾に追加されたアイテム数を追跡し、
+  // loadMore() で末尾に追加されたアイテム数を同期的に追跡し、
   // firstItemIndex を安定させる（Virtuoso が誤ってプリペンドと解釈しないようにする）
-  const [bottomExpansion, setBottomExpansion] = useState(0)
+  // useEffect ではなく ref でレンダー中に同期計算することで、1フレームのズレを防ぐ
+  const bottomExpansionRef = useRef(0)
   const prevLengthRef = useRef(timeline.length)
 
-  useEffect(() => {
-    const diff = timeline.length - prevLengthRef.current
+  const currentLength = timeline.length
+  if (currentLength !== prevLengthRef.current) {
+    const diff = currentLength - prevLengthRef.current
     if (diff > 0 && !enableScrollToTop) {
-      setBottomExpansion((prev) => prev + diff)
+      bottomExpansionRef.current += diff
     }
-    prevLengthRef.current = timeline.length
-  }, [timeline.length, enableScrollToTop])
+    prevLengthRef.current = currentLength
+  }
 
   const displayName = useMemo(() => {
     if (config.label) return config.label
     return getDefaultTimelineName(config)
   }, [config])
 
-  const internalIndex = useMemo(() => {
-    return CENTER_INDEX - timeline.length + bottomExpansion
-  }, [timeline.length, bottomExpansion])
+  const internalIndex =
+    CENTER_INDEX - currentLength + bottomExpansionRef.current
 
   const onWheel = useCallback<WheelEventHandler<HTMLDivElement>>((e) => {
     if (e.deltaY > 0) {
@@ -110,6 +111,7 @@ export const MixedTimeline = ({
         data={timeline}
         endReached={loadMore}
         firstItemIndex={internalIndex}
+        increaseViewportBy={200}
         isScrolling={setIsScrolling}
         itemContent={(_, item) => {
           // _type フィールドで Status と Notification を判別

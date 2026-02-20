@@ -73,19 +73,20 @@ export const UnifiedTimeline = ({
   const [enableScrollToTop, setEnableScrollToTop] = useState(true)
   const [isScrolling, setIsScrolling] = useState(false)
 
-  // loadMore() やAPIフェッチで末尾に追加されたアイテム数を追跡し、
+  // loadMore() やAPIフェッチで末尾に追加されたアイテム数を同期的に追跡し、
   // firstItemIndex を安定させる（Virtuoso が誤ってプリペンドと解釈しないようにする）
-  const [bottomExpansion, setBottomExpansion] = useState(0)
+  // useEffect ではなく ref でレンダー中に同期計算することで、1フレームのズレを防ぐ
+  const bottomExpansionRef = useRef(0)
   const prevLengthRef = useRef(timeline.length)
 
-  useEffect(() => {
-    const diff = timeline.length - prevLengthRef.current
+  const currentLength = timeline.length
+  if (currentLength !== prevLengthRef.current) {
+    const diff = currentLength - prevLengthRef.current
     if (diff > 0 && !enableScrollToTop) {
-      // ユーザーがスクロール中に追加されたアイテムは末尾追加として扱う
-      setBottomExpansion((prev) => prev + diff)
+      bottomExpansionRef.current += diff
     }
-    prevLengthRef.current = timeline.length
-  }, [timeline.length, enableScrollToTop])
+    prevLengthRef.current = currentLength
+  }
 
   // 表示名の解決
   const displayName = useMemo(() => {
@@ -93,9 +94,8 @@ export const UnifiedTimeline = ({
     return getDefaultTimelineName(config)
   }, [config])
 
-  const internalIndex = useMemo(() => {
-    return CENTER_INDEX - timeline.length + bottomExpansion
-  }, [timeline.length, bottomExpansion])
+  const internalIndex =
+    CENTER_INDEX - currentLength + bottomExpansionRef.current
 
   // 追加読み込み（マルチバックエンド対応）
   //
@@ -262,6 +262,7 @@ export const UnifiedTimeline = ({
         data={timeline}
         endReached={moreLoad}
         firstItemIndex={internalIndex}
+        increaseViewportBy={200}
         isScrolling={setIsScrolling}
         itemContent={(_, status) => (
           <Status

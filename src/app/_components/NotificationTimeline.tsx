@@ -36,22 +36,23 @@ export const NotificationTimeline = ({
   const [enableScrollToTop, setEnableScrollToTop] = useState(true)
   const [isScrolling, setIsScrolling] = useState(false)
 
-  // loadMore() で末尾に追加されたアイテム数を追跡し、
+  // loadMore() で末尾に追加されたアイテム数を同期的に追跡し、
   // firstItemIndex を安定させる（Virtuoso が誤ってプリペンドと解釈しないようにする）
-  const [bottomExpansion, setBottomExpansion] = useState(0)
+  // useEffect ではなく ref でレンダー中に同期計算することで、1フレームのズレを防ぐ
+  const bottomExpansionRef = useRef(0)
   const prevLengthRef = useRef(notifications.length)
 
-  useEffect(() => {
-    const diff = notifications.length - prevLengthRef.current
+  const currentLength = notifications.length
+  if (currentLength !== prevLengthRef.current) {
+    const diff = currentLength - prevLengthRef.current
     if (diff > 0 && !enableScrollToTop) {
-      setBottomExpansion((prev) => prev + diff)
+      bottomExpansionRef.current += diff
     }
-    prevLengthRef.current = notifications.length
-  }, [notifications.length, enableScrollToTop])
+    prevLengthRef.current = currentLength
+  }
 
-  const internalIndex = useMemo(() => {
-    return CENTER_INDEX - notifications.length + bottomExpansion
-  }, [notifications.length, bottomExpansion])
+  const internalIndex =
+    CENTER_INDEX - currentLength + bottomExpansionRef.current
 
   const onWheel = useCallback<WheelEventHandler<HTMLDivElement>>((e) => {
     if (e.deltaY > 0) {
@@ -104,6 +105,7 @@ export const NotificationTimeline = ({
         data={notifications}
         endReached={loadMore}
         firstItemIndex={internalIndex}
+        increaseViewportBy={200}
         isScrolling={setIsScrolling}
         itemContent={(_, notification) => (
           <Notification
