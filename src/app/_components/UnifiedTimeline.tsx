@@ -72,7 +72,20 @@ export const UnifiedTimeline = ({
 
   const [enableScrollToTop, setEnableScrollToTop] = useState(true)
   const [isScrolling, setIsScrolling] = useState(false)
-  const [moreCount, setMoreCount] = useState(0)
+
+  // loadMore() やAPIフェッチで末尾に追加されたアイテム数を追跡し、
+  // firstItemIndex を安定させる（Virtuoso が誤ってプリペンドと解釈しないようにする）
+  const [bottomExpansion, setBottomExpansion] = useState(0)
+  const prevLengthRef = useRef(timeline.length)
+
+  useEffect(() => {
+    const diff = timeline.length - prevLengthRef.current
+    if (diff > 0 && !enableScrollToTop) {
+      // ユーザーがスクロール中に追加されたアイテムは末尾追加として扱う
+      setBottomExpansion((prev) => prev + diff)
+    }
+    prevLengthRef.current = timeline.length
+  }, [timeline.length, enableScrollToTop])
 
   // 表示名の解決
   const displayName = useMemo(() => {
@@ -81,8 +94,8 @@ export const UnifiedTimeline = ({
   }, [config])
 
   const internalIndex = useMemo(() => {
-    return CENTER_INDEX - timeline.length + moreCount
-  }, [timeline.length, moreCount])
+    return CENTER_INDEX - timeline.length + bottomExpansion
+  }, [timeline.length, bottomExpansion])
 
   // 追加読み込み（マルチバックエンド対応）
   //
@@ -105,7 +118,7 @@ export const UnifiedTimeline = ({
     )
 
     // 各 backendUrl ごとに最古の投稿 ID を算出して追加データをフェッチ
-    const results = await Promise.all(
+    await Promise.all(
       targetUrls.map(async (url) => {
         const app = apps.find((a) => a.backendUrl === url)
         if (!app) return 0
@@ -200,9 +213,6 @@ export const UnifiedTimeline = ({
         }
       }),
     )
-
-    const totalFetched = results.reduce((sum, count) => sum + count, 0)
-    setMoreCount((prev) => prev + totalFetched)
   }, [apps, timeline, config, loadMore])
 
   // UIロジック

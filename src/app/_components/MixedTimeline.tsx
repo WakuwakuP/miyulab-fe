@@ -42,14 +42,27 @@ export const MixedTimeline = ({
   const [enableScrollToTop, setEnableScrollToTop] = useState(true)
   const [isScrolling, setIsScrolling] = useState(false)
 
+  // loadMore() で末尾に追加されたアイテム数を追跡し、
+  // firstItemIndex を安定させる（Virtuoso が誤ってプリペンドと解釈しないようにする）
+  const [bottomExpansion, setBottomExpansion] = useState(0)
+  const prevLengthRef = useRef(timeline.length)
+
+  useEffect(() => {
+    const diff = timeline.length - prevLengthRef.current
+    if (diff > 0 && !enableScrollToTop) {
+      setBottomExpansion((prev) => prev + diff)
+    }
+    prevLengthRef.current = timeline.length
+  }, [timeline.length, enableScrollToTop])
+
   const displayName = useMemo(() => {
     if (config.label) return config.label
     return getDefaultTimelineName(config)
   }, [config])
 
   const internalIndex = useMemo(() => {
-    return CENTER_INDEX - timeline.length
-  }, [timeline.length])
+    return CENTER_INDEX - timeline.length + bottomExpansion
+  }, [timeline.length, bottomExpansion])
 
   const onWheel = useCallback<WheelEventHandler<HTMLDivElement>>((e) => {
     if (e.deltaY > 0) {

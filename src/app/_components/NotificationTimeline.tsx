@@ -36,9 +36,22 @@ export const NotificationTimeline = ({
   const [enableScrollToTop, setEnableScrollToTop] = useState(true)
   const [isScrolling, setIsScrolling] = useState(false)
 
+  // loadMore() で末尾に追加されたアイテム数を追跡し、
+  // firstItemIndex を安定させる（Virtuoso が誤ってプリペンドと解釈しないようにする）
+  const [bottomExpansion, setBottomExpansion] = useState(0)
+  const prevLengthRef = useRef(notifications.length)
+
+  useEffect(() => {
+    const diff = notifications.length - prevLengthRef.current
+    if (diff > 0 && !enableScrollToTop) {
+      setBottomExpansion((prev) => prev + diff)
+    }
+    prevLengthRef.current = notifications.length
+  }, [notifications.length, enableScrollToTop])
+
   const internalIndex = useMemo(() => {
-    return CENTER_INDEX - notifications.length
-  }, [notifications.length])
+    return CENTER_INDEX - notifications.length + bottomExpansion
+  }, [notifications.length, bottomExpansion])
 
   const onWheel = useCallback<WheelEventHandler<HTMLDivElement>>((e) => {
     if (e.deltaY > 0) {
