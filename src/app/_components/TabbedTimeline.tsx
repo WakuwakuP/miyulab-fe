@@ -66,6 +66,7 @@ export const TabbedTimeline = ({
                   ? 'border-blue-400 text-blue-400'
                   : 'border-transparent text-gray-400 hover:text-gray-200'
               }`}
+              id={`tab-${config.id}`}
               key={config.id}
               onClick={() => handleTabClick(index)}
               onKeyDown={(e) => handleKeyDown(e, index)}
@@ -86,6 +87,8 @@ export const TabbedTimeline = ({
         const isActive = index === safeIndex
         return (
           <div
+            aria-hidden={!isActive}
+            aria-labelledby={`tab-${config.id}`}
             hidden={!isActive}
             id={`tabpanel-${config.id}`}
             key={config.id}
