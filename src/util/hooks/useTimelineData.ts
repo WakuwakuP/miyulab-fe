@@ -10,6 +10,8 @@ import { useFilteredTagTimeline } from 'util/hooks/useFilteredTagTimeline'
 import { useFilteredTimeline } from 'util/hooks/useFilteredTimeline'
 import { useNotifications } from 'util/hooks/useNotifications'
 
+const noopLoadMore = () => {}
+
 /**
  * TimelineConfigV2 に基づいて適切なデータ取得 Hook を選択するファサード
  *
@@ -28,6 +30,7 @@ import { useNotifications } from 'util/hooks/useNotifications'
 export function useTimelineData(config: TimelineConfigV2): {
   data: (NotificationAddAppIndex | StatusAddAppIndex)[]
   averageDuration: number | null
+  loadMore: () => void
 } {
   // 全 Hook を無条件に呼び出す（Hook ルール遵守）
   const filteredTimeline = useFilteredTimeline(config)
@@ -50,6 +53,6 @@ export function useTimelineData(config: TimelineConfigV2): {
     case 'tag':
       return filteredTagTimeline
     default:
-      return { averageDuration: null, data: [] }
+      return { averageDuration: null, data: [], loadMore: noopLoadMore }
   }
 }

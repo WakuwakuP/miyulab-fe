@@ -5,7 +5,7 @@ import type { StatusAddAppIndex, TimelineConfigV2 } from 'types/types'
 import type { TimelineType as DbTimelineType } from 'util/db/database'
 import { getSqliteDb, subscribe } from 'util/db/sqlite/connection'
 import type { SqliteStoredStatus } from 'util/db/sqlite/statusStore'
-import { MAX_LENGTH } from 'util/environment'
+import { TIMELINE_QUERY_LIMIT } from 'util/environment'
 import { buildFilterConditions } from 'util/hooks/timelineFilterBuilder'
 import { useQueryDuration } from 'util/hooks/useQueryDuration'
 import { AppsContext } from 'util/provider/AppsProvider'
@@ -52,10 +52,24 @@ function resolveAppIndex(
 export function useFilteredTimeline(config: TimelineConfigV2): {
   data: StatusAddAppIndex[]
   averageDuration: number | null
+  loadMore: () => void
 } {
   const apps = useContext(AppsContext)
   const [statuses, setStatuses] = useState<SqliteStoredStatus[]>([])
+  const [queryLimit, setQueryLimit] = useState(TIMELINE_QUERY_LIMIT)
   const { averageDuration, recordDuration } = useQueryDuration()
+
+  const loadMore = useCallback(() => {
+    setQueryLimit((prev) => prev + TIMELINE_QUERY_LIMIT)
+  }, [])
+
+  // config 変更時に queryLimit をリセット
+  const configId = config.id
+  useEffect(() => {
+    // configId の変更を検知して初期値にリセット
+    void configId
+    setQueryLimit(TIMELINE_QUERY_LIMIT)
+  }, [configId])
 
   // 1. BackendFilter から対象 backendUrls を解決
   const targetBackendUrls = useMemo(() => {
@@ -163,7 +177,7 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
         configType as DbTimelineType,
         ...targetBackendUrls,
         ...filterBinds,
-        MAX_LENGTH,
+        queryLimit,
       ]
 
       const start = performance.now()
@@ -197,6 +211,7 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
     targetBackendUrls,
     filterConditions,
     filterBinds,
+    queryLimit,
     recordDuration,
   ])
 
@@ -218,5 +233,5 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
     [statuses, apps],
   )
 
-  return { averageDuration, data }
+  return { averageDuration, data, loadMore }
 }
