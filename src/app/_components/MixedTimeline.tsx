@@ -48,6 +48,13 @@ export const MixedTimeline = ({
   const bottomExpansionRef = useRef(0)
   const prevLengthRef = useRef(timeline.length)
 
+  // config 変更時に bottomExpansion をリセット
+  const configId = config.id
+  useEffect(() => {
+    void configId
+    bottomExpansionRef.current = 0
+  }, [configId])
+
   const currentLength = timeline.length
   if (currentLength !== prevLengthRef.current) {
     const diff = currentLength - prevLengthRef.current
