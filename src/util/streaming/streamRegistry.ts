@@ -1,6 +1,8 @@
 import type { WebSocketInterface } from 'megalodon'
 
 export type StreamEntry = {
+  /** 初期化サイクルの一意識別子（重複接続防止用） */
+  initId: number
   /** 現在のリトライ回数 */
   retryCount: number
   /** リトライタイマー ID */
