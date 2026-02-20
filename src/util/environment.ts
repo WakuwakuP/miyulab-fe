@@ -35,8 +35,9 @@ export const MAX_LENGTH = Number(process.env.NEXT_PUBLIC_MAX_LENGTH ?? 100000)
  * MAX_LENGTH はストレージ上限（クリーンアップ閾値）であり、表示クエリの上限としては大きすぎるため、
  * 表示用クエリには別途この定数を使用する。
  */
-export const TIMELINE_QUERY_LIMIT = Number(
-  process.env.NEXT_PUBLIC_TIMELINE_QUERY_LIMIT ?? 50,
+export const TIMELINE_QUERY_LIMIT = Math.max(
+  1,
+  Number(process.env.NEXT_PUBLIC_TIMELINE_QUERY_LIMIT) || 50,
 )
 
 export const CENTER_INDEX = Math.floor(Number.MAX_SAFE_INTEGER / 2)

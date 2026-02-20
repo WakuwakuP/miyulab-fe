@@ -85,6 +85,14 @@ export const UnifiedTimeline = ({
   }, [timeline.length, moreCount])
 
   // 追加読み込み（マルチバックエンド対応）
+  //
+  // 2つのページネーション機構を並行して実行する:
+  // 1. loadMore(): SQLite クエリの LIMIT を拡張し、DB に既にある古い投稿を表示に含める
+  // 2. fetchMoreData(): API から max_id ベースで追加データを取得し、DB に保存する
+  //
+  // SQLite に十分なデータがある場合は loadMore() だけで表示が増える。
+  // API フェッチは DB にない古い投稿を補充するために常に実行される。
+  // 両者は独立して動作し、DB への upsert は subscribe 経由で自動的に反映される。
   const moreLoad = useCallback(async () => {
     if (apps.length <= 0 || timeline.length === 0) return
 

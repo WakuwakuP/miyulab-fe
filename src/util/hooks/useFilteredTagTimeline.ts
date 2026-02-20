@@ -57,6 +57,15 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
   const loadMore = useCallback(() => {
     setQueryLimit((prev) => prev + TIMELINE_QUERY_LIMIT)
   }, [])
+
+  // config 変更時に queryLimit をリセット
+  const configId = config.id
+  useEffect(() => {
+    // configId の変更を検知して初期値にリセット
+    void configId
+    setQueryLimit(TIMELINE_QUERY_LIMIT)
+  }, [configId])
+
   const targetBackendUrls = useMemo(() => {
     const filter = normalizeBackendFilter(config.backendFilter, apps)
     return resolveBackendUrls(filter, apps)

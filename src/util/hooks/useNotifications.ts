@@ -46,6 +46,14 @@ export function useNotifications(config?: TimelineConfigV2): {
     setQueryLimit((prev) => prev + TIMELINE_QUERY_LIMIT)
   }, [])
 
+  // config 変更時に queryLimit をリセット
+  const configId = config?.id
+  useEffect(() => {
+    // configId の変更を検知して初期値にリセット
+    void configId
+    setQueryLimit(TIMELINE_QUERY_LIMIT)
+  }, [configId])
+
   // configが渡された場合はbackendFilterを適用、なければ全バックエンド
   const targetBackendUrls = useMemo(() => {
     if (!config) {

@@ -84,6 +84,14 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
     setQueryLimit((prev) => prev + TIMELINE_QUERY_LIMIT)
   }, [])
 
+  // config 変更時に queryLimit をリセット
+  const configId = config.id
+  useEffect(() => {
+    // configId の変更を検知して初期値にリセット
+    void configId
+    setQueryLimit(TIMELINE_QUERY_LIMIT)
+  }, [configId])
+
   const customQuery = config.customQuery ?? ''
   const onlyMedia = config.onlyMedia
   const minMediaCount = config.minMediaCount
