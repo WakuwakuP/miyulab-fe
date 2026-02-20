@@ -198,7 +198,7 @@ export const StreamingManagerProvider = ({
 
         // レジストリにまだ必要か確認（非同期処理中に syncStreamsEvent が発火している可能性）
         const entry = registryRef.current.get(key)
-        if (!entry || (initId != null && entry.initId !== initId)) {
+        if (!entry || (initId !== undefined && entry.initId !== initId)) {
           stream.stop()
           return
         }
@@ -221,7 +221,7 @@ export const StreamingManagerProvider = ({
         )
         // エラー発生時もレジストリを更新（リトライ可能な状態にする）
         const entry = registryRef.current.get(key)
-        if (entry && (initId == null || entry.initId === initId)) {
+        if (entry && (initId === undefined || entry.initId === initId)) {
           entry.status = 'error'
           entry.retryCount += 1
 
@@ -238,7 +238,7 @@ export const StreamingManagerProvider = ({
             const currentEntry = registryRef.current.get(key)
             if (
               currentEntry &&
-              (initId == null || currentEntry.initId === initId)
+              (initId === undefined || currentEntry.initId === initId)
             ) {
               console.info(
                 `Retrying initialization for ${key} (retry ${entry.retryCount}/${MAX_RETRY_COUNT}, delay ${delay}ms)`,
