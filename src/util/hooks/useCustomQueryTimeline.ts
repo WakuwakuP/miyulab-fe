@@ -68,6 +68,7 @@ function hasUnquotedQuestionMark(query: string): boolean {
 export function useCustomQueryTimeline(config: TimelineConfigV2): {
   data: (NotificationAddAppIndex | StatusAddAppIndex)[]
   averageDuration: number | null
+  loadMore: () => void
 } {
   const apps = useContext(AppsContext)
   const [results, setResults] = useState<
@@ -76,7 +77,12 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
       | (SqliteStoredNotification & { _type: 'notification' })
     )[]
   >([])
+  const [queryLimit, setQueryLimit] = useState(TIMELINE_QUERY_LIMIT)
   const { averageDuration, recordDuration } = useQueryDuration()
+
+  const loadMore = useCallback(() => {
+    setQueryLimit((prev) => prev + TIMELINE_QUERY_LIMIT)
+  }, [])
 
   const customQuery = config.customQuery ?? ''
   const onlyMedia = config.onlyMedia
@@ -146,10 +152,7 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           statusMediaConditions += '\n              AND s.has_media = 1'
         }
 
-        const binds: (string | number)[] = [
-          ...statusMediaBinds,
-          TIMELINE_QUERY_LIMIT,
-        ]
+        const binds: (string | number)[] = [...statusMediaBinds, queryLimit]
 
         const sql = `
           SELECT compositeKey, backendUrl, created_at_ms, storedAt, json, _type
@@ -231,7 +234,7 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         // ============================
         // Notifications クエリ
         // ============================
-        const binds: (string | number)[] = [TIMELINE_QUERY_LIMIT]
+        const binds: (string | number)[] = [queryLimit]
 
         const sql = `
           SELECT n.compositeKey, n.backendUrl,
@@ -278,10 +281,7 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           additionalConditions += '\n          AND s.has_media = 1'
         }
 
-        const binds: (string | number)[] = [
-          ...additionalBinds,
-          TIMELINE_QUERY_LIMIT,
-        ]
+        const binds: (string | number)[] = [...additionalBinds, queryLimit]
 
         // backendUrl フィルタはクエリ自体に含まれるため自動付与しない
         const sql = `
@@ -329,7 +329,14 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
       console.error('useCustomQueryTimeline query error:', e)
       setResults([])
     }
-  }, [customQuery, onlyMedia, minMediaCount, queryMode, recordDuration])
+  }, [
+    customQuery,
+    onlyMedia,
+    minMediaCount,
+    queryMode,
+    queryLimit,
+    recordDuration,
+  ])
 
   useEffect(() => {
     fetchData()
@@ -357,5 +364,5 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
     [results, apps],
   )
 
-  return { averageDuration, data }
+  return { averageDuration, data, loadMore }
 }

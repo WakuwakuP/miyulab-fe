@@ -46,11 +46,17 @@ function resolveAppIndex(
 export function useFilteredTagTimeline(config: TimelineConfigV2): {
   data: StatusAddAppIndex[]
   averageDuration: number | null
+  loadMore: () => void
 } {
   const apps = useContext(AppsContext)
   const tagConfig = config.tagConfig
   const [statuses, setStatuses] = useState<SqliteStoredStatus[]>([])
+  const [queryLimit, setQueryLimit] = useState(TIMELINE_QUERY_LIMIT)
   const { averageDuration, recordDuration } = useQueryDuration()
+
+  const loadMore = useCallback(() => {
+    setQueryLimit((prev) => prev + TIMELINE_QUERY_LIMIT)
+  }, [])
   const targetBackendUrls = useMemo(() => {
     const filter = normalizeBackendFilter(config.backendFilter, apps)
     return resolveBackendUrls(filter, apps)
@@ -155,12 +161,7 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
           ORDER BY s.created_at_ms DESC
           LIMIT ?;
         `
-        binds.push(
-          ...tags,
-          ...targetBackendUrls,
-          ...filterBinds,
-          TIMELINE_QUERY_LIMIT,
-        )
+        binds.push(...tags, ...targetBackendUrls, ...filterBinds, queryLimit)
       } else {
         // AND: すべてのタグを含む
         const whereConditions = [
@@ -188,7 +189,7 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
           ...targetBackendUrls,
           ...filterBinds,
           tags.length,
-          TIMELINE_QUERY_LIMIT,
+          queryLimit,
         )
       }
 
@@ -225,6 +226,7 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
     tags,
     filterConditions,
     filterBinds,
+    queryLimit,
     recordDuration,
   ])
 
@@ -245,5 +247,5 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
     [statuses, apps],
   )
 
-  return { averageDuration, data }
+  return { averageDuration, data, loadMore }
 }

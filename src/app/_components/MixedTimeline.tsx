@@ -35,7 +35,7 @@ export const MixedTimeline = ({
   config: TimelineConfigV2
   headerOffset?: string
 }) => {
-  const { data: timeline, averageDuration } = useTimelineData(config)
+  const { data: timeline, averageDuration, loadMore } = useTimelineData(config)
   const scrollerRef = useRef<VirtuosoHandle>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -95,6 +95,7 @@ export const MixedTimeline = ({
         atTopStateChange={atTopStateChange}
         atTopThreshold={20}
         data={timeline}
+        endReached={loadMore}
         firstItemIndex={internalIndex}
         isScrolling={setIsScrolling}
         itemContent={(_, item) => {

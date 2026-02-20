@@ -23,7 +23,7 @@ export const NotificationTimeline = ({
   config: TimelineConfigV2
   headerOffset?: string
 }) => {
-  const { data: rawData, averageDuration } = useTimelineData(config)
+  const { data: rawData, averageDuration, loadMore } = useTimelineData(config)
   // Runtime type guard: filter out any non-notification items that may slip through
   const notifications = useMemo(
     () =>
@@ -89,6 +89,7 @@ export const NotificationTimeline = ({
         atTopStateChange={atTopStateChange}
         atTopThreshold={20}
         data={notifications}
+        endReached={loadMore}
         firstItemIndex={internalIndex}
         isScrolling={setIsScrolling}
         itemContent={(_, notification) => (

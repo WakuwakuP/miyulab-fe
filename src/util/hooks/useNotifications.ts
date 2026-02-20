@@ -33,12 +33,18 @@ function resolveAppIndex(
 export function useNotifications(config?: TimelineConfigV2): {
   data: NotificationAddAppIndex[]
   averageDuration: number | null
+  loadMore: () => void
 } {
   const apps = useContext(AppsContext)
   const [notifications, setNotifications] = useState<
     SqliteStoredNotification[]
   >([])
+  const [queryLimit, setQueryLimit] = useState(TIMELINE_QUERY_LIMIT)
   const { averageDuration, recordDuration } = useQueryDuration()
+
+  const loadMore = useCallback(() => {
+    setQueryLimit((prev) => prev + TIMELINE_QUERY_LIMIT)
+  }, [])
 
   // configが渡された場合はbackendFilterを適用、なければ全バックエンド
   const targetBackendUrls = useMemo(() => {
@@ -83,7 +89,7 @@ export function useNotifications(config?: TimelineConfigV2): {
         ORDER BY created_at_ms DESC
         LIMIT ?;
       `
-      binds.push(TIMELINE_QUERY_LIMIT)
+      binds.push(queryLimit)
 
       const start = performance.now()
       const rows = (await handle.execAsync(sql, {
@@ -112,6 +118,7 @@ export function useNotifications(config?: TimelineConfigV2): {
     targetBackendUrls,
     config?.customQuery,
     config?.notificationFilter,
+    queryLimit,
     recordDuration,
   ])
 
@@ -133,5 +140,5 @@ export function useNotifications(config?: TimelineConfigV2): {
     [notifications, apps],
   )
 
-  return { averageDuration, data }
+  return { averageDuration, data, loadMore }
 }

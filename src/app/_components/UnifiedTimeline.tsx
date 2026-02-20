@@ -60,9 +60,14 @@ export const UnifiedTimeline = ({
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // データ取得
-  const { data: timeline, averageDuration } = useTimelineData(config) as {
+  const {
+    data: timeline,
+    averageDuration,
+    loadMore,
+  } = useTimelineData(config) as {
     data: StatusAddAppIndex[]
     averageDuration: number | null
+    loadMore: () => void
   }
 
   const [enableScrollToTop, setEnableScrollToTop] = useState(true)
@@ -82,6 +87,9 @@ export const UnifiedTimeline = ({
   // 追加読み込み（マルチバックエンド対応）
   const moreLoad = useCallback(async () => {
     if (apps.length <= 0 || timeline.length === 0) return
+
+    // SQLite クエリの表示件数を拡張
+    loadMore()
 
     const targetUrls = resolveBackendUrls(
       normalizeBackendFilter(config.backendFilter, apps),
@@ -187,7 +195,7 @@ export const UnifiedTimeline = ({
 
     const totalFetched = results.reduce((sum, count) => sum + count, 0)
     setMoreCount((prev) => prev + totalFetched)
-  }, [apps, timeline, config])
+  }, [apps, timeline, config, loadMore])
 
   // UIロジック
   const onWheel = useCallback<WheelEventHandler<HTMLDivElement>>((e) => {

@@ -52,10 +52,16 @@ function resolveAppIndex(
 export function useFilteredTimeline(config: TimelineConfigV2): {
   data: StatusAddAppIndex[]
   averageDuration: number | null
+  loadMore: () => void
 } {
   const apps = useContext(AppsContext)
   const [statuses, setStatuses] = useState<SqliteStoredStatus[]>([])
+  const [queryLimit, setQueryLimit] = useState(TIMELINE_QUERY_LIMIT)
   const { averageDuration, recordDuration } = useQueryDuration()
+
+  const loadMore = useCallback(() => {
+    setQueryLimit((prev) => prev + TIMELINE_QUERY_LIMIT)
+  }, [])
 
   // 1. BackendFilter から対象 backendUrls を解決
   const targetBackendUrls = useMemo(() => {
@@ -163,7 +169,7 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
         configType as DbTimelineType,
         ...targetBackendUrls,
         ...filterBinds,
-        TIMELINE_QUERY_LIMIT,
+        queryLimit,
       ]
 
       const start = performance.now()
@@ -197,6 +203,7 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
     targetBackendUrls,
     filterConditions,
     filterBinds,
+    queryLimit,
     recordDuration,
   ])
 
@@ -218,5 +225,5 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
     [statuses, apps],
   )
 
-  return { averageDuration, data }
+  return { averageDuration, data, loadMore }
 }
