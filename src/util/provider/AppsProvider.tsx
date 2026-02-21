@@ -1,7 +1,7 @@
 'use client'
 
 import bgImage from '@public/miyu.webp'
-import generator from 'megalodon'
+import generator, { detector } from 'megalodon'
 import Image from 'next/image'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
@@ -11,7 +11,7 @@ import {
   useEffect,
   useState,
 } from 'react'
-import { type App, type Backend, backendList } from 'types/types'
+import type { App, Backend } from 'types/types'
 import { APP_NAME, APP_URL, BACKEND_SNS, BACKEND_URL } from 'util/environment'
 
 export const AppsContext = createContext<App[]>([])
@@ -143,14 +143,27 @@ export const AppsProvider = ({
   }, [apps, code, isRequestedToken, router, storageLoading, updateApps])
 
   const onRegister = async () => {
-    if (backend === '' || backendUrl === '') {
+    if (backendUrl === '') {
       return
     }
 
-    const client = generator(backend, backendUrl)
+    const detectedBackend = await (async () => {
+      if (backend !== '') return backend
+      try {
+        return await detector(backendUrl)
+      } catch (e) {
+        console.error('Failed to detect backend:', e)
+        return null
+      }
+    })()
+    if (detectedBackend == null) {
+      return
+    }
+    setBackend(detectedBackend)
+    const client = generator(detectedBackend, backendUrl)
 
     const findApp = apps.find(
-      (app) => app.backend === backend && app.backendUrl === backendUrl,
+      (app) => app.backend === detectedBackend && app.backendUrl === backendUrl,
     )
 
     const processingAppData = await (async () => {
@@ -163,7 +176,7 @@ export const AppsProvider = ({
 
         return {
           appData,
-          backend,
+          backend: detectedBackend,
           backendUrl,
           tokenData: null,
         }
@@ -195,20 +208,6 @@ export const AppsProvider = ({
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-md border bg-gray-600 p-12 text-center">
           <h1 className="pb-8 text-4xl">Miyulab-FE</h1>
           <div className="w-72 space-y-2">
-            <select
-              className="w-full"
-              onChange={(e) => {
-                setBackend(e.target.value as Backend | '')
-              }}
-              value={backend}
-            >
-              <option value="">Select backend</option>
-              {backendList.map((backend) => (
-                <option key={backend} value={backend}>
-                  {backend}
-                </option>
-              ))}
-            </select>
             <input
               className="w-full"
               onChange={(e) => {
