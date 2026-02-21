@@ -2,30 +2,40 @@
 'use client'
 
 import { ProxyImage } from 'app/_parts/ProxyImage'
-import generator, { type Entity } from 'megalodon'
+import generator, { detector, type Entity } from 'megalodon'
 import { useContext, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { RiCloseCircleFill } from 'react-icons/ri'
 
-import { type App, type Backend, backendList } from 'types/types'
+import type { App } from 'types/types'
 import { APP_NAME, APP_URL } from 'util/environment'
 import { GetClient } from 'util/GetClient'
 import { AppsContext, UpdateAppsContext } from 'util/provider/AppsProvider'
 
 const AddAccountModal = ({ onClose }: { onClose: () => void }) => {
   const apps = useContext(AppsContext)
-  const [backend, setBackend] = useState<Backend | ''>('')
   const [backendUrl, setBackendUrl] = useState('')
 
   const onRegister = async () => {
-    if (backend === '' || backendUrl === '') {
+    if (backendUrl === '') {
       return
     }
 
-    const client = generator(backend, backendUrl)
+    const detectedBackend = await (async () => {
+      try {
+        return await detector(backendUrl)
+      } catch (e) {
+        console.error('Failed to detect backend:', e)
+        return null
+      }
+    })()
+    if (detectedBackend == null) {
+      return
+    }
+    const client = generator(detectedBackend, backendUrl)
 
     const findApp = apps.find(
-      (app) => app.backend === backend && app.backendUrl === backendUrl,
+      (app) => app.backend === detectedBackend && app.backendUrl === backendUrl,
     )
 
     const processingAppData = await (async () => {
@@ -38,7 +48,7 @@ const AddAccountModal = ({ onClose }: { onClose: () => void }) => {
 
         return {
           appData,
-          backend,
+          backend: detectedBackend,
           backendUrl,
           tokenData: null,
         }
@@ -68,20 +78,6 @@ const AddAccountModal = ({ onClose }: { onClose: () => void }) => {
       <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-md border bg-gray-600 p-12 text-center">
         <h1 className="pb-8 text-4xl">Miyulab-FE</h1>
         <div className="w-72 space-y-2">
-          <select
-            className="w-full"
-            onChange={(e) => {
-              setBackend(e.target.value as Backend | '')
-            }}
-            value={backend}
-          >
-            <option value="">Select backend</option>
-            {backendList.map((backend) => (
-              <option key={backend} value={backend}>
-                {backend}
-              </option>
-            ))}
-          </select>
           <input
             className="w-full"
             onChange={(e) => {
