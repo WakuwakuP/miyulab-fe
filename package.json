@@ -36,7 +36,7 @@
     "unicode-emoji-json": "^0.8.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.2",
+    "@biomejs/biome": "^2.4.4",
     "@tailwindcss/postcss": "^4.2.0",
     "@types/node": "^25.2.3",
     "@types/react": "^19.2.14",
