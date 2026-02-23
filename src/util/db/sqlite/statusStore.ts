@@ -39,51 +39,49 @@ export interface SqliteStoredStatus extends Entity.Status {
 // 内部ユーティリティ
 // ================================================================
 
-import type { DbHandle } from './types'
-
-async function getTimelineTypes(
-  handle: DbHandle,
-  compositeKey: string,
-): Promise<TimelineType[]> {
-  const rows = (await handle.execAsync(
-    'SELECT timelineType FROM statuses_timeline_types WHERE compositeKey = ?;',
-    { bind: [compositeKey], returnValue: 'resultRows' },
-  )) as string[][]
-  return rows.map((r) => r[0] as TimelineType)
-}
-
-async function getBelongingTags(
-  handle: DbHandle,
-  compositeKey: string,
-): Promise<string[]> {
-  const rows = (await handle.execAsync(
-    'SELECT tag FROM statuses_belonging_tags WHERE compositeKey = ?;',
-    { bind: [compositeKey], returnValue: 'resultRows' },
-  )) as string[][]
-  return rows.map((r) => r[0])
-}
-
-async function rowToStoredStatus(
-  handle: DbHandle,
-  row: (string | number)[],
-): Promise<SqliteStoredStatus> {
+/**
+ * クエリ結果の1行を SqliteStoredStatus に変換する
+ *
+ * row レイアウト:
+ *   [0] compositeKey, [1] backendUrl, [2] created_at_ms, [3] storedAt,
+ *   [4] json, [5] timelineTypesJson, [6] belongingTagsJson
+ *
+ * timelineTypes / belongingTags は SQL 側で json_group_array() を使って
+ * 集約済みの JSON 配列文字列として受け取る。
+ * これにより、行ごとに個別クエリを発行する N+1 問題を解消している。
+ */
+function rowToStoredStatus(
+  row: (string | number | null)[],
+): SqliteStoredStatus {
   const compositeKey = row[0] as string
   const backendUrl = row[1] as string
   const created_at_ms = row[2] as number
   const storedAt = row[3] as number
   const json = row[4] as string
+  const timelineTypesJson = row[5] as string | null
+  const belongingTagsJson = row[6] as string | null
   const status = JSON.parse(json) as Entity.Status
 
   return {
     ...status,
     backendUrl,
-    belongingTags: await getBelongingTags(handle, compositeKey),
+    belongingTags: belongingTagsJson
+      ? (JSON.parse(belongingTagsJson) as string[])
+      : [],
     compositeKey,
     created_at_ms,
     storedAt,
-    timelineTypes: await getTimelineTypes(handle, compositeKey),
+    timelineTypes: timelineTypesJson
+      ? (JSON.parse(timelineTypesJson) as TimelineType[])
+      : [],
   }
 }
+
+/** timelineTypes / belongingTags を集約するサブクエリ（SELECT 句に埋め込む） */
+const TIMELINE_TYPES_SUBQUERY =
+  '(SELECT json_group_array(timelineType) FROM statuses_timeline_types WHERE compositeKey = s.compositeKey) AS timelineTypes'
+const BELONGING_TAGS_SUBQUERY =
+  '(SELECT json_group_array(tag) FROM statuses_belonging_tags WHERE compositeKey = s.compositeKey) AS belongingTags'
 
 // ================================================================
 // Public API
@@ -241,7 +239,9 @@ export async function getStatusesByTimelineType(
     const placeholders = backendUrls.map(() => '?').join(',')
     sql = `
       SELECT s.compositeKey, MIN(sb.backendUrl) AS backendUrl,
-             s.created_at_ms, s.storedAt, s.json
+             s.created_at_ms, s.storedAt, s.json,
+             ${TIMELINE_TYPES_SUBQUERY},
+             ${BELONGING_TAGS_SUBQUERY}
       FROM statuses s
       INNER JOIN statuses_timeline_types stt
         ON s.compositeKey = stt.compositeKey
@@ -256,7 +256,9 @@ export async function getStatusesByTimelineType(
     binds.push(timelineType, ...backendUrls, limit ?? MAX_QUERY_LIMIT)
   } else {
     sql = `
-      SELECT s.compositeKey, s.backendUrl, s.created_at_ms, s.storedAt, s.json
+      SELECT s.compositeKey, s.backendUrl, s.created_at_ms, s.storedAt, s.json,
+             ${TIMELINE_TYPES_SUBQUERY},
+             ${BELONGING_TAGS_SUBQUERY}
       FROM statuses s
       INNER JOIN statuses_timeline_types stt
         ON s.compositeKey = stt.compositeKey
@@ -270,9 +272,9 @@ export async function getStatusesByTimelineType(
   const rows = (await handle.execAsync(sql, {
     bind: binds,
     returnValue: 'resultRows',
-  })) as (string | number)[][]
+  })) as (string | number | null)[][]
 
-  return Promise.all(rows.map((row) => rowToStoredStatus(handle, row)))
+  return rows.map(rowToStoredStatus)
 }
 
 /**
@@ -292,7 +294,9 @@ export async function getStatusesByTag(
     const placeholders = backendUrls.map(() => '?').join(',')
     sql = `
       SELECT s.compositeKey, MIN(sb.backendUrl) AS backendUrl,
-             s.created_at_ms, s.storedAt, s.json
+             s.created_at_ms, s.storedAt, s.json,
+             ${TIMELINE_TYPES_SUBQUERY},
+             ${BELONGING_TAGS_SUBQUERY}
       FROM statuses s
       INNER JOIN statuses_belonging_tags sbt
         ON s.compositeKey = sbt.compositeKey
@@ -307,7 +311,9 @@ export async function getStatusesByTag(
     binds.push(tag, ...backendUrls, limit ?? MAX_QUERY_LIMIT)
   } else {
     sql = `
-      SELECT s.compositeKey, s.backendUrl, s.created_at_ms, s.storedAt, s.json
+      SELECT s.compositeKey, s.backendUrl, s.created_at_ms, s.storedAt, s.json,
+             ${TIMELINE_TYPES_SUBQUERY},
+             ${BELONGING_TAGS_SUBQUERY}
       FROM statuses s
       INNER JOIN statuses_belonging_tags sbt
         ON s.compositeKey = sbt.compositeKey
@@ -321,9 +327,9 @@ export async function getStatusesByTag(
   const rows = (await handle.execAsync(sql, {
     bind: binds,
     returnValue: 'resultRows',
-  })) as (string | number)[][]
+  })) as (string | number | null)[][]
 
-  return Promise.all(rows.map((row) => rowToStoredStatus(handle, row)))
+  return rows.map(rowToStoredStatus)
 }
 
 /**
@@ -397,7 +403,9 @@ export async function getStatusesByCustomQuery(
 
   const sql = `
     SELECT s.compositeKey, MIN(sb.backendUrl) AS backendUrl,
-           s.created_at_ms, s.storedAt, s.json
+           s.created_at_ms, s.storedAt, s.json,
+           ${TIMELINE_TYPES_SUBQUERY},
+           ${BELONGING_TAGS_SUBQUERY}
     FROM statuses s
     LEFT JOIN statuses_timeline_types stt
       ON s.compositeKey = stt.compositeKey
@@ -419,9 +427,9 @@ export async function getStatusesByCustomQuery(
   const rows = (await handle.execAsync(sql, {
     bind: binds,
     returnValue: 'resultRows',
-  })) as (string | number)[][]
+  })) as (string | number | null)[][]
 
-  return Promise.all(rows.map((row) => rowToStoredStatus(handle, row)))
+  return rows.map(rowToStoredStatus)
 }
 
 /**
