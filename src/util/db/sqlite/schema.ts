@@ -659,13 +659,13 @@ function deduplicateByUri(handle: DbHandle): void {
  * JOIN 最適化用のカバリング複合インデックスを追加する。
  *
  * - statuses_timeline_types(timelineType, compositeKey)
- *   → WHERE stt.timelineType = ? AND ON s.compositeKey = stt.compositeKey の JOIN を高速化
+ *   → JOIN ON stt.compositeKey = s.compositeKey WHERE stt.timelineType = ? を高速化
  *
  * - statuses_belonging_tags(tag, compositeKey)
- *   → WHERE sbt.tag = ? AND ON s.compositeKey = sbt.compositeKey の JOIN を高速化
+ *   → JOIN ON sbt.compositeKey = s.compositeKey WHERE sbt.tag = ? を高速化
  *
  * - statuses_backends(backendUrl, compositeKey)
- *   → WHERE sb.backendUrl IN (...) AND ON s.compositeKey = sb.compositeKey の JOIN を高速化
+ *   → JOIN ON sb.compositeKey = s.compositeKey WHERE sb.backendUrl IN (...) を高速化
  */
 function migrateV3toV4(handle: DbHandle): void {
   const { db } = handle
