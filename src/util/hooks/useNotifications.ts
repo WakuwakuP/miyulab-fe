@@ -120,7 +120,6 @@ export function useNotifications(config?: TimelineConfigV2): {
       setNotifications(results)
     } catch (e) {
       console.error('useNotifications query error:', e)
-      setNotifications([])
     }
   }, [
     targetBackendUrls,
