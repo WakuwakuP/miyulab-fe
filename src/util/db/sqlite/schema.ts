@@ -19,7 +19,7 @@
 import type { SchemaDbHandle as DbHandle } from './worker/workerSchema'
 
 /** 現在のスキーマバージョン */
-const SCHEMA_VERSION = 3
+const SCHEMA_VERSION = 4
 
 /**
  * スキーマの初期化・マイグレーション
@@ -38,15 +38,20 @@ export function ensureSchema(handle: DbHandle): void {
   db.exec('BEGIN;')
   try {
     if (currentVersion < 1) {
-      // フレッシュインストール: v3 スキーマを直接作成
-      createSchemaV3(handle)
+      // フレッシュインストール: v4 スキーマを直接作成
+      createSchemaV4(handle)
     } else if (currentVersion < 2) {
-      // v1 → v2 → v3 マイグレーション
+      // v1 → v2 → v3 → v4 マイグレーション
       migrateV1toV2(handle)
       migrateV2toV3(handle)
+      migrateV3toV4(handle)
     } else if (currentVersion < 3) {
-      // v2 → v3 マイグレーション
+      // v2 → v3 → v4 マイグレーション
       migrateV2toV3(handle)
+      migrateV3toV4(handle)
+    } else if (currentVersion < 4) {
+      // v3 → v4 マイグレーション
+      migrateV3toV4(handle)
     }
 
     db.exec(`PRAGMA user_version = ${SCHEMA_VERSION};`)
@@ -58,16 +63,15 @@ export function ensureSchema(handle: DbHandle): void {
 }
 
 // ================================================================
-// v3 フルスキーマ作成（フレッシュインストール用）
+// v4 フルスキーマ作成（フレッシュインストール用）
 // ================================================================
 
 /**
- * v3 スキーマのフル作成（フレッシュインストール用）
+ * v4 スキーマのフル作成（フレッシュインストール用）
  *
- * v2 の正規化カラムに加え、uri / reblog_of_uri カラムと
- * statuses_backends テーブルを含む。
+ * v3 に加え、JOIN 最適化用のカバリングインデックスを含む。
  */
-function createSchemaV3(handle: DbHandle): void {
+function createSchemaV4(handle: DbHandle): void {
   const { db } = handle
 
   // ============================================
@@ -149,6 +153,10 @@ function createSchemaV3(handle: DbHandle): void {
   db.exec(
     'CREATE INDEX IF NOT EXISTS idx_stt_type ON statuses_timeline_types(timelineType);',
   )
+  // v4: JOIN 最適化用カバリングインデックス（timelineType → compositeKey の逆順）
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_stt_type_key ON statuses_timeline_types(timelineType, compositeKey);',
+  )
 
   // ============================================
   // statuses_belonging_tags (多対多)
@@ -163,6 +171,10 @@ function createSchemaV3(handle: DbHandle): void {
   `)
   db.exec(
     'CREATE INDEX IF NOT EXISTS idx_sbt_tag ON statuses_belonging_tags(tag);',
+  )
+  // v4: JOIN 最適化用カバリングインデックス（tag → compositeKey の逆順）
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_sbt_tag_key ON statuses_belonging_tags(tag, compositeKey);',
   )
 
   // ============================================
@@ -195,6 +207,10 @@ function createSchemaV3(handle: DbHandle): void {
   )
   db.exec(
     'CREATE INDEX IF NOT EXISTS idx_sb_backendUrl ON statuses_backends(backendUrl);',
+  )
+  // v4: JOIN 最適化用カバリングインデックス（backendUrl → compositeKey）
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_sb_backend_key ON statuses_backends(backendUrl, compositeKey);',
   )
 
   // ============================================
@@ -631,4 +647,36 @@ function deduplicateByUri(handle: DbHandle): void {
       })
     }
   }
+}
+
+// ================================================================
+// v3 → v4 マイグレーション
+// ================================================================
+
+/**
+ * v3 → v4 マイグレーション
+ *
+ * JOIN 最適化用のカバリング複合インデックスを追加する。
+ *
+ * - statuses_timeline_types(timelineType, compositeKey)
+ *   → WHERE stt.timelineType = ? AND ON s.compositeKey = stt.compositeKey の JOIN を高速化
+ *
+ * - statuses_belonging_tags(tag, compositeKey)
+ *   → WHERE sbt.tag = ? AND ON s.compositeKey = sbt.compositeKey の JOIN を高速化
+ *
+ * - statuses_backends(backendUrl, compositeKey)
+ *   → WHERE sb.backendUrl IN (...) AND ON s.compositeKey = sb.compositeKey の JOIN を高速化
+ */
+function migrateV3toV4(handle: DbHandle): void {
+  const { db } = handle
+
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_stt_type_key ON statuses_timeline_types(timelineType, compositeKey);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_sbt_tag_key ON statuses_belonging_tags(tag, compositeKey);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_sb_backend_key ON statuses_backends(backendUrl, compositeKey);',
+  )
 }
