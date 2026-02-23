@@ -22,9 +22,17 @@ type PendingRequest = {
   reject: (reason: Error) => void
 }
 
+type QueuedRequest = {
+  message: { type: string; id: number; [key: string]: unknown }
+  resolve: (value: unknown) => void
+  reject: (reason: Error) => void
+}
+
 let worker: Worker | null = null
 let nextId = 0
 const pending = new Map<number, PendingRequest>()
+const requestQueue: QueuedRequest[] = []
+let activeRequest = false
 let notifyChangeCallback: ((table: TableName) => void) | null = null
 let initResolve: ((persistence: 'opfs' | 'memory') => void) | null = null
 let initReject: ((reason: Error) => void) | null = null
@@ -160,6 +168,14 @@ function handleMessage(event: MessageEvent<WorkerMessage>): void {
 // RPC ユーティリティ
 // ================================================================
 
+/**
+ * リクエストをキューに追加し、順番に Worker へ送信する。
+ *
+ * Worker はシングルスレッドでメッセージを逐次処理するため、
+ * 一度に複数の postMessage を送ると後続リクエストのタイムアウトが
+ * 実際の処理時間ではなくキュー待ち時間を含んでしまう。
+ * キューで直列化し、タイムアウトは実際に送信した時点から計測する。
+ */
 function sendRequest(message: {
   type: string
   id: number
@@ -169,29 +185,46 @@ function sendRequest(message: {
     return Promise.reject(new Error('Worker not initialized'))
   }
 
+  return new Promise<unknown>((resolve, reject) => {
+    requestQueue.push({ message, reject, resolve })
+    processQueue()
+  })
+}
+
+function processQueue(): void {
+  if (activeRequest || requestQueue.length === 0 || !worker) return
+
+  const next = requestQueue.shift()
+  if (!next) return
+  activeRequest = true
+  const { message, resolve, reject } = next
   const id = message.id
 
-  return new Promise<unknown>((resolve, reject) => {
-    const timer = setTimeout(() => {
-      pending.delete(id)
-      reject(
-        new Error(`Worker request timed out (id=${id}, type=${message.type})`),
-      )
-    }, TIMEOUT_MS)
+  const timer = setTimeout(() => {
+    pending.delete(id)
+    activeRequest = false
+    reject(
+      new Error(`Worker request timed out (id=${id}, type=${message.type})`),
+    )
+    processQueue()
+  }, TIMEOUT_MS)
 
-    pending.set(id, {
-      reject: (reason: Error) => {
-        clearTimeout(timer)
-        reject(reason)
-      },
-      resolve: (value: unknown) => {
-        clearTimeout(timer)
-        resolve(value)
-      },
-    })
-
-    worker?.postMessage(message)
+  pending.set(id, {
+    reject: (reason: Error) => {
+      clearTimeout(timer)
+      activeRequest = false
+      reject(reason)
+      processQueue()
+    },
+    resolve: (value: unknown) => {
+      clearTimeout(timer)
+      activeRequest = false
+      resolve(value)
+      processQueue()
+    },
   })
+
+  worker.postMessage(message)
 }
 
 // ================================================================
@@ -264,6 +297,12 @@ export function terminateWorker(): void {
   worker?.terminate()
   worker = null
   pending.clear()
+  // キュー内の未送信リクエストを拒否してクリア
+  for (const queued of requestQueue) {
+    queued.reject(new Error('Worker terminated'))
+  }
+  requestQueue.length = 0
+  activeRequest = false
   initPromise = null
   initResolve = null
   initReject = null
