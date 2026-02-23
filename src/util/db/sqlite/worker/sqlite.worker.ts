@@ -7,6 +7,7 @@
 
 /// <reference lib="webworker" />
 
+import { logSlowQueryExplain } from '../explainLogger'
 import type { TableName, WorkerMessage, WorkerRequest } from '../protocol'
 import { handleEnforceMaxLength } from './workerCleanup'
 import { handleMigrationWrite } from './workerMigration'
@@ -96,14 +97,20 @@ function handleExec(
   bind?: (string | number | null)[],
   returnValue?: string,
 ): unknown {
+  const start = performance.now()
+  let result: unknown
   if (returnValue === 'resultRows') {
-    return db.exec(sql, {
+    result = db.exec(sql, {
       bind: bind ?? undefined,
       returnValue: 'resultRows',
     })
+  } else {
+    db.exec(sql, { bind: bind ?? undefined })
+    result = undefined
   }
-  db.exec(sql, { bind: bind ?? undefined })
-  return undefined
+  const durationMs = performance.now() - start
+  logSlowQueryExplain(db, sql, bind, durationMs)
+  return result
 }
 
 function handleExecBatch(
