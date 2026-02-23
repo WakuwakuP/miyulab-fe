@@ -83,7 +83,6 @@ export function useTimeline(timelineType: TimelineType): StatusAddAppIndex[] {
       setStatuses(results)
     } catch (e) {
       console.error('useTimeline query error:', e)
-      setStatuses([])
     }
   }, [backendUrls, timelineType])
 
@@ -173,7 +172,6 @@ export function useTagTimeline(
       setStatuses(results)
     } catch (e) {
       console.error('useTagTimeline query error:', e)
-      setStatuses([])
     }
   }, [backendUrls, tag, onlyMedia])
 

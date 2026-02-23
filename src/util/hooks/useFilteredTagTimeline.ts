@@ -225,7 +225,6 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
       setStatuses(results)
     } catch (e) {
       console.error('useFilteredTagTimeline query error:', e)
-      setStatuses([])
     }
   }, [
     tagMode,

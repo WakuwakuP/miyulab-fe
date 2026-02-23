@@ -203,7 +203,6 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
       setStatuses(results)
     } catch (e) {
       console.error('useFilteredTimeline query error:', e)
-      setStatuses([])
     }
   }, [
     configType,
