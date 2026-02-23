@@ -335,7 +335,6 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
       }
     } catch (e) {
       console.error('useCustomQueryTimeline query error:', e)
-      setResults([])
     }
   }, [
     customQuery,
