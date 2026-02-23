@@ -29,16 +29,17 @@ export const DatabaseStatsPanel = () => {
       setLoading(true)
       setError(null)
       const handle = await getSqliteDb()
-      const counts: TableCount[] = []
 
-      for (const name of TABLE_NAMES) {
-        const rows = (await handle.execAsync(`SELECT COUNT(*) FROM ${name};`, {
-          returnValue: 'resultRows',
-        })) as number[][]
-        counts.push({ count: rows[0]?.[0] ?? 0, name })
-      }
+      // Single query using UNION ALL for all table counts
+      const sql = TABLE_NAMES.map(
+        (name) => `SELECT '${name}' AS name, COUNT(*) AS cnt FROM ${name}`,
+      ).join(' UNION ALL ')
 
-      setTableCounts(counts)
+      const rows = (await handle.execAsync(sql, {
+        returnValue: 'resultRows',
+      })) as [string, number][]
+
+      setTableCounts(rows.map(([name, count]) => ({ count, name })))
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
