@@ -54,14 +54,13 @@ export function logSlowQueryExplain(
 /**
  * EXPLAIN QUERY PLAN の結果行をフォーマットする
  *
- * 各行は [id, parent, notused, detail] の形式。
- * detail 列のみ抽出してインデント付きで返す。
+ * SQLite の EXPLAIN QUERY PLAN は [id, parent, notused, detail] の
+ * 4 列を返す。detail 列（インデックス 3）を抽出して表示する。
  */
 function formatExplainRows(rows: unknown[][]): string {
   return rows
     .map((row) => {
-      // EXPLAIN QUERY PLAN returns: id, parent, notused, detail
-      const detail = row[3] ?? row[row.length - 1]
+      const detail = row.length >= 4 ? row[3] : String(row)
       return `    ${detail}`
     })
     .join('\n')
