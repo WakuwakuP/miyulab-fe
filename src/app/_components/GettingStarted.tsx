@@ -1,5 +1,6 @@
 'use client'
 
+import { DatabaseStatsPanel } from 'app/_components/DatabaseStatsPanel'
 import { HashtagHistory } from 'app/_components/HashtagHistory'
 import { SettingPanel } from 'app/_components/SettingPanel'
 import { TimelineManagement } from 'app/_components/TimelineManagement'
@@ -27,7 +28,7 @@ export const GettingStarted = () => {
   const apps = useContext(AppsContext)
   const [appIndex, setAppIndex] = useState(0)
   const [selected, setSelected] = useState<
-    'bookmark' | 'dm' | 'setting' | 'timeline' | 'accounts' | null
+    'bookmark' | 'dm' | 'setting' | 'timeline' | 'accounts' | 'database' | null
   >(null)
 
   const [title, setTitle] = useState<string>('Getting Started')
@@ -278,6 +279,13 @@ export const GettingStarted = () => {
             >
               Accounts
             </button>
+            <button
+              className="w-full border-b px-4 py-2 text-xl hover:bg-slate-800"
+              onClick={() => setSelected('database')}
+              type="button"
+            >
+              Database
+            </button>
             <HashtagHistory />
           </>
         )}
@@ -345,6 +353,12 @@ export const GettingStarted = () => {
       {selected === 'accounts' && (
         <div className="h-[calc(100%-32px)]">
           <AccountsPanel />
+        </div>
+      )}
+
+      {selected === 'database' && (
+        <div className="h-[calc(100%-32px)]">
+          <DatabaseStatsPanel />
         </div>
       )}
     </Panel>
