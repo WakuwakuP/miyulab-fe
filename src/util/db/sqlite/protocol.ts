@@ -139,6 +139,18 @@ export type EnforceMaxLengthRequest = {
   id: number
 }
 
+/** EXPLAIN ログの取得 */
+export type GetExplainLogsRequest = {
+  type: 'getExplainLogs'
+  id: number
+}
+
+/** EXPLAIN ログのクリア */
+export type ClearExplainLogsRequest = {
+  type: 'clearExplainLogs'
+  id: number
+}
+
 /** IndexedDB マイグレーションデータの書き込み */
 export type MigrationWriteRequest = {
   type: 'migrationWrite'
@@ -187,6 +199,8 @@ export type WorkerRequest =
   | BulkAddNotificationsRequest
   | UpdateNotificationStatusActionRequest
   | EnforceMaxLengthRequest
+  | GetExplainLogsRequest
+  | ClearExplainLogsRequest
   | MigrationWriteRequest
 
 // ================================================================

@@ -7,7 +7,11 @@
  * いずれの場合も同一の DbHandle インターフェースを提供する。
  */
 
-import { logSlowQueryExplain } from './explainLogger'
+import {
+  clearExplainLogs,
+  getExplainLogs,
+  logSlowQueryExplain,
+} from './explainLogger'
 import type { TableName } from './protocol'
 import type { DbHandle } from './types'
 
@@ -52,15 +56,22 @@ async function initDb(onNotify: (table: TableName) => void): Promise<DbHandle> {
 async function initWorkerMode(
   onNotify: (table: TableName) => void,
 ): Promise<DbHandle> {
-  const { initWorker, execAsync, execBatch, sendCommand } = await import(
-    './workerClient'
-  )
+  const {
+    initWorker,
+    execAsync,
+    execBatch,
+    sendCommand,
+    getExplainLogs,
+    clearExplainLogs,
+  } = await import('./workerClient')
 
   const persistence = await initWorker(onNotify)
 
   return {
+    clearExplainLogs,
     execAsync,
     execBatch,
+    getExplainLogs,
     persistence,
     sendCommand,
   }
@@ -123,6 +134,9 @@ async function initMainThreadFallback(
   const { handleMigrationWrite } = await import('./worker/workerMigration')
 
   const handle: DbHandle = {
+    clearExplainLogs: async () => {
+      clearExplainLogs()
+    },
     execAsync: async (sql, opts) => {
       const start = performance.now()
       let result: unknown
@@ -175,6 +189,8 @@ async function initMainThreadFallback(
         throw e
       }
     },
+
+    getExplainLogs: async () => getExplainLogs(),
 
     persistence: 'memory',
 

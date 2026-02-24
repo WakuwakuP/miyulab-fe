@@ -7,7 +7,11 @@
 
 /// <reference lib="webworker" />
 
-import { logSlowQueryExplain } from '../explainLogger'
+import {
+  clearExplainLogs,
+  getExplainLogs,
+  logSlowQueryExplain,
+} from '../explainLogger'
 import type { TableName, WorkerMessage, WorkerRequest } from '../protocol'
 import { handleEnforceMaxLength } from './workerCleanup'
 import { handleMigrationWrite } from './workerMigration'
@@ -353,6 +357,18 @@ self.onmessage = (
           msg.notificationBatches,
         )
         sendResponse(msg.id, { ok: true }, r.changedTables)
+        break
+      }
+
+      // ---- EXPLAIN ログ ----
+      case 'getExplainLogs': {
+        sendResponse(msg.id, getExplainLogs())
+        break
+      }
+
+      case 'clearExplainLogs': {
+        clearExplainLogs()
+        sendResponse(msg.id, { ok: true })
         break
       }
 

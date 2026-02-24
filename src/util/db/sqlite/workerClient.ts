@@ -6,8 +6,10 @@
  */
 
 import type {
+  ClearExplainLogsRequest,
   ExecBatchRequest,
   ExecRequest,
+  GetExplainLogsRequest,
   SendCommandPayload,
   TableName,
   WorkerMessage,
@@ -288,6 +290,30 @@ export function sendCommand(command: SendCommandPayload): Promise<unknown> {
     [key: string]: unknown
   }
   return sendRequest(message)
+}
+
+/**
+ * EXPLAIN ログを Worker から取得する。
+ */
+export function getExplainLogs(): Promise<readonly string[]> {
+  const id = nextId++
+  const request: GetExplainLogsRequest = {
+    id,
+    type: 'getExplainLogs',
+  }
+  return sendRequest(request) as Promise<readonly string[]>
+}
+
+/**
+ * Worker 内の EXPLAIN ログをクリアする。
+ */
+export function clearExplainLogs(): Promise<void> {
+  const id = nextId++
+  const request: ClearExplainLogsRequest = {
+    id,
+    type: 'clearExplainLogs',
+  }
+  return sendRequest(request) as Promise<void>
 }
 
 /**

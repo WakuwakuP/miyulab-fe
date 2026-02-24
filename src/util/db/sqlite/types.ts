@@ -43,4 +43,10 @@ export type DbHandle = {
 
   /** 永続化モード */
   persistence: 'opfs' | 'memory'
+
+  /** EXPLAIN ログの取得 */
+  getExplainLogs: () => Promise<readonly string[]>
+
+  /** EXPLAIN ログのクリア */
+  clearExplainLogs: () => Promise<void>
 }
