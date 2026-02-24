@@ -10,6 +10,7 @@ import { DetailProvider } from 'util/provider/DetailProvider'
 import { HomeTimelineProvider } from 'util/provider/HomeTimelineProvider'
 import { MediaModalProvider } from 'util/provider/ModalProvider'
 import { PlayerProvider } from 'util/provider/PlayerProvider'
+import { PostAccountProvider } from 'util/provider/PostAccountProvider'
 import { ReplyToProvider } from 'util/provider/ReplyToProvider'
 import { ResourceProvider } from 'util/provider/ResourceProvider'
 import { SettingProvider } from 'util/provider/SettingProvider'
@@ -37,33 +38,35 @@ export default function RootLayout({
       <body className={inter.className}>
         <SuspenseProvider>
           <AppsProvider>
-            <SettingProvider>
-              <TimelineProvider>
-                <Suspense>
-                  <ResourceProvider>
-                    <ReplyToProvider>
-                      <DetailProvider>
-                        <MediaModalProvider>
-                          <PlayerProvider>
-                            <StatusStoreProvider>
-                              <StreamingManagerProvider>
-                                <HomeTimelineProvider>
-                                  <Toaster
-                                    position="bottom-left"
-                                    reverseOrder={false}
-                                  />
-                                  {children}
-                                </HomeTimelineProvider>
-                              </StreamingManagerProvider>
-                            </StatusStoreProvider>
-                          </PlayerProvider>
-                        </MediaModalProvider>
-                      </DetailProvider>
-                    </ReplyToProvider>
-                  </ResourceProvider>
-                </Suspense>
-              </TimelineProvider>
-            </SettingProvider>
+            <PostAccountProvider>
+              <SettingProvider>
+                <TimelineProvider>
+                  <Suspense>
+                    <ResourceProvider>
+                      <ReplyToProvider>
+                        <DetailProvider>
+                          <MediaModalProvider>
+                            <PlayerProvider>
+                              <StatusStoreProvider>
+                                <StreamingManagerProvider>
+                                  <HomeTimelineProvider>
+                                    <Toaster
+                                      position="bottom-left"
+                                      reverseOrder={false}
+                                    />
+                                    {children}
+                                  </HomeTimelineProvider>
+                                </StreamingManagerProvider>
+                              </StatusStoreProvider>
+                            </PlayerProvider>
+                          </MediaModalProvider>
+                        </DetailProvider>
+                      </ReplyToProvider>
+                    </ResourceProvider>
+                  </Suspense>
+                </TimelineProvider>
+              </SettingProvider>
+            </PostAccountProvider>
           </AppsProvider>
         </SuspenseProvider>
         <Analytics />

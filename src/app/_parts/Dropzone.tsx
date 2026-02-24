@@ -26,12 +26,14 @@ export const Dropzone = ({
   setAttachments,
   uploading,
   setUploading,
+  appIndex = 0,
 }: {
   children?: ReactNode
   attachments: Entity.Attachment[]
   setAttachments: Dispatch<SetStateAction<Entity.Attachment[]>>
   uploading: number
   setUploading: Dispatch<SetStateAction<number>>
+  appIndex?: number
 }) => {
   const apps = useContext(AppsContext)
   const instance = useContext(InstanceContext)
@@ -42,7 +44,7 @@ export const Dropzone = ({
     (acceptedFiles: File[]) => {
       const uploadMedia = (file: File) => {
         if (apps.length <= 0) return
-        const client = GetClient(apps[0])
+        const client = GetClient(apps[appIndex])
         client
           .uploadMedia(file)
           .then((res) => {
@@ -77,7 +79,7 @@ export const Dropzone = ({
         }
       })
     },
-    [apps, setAttachments, setUploading, update_limit],
+    [apps, appIndex, setAttachments, setUploading, update_limit],
   )
 
   const { getRootProps, getInputProps, isFocused, isDragAccept, isDragReject } =

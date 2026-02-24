@@ -10,7 +10,7 @@ import { RiCloseCircleFill } from 'react-icons/ri'
 import type { App } from 'types/types'
 import { APP_NAME, APP_URL } from 'util/environment'
 import { GetClient } from 'util/GetClient'
-import { AppsContext, UpdateAppsContext } from 'util/provider/AppsProvider'
+import { AppsContext } from 'util/provider/AppsProvider'
 
 const AddAccountModal = ({ onClose }: { onClose: () => void }) => {
   const apps = useContext(AppsContext)
@@ -104,9 +104,9 @@ const AddAccountModal = ({ onClose }: { onClose: () => void }) => {
 
 export const AccountsPanel = () => {
   const apps = useContext(AppsContext)
-  const updateApps = useContext(UpdateAppsContext)
 
   const [showAddAccountModal, setShowAddAccountModal] = useState(false)
+  const [showReloadModal, setShowReloadModal] = useState(false)
   const [showDeleteAccountModal, setShowDeleteAccountModal] = useState<{
     app: App | null
     account: Entity.Account | null
@@ -144,10 +144,18 @@ export const AccountsPanel = () => {
     })()
   }, [apps])
 
-  const deleteAccount = async (index: number | null) => {
+  const deleteAccount = (index: number | null) => {
     if (index == null) return
-    apps.splice(index, 1)
-    updateApps(apps)
+    const newApps = apps.filter((_, i) => i !== index)
+    // Update localStorage directly without triggering React state update
+    // to avoid stale-index errors across the app during re-render.
+    // The reload modal will prompt the user to reload the page.
+    try {
+      localStorage.setItem('apps', JSON.stringify(newApps))
+    } catch (error) {
+      console.error('Failed to update localStorage:', error)
+    }
+    setShowReloadModal(true)
   }
 
   return (
@@ -252,6 +260,25 @@ export const AccountsPanel = () => {
                   いいえ
                 </button>
               </div>
+            </div>
+          </>,
+          document.body,
+        )}
+      {showReloadModal &&
+        createPortal(
+          <>
+            <div className="absolute bottom-0 left-0 right-0 top-0 bg-black/60" />
+            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-md border bg-gray-600 p-12 text-center">
+              <div className="pb-4">タイムラインを再構築します</div>
+              <button
+                className="rounded-md border bg-gray-900 px-4 py-2"
+                onClick={() => {
+                  window.location.reload()
+                }}
+                type="button"
+              >
+                リロード
+              </button>
             </div>
           </>,
           document.body,
