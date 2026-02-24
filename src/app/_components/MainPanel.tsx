@@ -19,21 +19,35 @@ import { canPlay } from 'util/PlayerUtils'
 import { AppsContext } from 'util/provider/AppsProvider'
 import { SetPlayerContext } from 'util/provider/PlayerProvider'
 import {
+  PostAccountContext,
+  SelectedAppIndexContext,
+  SetSelectedAppIndexContext,
+} from 'util/provider/PostAccountProvider'
+import {
   ReplyToContext,
   SetReplyToContext,
 } from 'util/provider/ReplyToProvider'
 import { SettingContext } from 'util/provider/SettingProvider'
 
+const getFullAcct = (acct: string, backendUrl: string) => {
+  if (acct.includes('@')) return `@${acct}`
+  try {
+    const domain = new URL(backendUrl).host
+    return `@${acct}@${domain}`
+  } catch {
+    return `@${acct}`
+  }
+}
+
 export const MainPanel = () => {
   const apps = useContext(AppsContext)
+  const accounts = useContext(PostAccountContext)
+  const selectedAppIndex = useContext(SelectedAppIndexContext)
+  const setSelectedAppIndex = useContext(SetSelectedAppIndexContext)
   const replyTo = useContext(ReplyToContext)
   const setReplyTo = useContext(SetReplyToContext)
   const setPlayer = useContext(SetPlayerContext)
   const { defaultStatusVisibility } = useContext(SettingContext)
-  const [selectedAppIndex, setSelectedAppIndex] = useState(0)
-  const [accounts, setAccounts] = useState<
-    { index: number; account: Entity.Account }[]
-  >([])
 
   // form state
   const [visibility, setVisibility] = useState<Entity.StatusVisibility>(
@@ -105,39 +119,23 @@ export const MainPanel = () => {
   }, [replyTo])
 
   useEffect(() => {
-    if (apps.length <= 0) return
-
-    ;(async () => {
-      try {
-        const results = await Promise.allSettled(
-          apps.map((app, index) => {
-            const client = GetClient(app)
-            return client
-              .verifyAccountCredentials()
-              .then((res) => ({ account: res.data, index }))
-          }),
-        )
-        const fulfilled = results
-          .filter(
-            (
-              r,
-            ): r is PromiseFulfilledResult<{
-              account: Entity.Account
-              index: number
-            }> => r.status === 'fulfilled',
-          )
-          .map((r) => r.value)
-        setAccounts(fulfilled)
-        setSelectedAppIndex((prev) => (prev >= apps.length ? 0 : prev))
-      } catch (error) {
-        console.error('Failed to verify account credentials:', error)
-      }
-    })()
-  }, [apps])
-
-  useEffect(() => {
     setVisibility(defaultStatusVisibility)
   }, [defaultStatusVisibility])
+
+  // Ctrl+1, Ctrl+2, ... shortcuts to switch accounts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key >= '1' && e.key <= '9') {
+        const idx = Number(e.key) - 1
+        if (idx < accounts.length) {
+          e.preventDefault()
+          setSelectedAppIndex(idx)
+        }
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [accounts.length, setSelectedAppIndex])
 
   const onCheckMediaLink = useEffectEvent(() => {
     if (mediaLink === '') return
@@ -191,13 +189,13 @@ export const MainPanel = () => {
           {accounts.length > 1 && (
             <div className="shrink-0 pr-1">
               <select
-                className="w-fit max-w-32 truncate rounded-md border text-black"
+                className="w-fit max-w-40 truncate rounded-md border text-black"
                 onChange={(e) => setSelectedAppIndex(Number(e.target.value))}
                 value={selectedAppIndex}
               >
                 {accounts.map(({ index, account: acc }) => (
                   <option key={`${index}-${acc.id}`} value={index}>
-                    @{acc.acct}
+                    {getFullAcct(acc.acct, apps[index].backendUrl)}
                   </option>
                 ))}
               </select>
