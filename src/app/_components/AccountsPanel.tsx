@@ -146,8 +146,8 @@ export const AccountsPanel = () => {
 
   const deleteAccount = async (index: number | null) => {
     if (index == null) return
-    apps.splice(index, 1)
-    updateApps(apps)
+    const newApps = apps.filter((_, i) => i !== index)
+    updateApps(newApps)
   }
 
   return (
