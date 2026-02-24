@@ -30,7 +30,10 @@ export const MainPanel = () => {
   const setReplyTo = useContext(SetReplyToContext)
   const setPlayer = useContext(SetPlayerContext)
   const { defaultStatusVisibility } = useContext(SettingContext)
-  const [account, setAccount] = useState<Entity.Account | null>(null)
+  const [selectedAppIndex, setSelectedAppIndex] = useState(0)
+  const [accounts, setAccounts] = useState<
+    { index: number; account: Entity.Account }[]
+  >([])
 
   // form state
   const [visibility, setVisibility] = useState<Entity.StatusVisibility>(
@@ -78,7 +81,7 @@ export const MainPanel = () => {
     if (apps.length <= 0) return
     if (content === '') return
 
-    const client = GetClient(apps[0])
+    const client = GetClient(apps[selectedAppIndex])
 
     client
       .postStatus(content, {
@@ -103,16 +106,23 @@ export const MainPanel = () => {
 
   useEffect(() => {
     if (apps.length <= 0) return
-    const client = GetClient(apps[0])
 
-    client
-      .verifyAccountCredentials()
-      .then((res) => {
-        setAccount(res.data)
-      })
-      .catch((error) => {
+    ;(async () => {
+      try {
+        const results = await Promise.all(
+          apps.map((app, index) => {
+            const client = GetClient(app)
+            return client
+              .verifyAccountCredentials()
+              .then((res) => ({ account: res.data, index }))
+          }),
+        )
+        setAccounts(results)
+        setSelectedAppIndex((prev) => (prev >= apps.length ? 0 : prev))
+      } catch (error) {
         console.error('Failed to verify account credentials:', error)
-      })
+      }
+    })()
   }, [apps])
 
   useEffect(() => {
@@ -150,14 +160,40 @@ export const MainPanel = () => {
     setIsPlay(false)
   }, [mediaLink, setPlayer])
 
-  if (apps.length <= 0 || account == null) {
+  const selectedAccount = accounts.find((a) => a.index === selectedAppIndex)
+
+  if (apps.length <= 0 || accounts.length === 0 || selectedAccount == null) {
     return null
   }
 
   return (
     <Panel className="p-1">
       <div className="relative h-full">
-        <UserInfo account={{ ...account, appIndex: 0 }} />
+        <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <UserInfo
+              account={{
+                ...selectedAccount.account,
+                appIndex: selectedAppIndex,
+              }}
+            />
+          </div>
+          {accounts.length > 1 && (
+            <div className="shrink-0 pr-1">
+              <select
+                className="w-fit max-w-32 truncate rounded-md border text-black"
+                onChange={(e) => setSelectedAppIndex(Number(e.target.value))}
+                value={selectedAppIndex}
+              >
+                {accounts.map(({ index, account: acc }) => (
+                  <option key={`${index}-${acc.id}`} value={index}>
+                    @{acc.acct}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
         <div className="px-2 *:mt-2">
           <div className="flex items-center space-x-2">
             <div>
@@ -242,6 +278,7 @@ export const MainPanel = () => {
           </div>
           <div className="text-black">
             <StatusRichTextarea
+              appIndex={selectedAppIndex}
               onChange={setContent}
               onSubmit={clickPost}
               placeholder="What's happening?"
@@ -268,6 +305,7 @@ export const MainPanel = () => {
           </div>
           <div>
             <Dropzone
+              appIndex={selectedAppIndex}
               attachments={attachments}
               setAttachments={setAttachments}
               setUploading={setUploading}
