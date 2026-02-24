@@ -209,6 +209,7 @@ export const StatusRichTextarea = ({
   style,
   setAttachments,
   setUploading,
+  appIndex = 0,
 }: {
   text: string
   placeholder?: string
@@ -217,6 +218,7 @@ export const StatusRichTextarea = ({
   style: CSSProperties
   setAttachments: Dispatch<SetStateAction<Entity.Attachment[]>>
   setUploading: Dispatch<SetStateAction<number>>
+  appIndex?: number
 }) => {
   const apps = useContext(AppsContext)
   const users = useContext(UsersContext)
@@ -334,7 +336,7 @@ export const StatusRichTextarea = ({
 
   const uploadMedia = (file: File) => {
     if (apps.length <= 0) return
-    const client = GetClient(apps[0])
+    const client = GetClient(apps[appIndex])
     client
       .uploadMedia(file)
       .then((res) => {

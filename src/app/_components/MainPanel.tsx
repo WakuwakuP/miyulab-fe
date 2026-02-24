@@ -19,18 +19,35 @@ import { canPlay } from 'util/PlayerUtils'
 import { AppsContext } from 'util/provider/AppsProvider'
 import { SetPlayerContext } from 'util/provider/PlayerProvider'
 import {
+  PostAccountContext,
+  SelectedAppIndexContext,
+  SetSelectedAppIndexContext,
+} from 'util/provider/PostAccountProvider'
+import {
   ReplyToContext,
   SetReplyToContext,
 } from 'util/provider/ReplyToProvider'
 import { SettingContext } from 'util/provider/SettingProvider'
 
+const getFullAcct = (acct: string, backendUrl: string) => {
+  if (acct.includes('@')) return `@${acct}`
+  try {
+    const domain = new URL(backendUrl).host
+    return `@${acct}@${domain}`
+  } catch {
+    return `@${acct}`
+  }
+}
+
 export const MainPanel = () => {
   const apps = useContext(AppsContext)
+  const accounts = useContext(PostAccountContext)
+  const selectedAppIndex = useContext(SelectedAppIndexContext)
+  const setSelectedAppIndex = useContext(SetSelectedAppIndexContext)
   const replyTo = useContext(ReplyToContext)
   const setReplyTo = useContext(SetReplyToContext)
   const setPlayer = useContext(SetPlayerContext)
   const { defaultStatusVisibility } = useContext(SettingContext)
-  const [account, setAccount] = useState<Entity.Account | null>(null)
 
   // form state
   const [visibility, setVisibility] = useState<Entity.StatusVisibility>(
@@ -77,8 +94,9 @@ export const MainPanel = () => {
   const clickPost = () => {
     if (apps.length <= 0) return
     if (content === '') return
+    if (apps[selectedAppIndex] == null) return
 
-    const client = GetClient(apps[0])
+    const client = GetClient(apps[selectedAppIndex])
 
     client
       .postStatus(content, {
@@ -102,22 +120,23 @@ export const MainPanel = () => {
   }, [replyTo])
 
   useEffect(() => {
-    if (apps.length <= 0) return
-    const client = GetClient(apps[0])
-
-    client
-      .verifyAccountCredentials()
-      .then((res) => {
-        setAccount(res.data)
-      })
-      .catch((error) => {
-        console.error('Failed to verify account credentials:', error)
-      })
-  }, [apps])
-
-  useEffect(() => {
     setVisibility(defaultStatusVisibility)
   }, [defaultStatusVisibility])
+
+  // Ctrl+1, Ctrl+2, ... shortcuts to switch accounts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key >= '1' && e.key <= '9') {
+        const pos = Number(e.key) - 1
+        if (pos < accounts.length) {
+          e.preventDefault()
+          setSelectedAppIndex(accounts[pos].index)
+        }
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [accounts, setSelectedAppIndex])
 
   const onCheckMediaLink = useEffectEvent(() => {
     if (mediaLink === '') return
@@ -150,14 +169,40 @@ export const MainPanel = () => {
     setIsPlay(false)
   }, [mediaLink, setPlayer])
 
-  if (apps.length <= 0 || account == null) {
+  const selectedAccount = accounts.find((a) => a.index === selectedAppIndex)
+
+  if (apps.length <= 0 || accounts.length === 0 || selectedAccount == null) {
     return null
   }
 
   return (
     <Panel className="p-1">
       <div className="relative h-full">
-        <UserInfo account={{ ...account, appIndex: 0 }} />
+        <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <UserInfo
+              account={{
+                ...selectedAccount.account,
+                appIndex: selectedAppIndex,
+              }}
+            />
+          </div>
+          {accounts.length > 1 && (
+            <div className="shrink-0 pr-1">
+              <select
+                className="w-fit max-w-40 truncate rounded-md border text-black"
+                onChange={(e) => setSelectedAppIndex(Number(e.target.value))}
+                value={selectedAppIndex}
+              >
+                {accounts.map(({ index, account: acc }) => (
+                  <option key={`${index}-${acc.id}`} value={index}>
+                    {getFullAcct(acc.acct, apps[index]?.backendUrl ?? '')}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
         <div className="px-2 *:mt-2">
           <div className="flex items-center space-x-2">
             <div>
@@ -242,6 +287,7 @@ export const MainPanel = () => {
           </div>
           <div className="text-black">
             <StatusRichTextarea
+              appIndex={selectedAppIndex}
               onChange={setContent}
               onSubmit={clickPost}
               placeholder="What's happening?"
@@ -268,6 +314,7 @@ export const MainPanel = () => {
           </div>
           <div>
             <Dropzone
+              appIndex={selectedAppIndex}
               attachments={attachments}
               setAttachments={setAttachments}
               setUploading={setUploading}
