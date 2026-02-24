@@ -29,7 +29,7 @@ const noopLoadMore = () => {}
  */
 export function useTimelineData(config: TimelineConfigV2): {
   data: (NotificationAddAppIndex | StatusAddAppIndex)[]
-  averageDuration: number | null
+  queryDuration: number | null
   loadMore: () => void
 } {
   // 全 Hook を無条件に呼び出す（Hook ルール遵守）
@@ -53,6 +53,6 @@ export function useTimelineData(config: TimelineConfigV2): {
     case 'tag':
       return filteredTagTimeline
     default:
-      return { averageDuration: null, data: [], loadMore: noopLoadMore }
+      return { data: [], loadMore: noopLoadMore, queryDuration: null }
   }
 }

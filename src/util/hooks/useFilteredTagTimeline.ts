@@ -45,14 +45,14 @@ function resolveAppIndex(
  */
 export function useFilteredTagTimeline(config: TimelineConfigV2): {
   data: StatusAddAppIndex[]
-  averageDuration: number | null
+  queryDuration: number | null
   loadMore: () => void
 } {
   const apps = useContext(AppsContext)
   const tagConfig = config.tagConfig
   const [statuses, setStatuses] = useState<SqliteStoredStatus[]>([])
   const [queryLimit, setQueryLimit] = useState(TIMELINE_QUERY_LIMIT)
-  const { averageDuration, recordDuration } = useQueryDuration()
+  const { queryDuration, recordDuration } = useQueryDuration()
 
   const loadMore = useCallback(() => {
     setQueryLimit((prev) => prev + TIMELINE_QUERY_LIMIT)
@@ -255,5 +255,5 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
     [statuses, apps],
   )
 
-  return { averageDuration, data, loadMore }
+  return { data, loadMore, queryDuration }
 }

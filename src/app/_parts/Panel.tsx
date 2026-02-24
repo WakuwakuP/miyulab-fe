@@ -7,14 +7,14 @@ export const Panel = ({
   name,
   onClickHeader,
   className,
-  averageDuration,
+  queryDuration,
   headerOffset,
 }: {
   children: ReactNode
   onClickHeader?: () => void
   name?: string
   className?: HTMLProps<HTMLElement>['className']
-  averageDuration?: number | null
+  queryDuration?: number | null
   headerOffset?: string
 }) => {
   const ref = useRef<HTMLDivElement>(null)
@@ -25,9 +25,7 @@ export const Panel = ({
       : `calc(100vh - 0.75rem - 2rem - ${offset})`
 
   const durationTitle =
-    averageDuration != null
-      ? `Query: ${averageDuration.toFixed(2)} ms`
-      : undefined
+    queryDuration != null ? `Query: ${queryDuration.toFixed(2)} ms` : undefined
 
   return (
     <section>
