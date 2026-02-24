@@ -1,7 +1,7 @@
 'use client'
 
 import { EmojiReactionPicker } from 'app/_parts/EmojiReactionPicker'
-import { useCallback, useContext, useEffect, useRef, useState } from 'react'
+import { useCallback, useContext, useRef, useState } from 'react'
 import { FaLock } from 'react-icons/fa'
 import {
   RiBookmark2Fill,
@@ -41,23 +41,8 @@ export const Actions = ({
   const [favourited, setFavourited] = useState(status.favourited)
   const [bookmarked, setBookmarked] = useState(status.bookmarked)
   const [showReactionPicker, setShowReactionPicker] = useState(false)
-  const reactionRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {}, [])
-
-  useEffect(() => {
-    if (!showReactionPicker) return
-    const handleClickOutside = (e: MouseEvent) => {
-      if (
-        reactionRef.current &&
-        !reactionRef.current.contains(e.target as Node)
-      ) {
-        setShowReactionPicker(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [showReactionPicker])
+  const [triggerRect, setTriggerRect] = useState<DOMRect | null>(null)
+  const reactionBtnRef = useRef<HTMLButtonElement>(null)
 
   const handleReaction = useCallback(
     (emoji: string) => {
@@ -78,6 +63,17 @@ export const Actions = ({
     },
     [apps, selectedAppIndex, status.reblog?.id, status.id, onReactionAdd],
   )
+
+  const openPicker = useCallback(() => {
+    if (reactionBtnRef.current) {
+      setTriggerRect(reactionBtnRef.current.getBoundingClientRect())
+    }
+    setShowReactionPicker(true)
+  }, [])
+
+  const closePicker = useCallback(() => {
+    setShowReactionPicker(false)
+  }, [])
 
   const createdAt = new Date(status.created_at)
   const fullYear = createdAt.getFullYear()
@@ -179,20 +175,18 @@ export const Actions = ({
         )}
       </button>
       {canReact && (
-        <div
-          className={`relative ${showReactionPicker ? 'z-50' : ''}`}
-          ref={reactionRef}
-        >
-          <button
-            onClick={() => setShowReactionPicker((prev) => !prev)}
-            type="button"
-          >
+        <>
+          <button onClick={openPicker} ref={reactionBtnRef} type="button">
             <RiEmotionLine size={24} />
           </button>
-          {showReactionPicker && (
-            <EmojiReactionPicker onSelect={handleReaction} />
+          {showReactionPicker && triggerRect && (
+            <EmojiReactionPicker
+              onClose={closePicker}
+              onSelect={handleReaction}
+              triggerRect={triggerRect}
+            />
           )}
-        </div>
+        </>
       )}
       <button
         onClick={() => {
