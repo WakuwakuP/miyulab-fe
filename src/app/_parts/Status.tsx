@@ -15,7 +15,7 @@ import parse, {
   domToReact,
 } from 'html-react-parser'
 import type { Entity } from 'megalodon'
-import { useCallback, useContext, useMemo, useState } from 'react'
+import { useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { RiRepeatFill, RiVideoLine } from 'react-icons/ri'
 import type { PollAddAppIndex, StatusAddAppIndex } from 'types/types'
 import { canPlay } from 'util/PlayerUtils'
@@ -41,6 +41,12 @@ export const Status = ({
   const [localReactions, setLocalReactions] = useState<Entity.Reaction[]>(
     (status.reblog?.emoji_reactions ?? status.emoji_reactions) || [],
   )
+
+  useEffect(() => {
+    setLocalReactions(
+      (status.reblog?.emoji_reactions ?? status.emoji_reactions) || [],
+    )
+  }, [status.emoji_reactions, status.reblog?.emoji_reactions])
 
   const handleReactionAdd = useCallback(
     (emoji: string) => {
