@@ -12,7 +12,11 @@ import type { SqliteStoredStatus } from 'util/db/sqlite/statusStore'
 import { TIMELINE_QUERY_LIMIT } from 'util/environment'
 import { useQueryDuration } from 'util/hooks/useQueryDuration'
 import { AppsContext } from 'util/provider/AppsProvider'
-import { isMixedQuery, isNotificationQuery } from 'util/queryBuilder'
+import {
+  detectReferencedAliases,
+  isMixedQuery,
+  isNotificationQuery,
+} from 'util/queryBuilder'
 
 /**
  * backendUrl から appIndex を算出するヘルパー
@@ -46,6 +50,42 @@ function hasUnquotedQuestionMark(query: string): boolean {
 
   return false
 }
+
+// ================================================================
+// 混合クエリ用の空サブクエリ定数
+// ================================================================
+
+/**
+ * ダミー JOIN 用の空サブクエリ定数
+ *
+ * 混合クエリ（UNION ALL）で対向テーブルのカラムを NULL として提供するために使用する。
+ * 実テーブルへの LEFT JOIN ... ON 0 = 1 はフルスキャンを引き起こすため、
+ * 0行のサブクエリで代替することでスキャンを完全に回避する。
+ */
+const EMPTY_N = `(SELECT
+      NULL AS compositeKey, NULL AS backendUrl,
+      NULL AS notification_type, NULL AS status_id,
+      NULL AS account_acct, NULL AS created_at_ms,
+      NULL AS storedAt, NULL AS json
+    LIMIT 0)`
+
+const EMPTY_S = `(SELECT
+      NULL AS compositeKey, NULL AS backendUrl,
+      NULL AS created_at_ms, NULL AS storedAt,
+      NULL AS uri, NULL AS account_acct, NULL AS account_id,
+      NULL AS visibility, NULL AS language,
+      NULL AS has_media, NULL AS media_count,
+      NULL AS is_reblog, NULL AS reblog_of_id, NULL AS reblog_of_uri,
+      NULL AS is_sensitive, NULL AS has_spoiler,
+      NULL AS in_reply_to_id,
+      NULL AS favourites_count, NULL AS reblogs_count,
+      NULL AS replies_count, NULL AS json
+    LIMIT 0)`
+
+const EMPTY_STT = `(SELECT NULL AS compositeKey, NULL AS timelineType LIMIT 0)`
+const EMPTY_SBT = `(SELECT NULL AS compositeKey, NULL AS tag LIMIT 0)`
+const EMPTY_SM = `(SELECT NULL AS compositeKey, NULL AS acct LIMIT 0)`
+const EMPTY_SB = `(SELECT NULL AS compositeKey, NULL AS backendUrl, NULL AS local_id LIMIT 0)`
 
 /**
  * カスタム SQL WHERE 句でフィルタした Status / Notification を返す Hook
@@ -147,8 +187,50 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         // ============================
         // 混合クエリ: statuses + notifications を UNION ALL で結合
         // ============================
-        // 各サブクエリでは、対象外テーブルのカラムが NULL になるよう
-        // LEFT JOIN ... ON 0 = 1 でダミー結合する
+        // 不要な JOIN を除外し、ダミー JOIN は空サブクエリで代替する
+        // （実テーブルへの ON 0 = 1 はフルスキャンを引き起こすため）
+        const refs = detectReferencedAliases(sanitized)
+
+        // statuses サブクエリ: 参照されているテーブルのみ実 JOIN
+        const statusJoinLines: string[] = []
+        if (refs.stt)
+          statusJoinLines.push(
+            'LEFT JOIN statuses_timeline_types stt\n              ON s.compositeKey = stt.compositeKey',
+          )
+        if (refs.sbt)
+          statusJoinLines.push(
+            'LEFT JOIN statuses_belonging_tags sbt\n              ON s.compositeKey = sbt.compositeKey',
+          )
+        if (refs.sm)
+          statusJoinLines.push(
+            'LEFT JOIN statuses_mentions sm\n              ON s.compositeKey = sm.compositeKey',
+          )
+        if (refs.sb)
+          statusJoinLines.push(
+            'LEFT JOIN statuses_backends sb\n              ON s.compositeKey = sb.compositeKey',
+          )
+        // n.* は空サブクエリでダミー提供（実テーブルスキャンを回避）
+        statusJoinLines.push(`LEFT JOIN ${EMPTY_N} n ON 1 = 1`)
+
+        const statusJoinsClause =
+          statusJoinLines.length > 0
+            ? `\n            ${statusJoinLines.join('\n            ')}`
+            : ''
+
+        const hasMultiRowJoin = refs.stt || refs.sbt || refs.sm || refs.sb
+        const backendSelect = refs.sb ? 'MIN(sb.backendUrl)' : 's.backendUrl'
+        const groupByClause = hasMultiRowJoin
+          ? '\n            GROUP BY s.compositeKey'
+          : ''
+
+        // notifications サブクエリ: s.*/stt.*/sbt.*/sm.*/sb.* は空サブクエリで提供
+        const notifDummyJoins = [
+          `LEFT JOIN ${EMPTY_S} s ON 1 = 1`,
+          `LEFT JOIN ${EMPTY_STT} stt ON 1 = 1`,
+          `LEFT JOIN ${EMPTY_SBT} sbt ON 1 = 1`,
+          `LEFT JOIN ${EMPTY_SM} sm ON 1 = 1`,
+          `LEFT JOIN ${EMPTY_SB} sb ON 1 = 1`,
+        ].join('\n            ')
 
         // statuses サブクエリ用のメディアフィルタ条件
         let statusMediaConditions = ''
@@ -165,39 +247,17 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         const sql = `
           SELECT compositeKey, backendUrl, created_at_ms, storedAt, json, _type
           FROM (
-            SELECT s.compositeKey, MIN(sb.backendUrl) AS backendUrl,
+            SELECT s.compositeKey, ${backendSelect} AS backendUrl,
                    s.created_at_ms, s.storedAt, s.json,
                    'status' AS _type
-            FROM statuses s
-            LEFT JOIN statuses_timeline_types stt
-              ON s.compositeKey = stt.compositeKey
-            LEFT JOIN statuses_belonging_tags sbt
-              ON s.compositeKey = sbt.compositeKey
-            LEFT JOIN statuses_mentions sm
-              ON s.compositeKey = sm.compositeKey
-            LEFT JOIN statuses_backends sb
-              ON s.compositeKey = sb.compositeKey
-            -- Dummy join: n.* columns resolve to NULL so mixed WHERE clause passes
-            LEFT JOIN notifications n
-              ON 0 = 1
-            WHERE (${sanitized})${statusMediaConditions}
-            GROUP BY s.compositeKey
+            FROM statuses s${statusJoinsClause}
+            WHERE (${sanitized})${statusMediaConditions}${groupByClause}
             UNION ALL
             SELECT n.compositeKey, n.backendUrl,
                    n.created_at_ms, n.storedAt, n.json,
                    'notification' AS _type
             FROM notifications n
-            -- Dummy joins: s.*/stt.*/sbt.*/sm.*/sb.* columns resolve to NULL
-            LEFT JOIN statuses s
-              ON 0 = 1
-            LEFT JOIN statuses_timeline_types stt
-              ON 0 = 1
-            LEFT JOIN statuses_belonging_tags sbt
-              ON 0 = 1
-            LEFT JOIN statuses_mentions sm
-              ON 0 = 1
-            LEFT JOIN statuses_backends sb
-              ON 0 = 1
+            ${notifDummyJoins}
             WHERE (${sanitized})
           )
           ORDER BY created_at_ms DESC
@@ -277,6 +337,35 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         // ============================
         // Statuses クエリ
         // ============================
+        // 参照されているテーブルのみ JOIN する（不要な JOIN を除外）
+        const refs = detectReferencedAliases(sanitized)
+
+        const joinLines: string[] = []
+        if (refs.stt)
+          joinLines.push(
+            'LEFT JOIN statuses_timeline_types stt\n            ON s.compositeKey = stt.compositeKey',
+          )
+        if (refs.sbt)
+          joinLines.push(
+            'LEFT JOIN statuses_belonging_tags sbt\n            ON s.compositeKey = sbt.compositeKey',
+          )
+        if (refs.sm)
+          joinLines.push(
+            'LEFT JOIN statuses_mentions sm\n            ON s.compositeKey = sm.compositeKey',
+          )
+        if (refs.sb)
+          joinLines.push(
+            'LEFT JOIN statuses_backends sb\n            ON s.compositeKey = sb.compositeKey',
+          )
+
+        const hasMultiRowJoin = refs.stt || refs.sbt || refs.sm || refs.sb
+        const backendSelect = refs.sb
+          ? 'MIN(sb.backendUrl) AS backendUrl'
+          : 's.backendUrl'
+        const joinsClause =
+          joinLines.length > 0
+            ? `\n          ${joinLines.join('\n          ')}`
+            : ''
 
         // onlyMedia フィルタを SQL 条件として追加
         let additionalConditions = ''
@@ -293,19 +382,10 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
 
         // backendUrl フィルタはクエリ自体に含まれるため自動付与しない
         const sql = `
-          SELECT s.compositeKey, MIN(sb.backendUrl) AS backendUrl,
+          SELECT s.compositeKey, ${backendSelect},
                  s.created_at_ms, s.storedAt, s.json
-          FROM statuses s
-          LEFT JOIN statuses_timeline_types stt
-            ON s.compositeKey = stt.compositeKey
-          LEFT JOIN statuses_belonging_tags sbt
-            ON s.compositeKey = sbt.compositeKey
-          LEFT JOIN statuses_mentions sm
-            ON s.compositeKey = sm.compositeKey
-          LEFT JOIN statuses_backends sb
-            ON s.compositeKey = sb.compositeKey
-          WHERE (${sanitized})${additionalConditions}
-          GROUP BY s.compositeKey
+          FROM statuses s${joinsClause}
+          WHERE (${sanitized})${additionalConditions}${hasMultiRowJoin ? '\n          GROUP BY s.compositeKey' : ''}
           ORDER BY s.created_at_ms DESC
           LIMIT ?;
         `

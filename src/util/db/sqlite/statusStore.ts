@@ -9,7 +9,11 @@
  */
 
 import type { Entity } from 'megalodon'
-import { isMixedQuery, isNotificationQuery } from 'util/queryBuilder'
+import {
+  detectReferencedAliases,
+  isMixedQuery,
+  isNotificationQuery,
+} from 'util/queryBuilder'
 import type { TimelineType } from '../database'
 import { getSqliteDb } from './connection'
 import { createCompositeKey } from './shared'
@@ -392,6 +396,33 @@ export async function getStatusesByCustomQuery(
 
   const sanitized = sanitizeWhereClause(whereClause)
 
+  // WHERE 句で参照されているテーブルのみ JOIN する（不要な JOIN を除外）
+  const refs = detectReferencedAliases(sanitized)
+  const needSb = refs.sb || (backendUrls != null && backendUrls.length > 0)
+
+  const joinLines: string[] = []
+  if (refs.stt)
+    joinLines.push(
+      'LEFT JOIN statuses_timeline_types stt\n      ON s.compositeKey = stt.compositeKey',
+    )
+  if (refs.sbt)
+    joinLines.push(
+      'LEFT JOIN statuses_belonging_tags sbt\n      ON s.compositeKey = sbt.compositeKey',
+    )
+  if (refs.sm)
+    joinLines.push(
+      'LEFT JOIN statuses_mentions sm\n      ON s.compositeKey = sm.compositeKey',
+    )
+  if (needSb)
+    joinLines.push(
+      'LEFT JOIN statuses_backends sb\n      ON s.compositeKey = sb.compositeKey',
+    )
+
+  const hasMultiRowJoin = refs.stt || refs.sbt || refs.sm || needSb
+  const backendSelect = needSb
+    ? 'MIN(sb.backendUrl) AS backendUrl'
+    : 's.backendUrl'
+
   let backendFilter = ''
   const binds: (string | number)[] = []
 
@@ -401,23 +432,17 @@ export async function getStatusesByCustomQuery(
     binds.push(...backendUrls)
   }
 
+  const joinsClause =
+    joinLines.length > 0 ? `\n    ${joinLines.join('\n    ')}` : ''
+
   const sql = `
-    SELECT s.compositeKey, MIN(sb.backendUrl) AS backendUrl,
+    SELECT s.compositeKey, ${backendSelect},
            s.created_at_ms, s.storedAt, s.json,
            ${TIMELINE_TYPES_SUBQUERY},
            ${BELONGING_TAGS_SUBQUERY}
-    FROM statuses s
-    LEFT JOIN statuses_timeline_types stt
-      ON s.compositeKey = stt.compositeKey
-    LEFT JOIN statuses_belonging_tags sbt
-      ON s.compositeKey = sbt.compositeKey
-    LEFT JOIN statuses_mentions sm
-      ON s.compositeKey = sm.compositeKey
-    LEFT JOIN statuses_backends sb
-      ON s.compositeKey = sb.compositeKey
+    FROM statuses s${joinsClause}
     WHERE (${sanitized || '1=1'})
-      ${backendFilter}
-    GROUP BY s.compositeKey
+      ${backendFilter}${hasMultiRowJoin ? '\n    GROUP BY s.compositeKey' : ''}
     ORDER BY s.created_at_ms DESC
     LIMIT ?
     OFFSET ?;
