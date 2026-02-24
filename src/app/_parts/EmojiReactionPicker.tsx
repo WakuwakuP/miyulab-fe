@@ -93,6 +93,7 @@ export const EmojiReactionPicker = ({
           onReactionClick={handleEmojiSelect}
           reactionsDefaultOpen
           searchPlaceholder="Search emoji..."
+          skinTonesDisabled
           theme={Theme.DARK}
           width={PICKER_WIDTH}
         />
