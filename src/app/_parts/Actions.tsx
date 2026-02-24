@@ -179,7 +179,10 @@ export const Actions = ({
         )}
       </button>
       {canReact && (
-        <div className="relative" ref={reactionRef}>
+        <div
+          className={`relative ${showReactionPicker ? 'z-50' : ''}`}
+          ref={reactionRef}
+        >
           <button
             onClick={() => setShowReactionPicker((prev) => !prev)}
             type="button"
