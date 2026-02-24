@@ -48,7 +48,7 @@ export const EmojiReactionPicker = ({
       onSelect(`:${emoji.shortcode}:`)
     } else {
       const emojiChar = Emoji.get(emoji.shortcode)
-      if (emojiChar) {
+      if (emojiChar && !emojiChar.startsWith(':')) {
         onSelect(emojiChar)
       }
     }
