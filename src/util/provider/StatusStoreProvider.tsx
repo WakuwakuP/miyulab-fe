@@ -239,9 +239,32 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
       const client = GetClient(app)
       const { backendUrl } = app
 
+      // WebSocketストリーミング接続をREST API呼び出しと並行して開始
+      client
+        .userStreaming()
+        .then((stream) => {
+          const handlers = createStreamHandlers(app, index)
+
+          stream.on('update', handlers.onUpdate)
+          stream.on('status_update', handlers.onStatusUpdate)
+          stream.on('notification', handlers.onNotification)
+          stream.on('delete', handlers.onDelete)
+          stream.on('error', handlers.onError(stream))
+          stream.on('connect', handlers.onConnect)
+
+          streamsRef.current.set(backendUrl, stream)
+        })
+        .catch((error) => {
+          console.error(`Failed to start streaming for ${backendUrl}:`, error)
+        })
+
       try {
-        // ホームタイムライン取得（appIndex は永続化しない）
-        const homeRes = await client.getHomeTimeline({ limit: 40 })
+        // ホームタイムラインと通知を並行して取得
+        const [homeRes, notifRes] = await Promise.all([
+          client.getHomeTimeline({ limit: 40 }),
+          client.getNotifications({ limit: 40 }),
+        ])
+
         await bulkUpsertStatuses(homeRes.data, backendUrl, 'home')
 
         // ユーザー情報を収集
@@ -260,8 +283,6 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
           ),
         )
 
-        // 通知取得
-        const notifRes = await client.getNotifications({ limit: 40 })
         await bulkAddNotifications(notifRes.data, backendUrl)
 
         // 通知からユーザー情報を収集
@@ -282,19 +303,6 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
               self.findIndex((e) => e.acct === element.acct) === idx,
           ),
         )
-
-        // WebSocketストリーミング接続（userStreaming のみ担当）
-        const stream = await client.userStreaming()
-        const handlers = createStreamHandlers(app, index)
-
-        stream.on('update', handlers.onUpdate)
-        stream.on('status_update', handlers.onStatusUpdate)
-        stream.on('notification', handlers.onNotification)
-        stream.on('delete', handlers.onDelete)
-        stream.on('error', handlers.onError(stream))
-        stream.on('connect', handlers.onConnect)
-
-        streamsRef.current.set(backendUrl, stream)
       } catch (error) {
         console.error(`Failed to initialize for ${backendUrl}:`, error)
       }
