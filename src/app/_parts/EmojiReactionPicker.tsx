@@ -11,6 +11,7 @@ import {
   useState,
 } from 'react'
 import { createPortal } from 'react-dom'
+import { RiAddLine } from 'react-icons/ri'
 import { EmojiContext } from 'util/provider/ResourceProvider'
 
 const EmojiPicker = dynamic(() => import('emoji-picker-react'), { ssr: false })
@@ -18,6 +19,7 @@ const EmojiPicker = dynamic(() => import('emoji-picker-react'), { ssr: false })
 const PICKER_WIDTH = 350
 const PICKER_HEIGHT = 450
 const PICKER_MARGIN = 8
+const COMPACT_BAR_HEIGHT = 50
 
 export const EmojiReactionPicker = ({
   onSelect,
@@ -32,13 +34,16 @@ export const EmojiReactionPicker = ({
 }) => {
   const emojis = useContext(EmojiContext)
   const pickerRef = useRef<HTMLDivElement>(null)
+  const [expanded, setExpanded] = useState(false)
   const [position, setPosition] = useState<{ left: number; top: number }>({
     left: 0,
     top: 0,
   })
 
+  const currentHeight = expanded ? PICKER_HEIGHT : COMPACT_BAR_HEIGHT
+
   useEffect(() => {
-    let top = triggerRect.top - PICKER_HEIGHT - PICKER_MARGIN
+    let top = triggerRect.top - currentHeight - PICKER_MARGIN
     if (top < PICKER_MARGIN) {
       top = triggerRect.bottom + PICKER_MARGIN
     }
@@ -51,7 +56,7 @@ export const EmojiReactionPicker = ({
     }
 
     setPosition({ left, top })
-  }, [triggerRect])
+  }, [triggerRect, currentHeight])
 
   const customEmojis = useMemo(
     () =>
@@ -65,14 +70,13 @@ export const EmojiReactionPicker = ({
     [emojis],
   )
 
-  const reactionUnified = useMemo(() => {
-    if (!reactions || reactions.length === 0) return undefined
-    return reactions.map((emoji) =>
-      [...emoji]
-        .map((c) => (c.codePointAt(0) as number).toString(16))
-        .join('-'),
-    )
-  }, [reactions])
+  const emojiUrlMap = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const e of emojis) {
+      map.set(e.shortcode, e.url)
+    }
+    return map
+  }, [emojis])
 
   const handleEmojiSelect = useCallback(
     (emojiData: { isCustom: boolean; emoji: string }) => {
@@ -81,6 +85,13 @@ export const EmojiReactionPicker = ({
       } else {
         onSelect(emojiData.emoji)
       }
+    },
+    [onSelect],
+  )
+
+  const handleCompactSelect = useCallback(
+    (emoji: string) => {
+      onSelect(emoji)
     },
     [onSelect],
   )
@@ -94,21 +105,60 @@ export const EmojiReactionPicker = ({
         ref={pickerRef}
         style={{ left: position.left, top: position.top }}
       >
-        <EmojiPicker
-          allowExpandReactions
-          customEmojis={customEmojis}
-          emojiStyle={EmojiStyle.NATIVE}
-          height={PICKER_HEIGHT}
-          lazyLoadEmojis
-          onEmojiClick={handleEmojiSelect}
-          onReactionClick={handleEmojiSelect}
-          reactions={reactionUnified}
-          reactionsDefaultOpen
-          searchPlaceholder="Search emoji..."
-          skinTonesDisabled
-          theme={Theme.DARK}
-          width={PICKER_WIDTH}
-        />
+        {expanded ? (
+          <EmojiPicker
+            customEmojis={customEmojis}
+            emojiStyle={EmojiStyle.NATIVE}
+            height={PICKER_HEIGHT}
+            lazyLoadEmojis
+            onEmojiClick={handleEmojiSelect}
+            searchPlaceholder="Search emoji..."
+            skinTonesDisabled
+            theme={Theme.DARK}
+            width={PICKER_WIDTH}
+          />
+        ) : (
+          <div
+            className="flex items-center gap-1 rounded-lg bg-[#222] p-2"
+            style={{ width: PICKER_WIDTH }}
+          >
+            <div className="flex flex-1 items-center gap-1 overflow-x-auto">
+              {reactions?.map((emoji) => {
+                const isCustom =
+                  emoji.startsWith(':') &&
+                  emoji.endsWith(':') &&
+                  emoji.length > 2
+                const shortcode = isCustom ? emoji.slice(1, -1) : null
+                const url = shortcode ? emojiUrlMap.get(shortcode) : null
+                return (
+                  <button
+                    className="flex-shrink-0 rounded p-1 text-xl hover:bg-gray-700"
+                    key={emoji}
+                    onClick={() => handleCompactSelect(emoji)}
+                    type="button"
+                  >
+                    {isCustom && url ? (
+                      <img
+                        alt={shortcode ?? ''}
+                        className="inline-block h-6 w-6"
+                        src={url}
+                      />
+                    ) : (
+                      emoji
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+            <button
+              className="flex-shrink-0 rounded p-1 text-lg text-gray-400 hover:bg-gray-700 hover:text-white"
+              onClick={() => setExpanded(true)}
+              type="button"
+            >
+              <RiAddLine size={20} />
+            </button>
+          </div>
+        )}
       </div>
     </>,
     document.body,

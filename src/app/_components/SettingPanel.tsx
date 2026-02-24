@@ -1,19 +1,27 @@
 'use client'
 
 import { cn } from 'components/lib/utils'
+import { EmojiStyle, Theme } from 'emoji-picker-react'
 import type { Entity } from 'megalodon'
+import dynamic from 'next/dynamic'
 import {
   type ChangeEvent,
   type ReactNode,
   useCallback,
   useContext,
+  useMemo,
   useState,
 } from 'react'
+import { createPortal } from 'react-dom'
+import { RiAddLine, RiCloseLine } from 'react-icons/ri'
+import { EmojiContext } from 'util/provider/ResourceProvider'
 import {
   SetSettingContext,
   SettingContext,
 } from 'util/provider/SettingProvider'
 import { TimelineManagement } from './TimelineManagement'
+
+const EmojiPicker = dynamic(() => import('emoji-picker-react'), { ssr: false })
 
 const SettingItem = ({
   children,
@@ -108,44 +116,124 @@ const SettingSelect = ({
 const ReactionEmojisSetting = () => {
   const setting = useContext(SettingContext)
   const setSetting = useContext(SetSettingContext)
-  const [inputValue, setInputValue] = useState(setting.reactionEmojis.join(' '))
+  const emojis = useContext(EmojiContext)
+  const [showPicker, setShowPicker] = useState(false)
 
-  const handleSave = useCallback(() => {
-    const segmenter = new Intl.Segmenter('en', { granularity: 'grapheme' })
-    const emojis = [...segmenter.segment(inputValue)]
-      .map((s) => s.segment)
-      .filter((s) => s.trim() !== '' && (s.codePointAt(0) as number) > 255)
-    if (emojis.length > 0) {
+  const emojiUrlMap = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const e of emojis) {
+      map.set(e.shortcode, e.url)
+    }
+    return map
+  }, [emojis])
+
+  const customEmojis = useMemo(
+    () =>
+      emojis
+        .filter((e) => e.url !== '')
+        .map((e) => ({
+          id: e.shortcode,
+          imgUrl: e.url,
+          names: [e.shortcode],
+        })),
+    [emojis],
+  )
+
+  const handleAdd = useCallback(
+    (emojiData: { isCustom: boolean; emoji: string }) => {
+      const emoji = emojiData.isCustom
+        ? `:${emojiData.emoji}:`
+        : emojiData.emoji
+      if (!setting.reactionEmojis.includes(emoji)) {
+        setSetting({
+          ...setting,
+          reactionEmojis: [...setting.reactionEmojis, emoji],
+        })
+      }
+      setShowPicker(false)
+    },
+    [setting, setSetting],
+  )
+
+  const handleRemove = useCallback(
+    (emoji: string) => {
       setSetting({
         ...setting,
-        reactionEmojis: emojis,
+        reactionEmojis: setting.reactionEmojis.filter((e) => e !== emoji),
       })
-      setInputValue(emojis.join(' '))
-    }
-  }, [inputValue, setting, setSetting])
+    },
+    [setting, setSetting],
+  )
 
   return (
     <SettingItem className="flex-col items-start gap-1">
-      <label htmlFor="reactionEmojis">Reaction emojis</label>
-      <div className="flex w-full gap-1">
-        <input
-          className="flex-1 min-w-0"
-          id="reactionEmojis"
-          onChange={(e) => setInputValue(e.target.value)}
-          type="text"
-          value={inputValue}
-        />
+      <span>Reaction emojis</span>
+      <div className="flex flex-wrap items-center gap-1">
+        {setting.reactionEmojis.map((emoji) => {
+          const isCustom =
+            emoji.startsWith(':') && emoji.endsWith(':') && emoji.length > 2
+          const shortcode = isCustom ? emoji.slice(1, -1) : null
+          const url = shortcode ? emojiUrlMap.get(shortcode) : null
+          return (
+            <div
+              className="flex items-center gap-0.5 rounded bg-gray-700 px-1 py-0.5"
+              key={emoji}
+            >
+              <span className="text-lg">
+                {isCustom && url ? (
+                  <img
+                    alt={shortcode ?? ''}
+                    className="inline-block h-5 w-5"
+                    src={url}
+                  />
+                ) : (
+                  emoji
+                )}
+              </span>
+              <button
+                className="text-gray-400 hover:text-white"
+                onClick={() => handleRemove(emoji)}
+                type="button"
+              >
+                <RiCloseLine size={14} />
+              </button>
+            </div>
+          )
+        })}
         <button
-          className="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm text-white"
-          onClick={handleSave}
+          className="flex items-center justify-center rounded bg-gray-700 p-1 text-gray-400 hover:bg-gray-600 hover:text-white"
+          onClick={() => setShowPicker(true)}
           type="button"
         >
-          Save
+          <RiAddLine size={20} />
         </button>
       </div>
-      <div className="text-xs text-gray-400">
-        {setting.reactionEmojis.join(' ')}
-      </div>
+      {showPicker &&
+        createPortal(
+          <>
+            <div
+              className="fixed inset-0 z-50"
+              onClick={() => setShowPicker(false)}
+            />
+            <div
+              className="fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <EmojiPicker
+                customEmojis={customEmojis}
+                emojiStyle={EmojiStyle.NATIVE}
+                height={400}
+                lazyLoadEmojis
+                onEmojiClick={handleAdd}
+                searchPlaceholder="Search emoji..."
+                skinTonesDisabled
+                theme={Theme.DARK}
+                width={350}
+              />
+            </div>
+          </>,
+          document.body,
+        )}
     </SettingItem>
   )
 }
