@@ -24,7 +24,7 @@ const logEntries: string[] = []
  * 保持されている EXPLAIN ログをすべて取得する
  */
 export function getExplainLogs(): readonly string[] {
-  return logEntries
+  return [...logEntries]
 }
 
 /**
