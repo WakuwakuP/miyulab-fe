@@ -10,12 +10,17 @@ import { SelectedAppIndexContext } from 'util/provider/PostAccountProvider'
 
 const REACTION_BACKENDS = ['pleroma', 'firefish']
 
-export const EmojiReactions = ({ status }: { status: StatusAddAppIndex }) => {
+export const EmojiReactions = ({
+  status,
+  reactions,
+  onToggle,
+}: {
+  status: StatusAddAppIndex
+  reactions: Entity.Reaction[]
+  onToggle: (reactionName: string, currentlyMine: boolean) => void
+}) => {
   const apps = useContext(AppsContext)
   const selectedAppIndex = useContext(SelectedAppIndexContext)
-
-  const reactions: Entity.Reaction[] =
-    (status.reblog?.emoji_reactions ?? status.emoji_reactions) || []
 
   if (reactions.length === 0) return null
 
@@ -28,6 +33,8 @@ export const EmojiReactions = ({ status }: { status: StatusAddAppIndex }) => {
 
     const client = GetClient(selectedApp)
     const statusId = status.reblog?.id ?? status.id
+
+    onToggle(reaction.name, reaction.me)
 
     if (reaction.me) {
       client.deleteEmojiReaction(statusId, reaction.name).catch((error) => {

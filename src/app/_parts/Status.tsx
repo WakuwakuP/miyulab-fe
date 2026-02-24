@@ -15,12 +15,13 @@ import parse, {
   domToReact,
 } from 'html-react-parser'
 import type { Entity } from 'megalodon'
-import { useCallback, useContext, useMemo } from 'react'
+import { useCallback, useContext, useMemo, useState } from 'react'
 import { RiRepeatFill, RiVideoLine } from 'react-icons/ri'
 import type { PollAddAppIndex, StatusAddAppIndex } from 'types/types'
 import { canPlay } from 'util/PlayerUtils'
 import { SetDetailContext } from 'util/provider/DetailProvider'
 import { SetPlayerContext } from 'util/provider/PlayerProvider'
+import { EmojiContext } from 'util/provider/ResourceProvider'
 
 export const Status = ({
   status,
@@ -35,6 +36,61 @@ export const Status = ({
 }) => {
   const setDetail = useContext(SetDetailContext)
   const setPlayer = useContext(SetPlayerContext)
+  const emojis = useContext(EmojiContext)
+
+  const [localReactions, setLocalReactions] = useState<Entity.Reaction[]>(
+    (status.reblog?.emoji_reactions ?? status.emoji_reactions) || [],
+  )
+
+  const handleReactionAdd = useCallback(
+    (emoji: string) => {
+      setLocalReactions((prev) => {
+        const isCustom = emoji.startsWith(':') && emoji.endsWith(':')
+        const name = isCustom ? emoji.slice(1, -1) : emoji
+
+        const existing = prev.find((r) => r.name === name)
+        if (existing) {
+          if (existing.me) return prev
+          return prev.map((r) =>
+            r.name === name ? { ...r, count: r.count + 1, me: true } : r,
+          )
+        }
+
+        let url: string | undefined
+        let static_url: string | undefined
+        if (isCustom) {
+          const found = emojis.find((e) => e.shortcode === name)
+          if (found) {
+            url = found.url
+            static_url = found.static_url
+          }
+        }
+
+        return [...prev, { count: 1, me: true, name, static_url, url }]
+      })
+    },
+    [emojis],
+  )
+
+  const handleReactionToggle = useCallback(
+    (reactionName: string, currentlyMine: boolean) => {
+      setLocalReactions((prev) => {
+        if (currentlyMine) {
+          return prev
+            .map((r) =>
+              r.name === reactionName
+                ? { ...r, count: Math.max(0, r.count - 1), me: false }
+                : r,
+            )
+            .filter((r) => r.count > 0)
+        }
+        return prev.map((r) =>
+          r.name === reactionName ? { ...r, count: r.count + 1, me: true } : r,
+        )
+      })
+    },
+    [],
+  )
 
   const getDisplayName = useCallback((account: Entity.Account) => {
     let displayName = account.display_name
@@ -313,8 +369,12 @@ export const Status = ({
         scrolling={scrolling}
         sensitive={status.reblog?.sensitive ?? status.sensitive}
       />
-      <EmojiReactions status={status} />
-      <Actions status={status} />
+      <EmojiReactions
+        onToggle={handleReactionToggle}
+        reactions={localReactions}
+        status={status}
+      />
+      <Actions onReactionAdd={handleReactionAdd} status={status} />
     </div>
   )
 }

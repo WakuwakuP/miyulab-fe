@@ -21,7 +21,13 @@ import { SetReplyToContext } from 'util/provider/ReplyToProvider'
 
 const REACTION_BACKENDS = ['pleroma', 'firefish']
 
-export const Actions = ({ status }: { status: StatusAddAppIndex }) => {
+export const Actions = ({
+  status,
+  onReactionAdd,
+}: {
+  status: StatusAddAppIndex
+  onReactionAdd?: (emoji: string) => void
+}) => {
   const apps = useContext(AppsContext)
 
   const setActions = useContext(SetActionsContext)
@@ -67,9 +73,10 @@ export const Actions = ({ status }: { status: StatusAddAppIndex }) => {
       reactionClient.createEmojiReaction(statusId, emoji).catch((error) => {
         console.error('Failed to add reaction:', error)
       })
+      onReactionAdd?.(emoji)
       setShowReactionPicker(false)
     },
-    [apps, selectedAppIndex, status.reblog?.id, status.id],
+    [apps, selectedAppIndex, status.reblog?.id, status.id, onReactionAdd],
   )
 
   const createdAt = new Date(status.created_at)
@@ -171,6 +178,19 @@ export const Actions = ({ status }: { status: StatusAddAppIndex }) => {
           <RiStarLine size={24} />
         )}
       </button>
+      {canReact && (
+        <div className="relative" ref={reactionRef}>
+          <button
+            onClick={() => setShowReactionPicker((prev) => !prev)}
+            type="button"
+          >
+            <RiEmotionLine size={24} />
+          </button>
+          {showReactionPicker && (
+            <EmojiReactionPicker onSelect={handleReaction} />
+          )}
+        </div>
+      )}
       <button
         onClick={() => {
           if (bookmarked ?? false) {
@@ -199,19 +219,6 @@ export const Actions = ({ status }: { status: StatusAddAppIndex }) => {
           <RiBookmarkFill size={24} />
         )}
       </button>
-      {canReact && (
-        <div className="relative" ref={reactionRef}>
-          <button
-            onClick={() => setShowReactionPicker((prev) => !prev)}
-            type="button"
-          >
-            <RiEmotionLine size={24} />
-          </button>
-          {showReactionPicker && (
-            <EmojiReactionPicker onSelect={handleReaction} />
-          )}
-        </div>
-      )}
       <div className=" text-right text-xs">
         <p>{dateString}</p>
         <p>{timeString}</p>
