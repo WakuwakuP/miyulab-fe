@@ -442,8 +442,7 @@ export async function getStatusesByCustomQuery(
            ${BELONGING_TAGS_SUBQUERY}
     FROM statuses s${joinsClause}
     WHERE (${sanitized || '1=1'})
-      ${backendFilter}
-    ${hasMultiRowJoin ? 'GROUP BY s.compositeKey' : ''}
+      ${backendFilter}${hasMultiRowJoin ? '\n    GROUP BY s.compositeKey' : ''}
     ORDER BY s.created_at_ms DESC
     LIMIT ?
     OFFSET ?;

@@ -385,8 +385,7 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           SELECT s.compositeKey, ${backendSelect},
                  s.created_at_ms, s.storedAt, s.json
           FROM statuses s${joinsClause}
-          WHERE (${sanitized})${additionalConditions}
-          ${hasMultiRowJoin ? 'GROUP BY s.compositeKey' : ''}
+          WHERE (${sanitized})${additionalConditions}${hasMultiRowJoin ? '\n          GROUP BY s.compositeKey' : ''}
           ORDER BY s.created_at_ms DESC
           LIMIT ?;
         `
