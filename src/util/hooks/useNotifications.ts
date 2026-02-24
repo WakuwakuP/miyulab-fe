@@ -32,7 +32,7 @@ function resolveAppIndex(
  */
 export function useNotifications(config?: TimelineConfigV2): {
   data: NotificationAddAppIndex[]
-  averageDuration: number | null
+  queryDuration: number | null
   loadMore: () => void
 } {
   const apps = useContext(AppsContext)
@@ -40,7 +40,7 @@ export function useNotifications(config?: TimelineConfigV2): {
     SqliteStoredNotification[]
   >([])
   const [queryLimit, setQueryLimit] = useState(TIMELINE_QUERY_LIMIT)
-  const { averageDuration, recordDuration } = useQueryDuration()
+  const { queryDuration, recordDuration } = useQueryDuration()
 
   const loadMore = useCallback(() => {
     setQueryLimit((prev) => prev + TIMELINE_QUERY_LIMIT)
@@ -147,5 +147,5 @@ export function useNotifications(config?: TimelineConfigV2): {
     [notifications, apps],
   )
 
-  return { averageDuration, data, loadMore }
+  return { data, loadMore, queryDuration }
 }

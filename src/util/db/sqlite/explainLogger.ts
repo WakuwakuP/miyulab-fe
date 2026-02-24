@@ -10,7 +10,7 @@
 type RawDb = any
 
 /** スローログの閾値（ミリ秒） */
-const SLOW_QUERY_THRESHOLD_MS = 100
+const SLOW_QUERY_THRESHOLD_MS = 2000
 
 /**
  * クエリの実行時間が閾値を超えた場合、EXPLAIN QUERY PLAN の結果をログに出力する

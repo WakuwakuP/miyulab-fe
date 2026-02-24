@@ -35,7 +35,7 @@ export const MixedTimeline = ({
   config: TimelineConfigV2
   headerOffset?: string
 }) => {
-  const { data: timeline, averageDuration, loadMore } = useTimelineData(config)
+  const { data: timeline, queryDuration, loadMore } = useTimelineData(config)
   const scrollerRef = useRef<VirtuosoHandle>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -105,11 +105,11 @@ export const MixedTimeline = ({
 
   return (
     <Panel
-      averageDuration={averageDuration}
       className="relative"
       headerOffset={headerOffset}
       name={displayName}
       onClickHeader={() => scrollToTop()}
+      queryDuration={queryDuration}
     >
       {enableScrollToTop && <TimelineStreamIcon />}
       <Virtuoso
