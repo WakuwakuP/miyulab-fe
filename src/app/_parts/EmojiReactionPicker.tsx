@@ -2,7 +2,14 @@
 
 import { EmojiStyle, Theme } from 'emoji-picker-react'
 import dynamic from 'next/dynamic'
-import { useContext, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { createPortal } from 'react-dom'
 import { EmojiContext } from 'util/provider/ResourceProvider'
 
@@ -56,6 +63,17 @@ export const EmojiReactionPicker = ({
     [emojis],
   )
 
+  const handleEmojiSelect = useCallback(
+    (emojiData: { isCustom: boolean; emoji: string }) => {
+      if (emojiData.isCustom) {
+        onSelect(`:${emojiData.emoji}:`)
+      } else {
+        onSelect(emojiData.emoji)
+      }
+    },
+    [onSelect],
+  )
+
   return createPortal(
     <>
       <div className="fixed inset-0 z-50" onClick={onClose} />
@@ -66,17 +84,14 @@ export const EmojiReactionPicker = ({
         style={{ left: position.left, top: position.top }}
       >
         <EmojiPicker
+          allowExpandReactions
           customEmojis={customEmojis}
           emojiStyle={EmojiStyle.NATIVE}
           height={PICKER_HEIGHT}
           lazyLoadEmojis
-          onEmojiClick={(emojiData) => {
-            if (emojiData.isCustom) {
-              onSelect(`:${emojiData.emoji}:`)
-            } else {
-              onSelect(emojiData.emoji)
-            }
-          }}
+          onEmojiClick={handleEmojiSelect}
+          onReactionClick={handleEmojiSelect}
+          reactionsDefaultOpen
           searchPlaceholder="Search emoji..."
           theme={Theme.DARK}
           width={PICKER_WIDTH}
