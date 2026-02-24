@@ -4,6 +4,7 @@
 import { Actions } from 'app/_parts/Actions'
 import { Card } from 'app/_parts/Card'
 import { EditedAt } from 'app/_parts/EditedAt'
+import { EmojiReactions } from 'app/_parts/EmojiReactions'
 import { MediaAttachments } from 'app/_parts/MediaAttachments'
 import { Poll } from 'app/_parts/Poll'
 import { UserInfo } from 'app/_parts/UserInfo'
@@ -312,6 +313,7 @@ export const Status = ({
         scrolling={scrolling}
         sensitive={status.reblog?.sensitive ?? status.sensitive}
       />
+      <EmojiReactions status={status} />
       <Actions status={status} />
     </div>
   )
