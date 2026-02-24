@@ -56,7 +56,10 @@ export const PostAccountProvider = ({
           )
           .map((r) => r.value)
         setAccounts(fulfilled)
-        setSelectedAppIndex((prev) => (prev >= apps.length ? 0 : prev))
+        setSelectedAppIndex((prev) => {
+          if (fulfilled.some((a) => a.index === prev)) return prev
+          return fulfilled.length > 0 ? fulfilled[0].index : 0
+        })
       } catch (error) {
         console.error('Failed to verify account credentials:', error)
       }

@@ -126,16 +126,16 @@ export const MainPanel = () => {
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.ctrlKey && e.key >= '1' && e.key <= '9') {
-        const idx = Number(e.key) - 1
-        if (idx < accounts.length) {
+        const pos = Number(e.key) - 1
+        if (pos < accounts.length) {
           e.preventDefault()
-          setSelectedAppIndex(idx)
+          setSelectedAppIndex(accounts[pos].index)
         }
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [accounts.length, setSelectedAppIndex])
+  }, [accounts, setSelectedAppIndex])
 
   const onCheckMediaLink = useEffectEvent(() => {
     if (mediaLink === '') return
