@@ -1,36 +1,85 @@
 'use client'
 
-import { useContext, useEffect, useState } from 'react'
-
+import { EmojiReactionPicker } from 'app/_parts/EmojiReactionPicker'
+import { useCallback, useContext, useRef, useState } from 'react'
 import { FaLock } from 'react-icons/fa'
 import {
   RiBookmark2Fill,
   RiBookmarkFill,
+  RiEmotionLine,
   RiRepeatFill,
   RiReplyFill,
   RiStarFill,
   RiStarLine,
 } from 'react-icons/ri'
-
 import type { StatusAddAppIndex } from 'types/types'
+import { REACTION_BACKENDS } from 'util/constants'
 import { GetClient } from 'util/GetClient'
 import { AppsContext } from 'util/provider/AppsProvider'
 import { SetActionsContext } from 'util/provider/HomeTimelineProvider'
+import { SelectedAppIndexContext } from 'util/provider/PostAccountProvider'
 import { SetReplyToContext } from 'util/provider/ReplyToProvider'
+import { SettingContext } from 'util/provider/SettingProvider'
 
-export const Actions = ({ status }: { status: StatusAddAppIndex }) => {
+export const Actions = ({
+  status,
+  onReactionAdd,
+}: {
+  status: StatusAddAppIndex
+  onReactionAdd?: (emoji: string) => void
+}) => {
   const apps = useContext(AppsContext)
 
   const setActions = useContext(SetActionsContext)
 
   const setReplyTo = useContext(SetReplyToContext)
 
+  const selectedAppIndex = useContext(SelectedAppIndexContext)
+
+  const setting = useContext(SettingContext)
+
   const [reblogged, setReblogged] = useState(status.reblogged)
 
   const [favourited, setFavourited] = useState(status.favourited)
   const [bookmarked, setBookmarked] = useState(status.bookmarked)
+  const [showReactionPicker, setShowReactionPicker] = useState(false)
+  const [triggerRect, setTriggerRect] = useState<DOMRect | null>(null)
+  const reactionBtnRef = useRef<HTMLButtonElement>(null)
 
-  useEffect(() => {}, [])
+  const handleReaction = useCallback(
+    (emoji: string) => {
+      if (apps.length <= 0) return
+      const reactionApp = apps[selectedAppIndex]
+      if (
+        reactionApp == null ||
+        !REACTION_BACKENDS.includes(reactionApp.backend)
+      )
+        return
+      const reactionClient = GetClient(reactionApp)
+      const statusId = status.reblog?.id ?? status.id
+      reactionClient
+        .createEmojiReaction(statusId, emoji)
+        .then(() => {
+          onReactionAdd?.(emoji)
+          setShowReactionPicker(false)
+        })
+        .catch((error) => {
+          console.error('Failed to add reaction:', error)
+        })
+    },
+    [apps, selectedAppIndex, status.reblog?.id, status.id, onReactionAdd],
+  )
+
+  const openPicker = useCallback(() => {
+    if (reactionBtnRef.current) {
+      setTriggerRect(reactionBtnRef.current.getBoundingClientRect())
+    }
+    setShowReactionPicker(true)
+  }, [])
+
+  const closePicker = useCallback(() => {
+    setShowReactionPicker(false)
+  }, [])
 
   const createdAt = new Date(status.created_at)
   const fullYear = createdAt.getFullYear()
@@ -47,6 +96,10 @@ export const Actions = ({ status }: { status: StatusAddAppIndex }) => {
   if (status.appIndex == null) return null
 
   const client = GetClient(apps[status.appIndex])
+
+  const selectedApp = apps[selectedAppIndex]
+  const canReact =
+    selectedApp != null && REACTION_BACKENDS.includes(selectedApp.backend)
 
   // Check if the status is private (either the status itself or the reblogged status)
   const statusVisibility = status.reblog?.visibility ?? status.visibility
@@ -127,6 +180,21 @@ export const Actions = ({ status }: { status: StatusAddAppIndex }) => {
           <RiStarLine size={24} />
         )}
       </button>
+      {canReact && (
+        <>
+          <button onClick={openPicker} ref={reactionBtnRef} type="button">
+            <RiEmotionLine size={24} />
+          </button>
+          {showReactionPicker && triggerRect && (
+            <EmojiReactionPicker
+              onClose={closePicker}
+              onSelect={handleReaction}
+              reactions={setting.reactionEmojis}
+              triggerRect={triggerRect}
+            />
+          )}
+        </>
+      )}
       <button
         onClick={() => {
           if (bookmarked ?? false) {

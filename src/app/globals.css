@@ -70,6 +70,21 @@
   @apply pt-2 break-words whitespace-pre-wrap **:text-wrap **:whitespace-pre-wrap **:break-all **:break-words [&_a]:text-blue-400 [&_blockquote]:border-l-4 [&_blockquote]:border-blue-400 [&_blockquote]:pl-2 [&_blockquote]:ml-2;
 }
 
+@utility animate-picker-in {
+  animation: picker-in 0.15s ease-out;
+}
+
+@keyframes picker-in {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 @layer utilities {
   html {
     font-size: 14.4px;
