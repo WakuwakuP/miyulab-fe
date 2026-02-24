@@ -7,6 +7,7 @@
  * いずれの場合も同一の DbHandle インターフェースを提供する。
  */
 
+import { logSlowQueryExplain } from './explainLogger'
 import type { TableName } from './protocol'
 import type { DbHandle } from './types'
 
@@ -123,14 +124,20 @@ async function initMainThreadFallback(
 
   const handle: DbHandle = {
     execAsync: async (sql, opts) => {
+      const start = performance.now()
+      let result: unknown
       if (opts?.returnValue === 'resultRows') {
-        return db.exec(sql, {
+        result = db.exec(sql, {
           bind: opts.bind ?? undefined,
           returnValue: 'resultRows',
         })
+      } else {
+        db.exec(sql, { bind: opts?.bind ?? undefined })
+        result = undefined
       }
-      db.exec(sql, { bind: opts?.bind ?? undefined })
-      return undefined
+      const durationMs = performance.now() - start
+      logSlowQueryExplain(db, sql, opts?.bind, durationMs)
+      return result
     },
 
     execBatch: async (statements, opts) => {
