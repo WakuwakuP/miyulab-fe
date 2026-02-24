@@ -13,14 +13,13 @@ import {
   RiStarLine,
 } from 'react-icons/ri'
 import type { StatusAddAppIndex } from 'types/types'
+import { REACTION_BACKENDS } from 'util/constants'
 import { GetClient } from 'util/GetClient'
 import { AppsContext } from 'util/provider/AppsProvider'
 import { SetActionsContext } from 'util/provider/HomeTimelineProvider'
 import { SelectedAppIndexContext } from 'util/provider/PostAccountProvider'
 import { SetReplyToContext } from 'util/provider/ReplyToProvider'
 import { SettingContext } from 'util/provider/SettingProvider'
-
-const REACTION_BACKENDS = ['pleroma', 'firefish']
 
 export const Actions = ({
   status,
@@ -58,11 +57,15 @@ export const Actions = ({
         return
       const reactionClient = GetClient(reactionApp)
       const statusId = status.reblog?.id ?? status.id
-      reactionClient.createEmojiReaction(statusId, emoji).catch((error) => {
-        console.error('Failed to add reaction:', error)
-      })
-      onReactionAdd?.(emoji)
-      setShowReactionPicker(false)
+      reactionClient
+        .createEmojiReaction(statusId, emoji)
+        .then(() => {
+          onReactionAdd?.(emoji)
+          setShowReactionPicker(false)
+        })
+        .catch((error) => {
+          console.error('Failed to add reaction:', error)
+        })
     },
     [apps, selectedAppIndex, status.reblog?.id, status.id, onReactionAdd],
   )

@@ -107,13 +107,30 @@ export const EmojiReactionPicker = ({
     [onSelect],
   )
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [onClose])
+
   return createPortal(
     <>
-      <div className="fixed inset-0 z-50" onClick={onClose} />
       <div
+        aria-hidden="true"
+        className="fixed inset-0 z-50"
+        onClick={onClose}
+      />
+      <div
+        aria-label="Emoji reaction picker"
+        aria-modal="true"
         className="fixed z-50 animate-picker-in"
         onClick={(e) => e.stopPropagation()}
         ref={pickerRef}
+        role="dialog"
         style={{ left: position.left, top: position.top }}
       >
         {expanded ? (

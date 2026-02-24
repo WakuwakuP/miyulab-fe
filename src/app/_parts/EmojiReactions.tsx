@@ -4,11 +4,10 @@
 import type { Entity } from 'megalodon'
 import { useContext } from 'react'
 import type { StatusAddAppIndex } from 'types/types'
+import { REACTION_BACKENDS } from 'util/constants'
 import { GetClient } from 'util/GetClient'
 import { AppsContext } from 'util/provider/AppsProvider'
 import { SelectedAppIndexContext } from 'util/provider/PostAccountProvider'
-
-const REACTION_BACKENDS = ['pleroma', 'firefish']
 
 export const EmojiReactions = ({
   status,
