@@ -107,6 +107,7 @@ export const AccountsPanel = () => {
   const updateApps = useContext(UpdateAppsContext)
 
   const [showAddAccountModal, setShowAddAccountModal] = useState(false)
+  const [showReloadModal, setShowReloadModal] = useState(false)
   const [showDeleteAccountModal, setShowDeleteAccountModal] = useState<{
     app: App | null
     account: Entity.Account | null
@@ -148,6 +149,7 @@ export const AccountsPanel = () => {
     if (index == null) return
     const newApps = apps.filter((_, i) => i !== index)
     updateApps(newApps)
+    setShowReloadModal(true)
   }
 
   return (
@@ -252,6 +254,25 @@ export const AccountsPanel = () => {
                   いいえ
                 </button>
               </div>
+            </div>
+          </>,
+          document.body,
+        )}
+      {showReloadModal &&
+        createPortal(
+          <>
+            <div className="absolute bottom-0 left-0 right-0 top-0 bg-black/60" />
+            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-md border bg-gray-600 p-12 text-center">
+              <div className="pb-4">タイムラインを再構築します</div>
+              <button
+                className="rounded-md border bg-gray-900 px-4 py-2"
+                onClick={() => {
+                  window.location.reload()
+                }}
+                type="button"
+              >
+                リロード
+              </button>
             </div>
           </>,
           document.body,
