@@ -55,6 +55,28 @@ export function isMixedQuery(query: string): boolean {
 }
 
 /**
+ * WHERE 句で参照されているテーブルエイリアスを検出する
+ *
+ * カスタムクエリで実際に参照されているテーブルのみ JOIN するための検出に使用する。
+ * 不要な JOIN を除外することで GROUP BY / ORDER BY の一時 B-Tree を削減する。
+ */
+export function detectReferencedAliases(whereClause: string): {
+  stt: boolean
+  sbt: boolean
+  sm: boolean
+  sb: boolean
+  n: boolean
+} {
+  return {
+    n: /\bn\.\w/.test(whereClause),
+    sb: /\bsb\.\w/.test(whereClause),
+    sbt: /\bsbt\.\w/.test(whereClause),
+    sm: /\bsm\.\w/.test(whereClause),
+    stt: /\bstt\.\w/.test(whereClause),
+  }
+}
+
+/**
  * TimelineConfigV2 の UI 設定から SQL WHERE 句を構築する
  *
  * 通常の設定UIをクエリビルダとして機能させるための関数。
