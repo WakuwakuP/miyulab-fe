@@ -32,6 +32,14 @@ export const PostAccountProvider = ({
   const apps = useContext(AppsContext)
   const [selectedAppIndex, setSelectedAppIndex] = useState(0)
   const [accounts, setAccounts] = useState<VerifiedAccount[]>([])
+  const [prevApps, setPrevApps] = useState(apps)
+
+  // Synchronously clear stale accounts when apps changes (before children render)
+  // This prevents stale account indices from referencing out-of-bounds apps
+  if (apps !== prevApps) {
+    setPrevApps(apps)
+    setAccounts([])
+  }
 
   useEffect(() => {
     if (apps.length <= 0) {
