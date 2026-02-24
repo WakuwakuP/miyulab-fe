@@ -23,7 +23,7 @@ export const NotificationTimeline = ({
   config: TimelineConfigV2
   headerOffset?: string
 }) => {
-  const { data: rawData, averageDuration, loadMore } = useTimelineData(config)
+  const { data: rawData, queryDuration, loadMore } = useTimelineData(config)
   // Runtime type guard: filter out any non-notification items that may slip through
   const notifications = useMemo(
     () =>
@@ -97,13 +97,13 @@ export const NotificationTimeline = ({
 
   return (
     <Panel
-      averageDuration={averageDuration}
       className="relative"
       headerOffset={headerOffset}
       name={config.label ?? 'Notification'}
       onClickHeader={() => {
         scrollToTop()
       }}
+      queryDuration={queryDuration}
     >
       {enableScrollToTop && <TimelineStreamIcon />}
       <Virtuoso

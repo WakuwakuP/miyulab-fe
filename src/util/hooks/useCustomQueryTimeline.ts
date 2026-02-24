@@ -107,7 +107,7 @@ const EMPTY_SB = `(SELECT NULL AS compositeKey, NULL AS backendUrl, NULL AS loca
  */
 export function useCustomQueryTimeline(config: TimelineConfigV2): {
   data: (NotificationAddAppIndex | StatusAddAppIndex)[]
-  averageDuration: number | null
+  queryDuration: number | null
   loadMore: () => void
 } {
   const apps = useContext(AppsContext)
@@ -118,7 +118,7 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
     )[]
   >([])
   const [queryLimit, setQueryLimit] = useState(TIMELINE_QUERY_LIMIT)
-  const { averageDuration, recordDuration } = useQueryDuration()
+  const { queryDuration, recordDuration } = useQueryDuration()
 
   const loadMore = useCallback(() => {
     setQueryLimit((prev) => prev + TIMELINE_QUERY_LIMIT)
@@ -451,5 +451,5 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
     [results, apps],
   )
 
-  return { averageDuration, data, loadMore }
+  return { data, loadMore, queryDuration }
 }

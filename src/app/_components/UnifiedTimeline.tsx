@@ -62,11 +62,11 @@ export const UnifiedTimeline = ({
   // データ取得
   const {
     data: timeline,
-    averageDuration,
+    queryDuration,
     loadMore,
   } = useTimelineData(config) as {
     data: StatusAddAppIndex[]
-    averageDuration: number | null
+    queryDuration: number | null
     loadMore: () => void
   }
 
@@ -256,11 +256,11 @@ export const UnifiedTimeline = ({
 
   return (
     <Panel
-      averageDuration={averageDuration}
       className="relative"
       headerOffset={headerOffset}
       name={displayName}
       onClickHeader={() => scrollToTop()}
+      queryDuration={queryDuration}
     >
       {enableScrollToTop && <TimelineStreamIcon />}
       <Virtuoso
