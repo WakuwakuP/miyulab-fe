@@ -2125,6 +2125,17 @@ __metadata:
   languageName: node
   linkType: hard
 
+"emoji-picker-react@npm:^4.18.0":
+  version: 4.18.0
+  resolution: "emoji-picker-react@npm:4.18.0"
+  dependencies:
+    flairup: "npm:1.0.0"
+  peerDependencies:
+    react: ">=16"
+  checksum: 10c0/a37b79a8c54440caf5fa473a440dd83d6fd9dca4a1ffd0c4d951127783aefc5ba0570ffd1af429b97dee0e1e4b27c1c797524d968b3a4ed921ac83393224fb01
+  languageName: node
+  linkType: hard
+
 "emoji-regex@npm:^10.3.0":
   version: 10.3.0
   resolution: "emoji-regex@npm:10.3.0"
@@ -2241,6 +2252,13 @@ __metadata:
   dependencies:
     to-regex-range: "npm:^5.0.1"
   checksum: 10c0/b75b691bbe065472f38824f694c2f7449d7f5004aa950426a2c28f0306c60db9b880c0b0e4ed819997ffb882d1da02cfcfc819bddc94d71627f5269682edf018
+  languageName: node
+  linkType: hard
+
+"flairup@npm:1.0.0":
+  version: 1.0.0
+  resolution: "flairup@npm:1.0.0"
+  checksum: 10c0/2d9fe1f1c890383be65ae0ec95d57b96f3ff42eecffaf493f8a39f09f4982e12109a865e79baca051e784919eecd72fa6cf620cfae8a4663b98deaa6d883d7ba
   languageName: node
   linkType: hard
 
@@ -2876,6 +2894,7 @@ __metadata:
     dexie: "npm:^4.3.0"
     dexie-react-hooks: "npm:^4.2.0"
     embla-carousel-react: "npm:^8.6.0"
+    emoji-picker-react: "npm:^4.18.0"
     globals: "npm:^17.3.0"
     html-react-parser: "npm:^5.2.17"
     husky: "npm:9.1.7"

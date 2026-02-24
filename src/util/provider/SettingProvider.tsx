@@ -15,11 +15,15 @@ type SettingData = {
   playerSize: 'small' | 'medium' | 'large'
   defaultStatusVisibility: Entity.StatusVisibility
   recentHashtagsCount: number
+  reactionEmojis: string[]
 }
+
+const DEFAULT_REACTION_EMOJIS = ['👍', '❤️', '😃', '😢', '🙏', '👎', '😡']
 
 const initialSettingData: SettingData = {
   defaultStatusVisibility: 'public',
   playerSize: 'medium',
+  reactionEmojis: DEFAULT_REACTION_EMOJIS,
   recentHashtagsCount: 10,
   showSensitive: false,
 } as const
