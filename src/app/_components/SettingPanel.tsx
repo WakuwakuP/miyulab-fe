@@ -2,7 +2,13 @@
 
 import { cn } from 'components/lib/utils'
 import type { Entity } from 'megalodon'
-import { type ChangeEvent, type ReactNode, useContext, useState } from 'react'
+import {
+  type ChangeEvent,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useState,
+} from 'react'
 import {
   SetSettingContext,
   SettingContext,
@@ -99,6 +105,51 @@ const SettingSelect = ({
   </SettingItem>
 )
 
+const ReactionEmojisSetting = () => {
+  const setting = useContext(SettingContext)
+  const setSetting = useContext(SetSettingContext)
+  const [inputValue, setInputValue] = useState(setting.reactionEmojis.join(' '))
+
+  const handleSave = useCallback(() => {
+    const segmenter = new Intl.Segmenter('en', { granularity: 'grapheme' })
+    const emojis = [...segmenter.segment(inputValue)]
+      .map((s) => s.segment)
+      .filter((s) => s.trim() !== '' && (s.codePointAt(0) as number) > 255)
+    if (emojis.length > 0) {
+      setSetting({
+        ...setting,
+        reactionEmojis: emojis,
+      })
+      setInputValue(emojis.join(' '))
+    }
+  }, [inputValue, setting, setSetting])
+
+  return (
+    <SettingItem className="flex-col items-start gap-1">
+      <label htmlFor="reactionEmojis">Reaction emojis</label>
+      <div className="flex w-full gap-1">
+        <input
+          className="flex-1 min-w-0"
+          id="reactionEmojis"
+          onChange={(e) => setInputValue(e.target.value)}
+          type="text"
+          value={inputValue}
+        />
+        <button
+          className="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-sm text-white"
+          onClick={handleSave}
+          type="button"
+        >
+          Save
+        </button>
+      </div>
+      <div className="text-xs text-gray-400">
+        {setting.reactionEmojis.join(' ')}
+      </div>
+    </SettingItem>
+  )
+}
+
 export const SettingPanel = () => {
   const setting = useContext(SettingContext)
   const setSetting = useContext(SetSettingContext)
@@ -187,6 +238,7 @@ export const SettingPanel = () => {
         }}
         value={setting.recentHashtagsCount}
       />
+      <ReactionEmojisSetting />
     </div>
   )
 }

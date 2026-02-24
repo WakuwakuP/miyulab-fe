@@ -23,10 +23,12 @@ export const EmojiReactionPicker = ({
   onSelect,
   onClose,
   triggerRect,
+  reactions,
 }: {
   onSelect: (emoji: string) => void
   onClose: () => void
   triggerRect: DOMRect
+  reactions?: string[]
 }) => {
   const emojis = useContext(EmojiContext)
   const pickerRef = useRef<HTMLDivElement>(null)
@@ -63,6 +65,15 @@ export const EmojiReactionPicker = ({
     [emojis],
   )
 
+  const reactionUnified = useMemo(() => {
+    if (!reactions || reactions.length === 0) return undefined
+    return reactions.map((emoji) =>
+      [...emoji]
+        .map((c) => (c.codePointAt(0) as number).toString(16))
+        .join('-'),
+    )
+  }, [reactions])
+
   const handleEmojiSelect = useCallback(
     (emojiData: { isCustom: boolean; emoji: string }) => {
       if (emojiData.isCustom) {
@@ -91,6 +102,7 @@ export const EmojiReactionPicker = ({
           lazyLoadEmojis
           onEmojiClick={handleEmojiSelect}
           onReactionClick={handleEmojiSelect}
+          reactions={reactionUnified}
           reactionsDefaultOpen
           searchPlaceholder="Search emoji..."
           skinTonesDisabled

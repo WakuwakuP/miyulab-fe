@@ -18,6 +18,7 @@ import { AppsContext } from 'util/provider/AppsProvider'
 import { SetActionsContext } from 'util/provider/HomeTimelineProvider'
 import { SelectedAppIndexContext } from 'util/provider/PostAccountProvider'
 import { SetReplyToContext } from 'util/provider/ReplyToProvider'
+import { SettingContext } from 'util/provider/SettingProvider'
 
 const REACTION_BACKENDS = ['pleroma', 'firefish']
 
@@ -35,6 +36,8 @@ export const Actions = ({
   const setReplyTo = useContext(SetReplyToContext)
 
   const selectedAppIndex = useContext(SelectedAppIndexContext)
+
+  const setting = useContext(SettingContext)
 
   const [reblogged, setReblogged] = useState(status.reblogged)
 
@@ -183,6 +186,7 @@ export const Actions = ({
             <EmojiReactionPicker
               onClose={closePicker}
               onSelect={handleReaction}
+              reactions={setting.reactionEmojis}
               triggerRect={triggerRect}
             />
           )}
