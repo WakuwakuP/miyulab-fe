@@ -109,7 +109,7 @@ export const MainPanel = () => {
 
     ;(async () => {
       try {
-        const results = await Promise.all(
+        const results = await Promise.allSettled(
           apps.map((app, index) => {
             const client = GetClient(app)
             return client
@@ -117,7 +117,17 @@ export const MainPanel = () => {
               .then((res) => ({ account: res.data, index }))
           }),
         )
-        setAccounts(results)
+        const fulfilled = results
+          .filter(
+            (
+              r,
+            ): r is PromiseFulfilledResult<{
+              account: Entity.Account
+              index: number
+            }> => r.status === 'fulfilled',
+          )
+          .map((r) => r.value)
+        setAccounts(fulfilled)
         setSelectedAppIndex((prev) => (prev >= apps.length ? 0 : prev))
       } catch (error) {
         console.error('Failed to verify account credentials:', error)
