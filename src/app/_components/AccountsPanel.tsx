@@ -10,7 +10,7 @@ import { RiCloseCircleFill } from 'react-icons/ri'
 import type { App } from 'types/types'
 import { APP_NAME, APP_URL } from 'util/environment'
 import { GetClient } from 'util/GetClient'
-import { AppsContext, UpdateAppsContext } from 'util/provider/AppsProvider'
+import { AppsContext } from 'util/provider/AppsProvider'
 
 const AddAccountModal = ({ onClose }: { onClose: () => void }) => {
   const apps = useContext(AppsContext)
@@ -104,7 +104,6 @@ const AddAccountModal = ({ onClose }: { onClose: () => void }) => {
 
 export const AccountsPanel = () => {
   const apps = useContext(AppsContext)
-  const updateApps = useContext(UpdateAppsContext)
 
   const [showAddAccountModal, setShowAddAccountModal] = useState(false)
   const [showReloadModal, setShowReloadModal] = useState(false)
@@ -145,10 +144,17 @@ export const AccountsPanel = () => {
     })()
   }, [apps])
 
-  const deleteAccount = async (index: number | null) => {
+  const deleteAccount = (index: number | null) => {
     if (index == null) return
     const newApps = apps.filter((_, i) => i !== index)
-    updateApps(newApps)
+    // Update localStorage directly without triggering React state update
+    // to avoid stale-index errors across the app during re-render.
+    // The reload modal will prompt the user to reload the page.
+    try {
+      localStorage.setItem('apps', JSON.stringify(newApps))
+    } catch (error) {
+      console.error('Failed to update localStorage:', error)
+    }
     setShowReloadModal(true)
   }
 
