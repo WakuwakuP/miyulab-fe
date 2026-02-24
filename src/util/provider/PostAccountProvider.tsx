@@ -47,6 +47,8 @@ export const PostAccountProvider = ({
       return
     }
 
+    let cancelled = false
+
     ;(async () => {
       try {
         const results = await Promise.allSettled(
@@ -57,6 +59,7 @@ export const PostAccountProvider = ({
               .then((res) => ({ account: res.data, index }))
           }),
         )
+        if (cancelled) return
         const fulfilled = results
           .filter(
             (r): r is PromiseFulfilledResult<VerifiedAccount> =>
@@ -72,6 +75,10 @@ export const PostAccountProvider = ({
         console.error('Failed to verify account credentials:', error)
       }
     })()
+
+    return () => {
+      cancelled = true
+    }
   }, [apps])
 
   return (

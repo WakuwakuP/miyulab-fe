@@ -94,6 +94,7 @@ export const MainPanel = () => {
   const clickPost = () => {
     if (apps.length <= 0) return
     if (content === '') return
+    if (apps[selectedAppIndex] == null) return
 
     const client = GetClient(apps[selectedAppIndex])
 
@@ -195,7 +196,7 @@ export const MainPanel = () => {
               >
                 {accounts.map(({ index, account: acc }) => (
                   <option key={`${index}-${acc.id}`} value={index}>
-                    {getFullAcct(acc.acct, apps[index].backendUrl)}
+                    {getFullAcct(acc.acct, apps[index]?.backendUrl ?? '')}
                   </option>
                 ))}
               </select>
