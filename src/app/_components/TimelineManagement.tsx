@@ -29,8 +29,6 @@ import {
   RiAddLine,
   RiArrowDownSLine,
   RiArrowRightSLine,
-  RiCheckLine,
-  RiClipboardLine,
   RiDeleteBinLine,
   RiDragMove2Line,
   RiEditLine,
@@ -43,7 +41,6 @@ import {
 } from 'react-icons/ri'
 
 import type { TimelineConfigV2, TimelineType } from 'types/types'
-import { getSqliteDb } from 'util/db/sqlite'
 import {
   SetTimelineContext,
   TimelineContext,
@@ -557,8 +554,6 @@ export const TimelineManagement = () => {
   >([])
   // ドラッグ中のアクティブID
   const [activeId, setActiveId] = useState<string | null>(null)
-  // EXPLAIN ログのコピー状態
-  const [explainCopied, setExplainCopied] = useState(false)
   // ドラッグ中にホバーしているフォルダキー
   const [overFolderKey, setOverFolderKey] = useState<string | null>(null)
   const sensors = useSensors(
@@ -977,22 +972,6 @@ export const TimelineManagement = () => {
     ])
   }, [folderGroups, emptyFolders, columnsWithEmptyFolders])
 
-  const handleCopyExplainLogs = useCallback(async () => {
-    try {
-      const db = await getSqliteDb()
-      const logs = await db.getExplainLogs()
-      if (logs.length === 0) {
-        await navigator.clipboard.writeText('(No slow query logs)')
-      } else {
-        await navigator.clipboard.writeText(logs.join('\n\n'))
-      }
-      setExplainCopied(true)
-      setTimeout(() => setExplainCopied(false), 2000)
-    } catch (error) {
-      console.error('Failed to copy EXPLAIN logs:', error)
-    }
-  }, [])
-
   // 全フォルダキー一覧（色の割り当てに使用）
   const allFolderKeys = useMemo(() => {
     const keys = new Set<string>()
@@ -1168,22 +1147,6 @@ export const TimelineManagement = () => {
           >
             <RiFolderAddLine size={14} />
             <span>New Folder</span>
-          </button>
-        </div>
-
-        <div>
-          <h4 className="mb-2 text-sm font-semibold">EXPLAIN Logs</h4>
-          <button
-            className="flex items-center gap-1 rounded bg-slate-600 px-2 py-1 text-xs hover:bg-slate-500"
-            onClick={handleCopyExplainLogs}
-            type="button"
-          >
-            {explainCopied ? (
-              <RiCheckLine size={14} />
-            ) : (
-              <RiClipboardLine size={14} />
-            )}
-            <span>{explainCopied ? 'Copied!' : 'Copy EXPLAIN Logs'}</span>
           </button>
         </div>
       </div>
