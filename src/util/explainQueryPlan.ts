@@ -332,6 +332,33 @@ function buildNotificationQuery(
 /**
  * useCustomQueryTimeline と同等のクエリを構築
  */
+/**
+ * 文字列リテラル外の `?` プレースホルダーを検出する
+ * （useCustomQueryTimeline の hasUnquotedQuestionMark と同一ロジック）
+ */
+function hasUnquotedQuestionMark(query: string): boolean {
+  let inSingleQuote = false
+
+  for (let i = 0; i < query.length; i++) {
+    const char = query[i]
+
+    if (char === "'") {
+      if (inSingleQuote && query[i + 1] === "'") {
+        i++
+        continue
+      }
+      inSingleQuote = !inSingleQuote
+      continue
+    }
+
+    if (!inSingleQuote && char === '?') {
+      return true
+    }
+  }
+
+  return false
+}
+
 function buildCustomQuery(config: TimelineConfigV2): {
   sql: string
   binds: (string | number)[]
@@ -356,6 +383,11 @@ function buildCustomQuery(config: TimelineConfigV2): {
     .trim()
 
   if (!sanitized) {
+    return { binds: [], sql: '' }
+  }
+
+  // ? プレースホルダーのバインド競合を防止（文字列リテラル内は許可）
+  if (hasUnquotedQuestionMark(sanitized)) {
     return { binds: [], sql: '' }
   }
 

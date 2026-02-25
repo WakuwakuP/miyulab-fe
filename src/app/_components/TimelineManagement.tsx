@@ -22,7 +22,9 @@ import {
   type ChangeEvent,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react'
 import {
@@ -155,6 +157,15 @@ const TimelineItem = ({
     transition,
   } = useSortable({ id: timeline.id })
   const [explainCopied, setExplainCopied] = useState(false)
+  const explainTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (explainTimerRef.current != null) {
+        clearTimeout(explainTimerRef.current)
+      }
+    }
+  }, [])
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -170,7 +181,13 @@ const TimelineItem = ({
       const result = await runExplainQueryPlan(timeline, apps)
       await navigator.clipboard.writeText(result)
       setExplainCopied(true)
-      setTimeout(() => setExplainCopied(false), 2000)
+      if (explainTimerRef.current != null) {
+        clearTimeout(explainTimerRef.current)
+      }
+      explainTimerRef.current = setTimeout(() => {
+        setExplainCopied(false)
+        explainTimerRef.current = null
+      }, 2000)
     } catch (error) {
       console.error('Failed to copy EXPLAIN:', error)
     }
