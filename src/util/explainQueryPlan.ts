@@ -1,0 +1,486 @@
+/**
+ * 個別タイムラインの EXPLAIN QUERY PLAN を実行するユーティリティ
+ *
+ * TimelineConfigV2 に基づいてタイムライン取得クエリと同等の SQL を構築し、
+ * EXPLAIN QUERY PLAN を実行して結果をフォーマットされた文字列として返す。
+ *
+ * 対応するクエリパターン:
+ * - home / local / public: useFilteredTimeline と同等
+ * - tag: useFilteredTagTimeline と同等
+ * - notification: useNotifications と同等
+ * - customQuery 指定時: useCustomQueryTimeline と同等
+ */
+
+import type { App, TimelineConfigV2 } from 'types/types'
+import { getSqliteDb } from 'util/db/sqlite/connection'
+import { TIMELINE_QUERY_LIMIT } from 'util/environment'
+import { buildFilterConditions } from 'util/hooks/timelineFilterBuilder'
+import {
+  detectReferencedAliases,
+  isMixedQuery,
+  isNotificationQuery,
+} from 'util/queryBuilder'
+import {
+  normalizeBackendFilter,
+  resolveBackendUrls,
+} from 'util/timelineConfigValidator'
+
+// ================================================================
+// 混合クエリ用の空サブクエリ定数（useCustomQueryTimeline と同一）
+// ================================================================
+
+const EMPTY_N = `(SELECT
+      NULL AS compositeKey, NULL AS backendUrl,
+      NULL AS notification_type, NULL AS status_id,
+      NULL AS account_acct, NULL AS created_at_ms,
+      NULL AS storedAt, NULL AS json
+    LIMIT 0)`
+
+const EMPTY_S = `(SELECT
+      NULL AS compositeKey, NULL AS backendUrl,
+      NULL AS created_at_ms, NULL AS storedAt,
+      NULL AS uri, NULL AS account_acct, NULL AS account_id,
+      NULL AS visibility, NULL AS language,
+      NULL AS has_media, NULL AS media_count,
+      NULL AS is_reblog, NULL AS reblog_of_id, NULL AS reblog_of_uri,
+      NULL AS is_sensitive, NULL AS has_spoiler,
+      NULL AS in_reply_to_id,
+      NULL AS favourites_count, NULL AS reblogs_count,
+      NULL AS replies_count, NULL AS json
+    LIMIT 0)`
+
+const EMPTY_STT = '(SELECT NULL AS compositeKey, NULL AS timelineType LIMIT 0)'
+const EMPTY_SBT = '(SELECT NULL AS compositeKey, NULL AS tag LIMIT 0)'
+const EMPTY_SM = '(SELECT NULL AS compositeKey, NULL AS acct LIMIT 0)'
+const EMPTY_SB =
+  '(SELECT NULL AS compositeKey, NULL AS backendUrl, NULL AS local_id LIMIT 0)'
+
+/**
+ * タイムライン設定に対する EXPLAIN QUERY PLAN を実行し、結果を文字列で返す
+ *
+ * @param config - タイムライン設定
+ * @param apps - 登録済みアプリ一覧（backendUrl の解決に使用）
+ * @returns フォーマットされた EXPLAIN QUERY PLAN の結果文字列
+ */
+export async function runExplainQueryPlan(
+  config: TimelineConfigV2,
+  apps: App[],
+): Promise<string> {
+  const { binds, sql } = buildTimelineQuery(config, apps)
+
+  if (!sql) {
+    return '(No query for this timeline configuration)'
+  }
+
+  try {
+    const handle = await getSqliteDb()
+    const explainSql = `EXPLAIN QUERY PLAN ${sql}`
+    const rows = (await handle.execAsync(explainSql, {
+      bind: binds,
+      returnValue: 'resultRows',
+    })) as unknown[][]
+
+    const planLines = rows.map((row) => {
+      const detail = row.length >= 4 ? row[3] : String(row)
+      return `  ${detail}`
+    })
+
+    return (
+      `SQL:\n${sql.trim().replace(/\s+/g, ' ')}\n\n` +
+      `Bind: ${JSON.stringify(binds)}\n\n` +
+      `EXPLAIN QUERY PLAN:\n${planLines.join('\n')}`
+    )
+  } catch (e) {
+    return `EXPLAIN QUERY PLAN failed: ${e instanceof Error ? e.message : String(e)}`
+  }
+}
+
+// ================================================================
+// クエリ構築（各 Hook のロジックを再現）
+// ================================================================
+
+function buildTimelineQuery(
+  config: TimelineConfigV2,
+  apps: App[],
+): { sql: string; binds: (string | number)[] } {
+  // customQuery が指定されている場合はカスタムクエリモード
+  if (config.customQuery?.trim()) {
+    return buildCustomQuery(config)
+  }
+
+  switch (config.type) {
+    case 'home':
+    case 'local':
+    case 'public':
+      return buildFilteredTimelineQuery(config, apps)
+    case 'tag':
+      return buildTagTimelineQuery(config, apps)
+    case 'notification':
+      return buildNotificationQuery(config, apps)
+    default:
+      return { binds: [], sql: '' }
+  }
+}
+
+/**
+ * useFilteredTimeline と同等のクエリを構築
+ */
+function buildFilteredTimelineQuery(
+  config: TimelineConfigV2,
+  apps: App[],
+): { sql: string; binds: (string | number)[] } {
+  const filter = normalizeBackendFilter(config.backendFilter, apps)
+  const targetBackendUrls = resolveBackendUrls(filter, apps)
+
+  if (targetBackendUrls.length === 0) {
+    return { binds: [], sql: '' }
+  }
+
+  const { binds: filterBinds, conditions: filterConditions } =
+    buildFilterConditions(config, targetBackendUrls)
+
+  const backendPlaceholders = targetBackendUrls.map(() => '?').join(',')
+
+  const whereConditions = [
+    'stt.timelineType = ?',
+    `sb.backendUrl IN (${backendPlaceholders})`,
+    ...filterConditions,
+  ]
+
+  const sql = `
+    SELECT s.compositeKey, MIN(sb.backendUrl) AS backendUrl,
+           s.created_at_ms, s.storedAt, s.json
+    FROM statuses s
+    INNER JOIN statuses_timeline_types stt
+      ON s.compositeKey = stt.compositeKey
+    INNER JOIN statuses_backends sb
+      ON s.compositeKey = sb.compositeKey
+    WHERE ${whereConditions.join('\n      AND ')}
+    GROUP BY s.compositeKey
+    ORDER BY s.created_at_ms DESC
+    LIMIT ?;
+  `
+  const binds: (string | number)[] = [
+    config.type,
+    ...targetBackendUrls,
+    ...filterBinds,
+    TIMELINE_QUERY_LIMIT,
+  ]
+
+  return { binds, sql }
+}
+
+/**
+ * useFilteredTagTimeline と同等のクエリを構築
+ */
+function buildTagTimelineQuery(
+  config: TimelineConfigV2,
+  apps: App[],
+): { sql: string; binds: (string | number)[] } {
+  const filter = normalizeBackendFilter(config.backendFilter, apps)
+  const targetBackendUrls = resolveBackendUrls(filter, apps)
+  const tags = config.tagConfig?.tags ?? []
+  const tagMode = config.tagConfig?.mode ?? 'or'
+
+  if (targetBackendUrls.length === 0 || tags.length === 0) {
+    return { binds: [], sql: '' }
+  }
+
+  const { binds: filterBinds, conditions: filterConditions } =
+    buildFilterConditions(config, targetBackendUrls)
+
+  const backendPlaceholders = targetBackendUrls.map(() => '?').join(',')
+  const tagPlaceholders = tags.map(() => '?').join(',')
+
+  const binds: (string | number)[] = []
+
+  if (tagMode === 'or') {
+    const whereConditions = [
+      `sbt.tag IN (${tagPlaceholders})`,
+      `sb.backendUrl IN (${backendPlaceholders})`,
+      ...filterConditions,
+    ]
+
+    const sql = `
+      SELECT s.compositeKey, MIN(sb.backendUrl) AS backendUrl,
+             s.created_at_ms, s.storedAt, s.json
+      FROM statuses s
+      INNER JOIN statuses_belonging_tags sbt
+        ON s.compositeKey = sbt.compositeKey
+      INNER JOIN statuses_backends sb
+        ON s.compositeKey = sb.compositeKey
+      WHERE ${whereConditions.join('\n        AND ')}
+      GROUP BY s.compositeKey
+      ORDER BY s.created_at_ms DESC
+      LIMIT ?;
+    `
+    binds.push(
+      ...tags,
+      ...targetBackendUrls,
+      ...filterBinds,
+      TIMELINE_QUERY_LIMIT,
+    )
+    return { binds, sql }
+  }
+
+  // AND mode
+  const whereConditions = [
+    `sbt.tag IN (${tagPlaceholders})`,
+    `sb.backendUrl IN (${backendPlaceholders})`,
+    ...filterConditions,
+  ]
+
+  const sql = `
+    SELECT s.compositeKey, MIN(sb.backendUrl) AS backendUrl,
+           s.created_at_ms, s.storedAt, s.json
+    FROM statuses s
+    INNER JOIN statuses_belonging_tags sbt
+      ON s.compositeKey = sbt.compositeKey
+    INNER JOIN statuses_backends sb
+      ON s.compositeKey = sb.compositeKey
+    WHERE ${whereConditions.join('\n        AND ')}
+    GROUP BY s.compositeKey
+    HAVING COUNT(DISTINCT sbt.tag) = ?
+    ORDER BY s.created_at_ms DESC
+    LIMIT ?;
+  `
+  binds.push(
+    ...tags,
+    ...targetBackendUrls,
+    ...filterBinds,
+    tags.length,
+    TIMELINE_QUERY_LIMIT,
+  )
+  return { binds, sql }
+}
+
+/**
+ * useNotifications と同等のクエリを構築
+ */
+function buildNotificationQuery(
+  config: TimelineConfigV2,
+  apps: App[],
+): { sql: string; binds: (string | number)[] } {
+  const filter = normalizeBackendFilter(config.backendFilter, apps)
+  const targetBackendUrls = resolveBackendUrls(filter, apps)
+
+  if (targetBackendUrls.length === 0) {
+    return { binds: [], sql: '' }
+  }
+
+  const conditions: string[] = []
+  const binds: (string | number)[] = []
+
+  const placeholders = targetBackendUrls.map(() => '?').join(',')
+  conditions.push(`backendUrl IN (${placeholders})`)
+  binds.push(...targetBackendUrls)
+
+  const notificationFilter = config.notificationFilter
+  if (notificationFilter != null && notificationFilter.length > 0) {
+    const typePlaceholders = notificationFilter.map(() => '?').join(',')
+    conditions.push(`notification_type IN (${typePlaceholders})`)
+    binds.push(...notificationFilter)
+  }
+
+  const whereClause = conditions.join(' AND ')
+  const sql = `
+    SELECT compositeKey, backendUrl, created_at_ms, storedAt, json
+    FROM notifications
+    WHERE ${whereClause}
+    ORDER BY created_at_ms DESC
+    LIMIT ?;
+  `
+  binds.push(TIMELINE_QUERY_LIMIT)
+
+  return { binds, sql }
+}
+
+/**
+ * useCustomQueryTimeline と同等のクエリを構築
+ */
+function buildCustomQuery(config: TimelineConfigV2): {
+  sql: string
+  binds: (string | number)[]
+} {
+  const customQuery = config.customQuery ?? ''
+  const onlyMedia = config.onlyMedia
+  const minMediaCount = config.minMediaCount
+
+  // サニタイズ
+  const forbidden =
+    /\b(DROP|DELETE|INSERT|UPDATE|ALTER|CREATE|ATTACH|DETACH|PRAGMA|VACUUM|REINDEX)\b/i
+  if (forbidden.test(customQuery)) {
+    return { binds: [], sql: '' }
+  }
+  if (/--/.test(customQuery) || /\/\*/.test(customQuery)) {
+    return { binds: [], sql: '' }
+  }
+  const sanitized = customQuery
+    .replace(/;/g, '')
+    .replace(/\bLIMIT\b\s+\d+/gi, '')
+    .replace(/\bOFFSET\b\s+\d+/gi, '')
+    .trim()
+
+  if (!sanitized) {
+    return { binds: [], sql: '' }
+  }
+
+  if (isMixedQuery(sanitized)) {
+    return buildCustomMixedQuery(sanitized, onlyMedia, minMediaCount)
+  }
+  if (isNotificationQuery(sanitized)) {
+    return buildCustomNotificationQuery(sanitized)
+  }
+  return buildCustomStatusQuery(sanitized, onlyMedia, minMediaCount)
+}
+
+function buildCustomMixedQuery(
+  sanitized: string,
+  onlyMedia: boolean | undefined,
+  minMediaCount: number | undefined,
+): { sql: string; binds: (string | number)[] } {
+  const refs = detectReferencedAliases(sanitized)
+
+  const statusJoinLines: string[] = []
+  if (refs.stt)
+    statusJoinLines.push(
+      'LEFT JOIN statuses_timeline_types stt\n              ON s.compositeKey = stt.compositeKey',
+    )
+  if (refs.sbt)
+    statusJoinLines.push(
+      'LEFT JOIN statuses_belonging_tags sbt\n              ON s.compositeKey = sbt.compositeKey',
+    )
+  if (refs.sm)
+    statusJoinLines.push(
+      'LEFT JOIN statuses_mentions sm\n              ON s.compositeKey = sm.compositeKey',
+    )
+  if (refs.sb)
+    statusJoinLines.push(
+      'LEFT JOIN statuses_backends sb\n              ON s.compositeKey = sb.compositeKey',
+    )
+  statusJoinLines.push(`LEFT JOIN ${EMPTY_N} n ON 1 = 1`)
+
+  const statusJoinsClause =
+    statusJoinLines.length > 0
+      ? `\n            ${statusJoinLines.join('\n            ')}`
+      : ''
+
+  const hasMultiRowJoin = refs.stt || refs.sbt || refs.sm || refs.sb
+  const backendSelect = refs.sb ? 'MIN(sb.backendUrl)' : 's.backendUrl'
+  const groupByClause = hasMultiRowJoin
+    ? '\n            GROUP BY s.compositeKey'
+    : ''
+
+  const notifDummyJoins = [
+    `LEFT JOIN ${EMPTY_S} s ON 1 = 1`,
+    `LEFT JOIN ${EMPTY_STT} stt ON 1 = 1`,
+    `LEFT JOIN ${EMPTY_SBT} sbt ON 1 = 1`,
+    `LEFT JOIN ${EMPTY_SM} sm ON 1 = 1`,
+    `LEFT JOIN ${EMPTY_SB} sb ON 1 = 1`,
+  ].join('\n            ')
+
+  let statusMediaConditions = ''
+  const statusMediaBinds: (string | number)[] = []
+  if (minMediaCount != null && minMediaCount > 0) {
+    statusMediaConditions += '\n              AND s.media_count >= ?'
+    statusMediaBinds.push(minMediaCount)
+  } else if (onlyMedia) {
+    statusMediaConditions += '\n              AND s.has_media = 1'
+  }
+
+  const binds: (string | number)[] = [...statusMediaBinds, TIMELINE_QUERY_LIMIT]
+
+  const sql = `
+    SELECT compositeKey, backendUrl, created_at_ms, storedAt, json, _type
+    FROM (
+      SELECT s.compositeKey, ${backendSelect} AS backendUrl,
+             s.created_at_ms, s.storedAt, s.json,
+             'status' AS _type
+      FROM statuses s${statusJoinsClause}
+      WHERE (${sanitized})${statusMediaConditions}${groupByClause}
+      UNION ALL
+      SELECT n.compositeKey, n.backendUrl,
+             n.created_at_ms, n.storedAt, n.json,
+             'notification' AS _type
+      FROM notifications n
+      ${notifDummyJoins}
+      WHERE (${sanitized})
+    )
+    ORDER BY created_at_ms DESC
+    LIMIT ?;
+  `
+
+  return { binds, sql }
+}
+
+function buildCustomNotificationQuery(sanitized: string): {
+  sql: string
+  binds: (string | number)[]
+} {
+  const binds: (string | number)[] = [TIMELINE_QUERY_LIMIT]
+  const sql = `
+    SELECT n.compositeKey, n.backendUrl,
+           n.created_at_ms, n.storedAt, n.json
+    FROM notifications n
+    WHERE (${sanitized})
+    ORDER BY n.created_at_ms DESC
+    LIMIT ?;
+  `
+  return { binds, sql }
+}
+
+function buildCustomStatusQuery(
+  sanitized: string,
+  onlyMedia: boolean | undefined,
+  minMediaCount: number | undefined,
+): { sql: string; binds: (string | number)[] } {
+  const refs = detectReferencedAliases(sanitized)
+
+  const joinLines: string[] = []
+  if (refs.stt)
+    joinLines.push(
+      'LEFT JOIN statuses_timeline_types stt\n          ON s.compositeKey = stt.compositeKey',
+    )
+  if (refs.sbt)
+    joinLines.push(
+      'LEFT JOIN statuses_belonging_tags sbt\n          ON s.compositeKey = sbt.compositeKey',
+    )
+  if (refs.sm)
+    joinLines.push(
+      'LEFT JOIN statuses_mentions sm\n          ON s.compositeKey = sm.compositeKey',
+    )
+  if (refs.sb)
+    joinLines.push(
+      'LEFT JOIN statuses_backends sb\n          ON s.compositeKey = sb.compositeKey',
+    )
+
+  const hasMultiRowJoin = refs.stt || refs.sbt || refs.sm || refs.sb
+  const backendSelect = refs.sb
+    ? 'MIN(sb.backendUrl) AS backendUrl'
+    : 's.backendUrl'
+  const joinsClause =
+    joinLines.length > 0 ? `\n      ${joinLines.join('\n      ')}` : ''
+
+  let additionalConditions = ''
+  const additionalBinds: (string | number)[] = []
+
+  if (minMediaCount != null && minMediaCount > 0) {
+    additionalConditions += '\n      AND s.media_count >= ?'
+    additionalBinds.push(minMediaCount)
+  } else if (onlyMedia) {
+    additionalConditions += '\n      AND s.has_media = 1'
+  }
+
+  const binds: (string | number)[] = [...additionalBinds, TIMELINE_QUERY_LIMIT]
+
+  const sql = `
+    SELECT s.compositeKey, ${backendSelect},
+           s.created_at_ms, s.storedAt, s.json
+    FROM statuses s${joinsClause}
+    WHERE (${sanitized})${additionalConditions}${hasMultiRowJoin ? '\n      GROUP BY s.compositeKey' : ''}
+    ORDER BY s.created_at_ms DESC
+    LIMIT ?;
+  `
+
+  return { binds, sql }
+}
