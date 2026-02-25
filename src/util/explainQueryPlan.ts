@@ -85,14 +85,48 @@ export async function runExplainQueryPlan(
       return `  ${detail}`
     })
 
-    return (
-      `SQL:\n${sql.trim().replace(/\s+/g, ' ')}\n\n` +
-      `Bind: ${JSON.stringify(binds)}\n\n` +
-      `EXPLAIN QUERY PLAN:\n${planLines.join('\n')}`
-    )
+    const formattedSql = formatSql(sql)
+    const formattedBinds = JSON.stringify(binds, null, 2)
+
+    return [
+      '-- SQL',
+      formattedSql,
+      '',
+      '-- Bind',
+      formattedBinds,
+      '',
+      '-- EXPLAIN QUERY PLAN',
+      ...planLines,
+    ].join('\n')
   } catch (e) {
     return `EXPLAIN QUERY PLAN failed: ${e instanceof Error ? e.message : String(e)}`
   }
+}
+
+// ================================================================
+// SQL フォーマット
+// ================================================================
+
+/**
+ * SQL 文字列を読みやすい形にフォーマットする
+ *
+ * テンプレートリテラルの余分なインデントを除去し、
+ * 空行を取り除いて先頭インデント 2 スペースに統一する。
+ */
+function formatSql(sql: string): string {
+  const lines = sql.split('\n')
+
+  // 空行を除いた各行の先頭スペース数を取得し、最小値を共通インデントとする
+  const indents = lines
+    .filter((l) => l.trim().length > 0)
+    .map((l) => l.match(/^(\s*)/)?.[1].length ?? 0)
+  const minIndent = indents.length > 0 ? Math.min(...indents) : 0
+
+  return lines
+    .map((l) => l.slice(minIndent))
+    .filter((l) => l.trim().length > 0)
+    .map((l) => `  ${l}`)
+    .join('\n')
 }
 
 // ================================================================
