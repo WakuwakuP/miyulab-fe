@@ -22,13 +22,17 @@ import {
   type ChangeEvent,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react'
 import {
   RiAddLine,
   RiArrowDownSLine,
   RiArrowRightSLine,
+  RiCheckLine,
+  RiClipboardLine,
   RiDeleteBinLine,
   RiDragMove2Line,
   RiEditLine,
@@ -40,7 +44,9 @@ import {
   RiLogoutBoxRLine,
 } from 'react-icons/ri'
 
-import type { TimelineConfigV2, TimelineType } from 'types/types'
+import type { App, TimelineConfigV2, TimelineType } from 'types/types'
+import { runExplainQueryPlan } from 'util/explainQueryPlan'
+import { AppsContext } from 'util/provider/AppsProvider'
 import {
   SetTimelineContext,
   TimelineContext,
@@ -122,6 +128,7 @@ function generateId(): string {
 }
 
 const TimelineItem = ({
+  apps,
   editingId,
   folderGroupKey,
   onDelete,
@@ -131,6 +138,7 @@ const TimelineItem = ({
   onUpdate,
   timeline,
 }: {
+  apps: App[]
   editingId: string | null
   folderGroupKey?: string
   onDelete?: (id: string) => void
@@ -148,6 +156,16 @@ const TimelineItem = ({
     transform,
     transition,
   } = useSortable({ id: timeline.id })
+  const [explainCopied, setExplainCopied] = useState(false)
+  const explainTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    return () => {
+      if (explainTimerRef.current != null) {
+        clearTimeout(explainTimerRef.current)
+      }
+    }
+  }, [])
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -157,6 +175,23 @@ const TimelineItem = ({
   const displayName = timeline.label || getDefaultTimelineName(timeline)
 
   const isEditing = editingId === timeline.id
+
+  const handleCopyExplain = useCallback(async () => {
+    try {
+      const result = await runExplainQueryPlan(timeline, apps)
+      await navigator.clipboard.writeText(result)
+      setExplainCopied(true)
+      if (explainTimerRef.current != null) {
+        clearTimeout(explainTimerRef.current)
+      }
+      explainTimerRef.current = setTimeout(() => {
+        setExplainCopied(false)
+        explainTimerRef.current = null
+      }, 2000)
+    } catch (error) {
+      console.error('Failed to copy EXPLAIN:', error)
+    }
+  }, [timeline, apps])
 
   return (
     <div
@@ -193,6 +228,20 @@ const TimelineItem = ({
           </div>
         </div>
         <div className="flex items-center space-x-1">
+          <button
+            className={`hover:text-white ${
+              explainCopied ? 'text-green-400' : 'text-gray-400'
+            }`}
+            onClick={handleCopyExplain}
+            title="Copy EXPLAIN QUERY PLAN"
+            type="button"
+          >
+            {explainCopied ? (
+              <RiCheckLine size={16} />
+            ) : (
+              <RiClipboardLine size={16} />
+            )}
+          </button>
           <button
             className={`hover:text-white ${
               isEditing ? 'text-blue-400' : 'text-gray-400'
@@ -543,6 +592,7 @@ const AddTagTimelineDialog = ({
 export const TimelineManagement = () => {
   const timelineSettings = useContext(TimelineContext)
   const setTimelineSettings = useContext(SetTimelineContext)
+  const apps = useContext(AppsContext)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [showAddTagDialog, setShowAddTagDialog] = useState(false)
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(
@@ -1057,6 +1107,7 @@ export const TimelineManagement = () => {
                           >
                             {column.members.map((timeline) => (
                               <TimelineItem
+                                apps={apps}
                                 editingId={editingId}
                                 folderGroupKey={column.groupKey}
                                 key={timeline.id}
@@ -1085,6 +1136,7 @@ export const TimelineManagement = () => {
                   const timeline = column.timeline
                   return (
                     <TimelineItem
+                      apps={apps}
                       editingId={editingId}
                       key={timeline.id}
                       onDelete={onDelete}
