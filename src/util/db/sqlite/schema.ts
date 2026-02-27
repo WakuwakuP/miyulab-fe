@@ -761,8 +761,8 @@ function backfillReblogsV5(handle: DbHandle): void {
 
   db.exec(`
     INSERT OR IGNORE INTO statuses_reblogs (compositeKey, original_uri, reblogger_acct, reblogged_at_ms)
-    SELECT compositeKey, COALESCE(reblog_of_uri, ''), account_acct, created_at_ms
+    SELECT compositeKey, reblog_of_uri, account_acct, created_at_ms
     FROM statuses
-    WHERE is_reblog = 1;
+    WHERE is_reblog = 1 AND reblog_of_uri IS NOT NULL AND reblog_of_uri != '';
   `)
 }

@@ -230,15 +230,15 @@ export function handleUpsertStatus(
 
     upsertMentionsInternal(db, compositeKey, status.mentions)
 
-    // リブログ関係を statuses_reblogs に記録
-    if (cols.is_reblog === 1) {
+    // リブログ関係を statuses_reblogs に記録（元投稿の URI が存在する場合のみ）
+    if (cols.is_reblog === 1 && cols.reblog_of_uri) {
       db.exec(
         `INSERT OR REPLACE INTO statuses_reblogs (compositeKey, original_uri, reblogger_acct, reblogged_at_ms)
          VALUES (?, ?, ?, ?);`,
         {
           bind: [
             compositeKey,
-            cols.reblog_of_uri ?? '',
+            cols.reblog_of_uri,
             cols.account_acct,
             created_at_ms,
           ],
@@ -433,15 +433,15 @@ export function handleBulkUpsertStatuses(
 
       upsertMentionsInternal(db, compositeKey, status.mentions)
 
-      // リブログ関係を statuses_reblogs に記録
-      if (cols.is_reblog === 1) {
+      // リブログ関係を statuses_reblogs に記録（元投稿の URI が存在する場合のみ）
+      if (cols.is_reblog === 1 && cols.reblog_of_uri) {
         db.exec(
           `INSERT OR REPLACE INTO statuses_reblogs (compositeKey, original_uri, reblogger_acct, reblogged_at_ms)
            VALUES (?, ?, ?, ?);`,
           {
             bind: [
               compositeKey,
-              cols.reblog_of_uri ?? '',
+              cols.reblog_of_uri,
               cols.account_acct,
               created_at_ms,
             ],
