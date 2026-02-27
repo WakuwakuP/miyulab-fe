@@ -79,14 +79,24 @@ export function handleUpsertStatus(
   try {
     let compositeKey: string
     const existingRows = normalizedUri
-      ? (db.exec('SELECT compositeKey FROM statuses WHERE uri = ?;', {
-          bind: [normalizedUri],
-          returnValue: 'resultRows',
-        }) as string[][])
+      ? (db.exec(
+          'SELECT compositeKey, is_reblog FROM statuses WHERE uri = ?;',
+          {
+            bind: [normalizedUri],
+            returnValue: 'resultRows',
+          },
+        ) as (string | number)[][])
       : []
 
-    if (existingRows.length > 0) {
-      compositeKey = existingRows[0][0]
+    // リブログが元投稿を上書きしないようにする
+    // URI が同じでも、受信ステータスがリブログで既存行が元投稿の場合は新規挿入する
+    const existingIsOriginal =
+      existingRows.length > 0 &&
+      cols.is_reblog === 1 &&
+      existingRows[0][1] === 0
+
+    if (existingRows.length > 0 && !existingIsOriginal) {
+      compositeKey = existingRows[0][0] as string
       db.exec(
         `UPDATE statuses SET
           storedAt         = ?,
@@ -132,6 +142,8 @@ export function handleUpsertStatus(
       )
     } else {
       compositeKey = createCompositeKey(backendUrl, status.id)
+      // リブログが元投稿の URI と衝突する場合は空文字にして UNIQUE 制約違反を回避
+      const insertUri = existingIsOriginal ? '' : cols.uri
       db.exec(
         `INSERT INTO statuses (
           compositeKey, backendUrl, created_at_ms, storedAt,
@@ -166,7 +178,7 @@ export function handleUpsertStatus(
             backendUrl,
             created_at_ms,
             now,
-            cols.uri,
+            insertUri,
             cols.account_acct,
             cols.account_id,
             cols.visibility,
@@ -218,6 +230,22 @@ export function handleUpsertStatus(
 
     upsertMentionsInternal(db, compositeKey, status.mentions)
 
+    // リブログ関係を statuses_reblogs に記録（元投稿の URI が存在する場合のみ）
+    if (cols.is_reblog === 1 && cols.reblog_of_uri) {
+      db.exec(
+        `INSERT OR REPLACE INTO statuses_reblogs (compositeKey, original_uri, reblogger_acct, reblogged_at_ms)
+         VALUES (?, ?, ?, ?);`,
+        {
+          bind: [
+            compositeKey,
+            cols.reblog_of_uri,
+            cols.account_acct,
+            created_at_ms,
+          ],
+        },
+      )
+    }
+
     db.exec('COMMIT;')
   } catch (e) {
     db.exec('ROLLBACK;')
@@ -251,15 +279,23 @@ export function handleBulkUpsertStatuses(
         ? uriCache.get(normalizedUri)
         : undefined
 
+      // リブログが元投稿を上書きしないようにする
+      let existingIsOriginal = false
       if (compositeKey === undefined && normalizedUri) {
         const existingRows = db.exec(
-          'SELECT compositeKey FROM statuses WHERE uri = ?;',
+          'SELECT compositeKey, is_reblog FROM statuses WHERE uri = ?;',
           { bind: [normalizedUri], returnValue: 'resultRows' },
-        ) as string[][]
-        compositeKey = existingRows.length > 0 ? existingRows[0][0] : undefined
+        ) as (string | number)[][]
+        if (existingRows.length > 0) {
+          if (cols.is_reblog === 1 && existingRows[0][1] === 0) {
+            existingIsOriginal = true
+          } else {
+            compositeKey = existingRows[0][0] as string
+          }
+        }
       }
 
-      if (compositeKey !== undefined) {
+      if (compositeKey !== undefined && !existingIsOriginal) {
         db.exec(
           `UPDATE statuses SET
             storedAt         = ?,
@@ -305,6 +341,8 @@ export function handleBulkUpsertStatuses(
         )
       } else {
         compositeKey = createCompositeKey(backendUrl, status.id)
+        // リブログが元投稿の URI と衝突する場合は空文字にして UNIQUE 制約違反を回避
+        const insertUri = existingIsOriginal ? '' : cols.uri
         db.exec(
           `INSERT INTO statuses (
             compositeKey, backendUrl, created_at_ms, storedAt,
@@ -339,7 +377,7 @@ export function handleBulkUpsertStatuses(
               backendUrl,
               created_at_ms,
               now,
-              cols.uri,
+              insertUri,
               cols.account_acct,
               cols.account_id,
               cols.visibility,
@@ -394,6 +432,22 @@ export function handleBulkUpsertStatuses(
       }
 
       upsertMentionsInternal(db, compositeKey, status.mentions)
+
+      // リブログ関係を statuses_reblogs に記録（元投稿の URI が存在する場合のみ）
+      if (cols.is_reblog === 1 && cols.reblog_of_uri) {
+        db.exec(
+          `INSERT OR REPLACE INTO statuses_reblogs (compositeKey, original_uri, reblogger_acct, reblogged_at_ms)
+           VALUES (?, ?, ?, ?);`,
+          {
+            bind: [
+              compositeKey,
+              cols.reblog_of_uri,
+              cols.account_acct,
+              created_at_ms,
+            ],
+          },
+        )
+      }
     }
     db.exec('COMMIT;')
   } catch (e) {
@@ -591,10 +645,12 @@ export function handleUpdateStatusAction(
         }
       }
 
-      // この Status を reblog として持つ他の Status も更新
+      // この Status を reblog として持つ他の Status も更新（statuses_reblogs 経由）
       if (statusUri) {
         const relatedRows = db.exec(
-          'SELECT compositeKey, json FROM statuses WHERE reblog_of_uri = ?;',
+          `SELECT s.compositeKey, s.json FROM statuses s
+           INNER JOIN statuses_reblogs sr ON s.compositeKey = sr.compositeKey
+           WHERE sr.original_uri = ?;`,
           { bind: [statusUri], returnValue: 'resultRows' },
         ) as (string | number)[][]
 

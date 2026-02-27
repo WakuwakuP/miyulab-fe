@@ -182,6 +182,22 @@ export function handleMigrationWrite(
             entityStatus.mentions,
           )
         }
+
+        // reblogs（元投稿の URI が存在する場合のみ）
+        if (cols.is_reblog === 1 && cols.reblog_of_uri) {
+          db.exec(
+            `INSERT OR REPLACE INTO statuses_reblogs (compositeKey, original_uri, reblogger_acct, reblogged_at_ms)
+             VALUES (?, ?, ?, ?);`,
+            {
+              bind: [
+                effectiveCompositeKey,
+                cols.reblog_of_uri,
+                cols.account_acct,
+                s.created_at_ms,
+              ],
+            },
+          )
+        }
       }
       db.exec('COMMIT;')
     } catch (e) {

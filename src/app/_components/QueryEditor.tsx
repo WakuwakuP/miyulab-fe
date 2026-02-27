@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import { RiCheckLine, RiClipboardLine } from 'react-icons/ri'
 import {
   ALIAS_TO_TABLE,
   getDistinctJsonValues,
@@ -17,10 +18,10 @@ import {
   searchDistinctColumnValues,
   validateCustomQuery,
 } from 'util/db/sqlite/statusStore'
-import { upgradeQueryToV2 } from 'util/queryBuilder'
 
 type QueryEditorProps = {
   onChange: (value: string) => void
+  onCopyExplain?: () => Promise<void>
   value: string
 }
 
@@ -34,15 +35,21 @@ type QueryEditorProps = {
  * DB 内の実データ値の補完候補を表示する。
  * SQL キーワード・関数の補完も提供する。
  */
-export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
+export const QueryEditor = ({
+  onChange,
+  onCopyExplain,
+  value,
+}: QueryEditorProps) => {
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [showSuggestions, setShowSuggestions] = useState(false)
   const [validationError, setValidationError] = useState<string | null>(null)
   const [isValidating, setIsValidating] = useState(false)
   const [dynamicJsonPaths, setDynamicJsonPaths] = useState<string[]>([])
+  const [explainCopied, setExplainCopied] = useState(false)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const validationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const explainTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   /** 比較演算子の補完候補 */
   const comparisonOperators = useMemo(
@@ -69,6 +76,32 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
   useEffect(() => {
     getJsonKeysFromSample(20).then(setDynamicJsonPaths)
   }, [])
+
+  // explainTimerRef のクリーンアップ
+  useEffect(() => {
+    return () => {
+      if (explainTimerRef.current != null) {
+        clearTimeout(explainTimerRef.current)
+      }
+    }
+  }, [])
+
+  const handleCopyExplain = useCallback(async () => {
+    if (!onCopyExplain) return
+    try {
+      await onCopyExplain()
+      setExplainCopied(true)
+      if (explainTimerRef.current != null) {
+        clearTimeout(explainTimerRef.current)
+      }
+      explainTimerRef.current = setTimeout(() => {
+        setExplainCopied(false)
+        explainTimerRef.current = null
+      }, 2000)
+    } catch (error) {
+      console.error('Failed to copy EXPLAIN:', error)
+    }
+  }, [onCopyExplain])
 
   // 全ての補完候補を事前に構築
   const allCompletions = useMemo(() => {
@@ -498,22 +531,26 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
         )}
       </div>
 
-      {/* v2 アップグレードボタン */}
-      <div className="flex gap-1">
-        <button
-          className="rounded border border-slate-600 px-2 py-0.5 text-xs hover:bg-slate-700"
-          onClick={() => {
-            const upgraded = upgradeQueryToV2(value)
-            if (upgraded !== value) {
-              onChange(upgraded)
-            }
-          }}
-          title="Convert json_extract() calls to v2 column references"
-          type="button"
-        >
-          ⬆ Upgrade to v2
-        </button>
-      </div>
+      {/* EXPLAIN コピーボタン */}
+      {onCopyExplain && (
+        <div className="flex gap-1">
+          <button
+            className={`flex items-center gap-1 rounded border border-slate-600 px-2 py-0.5 text-xs hover:bg-slate-700 ${
+              explainCopied ? 'text-green-400' : ''
+            }`}
+            onClick={handleCopyExplain}
+            title="EXPLAIN QUERY PLAN をクリップボードにコピー"
+            type="button"
+          >
+            {explainCopied ? (
+              <RiCheckLine size={14} />
+            ) : (
+              <RiClipboardLine size={14} />
+            )}
+            {explainCopied ? 'コピーしました' : 'EXPLAIN コピー'}
+          </button>
+        </div>
+      )}
 
       {/* バリデーション結果 */}
       {isValidating && <p className="text-xs text-gray-500">チェック中...</p>}
