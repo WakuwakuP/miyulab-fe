@@ -56,6 +56,30 @@ const initialTimelineSettings: TimelineSettings = {
   version: 2,
 } as const
 
+/**
+ * 非 Advanced Query モードのタイムラインから customQuery を除去する。
+ *
+ * customQuery が設定されていると useTimelineData が useCustomQueryTimeline に
+ * ルーティングし、LEFT JOIN ベースの重いクエリが実行される。
+ * 通常モードでは個別の設定プロパティ（backendFilter, onlyMedia 等）が正であり、
+ * 型別の最適化された Hook（useFilteredTimeline 等）を使用すべきため、
+ * customQuery は Advanced Query モード時のみ保持する。
+ */
+function cleanupNonAdvancedCustomQuery(
+  settings: TimelineSettings,
+): TimelineSettings {
+  let changed = false
+  const timelines = settings.timelines.map((tl) => {
+    if (!tl.advancedQuery && tl.customQuery != null) {
+      changed = true
+      const { customQuery: _, ...rest } = tl
+      return rest
+    }
+    return tl
+  })
+  return changed ? { ...settings, timelines } : settings
+}
+
 export const TimelineContext = createContext<TimelineSettings>(
   initialTimelineSettings,
 )
@@ -79,13 +103,13 @@ export const TimelineProvider = ({
         const parsed: unknown = JSON.parse(timelineStr)
 
         if (isV2Settings(parsed)) {
-          // V2 形式: そのまま使用
-          setTimelineSettings(parsed)
+          // V2 形式: 非 Advanced Query の customQuery をクリーンアップして使用
+          setTimelineSettings(cleanupNonAdvancedCustomQuery(parsed))
         } else if (isV1Settings(parsed)) {
           // V1 形式: V2 にマイグレーション
           const migrated = migrateV1toV2(parsed)
           console.info('Migrated timeline settings from V1 to V2:', migrated)
-          setTimelineSettings(migrated)
+          setTimelineSettings(cleanupNonAdvancedCustomQuery(migrated))
         } else {
           // 不明な形式: デフォルト設定を使用
           console.warn(
