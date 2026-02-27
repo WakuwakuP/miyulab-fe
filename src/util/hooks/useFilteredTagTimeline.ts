@@ -106,6 +106,7 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
           visibilityFilter,
         } as TimelineConfigV2,
         targetBackendUrls,
+        '', // マテリアライズド・ビューのサブクエリ内ではテーブルエイリアス不要
       ),
     [
       onlyMedia,
@@ -150,48 +151,48 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
       const binds: (string | number)[] = []
 
       if (tagMode === 'or') {
-        // OR: いずれかのタグを含む
+        // OR: いずれかのタグを含む（tag_entries サブクエリで高速絞り込み）
         const whereConditions = [
-          `sbt.tag IN (${tagPlaceholders})`,
-          `sb.backendUrl IN (${backendPlaceholders})`,
+          `tag IN (${tagPlaceholders})`,
+          `backendUrl IN (${backendPlaceholders})`,
           ...filterConditions,
         ]
 
         sql = `
-          SELECT s.compositeKey, MIN(sb.backendUrl) AS backendUrl,
+          SELECT s.compositeKey, tge.backendUrl,
                  s.created_at_ms, s.storedAt, s.json
-          FROM statuses s
-          INNER JOIN statuses_belonging_tags sbt
-            ON s.compositeKey = sbt.compositeKey
-          INNER JOIN statuses_backends sb
-            ON s.compositeKey = sb.compositeKey
-          WHERE ${whereConditions.join('\n            AND ')}
-          GROUP BY s.compositeKey
-          ORDER BY s.created_at_ms DESC
-          LIMIT ?;
+          FROM (
+            SELECT compositeKey, MIN(backendUrl) AS backendUrl
+            FROM tag_entries
+            WHERE ${whereConditions.join('\n              AND ')}
+            GROUP BY compositeKey
+            ORDER BY created_at_ms DESC
+            LIMIT ?
+          ) tge
+          INNER JOIN statuses s ON s.compositeKey = tge.compositeKey;
         `
         binds.push(...tags, ...targetBackendUrls, ...filterBinds, queryLimit)
       } else {
-        // AND: すべてのタグを含む
+        // AND: すべてのタグを含む（tag_entries サブクエリで高速絞り込み）
         const whereConditions = [
-          `sbt.tag IN (${tagPlaceholders})`,
-          `sb.backendUrl IN (${backendPlaceholders})`,
+          `tag IN (${tagPlaceholders})`,
+          `backendUrl IN (${backendPlaceholders})`,
           ...filterConditions,
         ]
 
         sql = `
-          SELECT s.compositeKey, MIN(sb.backendUrl) AS backendUrl,
+          SELECT s.compositeKey, tge.backendUrl,
                  s.created_at_ms, s.storedAt, s.json
-          FROM statuses s
-          INNER JOIN statuses_belonging_tags sbt
-            ON s.compositeKey = sbt.compositeKey
-          INNER JOIN statuses_backends sb
-            ON s.compositeKey = sb.compositeKey
-          WHERE ${whereConditions.join('\n            AND ')}
-          GROUP BY s.compositeKey
-          HAVING COUNT(DISTINCT sbt.tag) = ?
-          ORDER BY s.created_at_ms DESC
-          LIMIT ?;
+          FROM (
+            SELECT compositeKey, MIN(backendUrl) AS backendUrl
+            FROM tag_entries
+            WHERE ${whereConditions.join('\n              AND ')}
+            GROUP BY compositeKey
+            HAVING COUNT(DISTINCT tag) = ?
+            ORDER BY created_at_ms DESC
+            LIMIT ?
+          ) tge
+          INNER JOIN statuses s ON s.compositeKey = tge.compositeKey;
         `
         binds.push(
           ...tags,

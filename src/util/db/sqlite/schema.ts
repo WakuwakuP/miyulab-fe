@@ -13,10 +13,18 @@
  * - statuses_reblogs テーブルを新設（リブログ → 元投稿の関係）
  * - original_uri でリブログ元を追跡し、アクション伝播やカスタムクエリに利用
  *
+ * v6 スキーマでは、タイムライン高速化のためのマテリアライズド・ビューを導入する。
+ * - timeline_entries テーブルを新設（タイムライン用の実体化テーブル）
+ * - tag_entries テーブルを新設（タグ用の実体化テーブル）
+ * - TRIGGER で statuses / statuses_timeline_types / statuses_belonging_tags / statuses_backends と自動同期
+ * - カスタムクエリ用インデックスを追加
+ *
  * 新規テーブル:
  * - statuses_mentions: 投稿内のメンション先ユーザー（多対多）
  * - statuses_backends: 投稿 × バックエンド（多対多） ← v3 で追加
  * - statuses_reblogs: リブログ関係管理 ← v5 で追加
+ * - timeline_entries: タイムライン用マテリアライズド・ビュー ← v6 で追加
+ * - tag_entries: タグ用マテリアライズド・ビュー ← v6 で追加
  * - muted_accounts: ミュートしたアカウント
  * - blocked_instances: ブロックしたインスタンス
  */
@@ -24,7 +32,7 @@
 import type { SchemaDbHandle as DbHandle } from './worker/workerSchema'
 
 /** 現在のスキーマバージョン */
-const SCHEMA_VERSION = 5
+const SCHEMA_VERSION = 6
 
 /**
  * スキーマの初期化・マイグレーション
@@ -43,26 +51,33 @@ export function ensureSchema(handle: DbHandle): void {
   db.exec('BEGIN;')
   try {
     if (currentVersion < 1) {
-      // フレッシュインストール: v5 スキーマを直接作成
-      createSchemaV5(handle)
+      // フレッシュインストール: v6 スキーマを直接作成
+      createSchemaV6(handle)
     } else if (currentVersion < 2) {
-      // v1 → v2 → v3 → v4 → v5 マイグレーション
+      // v1 → v2 → v3 → v4 → v5 → v6 マイグレーション
       migrateV1toV2(handle)
       migrateV2toV3(handle)
       migrateV3toV4(handle)
       migrateV4toV5(handle)
+      migrateV5toV6(handle)
     } else if (currentVersion < 3) {
-      // v2 → v3 → v4 → v5 マイグレーション
+      // v2 → v3 → v4 → v5 → v6 マイグレーション
       migrateV2toV3(handle)
       migrateV3toV4(handle)
       migrateV4toV5(handle)
+      migrateV5toV6(handle)
     } else if (currentVersion < 4) {
-      // v3 → v4 → v5 マイグレーション
+      // v3 → v4 → v5 → v6 マイグレーション
       migrateV3toV4(handle)
       migrateV4toV5(handle)
+      migrateV5toV6(handle)
     } else if (currentVersion < 5) {
-      // v4 → v5 マイグレーション
+      // v4 → v5 → v6 マイグレーション
       migrateV4toV5(handle)
+      migrateV5toV6(handle)
+    } else if (currentVersion < 6) {
+      // v5 → v6 マイグレーション
+      migrateV5toV6(handle)
     }
 
     db.exec(`PRAGMA user_version = ${SCHEMA_VERSION};`)
@@ -74,11 +89,33 @@ export function ensureSchema(handle: DbHandle): void {
 }
 
 // ================================================================
-// v5 フルスキーマ作成（フレッシュインストール用）
+// v6 フルスキーマ作成（フレッシュインストール用）
 // ================================================================
 
 /**
- * v5 スキーマのフル作成（フレッシュインストール用）
+ * v6 スキーマのフル作成（フレッシュインストール用）
+ *
+ * v5 に加え、マテリアライズド・ビュー（timeline_entries, tag_entries）と
+ * 自動同期トリガー、カスタムクエリ用インデックスを含む。
+ */
+function createSchemaV6(handle: DbHandle): void {
+  // v5 までのスキーマを作成
+  createSchemaV5(handle)
+
+  // ============================================
+  // マテリアライズド・ビューテーブル + トリガー + インデックス (v6)
+  // ============================================
+  createMaterializedViewTables(handle)
+  createMaterializedViewTriggers(handle)
+  createCustomQueryIndexes(handle)
+}
+
+// ================================================================
+// v5 スキーマ作成（v6 から内部呼び出し）
+// ================================================================
+
+/**
+ * v5 スキーマのフル作成
  *
  * v4 に加え、リブログ関係を管理する statuses_reblogs テーブルを含む。
  */
@@ -764,5 +801,325 @@ function backfillReblogsV5(handle: DbHandle): void {
     SELECT compositeKey, reblog_of_uri, account_acct, created_at_ms
     FROM statuses
     WHERE is_reblog = 1 AND reblog_of_uri IS NOT NULL AND reblog_of_uri != '';
+  `)
+}
+
+// ================================================================
+// v5 → v6 マイグレーション
+// ================================================================
+
+/**
+ * v5 → v6 マイグレーション
+ *
+ * タイムライン高速化のためのマテリアライズド・ビューを追加し、
+ * 既存データからバックフィル、自動同期トリガーとカスタムクエリ用インデックスを作成する。
+ */
+function migrateV5toV6(handle: DbHandle): void {
+  createMaterializedViewTables(handle)
+  createMaterializedViewTriggers(handle)
+  createCustomQueryIndexes(handle)
+  backfillMaterializedViewsV6(handle)
+}
+
+// ================================================================
+// マテリアライズド・ビュー テーブル作成
+// ================================================================
+
+/**
+ * timeline_entries / tag_entries テーブルとインデックスの作成
+ *
+ * フィルタ用の正規化カラムを含めた実体化テーブルを作成し、
+ * カバーリングインデックスを付与することで読み取りを高速化する。
+ */
+function createMaterializedViewTables(handle: DbHandle): void {
+  const { db } = handle
+
+  // ============================================
+  // timeline_entries（タイムライン用マテリアライズド・ビュー）
+  // ============================================
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS timeline_entries (
+      compositeKey     TEXT NOT NULL,
+      timelineType     TEXT NOT NULL,
+      backendUrl       TEXT NOT NULL,
+      created_at_ms    INTEGER NOT NULL,
+      has_media        INTEGER NOT NULL DEFAULT 0,
+      media_count      INTEGER NOT NULL DEFAULT 0,
+      visibility       TEXT NOT NULL DEFAULT 'public',
+      language         TEXT,
+      is_reblog        INTEGER NOT NULL DEFAULT 0,
+      in_reply_to_id   TEXT,
+      has_spoiler      INTEGER NOT NULL DEFAULT 0,
+      is_sensitive     INTEGER NOT NULL DEFAULT 0,
+      account_acct     TEXT NOT NULL DEFAULT '',
+      PRIMARY KEY (timelineType, backendUrl, compositeKey),
+      FOREIGN KEY (compositeKey) REFERENCES statuses(compositeKey) ON DELETE CASCADE
+    );
+  `)
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_te_cover ON timeline_entries(timelineType, backendUrl, created_at_ms DESC);',
+  )
+
+  // ============================================
+  // tag_entries（タグ用マテリアライズド・ビュー）
+  // ============================================
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS tag_entries (
+      compositeKey     TEXT NOT NULL,
+      tag              TEXT NOT NULL,
+      backendUrl       TEXT NOT NULL,
+      created_at_ms    INTEGER NOT NULL,
+      has_media        INTEGER NOT NULL DEFAULT 0,
+      media_count      INTEGER NOT NULL DEFAULT 0,
+      visibility       TEXT NOT NULL DEFAULT 'public',
+      language         TEXT,
+      is_reblog        INTEGER NOT NULL DEFAULT 0,
+      in_reply_to_id   TEXT,
+      has_spoiler      INTEGER NOT NULL DEFAULT 0,
+      is_sensitive     INTEGER NOT NULL DEFAULT 0,
+      account_acct     TEXT NOT NULL DEFAULT '',
+      PRIMARY KEY (tag, backendUrl, compositeKey),
+      FOREIGN KEY (compositeKey) REFERENCES statuses(compositeKey) ON DELETE CASCADE
+    );
+  `)
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_tge_cover ON tag_entries(tag, backendUrl, created_at_ms DESC);',
+  )
+}
+
+// ================================================================
+// マテリアライズド・ビュー 自動同期トリガー
+// ================================================================
+
+/**
+ * statuses / statuses_timeline_types / statuses_belonging_tags / statuses_backends の
+ * 変更を timeline_entries / tag_entries に自動反映するトリガーを作成する。
+ *
+ * ## トリガー一覧
+ *
+ * - trg_mv_stt_insert: statuses_timeline_types INSERT → timeline_entries に追加
+ * - trg_mv_stt_delete: statuses_timeline_types DELETE → timeline_entries から削除
+ * - trg_mv_sbt_insert: statuses_belonging_tags INSERT → tag_entries に追加
+ * - trg_mv_sbt_delete: statuses_belonging_tags DELETE → tag_entries から削除
+ * - trg_mv_sb_insert: statuses_backends INSERT → 既存の timeline_types/tags に対応する行を追加
+ * - trg_mv_sb_delete: statuses_backends DELETE → 該当 backendUrl の行を削除
+ * - trg_mv_status_update: statuses UPDATE → フィルタカラムを同期
+ */
+function createMaterializedViewTriggers(handle: DbHandle): void {
+  const { db } = handle
+
+  // ----------------------------------------
+  // statuses_timeline_types INSERT → timeline_entries
+  // ----------------------------------------
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS trg_mv_stt_insert
+    AFTER INSERT ON statuses_timeline_types
+    BEGIN
+      INSERT OR IGNORE INTO timeline_entries (
+        compositeKey, timelineType, backendUrl, created_at_ms,
+        has_media, media_count, visibility, language,
+        is_reblog, in_reply_to_id, has_spoiler, is_sensitive, account_acct
+      )
+      SELECT
+        NEW.compositeKey, NEW.timelineType, sb.backendUrl, s.created_at_ms,
+        s.has_media, s.media_count, s.visibility, s.language,
+        s.is_reblog, s.in_reply_to_id, s.has_spoiler, s.is_sensitive, s.account_acct
+      FROM statuses s
+      INNER JOIN statuses_backends sb ON s.compositeKey = sb.compositeKey
+      WHERE s.compositeKey = NEW.compositeKey;
+    END;
+  `)
+
+  // ----------------------------------------
+  // statuses_timeline_types DELETE → timeline_entries
+  // ----------------------------------------
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS trg_mv_stt_delete
+    AFTER DELETE ON statuses_timeline_types
+    BEGIN
+      DELETE FROM timeline_entries
+      WHERE compositeKey = OLD.compositeKey AND timelineType = OLD.timelineType;
+    END;
+  `)
+
+  // ----------------------------------------
+  // statuses_belonging_tags INSERT → tag_entries
+  // ----------------------------------------
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS trg_mv_sbt_insert
+    AFTER INSERT ON statuses_belonging_tags
+    BEGIN
+      INSERT OR IGNORE INTO tag_entries (
+        compositeKey, tag, backendUrl, created_at_ms,
+        has_media, media_count, visibility, language,
+        is_reblog, in_reply_to_id, has_spoiler, is_sensitive, account_acct
+      )
+      SELECT
+        NEW.compositeKey, NEW.tag, sb.backendUrl, s.created_at_ms,
+        s.has_media, s.media_count, s.visibility, s.language,
+        s.is_reblog, s.in_reply_to_id, s.has_spoiler, s.is_sensitive, s.account_acct
+      FROM statuses s
+      INNER JOIN statuses_backends sb ON s.compositeKey = sb.compositeKey
+      WHERE s.compositeKey = NEW.compositeKey;
+    END;
+  `)
+
+  // ----------------------------------------
+  // statuses_belonging_tags DELETE → tag_entries
+  // ----------------------------------------
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS trg_mv_sbt_delete
+    AFTER DELETE ON statuses_belonging_tags
+    BEGIN
+      DELETE FROM tag_entries
+      WHERE compositeKey = OLD.compositeKey AND tag = OLD.tag;
+    END;
+  `)
+
+  // ----------------------------------------
+  // statuses_backends INSERT → timeline_entries + tag_entries
+  // （新しいバックエンドが追加された場合、既存の timeline_types / tags に対応する行を追加）
+  // ----------------------------------------
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS trg_mv_sb_insert
+    AFTER INSERT ON statuses_backends
+    BEGIN
+      INSERT OR IGNORE INTO timeline_entries (
+        compositeKey, timelineType, backendUrl, created_at_ms,
+        has_media, media_count, visibility, language,
+        is_reblog, in_reply_to_id, has_spoiler, is_sensitive, account_acct
+      )
+      SELECT
+        NEW.compositeKey, stt.timelineType, NEW.backendUrl, s.created_at_ms,
+        s.has_media, s.media_count, s.visibility, s.language,
+        s.is_reblog, s.in_reply_to_id, s.has_spoiler, s.is_sensitive, s.account_acct
+      FROM statuses s
+      INNER JOIN statuses_timeline_types stt ON s.compositeKey = stt.compositeKey
+      WHERE s.compositeKey = NEW.compositeKey;
+
+      INSERT OR IGNORE INTO tag_entries (
+        compositeKey, tag, backendUrl, created_at_ms,
+        has_media, media_count, visibility, language,
+        is_reblog, in_reply_to_id, has_spoiler, is_sensitive, account_acct
+      )
+      SELECT
+        NEW.compositeKey, sbt.tag, NEW.backendUrl, s.created_at_ms,
+        s.has_media, s.media_count, s.visibility, s.language,
+        s.is_reblog, s.in_reply_to_id, s.has_spoiler, s.is_sensitive, s.account_acct
+      FROM statuses s
+      INNER JOIN statuses_belonging_tags sbt ON s.compositeKey = sbt.compositeKey
+      WHERE s.compositeKey = NEW.compositeKey;
+    END;
+  `)
+
+  // ----------------------------------------
+  // statuses_backends DELETE → timeline_entries + tag_entries
+  // ----------------------------------------
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS trg_mv_sb_delete
+    AFTER DELETE ON statuses_backends
+    BEGIN
+      DELETE FROM timeline_entries
+      WHERE compositeKey = OLD.compositeKey AND backendUrl = OLD.backendUrl;
+
+      DELETE FROM tag_entries
+      WHERE compositeKey = OLD.compositeKey AND backendUrl = OLD.backendUrl;
+    END;
+  `)
+
+  // ----------------------------------------
+  // statuses UPDATE → フィルタカラムを timeline_entries + tag_entries に同期
+  // ----------------------------------------
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS trg_mv_status_update
+    AFTER UPDATE ON statuses
+    BEGIN
+      UPDATE timeline_entries SET
+        created_at_ms  = NEW.created_at_ms,
+        has_media      = NEW.has_media,
+        media_count    = NEW.media_count,
+        visibility     = NEW.visibility,
+        language       = NEW.language,
+        is_reblog      = NEW.is_reblog,
+        in_reply_to_id = NEW.in_reply_to_id,
+        has_spoiler    = NEW.has_spoiler,
+        is_sensitive   = NEW.is_sensitive,
+        account_acct   = NEW.account_acct
+      WHERE compositeKey = OLD.compositeKey;
+
+      UPDATE tag_entries SET
+        created_at_ms  = NEW.created_at_ms,
+        has_media      = NEW.has_media,
+        media_count    = NEW.media_count,
+        visibility     = NEW.visibility,
+        language       = NEW.language,
+        is_reblog      = NEW.is_reblog,
+        in_reply_to_id = NEW.in_reply_to_id,
+        has_spoiler    = NEW.has_spoiler,
+        is_sensitive   = NEW.is_sensitive,
+        account_acct   = NEW.account_acct
+      WHERE compositeKey = OLD.compositeKey;
+    END;
+  `)
+}
+
+// ================================================================
+// カスタムクエリ用インデックス
+// ================================================================
+
+/**
+ * カスタムクエリ（通知×ステータス結合クエリ等）のパフォーマンス用インデックスを追加する。
+ */
+function createCustomQueryIndexes(handle: DbHandle): void {
+  const { db } = handle
+
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_notifications_acct_type_time ON notifications(account_acct, notification_type, created_at_ms);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_statuses_acct_time ON statuses(account_acct, created_at_ms);',
+  )
+}
+
+// ================================================================
+// マテリアライズド・ビュー バックフィル
+// ================================================================
+
+/**
+ * 既存データから timeline_entries / tag_entries を一括生成するバックフィル
+ */
+function backfillMaterializedViewsV6(handle: DbHandle): void {
+  const { db } = handle
+
+  // timeline_entries のバックフィル
+  db.exec(`
+    INSERT OR IGNORE INTO timeline_entries (
+      compositeKey, timelineType, backendUrl, created_at_ms,
+      has_media, media_count, visibility, language,
+      is_reblog, in_reply_to_id, has_spoiler, is_sensitive, account_acct
+    )
+    SELECT
+      s.compositeKey, stt.timelineType, sb.backendUrl, s.created_at_ms,
+      s.has_media, s.media_count, s.visibility, s.language,
+      s.is_reblog, s.in_reply_to_id, s.has_spoiler, s.is_sensitive, s.account_acct
+    FROM statuses s
+    INNER JOIN statuses_timeline_types stt ON s.compositeKey = stt.compositeKey
+    INNER JOIN statuses_backends sb ON s.compositeKey = sb.compositeKey;
+  `)
+
+  // tag_entries のバックフィル
+  db.exec(`
+    INSERT OR IGNORE INTO tag_entries (
+      compositeKey, tag, backendUrl, created_at_ms,
+      has_media, media_count, visibility, language,
+      is_reblog, in_reply_to_id, has_spoiler, is_sensitive, account_acct
+    )
+    SELECT
+      s.compositeKey, sbt.tag, sb.backendUrl, s.created_at_ms,
+      s.has_media, s.media_count, s.visibility, s.language,
+      s.is_reblog, s.in_reply_to_id, s.has_spoiler, s.is_sensitive, s.account_acct
+    FROM statuses s
+    INNER JOIN statuses_belonging_tags sbt ON s.compositeKey = sbt.compositeKey
+    INNER JOIN statuses_backends sb ON s.compositeKey = sb.compositeKey;
   `)
 }

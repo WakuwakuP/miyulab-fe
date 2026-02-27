@@ -515,6 +515,8 @@ function nullTolerant(condition: string): string {
  * backendUrl ごとにミュートリストが異なるため、
  * backendUrls をパラメータとして受け取る。
  *
+ * @param tableAlias カラム参照に付けるテーブルエイリアス（デフォルト: 's'）。
+ *   マテリアライズド・ビューのサブクエリ内で使用する場合は '' を指定する。
  * @returns SQL 条件文字列とバインド変数の配列
  *
  * @example
@@ -522,7 +524,10 @@ function nullTolerant(condition: string): string {
  * // sql:   "s.account_acct NOT IN (SELECT account_acct FROM muted_accounts WHERE backendUrl IN (?))"
  * // binds: ['https://mastodon.social']
  */
-export function buildMuteCondition(backendUrls: string[]): {
+export function buildMuteCondition(
+  backendUrls: string[],
+  tableAlias = 's',
+): {
   sql: string
   binds: string[]
 } {
@@ -530,10 +535,11 @@ export function buildMuteCondition(backendUrls: string[]): {
     return { binds: [], sql: '1=1' }
   }
 
+  const prefix = tableAlias ? `${tableAlias}.` : ''
   const placeholders = backendUrls.map(() => '?').join(',')
   return {
     binds: [...backendUrls],
-    sql: `s.account_acct NOT IN (
+    sql: `${prefix}account_acct NOT IN (
       SELECT account_acct FROM muted_accounts WHERE backendUrl IN (${placeholders})
     )`,
   }
@@ -544,16 +550,19 @@ export function buildMuteCondition(backendUrls: string[]): {
  *
  * blocked_instances テーブルが空の場合でもクエリは高速に実行される（空テーブルの EXISTS は即座に false）。
  *
+ * @param tableAlias カラム参照に付けるテーブルエイリアス（デフォルト: 's'）。
+ *   マテリアライズド・ビューのサブクエリ内で使用する場合は '' を指定する。
  * @returns SQL 条件文字列（バインド変数なし、静的サブクエリ）
  *
  * @example
  * const sql = buildInstanceBlockCondition()
  * // → "NOT EXISTS (SELECT 1 FROM blocked_instances bi WHERE s.account_acct LIKE '%@' || bi.instance_domain)"
  */
-export function buildInstanceBlockCondition(): string {
+export function buildInstanceBlockCondition(tableAlias = 's'): string {
+  const prefix = tableAlias ? `${tableAlias}.` : ''
   return `NOT EXISTS (
     SELECT 1 FROM blocked_instances bi
-    WHERE s.account_acct LIKE '%@' || REPLACE(REPLACE(bi.instance_domain, '%', '\\%'), '_', '\\_') ESCAPE '\\'
+    WHERE ${prefix}account_acct LIKE '%@' || REPLACE(REPLACE(bi.instance_domain, '%', '\\%'), '_', '\\_') ESCAPE '\\'
   )`
 }
 
