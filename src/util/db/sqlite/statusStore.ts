@@ -417,6 +417,10 @@ export async function getStatusesByCustomQuery(
     joinLines.push(
       'LEFT JOIN statuses_backends sb\n      ON s.compositeKey = sb.compositeKey',
     )
+  if (refs.sr)
+    joinLines.push(
+      'LEFT JOIN statuses_reblogs sr\n      ON s.compositeKey = sr.compositeKey',
+    )
 
   const hasMultiRowJoin = refs.stt || refs.sbt || refs.sm || needSb
   const backendSelect = needSb
@@ -461,7 +465,7 @@ export async function getStatusesByCustomQuery(
  * テーブルカラム / エイリアス一覧（補完用）
  */
 export const QUERY_COMPLETIONS = {
-  aliases: ['s', 'stt', 'sbt', 'sm', 'sb', 'n'],
+  aliases: ['s', 'stt', 'sbt', 'sm', 'sb', 'sr', 'n'],
   columns: {
     n: [
       'compositeKey',
@@ -499,6 +503,7 @@ export const QUERY_COMPLETIONS = {
     sb: ['compositeKey', 'backendUrl', 'local_id'],
     sbt: ['compositeKey', 'tag'],
     sm: ['compositeKey', 'acct'],
+    sr: ['compositeKey', 'original_uri', 'reblogger_acct', 'reblogged_at_ms'],
     stt: ['compositeKey', 'timelineType'],
   },
   examples: [
@@ -589,6 +594,10 @@ export const QUERY_COMPLETIONS = {
         'ふぁぼ・リアクション・ブースト通知と通知元ユーザーの直後の1投稿(3分以内)をまとめて表示する',
       query:
         "n.notification_type IN ('favourite', 'reaction', 'reblog') OR EXISTS (SELECT 1 FROM notifications ntf WHERE ntf.notification_type IN ('favourite', 'reaction', 'reblog') AND ntf.account_acct = s.account_acct AND s.created_at_ms > ntf.created_at_ms AND s.created_at_ms <= ntf.created_at_ms + 180000 AND s.created_at_ms = (SELECT MIN(s2.created_at_ms) FROM statuses s2 WHERE s2.account_acct = ntf.account_acct AND s2.created_at_ms > ntf.created_at_ms AND s2.created_at_ms <= ntf.created_at_ms + 180000))",
+    },
+    {
+      description: '特定ユーザーがリブログした投稿を取得する',
+      query: "sr.reblogger_acct = 'user@example.com'",
     },
   ],
   /** json_extract の `$.` パス補完候補 */
@@ -717,6 +726,8 @@ export async function validateCustomQuery(
             ON s.compositeKey = sm.compositeKey
           LEFT JOIN statuses_backends sb
             ON s.compositeKey = sb.compositeKey
+          LEFT JOIN statuses_reblogs sr
+            ON s.compositeKey = sr.compositeKey
           -- Dummy join: n.* columns resolve to NULL so mixed WHERE clause passes
           LEFT JOIN notifications n
             ON 0 = 1
@@ -724,7 +735,7 @@ export async function validateCustomQuery(
           UNION ALL
           SELECT n.compositeKey, n.created_at_ms
           FROM notifications n
-          -- Dummy joins: s.*/stt.*/sbt.*/sm.*/sb.* columns resolve to NULL
+          -- Dummy joins: s.*/stt.*/sbt.*/sm.*/sb.*/sr.* columns resolve to NULL
           LEFT JOIN statuses s
             ON 0 = 1
           LEFT JOIN statuses_timeline_types stt
@@ -734,6 +745,8 @@ export async function validateCustomQuery(
           LEFT JOIN statuses_mentions sm
             ON 0 = 1
           LEFT JOIN statuses_backends sb
+            ON 0 = 1
+          LEFT JOIN statuses_reblogs sr
             ON 0 = 1
           WHERE (${sanitized})
         )
@@ -749,7 +762,7 @@ export async function validateCustomQuery(
         LIMIT 1;
       `
     } else {
-      // statuses テーブル対象のクエリ（v3: statuses_backends も LEFT JOIN）
+      // statuses テーブル対象のクエリ（v3: statuses_backends, v5: statuses_reblogs も LEFT JOIN）
       sql = `
         EXPLAIN
         SELECT DISTINCT s.compositeKey
@@ -762,6 +775,8 @@ export async function validateCustomQuery(
           ON s.compositeKey = sm.compositeKey
         LEFT JOIN statuses_backends sb
           ON s.compositeKey = sb.compositeKey
+        LEFT JOIN statuses_reblogs sr
+          ON s.compositeKey = sr.compositeKey
         WHERE (${sanitized})
         LIMIT 1;
       `
@@ -931,6 +946,7 @@ const ALLOWED_COLUMN_VALUES: Record<string, string[]> = {
   statuses_backends: ['backendUrl', 'local_id'],
   statuses_belonging_tags: ['tag'],
   statuses_mentions: ['acct'],
+  statuses_reblogs: ['original_uri', 'reblogger_acct'],
   statuses_timeline_types: ['timelineType'],
 }
 
@@ -977,6 +993,13 @@ export const ALIAS_TO_TABLE: Record<
       acct: 'acct',
     },
     table: 'statuses_mentions',
+  },
+  sr: {
+    columns: {
+      original_uri: 'original_uri',
+      reblogger_acct: 'reblogger_acct',
+    },
+    table: 'statuses_reblogs',
   },
   stt: {
     columns: {

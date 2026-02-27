@@ -230,6 +230,22 @@ export function handleUpsertStatus(
 
     upsertMentionsInternal(db, compositeKey, status.mentions)
 
+    // リブログ関係を statuses_reblogs に記録
+    if (cols.is_reblog === 1) {
+      db.exec(
+        `INSERT OR REPLACE INTO statuses_reblogs (compositeKey, original_uri, reblogger_acct, reblogged_at_ms)
+         VALUES (?, ?, ?, ?);`,
+        {
+          bind: [
+            compositeKey,
+            cols.reblog_of_uri ?? '',
+            cols.account_acct,
+            created_at_ms,
+          ],
+        },
+      )
+    }
+
     db.exec('COMMIT;')
   } catch (e) {
     db.exec('ROLLBACK;')
@@ -416,6 +432,22 @@ export function handleBulkUpsertStatuses(
       }
 
       upsertMentionsInternal(db, compositeKey, status.mentions)
+
+      // リブログ関係を statuses_reblogs に記録
+      if (cols.is_reblog === 1) {
+        db.exec(
+          `INSERT OR REPLACE INTO statuses_reblogs (compositeKey, original_uri, reblogger_acct, reblogged_at_ms)
+           VALUES (?, ?, ?, ?);`,
+          {
+            bind: [
+              compositeKey,
+              cols.reblog_of_uri ?? '',
+              cols.account_acct,
+              created_at_ms,
+            ],
+          },
+        )
+      }
     }
     db.exec('COMMIT;')
   } catch (e) {
@@ -613,10 +645,12 @@ export function handleUpdateStatusAction(
         }
       }
 
-      // この Status を reblog として持つ他の Status も更新
+      // この Status を reblog として持つ他の Status も更新（statuses_reblogs 経由）
       if (statusUri) {
         const relatedRows = db.exec(
-          'SELECT compositeKey, json FROM statuses WHERE reblog_of_uri = ?;',
+          `SELECT s.compositeKey, s.json FROM statuses s
+           INNER JOIN statuses_reblogs sr ON s.compositeKey = sr.compositeKey
+           WHERE sr.original_uri = ?;`,
           { bind: [statusUri], returnValue: 'resultRows' },
         ) as (string | number)[][]
 

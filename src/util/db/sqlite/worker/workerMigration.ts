@@ -182,6 +182,22 @@ export function handleMigrationWrite(
             entityStatus.mentions,
           )
         }
+
+        // reblogs
+        if (cols.is_reblog === 1) {
+          db.exec(
+            `INSERT OR REPLACE INTO statuses_reblogs (compositeKey, original_uri, reblogger_acct, reblogged_at_ms)
+             VALUES (?, ?, ?, ?);`,
+            {
+              bind: [
+                effectiveCompositeKey,
+                cols.reblog_of_uri ?? '',
+                cols.account_acct,
+                s.created_at_ms,
+              ],
+            },
+          )
+        }
       }
       db.exec('COMMIT;')
     } catch (e) {
