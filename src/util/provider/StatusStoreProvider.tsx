@@ -177,8 +177,8 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
     const retryState = { count: 0 }
 
     const onError = (stream: WebSocketInterface) => {
-      return (err: Error) => {
-        console.warn('userStreaming error:', err.message)
+      return (err: Error | undefined) => {
+        console.warn('userStreaming error:', err?.message ?? 'unknown error')
         stream.stop()
 
         retryState.count += 1
@@ -245,12 +245,13 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
         .then((stream) => {
           const handlers = createStreamHandlers(app, index)
 
+          // エラーハンドラを最初に登録して "Unhandled error" を防止する
+          stream.on('error', handlers.onError(stream))
+          stream.on('connect', handlers.onConnect)
           stream.on('update', handlers.onUpdate)
           stream.on('status_update', handlers.onStatusUpdate)
           stream.on('notification', handlers.onNotification)
           stream.on('delete', handlers.onDelete)
-          stream.on('error', handlers.onError(stream))
-          stream.on('connect', handlers.onConnect)
 
           streamsRef.current.set(backendUrl, stream)
         })
