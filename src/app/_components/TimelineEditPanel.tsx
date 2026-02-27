@@ -17,12 +17,14 @@ import {
 type TimelineEditPanelProps = {
   config: TimelineConfigV2
   onCancel: () => void
+  onCopyExplain?: () => Promise<void>
   onSave: (updates: Partial<TimelineConfigV2>) => void
 }
 
 export const TimelineEditPanel = ({
   config,
   onCancel,
+  onCopyExplain,
   onSave,
 }: TimelineEditPanelProps) => {
   const [label, setLabel] = useState(config.label ?? '')
@@ -255,7 +257,11 @@ export const TimelineEditPanel = ({
 
       {/* Advanced Query エディタ */}
       {showAdvanced && (
-        <QueryEditor onChange={setCustomQuery} value={customQuery} />
+        <QueryEditor
+          onChange={setCustomQuery}
+          onCopyExplain={onCopyExplain}
+          value={customQuery}
+        />
       )}
 
       {/* Actions */}
