@@ -154,7 +154,10 @@ export const TimelineEditPanel = ({
       advancedQuery: showAdvanced,
       // Advanced Query モードでは backendFilter はクエリに含まれるため all にリセット
       backendFilter: showAdvanced ? { mode: 'all' } : backendFilter,
-      customQuery: customQuery.trim() || undefined,
+      // customQuery は Advanced Query モード時のみ保存する。
+      // 通常モードでは個別の設定プロパティ（backendFilter, onlyMedia 等）が
+      // 正として機能し、型別の最適化された Hook（useFilteredTimeline 等）を使用する。
+      customQuery: showAdvanced ? customQuery.trim() || undefined : undefined,
       label: label.trim() || undefined,
       onlyMedia,
       tagConfig,
