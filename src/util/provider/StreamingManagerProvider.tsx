@@ -197,7 +197,8 @@ export const StreamingManagerProvider = ({
         }
 
         // stop() が WebSocket エラーイベントを発火する場合に備え、
-        // レジストリ確認前にエラーハンドラを登録して "Unhandled error" を防止する
+        // レジストリ確認前にエラーハンドラを登録して "Unhandled error" を防止する。
+        // setupStreamHandlers で正式なハンドラが追加された後はそちらが処理する。
         stream.on('error', () => {})
 
         // レジストリにまだ必要か確認（非同期処理中に syncStreamsEvent が発火している可能性）
