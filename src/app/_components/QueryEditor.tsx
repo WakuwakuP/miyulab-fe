@@ -17,7 +17,6 @@ import {
   searchDistinctColumnValues,
   validateCustomQuery,
 } from 'util/db/sqlite/statusStore'
-import { upgradeQueryToV2 } from 'util/queryBuilder'
 
 type QueryEditorProps = {
   onChange: (value: string) => void
@@ -496,23 +495,6 @@ export const QueryEditor = ({ onChange, value }: QueryEditorProps) => {
             ))}
           </div>
         )}
-      </div>
-
-      {/* v2 アップグレードボタン */}
-      <div className="flex gap-1">
-        <button
-          className="rounded border border-slate-600 px-2 py-0.5 text-xs hover:bg-slate-700"
-          onClick={() => {
-            const upgraded = upgradeQueryToV2(value)
-            if (upgraded !== value) {
-              onChange(upgraded)
-            }
-          }}
-          title="Convert json_extract() calls to v2 column references"
-          type="button"
-        >
-          ⬆ Upgrade to v2
-        </button>
       </div>
 
       {/* バリデーション結果 */}
