@@ -154,8 +154,8 @@ export const StreamingManagerProvider = ({
         }
       })
 
-      stream.on('error', (err: Error) => {
-        console.warn(`stream error ${key}:`, err.message)
+      stream.on('error', (err: Error | undefined) => {
+        console.warn(`stream error ${key}:`, err?.message ?? 'unknown error')
         updateStreamStatus(key, 'error')
         scheduleRetry(key, stream)
       })
@@ -195,6 +195,10 @@ export const StreamingManagerProvider = ({
             break
           }
         }
+
+        // stop() が WebSocket エラーイベントを発火する場合に備え、
+        // レジストリ確認前にエラーハンドラを登録して "Unhandled error" を防止する
+        stream.on('error', () => {})
 
         // レジストリにまだ必要か確認（非同期処理中に syncStreamsEvent が発火している可能性）
         const entry = registryRef.current.get(key)
