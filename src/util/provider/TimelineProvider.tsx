@@ -9,7 +9,7 @@ import {
   useState,
 } from 'react'
 
-import type { TimelineConfigV2, TimelineSettings } from 'types/types'
+import type { TimelineSettings } from 'types/types'
 import {
   isV1Settings,
   isV2Settings,
@@ -69,7 +69,7 @@ function cleanupNonAdvancedCustomQuery(
   settings: TimelineSettings,
 ): TimelineSettings {
   let changed = false
-  const timelines = settings.timelines.map((tl: TimelineConfigV2) => {
+  const timelines = settings.timelines.map((tl) => {
     if (!tl.advancedQuery && tl.customQuery != null) {
       changed = true
       const { customQuery: _, ...rest } = tl
