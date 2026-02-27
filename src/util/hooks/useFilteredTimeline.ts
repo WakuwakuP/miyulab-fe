@@ -109,6 +109,7 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
           visibilityFilter,
         } as TimelineConfigV2,
         targetBackendUrls,
+        '', // マテリアライズド・ビューのサブクエリ内ではテーブルエイリアス不要
       ),
     [
       onlyMedia,
@@ -153,25 +154,27 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
 
       const backendPlaceholders = targetBackendUrls.map(() => '?').join(',')
 
-      // WHERE 条件を組み立て
+      // WHERE 条件を組み立て（timeline_entries のカラムを直接参照）
       const whereConditions = [
-        'stt.timelineType = ?',
-        `sb.backendUrl IN (${backendPlaceholders})`,
+        'timelineType = ?',
+        `backendUrl IN (${backendPlaceholders})`,
         ...filterConditions,
       ]
 
+      // timeline_entries サブクエリで高速に絞り込み＆ソートし、
+      // 最後に statuses を結合して json を取得する
       const sql = `
-        SELECT s.compositeKey, MIN(sb.backendUrl) AS backendUrl,
+        SELECT s.compositeKey, te.backendUrl,
                s.created_at_ms, s.storedAt, s.json
-        FROM statuses s
-        INNER JOIN statuses_timeline_types stt
-          ON s.compositeKey = stt.compositeKey
-        INNER JOIN statuses_backends sb
-          ON s.compositeKey = sb.compositeKey
-        WHERE ${whereConditions.join('\n          AND ')}
-        GROUP BY s.compositeKey
-        ORDER BY s.created_at_ms DESC
-        LIMIT ?;
+        FROM (
+          SELECT compositeKey, MIN(backendUrl) AS backendUrl
+          FROM timeline_entries
+          WHERE ${whereConditions.join('\n            AND ')}
+          GROUP BY compositeKey
+          ORDER BY created_at_ms DESC
+          LIMIT ?
+        ) te
+        INNER JOIN statuses s ON s.compositeKey = te.compositeKey;
       `
       const binds: (string | number)[] = [
         configType as DbTimelineType,
