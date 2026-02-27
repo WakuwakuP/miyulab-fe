@@ -9,9 +9,14 @@
  * - statuses_backends テーブルを新設（投稿 × バックエンドの多対多）
  * - 同一 URI の投稿は1行に集約し、複数バックエンドとの関連は statuses_backends で管理
  *
+ * v5 スキーマでは、リブログ関係を専用テーブルで管理する。
+ * - statuses_reblogs テーブルを新設（リブログ → 元投稿の関係）
+ * - original_uri でリブログ元を追跡し、アクション伝播やカスタムクエリに利用
+ *
  * 新規テーブル:
  * - statuses_mentions: 投稿内のメンション先ユーザー（多対多）
  * - statuses_backends: 投稿 × バックエンド（多対多） ← v3 で追加
+ * - statuses_reblogs: リブログ関係管理 ← v5 で追加
  * - muted_accounts: ミュートしたアカウント
  * - blocked_instances: ブロックしたインスタンス
  */
@@ -19,7 +24,7 @@
 import type { SchemaDbHandle as DbHandle } from './worker/workerSchema'
 
 /** 現在のスキーマバージョン */
-const SCHEMA_VERSION = 4
+const SCHEMA_VERSION = 5
 
 /**
  * スキーマの初期化・マイグレーション
@@ -38,20 +43,26 @@ export function ensureSchema(handle: DbHandle): void {
   db.exec('BEGIN;')
   try {
     if (currentVersion < 1) {
-      // フレッシュインストール: v4 スキーマを直接作成
-      createSchemaV4(handle)
+      // フレッシュインストール: v5 スキーマを直接作成
+      createSchemaV5(handle)
     } else if (currentVersion < 2) {
-      // v1 → v2 → v3 → v4 マイグレーション
+      // v1 → v2 → v3 → v4 → v5 マイグレーション
       migrateV1toV2(handle)
       migrateV2toV3(handle)
       migrateV3toV4(handle)
+      migrateV4toV5(handle)
     } else if (currentVersion < 3) {
-      // v2 → v3 → v4 マイグレーション
+      // v2 → v3 → v4 → v5 マイグレーション
       migrateV2toV3(handle)
       migrateV3toV4(handle)
+      migrateV4toV5(handle)
     } else if (currentVersion < 4) {
-      // v3 → v4 マイグレーション
+      // v3 → v4 → v5 マイグレーション
       migrateV3toV4(handle)
+      migrateV4toV5(handle)
+    } else if (currentVersion < 5) {
+      // v4 → v5 マイグレーション
+      migrateV4toV5(handle)
     }
 
     db.exec(`PRAGMA user_version = ${SCHEMA_VERSION};`)
@@ -63,11 +74,30 @@ export function ensureSchema(handle: DbHandle): void {
 }
 
 // ================================================================
-// v4 フルスキーマ作成（フレッシュインストール用）
+// v5 フルスキーマ作成（フレッシュインストール用）
 // ================================================================
 
 /**
- * v4 スキーマのフル作成（フレッシュインストール用）
+ * v5 スキーマのフル作成（フレッシュインストール用）
+ *
+ * v4 に加え、リブログ関係を管理する statuses_reblogs テーブルを含む。
+ */
+function createSchemaV5(handle: DbHandle): void {
+  // v4 までのスキーマを作成
+  createSchemaV4(handle)
+
+  // ============================================
+  // statuses_reblogs (v5: リブログ関係管理)
+  // ============================================
+  createReblogsTable(handle)
+}
+
+// ================================================================
+// v4 スキーマ作成（v5 から内部呼び出し）
+// ================================================================
+
+/**
+ * v4 スキーマ作成
  *
  * v3 に加え、JOIN 最適化用のカバリングインデックスを含む。
  */
@@ -679,4 +709,60 @@ function migrateV3toV4(handle: DbHandle): void {
   db.exec(
     'CREATE INDEX IF NOT EXISTS idx_sb_backend_key ON statuses_backends(backendUrl, compositeKey);',
   )
+}
+
+// ================================================================
+// v4 → v5 マイグレーション
+// ================================================================
+
+/**
+ * v4 → v5 マイグレーション
+ *
+ * リブログ関係を管理する statuses_reblogs テーブルを追加し、
+ * 既存のリブログデータからバックフィルする。
+ */
+function migrateV4toV5(handle: DbHandle): void {
+  createReblogsTable(handle)
+  backfillReblogsV5(handle)
+}
+
+/**
+ * statuses_reblogs テーブルとインデックスの作成
+ */
+function createReblogsTable(handle: DbHandle): void {
+  const { db } = handle
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS statuses_reblogs (
+      compositeKey    TEXT NOT NULL,
+      original_uri    TEXT NOT NULL DEFAULT '',
+      reblogger_acct  TEXT NOT NULL DEFAULT '',
+      reblogged_at_ms INTEGER NOT NULL,
+      PRIMARY KEY (compositeKey),
+      FOREIGN KEY (compositeKey) REFERENCES statuses(compositeKey) ON DELETE CASCADE
+    );
+  `)
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_sr_original_uri ON statuses_reblogs(original_uri);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_sr_reblogger_acct ON statuses_reblogs(reblogger_acct);',
+  )
+}
+
+/**
+ * statuses_reblogs の v5 バックフィル
+ *
+ * 既存の is_reblog = 1 の行から reblog_of_uri / account_acct を抽出して
+ * statuses_reblogs に挿入する。
+ */
+function backfillReblogsV5(handle: DbHandle): void {
+  const { db } = handle
+
+  db.exec(`
+    INSERT OR IGNORE INTO statuses_reblogs (compositeKey, original_uri, reblogger_acct, reblogged_at_ms)
+    SELECT compositeKey, reblog_of_uri, account_acct, created_at_ms
+    FROM statuses
+    WHERE is_reblog = 1 AND reblog_of_uri IS NOT NULL AND reblog_of_uri != '';
+  `)
 }

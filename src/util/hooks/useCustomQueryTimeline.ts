@@ -86,6 +86,7 @@ const EMPTY_STT = `(SELECT NULL AS compositeKey, NULL AS timelineType LIMIT 0)`
 const EMPTY_SBT = `(SELECT NULL AS compositeKey, NULL AS tag LIMIT 0)`
 const EMPTY_SM = `(SELECT NULL AS compositeKey, NULL AS acct LIMIT 0)`
 const EMPTY_SB = `(SELECT NULL AS compositeKey, NULL AS backendUrl, NULL AS local_id LIMIT 0)`
+const EMPTY_SR = `(SELECT NULL AS compositeKey, NULL AS original_uri, NULL AS reblogger_acct, NULL AS reblogged_at_ms LIMIT 0)`
 
 /**
  * カスタム SQL WHERE 句でフィルタした Status / Notification を返す Hook
@@ -209,6 +210,10 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           statusJoinLines.push(
             'LEFT JOIN statuses_backends sb\n              ON s.compositeKey = sb.compositeKey',
           )
+        if (refs.sr)
+          statusJoinLines.push(
+            'LEFT JOIN statuses_reblogs sr\n              ON s.compositeKey = sr.compositeKey',
+          )
         // n.* は空サブクエリでダミー提供（実テーブルスキャンを回避）
         statusJoinLines.push(`LEFT JOIN ${EMPTY_N} n ON 1 = 1`)
 
@@ -223,13 +228,14 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           ? '\n            GROUP BY s.compositeKey'
           : ''
 
-        // notifications サブクエリ: s.*/stt.*/sbt.*/sm.*/sb.* は空サブクエリで提供
+        // notifications サブクエリ: s.*/stt.*/sbt.*/sm.*/sb.*/sr.* は空サブクエリで提供
         const notifDummyJoins = [
           `LEFT JOIN ${EMPTY_S} s ON 1 = 1`,
           `LEFT JOIN ${EMPTY_STT} stt ON 1 = 1`,
           `LEFT JOIN ${EMPTY_SBT} sbt ON 1 = 1`,
           `LEFT JOIN ${EMPTY_SM} sm ON 1 = 1`,
           `LEFT JOIN ${EMPTY_SB} sb ON 1 = 1`,
+          `LEFT JOIN ${EMPTY_SR} sr ON 1 = 1`,
         ].join('\n            ')
 
         // statuses サブクエリ用のメディアフィルタ条件
@@ -356,6 +362,10 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         if (refs.sb)
           joinLines.push(
             'LEFT JOIN statuses_backends sb\n            ON s.compositeKey = sb.compositeKey',
+          )
+        if (refs.sr)
+          joinLines.push(
+            'LEFT JOIN statuses_reblogs sr\n            ON s.compositeKey = sr.compositeKey',
           )
 
         const hasMultiRowJoin = refs.stt || refs.sbt || refs.sm || refs.sb

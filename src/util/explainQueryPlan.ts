@@ -54,6 +54,8 @@ const EMPTY_SBT = '(SELECT NULL AS compositeKey, NULL AS tag LIMIT 0)'
 const EMPTY_SM = '(SELECT NULL AS compositeKey, NULL AS acct LIMIT 0)'
 const EMPTY_SB =
   '(SELECT NULL AS compositeKey, NULL AS backendUrl, NULL AS local_id LIMIT 0)'
+const EMPTY_SR =
+  '(SELECT NULL AS compositeKey, NULL AS original_uri, NULL AS reblogger_acct, NULL AS reblogged_at_ms LIMIT 0)'
 
 /**
  * タイムライン設定に対する EXPLAIN QUERY PLAN を実行し、結果を文字列で返す
@@ -424,6 +426,10 @@ function buildCustomMixedQuery(
     statusJoinLines.push(
       'LEFT JOIN statuses_backends sb\n              ON s.compositeKey = sb.compositeKey',
     )
+  if (refs.sr)
+    statusJoinLines.push(
+      'LEFT JOIN statuses_reblogs sr\n              ON s.compositeKey = sr.compositeKey',
+    )
   statusJoinLines.push(`LEFT JOIN ${EMPTY_N} n ON 1 = 1`)
 
   const statusJoinsClause =
@@ -443,6 +449,7 @@ function buildCustomMixedQuery(
     `LEFT JOIN ${EMPTY_SBT} sbt ON 1 = 1`,
     `LEFT JOIN ${EMPTY_SM} sm ON 1 = 1`,
     `LEFT JOIN ${EMPTY_SB} sb ON 1 = 1`,
+    `LEFT JOIN ${EMPTY_SR} sr ON 1 = 1`,
   ].join('\n            ')
 
   let statusMediaConditions = ''
@@ -518,6 +525,10 @@ function buildCustomStatusQuery(
   if (refs.sb)
     joinLines.push(
       'LEFT JOIN statuses_backends sb\n          ON s.compositeKey = sb.compositeKey',
+    )
+  if (refs.sr)
+    joinLines.push(
+      'LEFT JOIN statuses_reblogs sr\n          ON s.compositeKey = sr.compositeKey',
     )
 
   const hasMultiRowJoin = refs.stt || refs.sbt || refs.sm || refs.sb

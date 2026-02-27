@@ -41,7 +41,7 @@ export function isNotificationQuery(query: string): boolean {
  * クエリが statuses 関連テーブル（エイリアス s, stt, sbt, sm, sb）を参照しているか判定する
  */
 export function isStatusQuery(query: string): boolean {
-  return /\b(s|stt|sbt|sm|sb)\.[a-zA-Z_]\w*/.test(query)
+  return /\b(s|stt|sbt|sm|sb|sr)\.[a-zA-Z_]\w*/.test(query)
 }
 
 /**
@@ -65,6 +65,7 @@ export function detectReferencedAliases(whereClause: string): {
   sbt: boolean
   sm: boolean
   sb: boolean
+  sr: boolean
   n: boolean
 } {
   return {
@@ -72,6 +73,7 @@ export function detectReferencedAliases(whereClause: string): {
     sb: /\bsb\.\w+/.test(whereClause),
     sbt: /\bsbt\.\w+/.test(whereClause),
     sm: /\bsm\.\w+/.test(whereClause),
+    sr: /\bsr\.\w+/.test(whereClause),
     stt: /\bstt\.\w+/.test(whereClause),
   }
 }
