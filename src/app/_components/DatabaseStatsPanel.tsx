@@ -19,6 +19,15 @@ const TABLE_NAMES = [
   'blocked_instances',
 ] as const
 
+/**
+ * json カラムを含む大きなテーブルでは COUNT(*) がフルテーブルスキャンとなり遅い。
+ * INDEXED BY ヒントで小さいインデックスをスキャンさせることで高速化する。
+ */
+const INDEX_HINTS: Partial<Record<(typeof TABLE_NAMES)[number], string>> = {
+  notifications: ' INDEXED BY idx_notifications_storedAt',
+  statuses: ' INDEXED BY idx_statuses_storedAt',
+}
+
 export const DatabaseStatsPanel = () => {
   const [tableCounts, setTableCounts] = useState<TableCount[]>([])
   const [loading, setLoading] = useState(true)
@@ -32,7 +41,8 @@ export const DatabaseStatsPanel = () => {
 
       // Single query using UNION ALL for all table counts
       const sql = TABLE_NAMES.map(
-        (name) => `SELECT '${name}' AS name, COUNT(*) AS cnt FROM ${name}`,
+        (name) =>
+          `SELECT '${name}' AS name, COUNT(*) AS cnt FROM ${name}${INDEX_HINTS[name] ?? ''}`,
       ).join(' UNION ALL ')
 
       const rows = (await handle.execAsync(sql, {
