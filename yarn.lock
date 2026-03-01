@@ -2331,10 +2331,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"globals@npm:^17.3.0":
-  version: 17.3.0
-  resolution: "globals@npm:17.3.0"
-  checksum: 10c0/7f21443ecaa60c6e9ff56d9fb6f10a9b5f9514e7f22e5392f715472bb220ce31c865ebf414a32695150e733fb3e1013e6322dbce70fddd1e066f372b8d55a4b8
+"globals@npm:^17.4.0":
+  version: 17.4.0
+  resolution: "globals@npm:17.4.0"
+  checksum: 10c0/2be9e8c2b9035836f13d420b22f0247a328db82967d3bebfc01126d888ed609305f06c05895914e969653af5c6ba35fd7a0920f3e6c869afa60666c810630feb
   languageName: node
   linkType: hard
 
@@ -2895,7 +2895,7 @@ __metadata:
     dexie-react-hooks: "npm:^4.2.0"
     embla-carousel-react: "npm:^8.6.0"
     emoji-picker-react: "npm:^4.18.0"
-    globals: "npm:^17.3.0"
+    globals: "npm:^17.4.0"
     html-react-parser: "npm:^5.2.17"
     husky: "npm:9.1.7"
     jquery: "npm:^4.0.0"
