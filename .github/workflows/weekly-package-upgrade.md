@@ -1,5 +1,6 @@
 ---
 description: Weekly automated npm package upgrade with AI-driven verification
+timeout-minutes: 60
 on:
   schedule: weekly on sunday around 10pm
   workflow_dispatch:
