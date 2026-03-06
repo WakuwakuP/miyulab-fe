@@ -1483,17 +1483,17 @@ vi.stubGlobal('Worker', MockWorker)
 
 ### 12.1 COOP / COEP ヘッダ
 
-`next.config.mjs` で設定済みの以下のヘッダは **引き続き必要**:
+`next.config.mjs` で設定済みの以下のヘッダ:
 
 ```javascript
 headers: [
-  { key: 'Cross-Origin-Embedder-Policy', value: 'credentialless' },
   { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
 ]
 ```
 
-ただし、Worker + OPFS SAH Pool VFS は `SharedArrayBuffer` に依存 **しない** ため、
-COOP/COEP なしでも OPFS は動作する。ヘッダは他の機能（画像のクロスオリジン読み込み等）のために維持する。
+Worker + OPFS SAH Pool VFS は `SharedArrayBuffer` に依存 **しない** ため、
+`Cross-Origin-Embedder-Policy` (COEP) は不要。
+COEP は YouTube 等のクロスオリジン iframe をブロックするため削除した。
 
 ### 12.2 Worker のオリジン制限
 
