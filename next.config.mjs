@@ -6,13 +6,11 @@ const nextConfig = {
   async headers() {
     return [
       {
-        // COOP/COEP ヘッダを全ルートに適用（SharedArrayBuffer / OPFS に必要）
-        // credentialless を使用してクロスオリジン画像のブロックを回避
+        // COOP ヘッダを全ルートに適用
+        // COEP は削除: OPFS SAH Pool VFS は SharedArrayBuffer に依存しないため不要。
+        // COEP (credentialless) は YouTube 等のクロスオリジン iframe を
+        // ブロックするため除去した。
         headers: [
-          {
-            key: 'Cross-Origin-Embedder-Policy',
-            value: 'credentialless',
-          },
           {
             key: 'Cross-Origin-Opener-Policy',
             value: 'same-origin',
