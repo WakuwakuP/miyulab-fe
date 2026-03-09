@@ -43,18 +43,18 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@biomejs/biome@npm:^2.4.4":
-  version: 2.4.4
-  resolution: "@biomejs/biome@npm:2.4.4"
+"@biomejs/biome@npm:^2.4.6":
+  version: 2.4.6
+  resolution: "@biomejs/biome@npm:2.4.6"
   dependencies:
-    "@biomejs/cli-darwin-arm64": "npm:2.4.4"
-    "@biomejs/cli-darwin-x64": "npm:2.4.4"
-    "@biomejs/cli-linux-arm64": "npm:2.4.4"
-    "@biomejs/cli-linux-arm64-musl": "npm:2.4.4"
-    "@biomejs/cli-linux-x64": "npm:2.4.4"
-    "@biomejs/cli-linux-x64-musl": "npm:2.4.4"
-    "@biomejs/cli-win32-arm64": "npm:2.4.4"
-    "@biomejs/cli-win32-x64": "npm:2.4.4"
+    "@biomejs/cli-darwin-arm64": "npm:2.4.6"
+    "@biomejs/cli-darwin-x64": "npm:2.4.6"
+    "@biomejs/cli-linux-arm64": "npm:2.4.6"
+    "@biomejs/cli-linux-arm64-musl": "npm:2.4.6"
+    "@biomejs/cli-linux-x64": "npm:2.4.6"
+    "@biomejs/cli-linux-x64-musl": "npm:2.4.6"
+    "@biomejs/cli-win32-arm64": "npm:2.4.6"
+    "@biomejs/cli-win32-x64": "npm:2.4.6"
   dependenciesMeta:
     "@biomejs/cli-darwin-arm64":
       optional: true
@@ -74,62 +74,62 @@ __metadata:
       optional: true
   bin:
     biome: bin/biome
-  checksum: 10c0/f2b7620d39caeeb9e0ed070dd1065cc2378626c7fa6ecda3db84b64df4c94fb4909407726044e28c83e8a95121ad389498cc3f0e5be600a421d906ca705b821c
+  checksum: 10c0/3c0aea8069fa4bebde97ff4ef394f0383d2a3a1393a99e0cdea6c1769805cc18c5ea2c02e88779a63327d432c5858522dceae32f6a359d690f5f71f60ea4ca02
   languageName: node
   linkType: hard
 
-"@biomejs/cli-darwin-arm64@npm:2.4.4":
-  version: 2.4.4
-  resolution: "@biomejs/cli-darwin-arm64@npm:2.4.4"
+"@biomejs/cli-darwin-arm64@npm:2.4.6":
+  version: 2.4.6
+  resolution: "@biomejs/cli-darwin-arm64@npm:2.4.6"
   conditions: os=darwin & cpu=arm64
   languageName: node
   linkType: hard
 
-"@biomejs/cli-darwin-x64@npm:2.4.4":
-  version: 2.4.4
-  resolution: "@biomejs/cli-darwin-x64@npm:2.4.4"
+"@biomejs/cli-darwin-x64@npm:2.4.6":
+  version: 2.4.6
+  resolution: "@biomejs/cli-darwin-x64@npm:2.4.6"
   conditions: os=darwin & cpu=x64
   languageName: node
   linkType: hard
 
-"@biomejs/cli-linux-arm64-musl@npm:2.4.4":
-  version: 2.4.4
-  resolution: "@biomejs/cli-linux-arm64-musl@npm:2.4.4"
+"@biomejs/cli-linux-arm64-musl@npm:2.4.6":
+  version: 2.4.6
+  resolution: "@biomejs/cli-linux-arm64-musl@npm:2.4.6"
   conditions: os=linux & cpu=arm64 & libc=musl
   languageName: node
   linkType: hard
 
-"@biomejs/cli-linux-arm64@npm:2.4.4":
-  version: 2.4.4
-  resolution: "@biomejs/cli-linux-arm64@npm:2.4.4"
+"@biomejs/cli-linux-arm64@npm:2.4.6":
+  version: 2.4.6
+  resolution: "@biomejs/cli-linux-arm64@npm:2.4.6"
   conditions: os=linux & cpu=arm64 & libc=glibc
   languageName: node
   linkType: hard
 
-"@biomejs/cli-linux-x64-musl@npm:2.4.4":
-  version: 2.4.4
-  resolution: "@biomejs/cli-linux-x64-musl@npm:2.4.4"
+"@biomejs/cli-linux-x64-musl@npm:2.4.6":
+  version: 2.4.6
+  resolution: "@biomejs/cli-linux-x64-musl@npm:2.4.6"
   conditions: os=linux & cpu=x64 & libc=musl
   languageName: node
   linkType: hard
 
-"@biomejs/cli-linux-x64@npm:2.4.4":
-  version: 2.4.4
-  resolution: "@biomejs/cli-linux-x64@npm:2.4.4"
+"@biomejs/cli-linux-x64@npm:2.4.6":
+  version: 2.4.6
+  resolution: "@biomejs/cli-linux-x64@npm:2.4.6"
   conditions: os=linux & cpu=x64 & libc=glibc
   languageName: node
   linkType: hard
 
-"@biomejs/cli-win32-arm64@npm:2.4.4":
-  version: 2.4.4
-  resolution: "@biomejs/cli-win32-arm64@npm:2.4.4"
+"@biomejs/cli-win32-arm64@npm:2.4.6":
+  version: 2.4.6
+  resolution: "@biomejs/cli-win32-arm64@npm:2.4.6"
   conditions: os=win32 & cpu=arm64
   languageName: node
   linkType: hard
 
-"@biomejs/cli-win32-x64@npm:2.4.4":
-  version: 2.4.4
-  resolution: "@biomejs/cli-win32-x64@npm:2.4.4"
+"@biomejs/cli-win32-x64@npm:2.4.6":
+  version: 2.4.6
+  resolution: "@biomejs/cli-win32-x64@npm:2.4.6"
   conditions: os=win32 & cpu=x64
   languageName: node
   linkType: hard
@@ -1604,12 +1604,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/node@npm:^25.3.3":
-  version: 25.3.3
-  resolution: "@types/node@npm:25.3.3"
+"@types/node@npm:^25.3.5":
+  version: 25.3.5
+  resolution: "@types/node@npm:25.3.5"
   dependencies:
     undici-types: "npm:~7.18.0"
-  checksum: 10c0/63e1d3816a9f4a706ab5d588d18cb98aa824b97748ff585537d327528e9438f58f69f45c7762e7cd3a1ab32c1619f551aabe8075d13172f9273cf10f6d83ab91
+  checksum: 10c0/4cf0834a6f6933bf0aca6afead117ae3db3b8f02a5f7187a24f871db0fb9344e5e46573ba387bc53b7505e1e219c4c535cbe67221ced95bb5ad98573223b19d0
   languageName: node
   linkType: hard
 
@@ -2698,9 +2698,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"lint-staged@npm:^16.3.1":
-  version: 16.3.1
-  resolution: "lint-staged@npm:16.3.1"
+"lint-staged@npm:^16.3.2":
+  version: 16.3.2
+  resolution: "lint-staged@npm:16.3.2"
   dependencies:
     commander: "npm:^14.0.3"
     listr2: "npm:^9.0.5"
@@ -2710,7 +2710,7 @@ __metadata:
     yaml: "npm:^2.8.2"
   bin:
     lint-staged: bin/lint-staged.js
-  checksum: 10c0/9aed98ab759c7acdcfb969c3c09b24597bd6717771ab1f1eec571038713bd0d0ad80304d0a737e5b7b7c64141e4ff9489022448492353f5d1b476223c43f40bc
+  checksum: 10c0/4cbaa85904a912215660ac3c69400b71beabe3fe7e82969cd32c726dbfb04b0f651d0660906215f955c1446ac6b520319e1c7a03c707353a5f038c3d0441a8c3
   languageName: node
   linkType: hard
 
@@ -2761,12 +2761,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"lucide-react@npm:^0.575.0":
-  version: 0.575.0
-  resolution: "lucide-react@npm:0.575.0"
+"lucide-react@npm:^0.577.0":
+  version: 0.577.0
+  resolution: "lucide-react@npm:0.577.0"
   peerDependencies:
     react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
-  checksum: 10c0/4f42e81c88f60c8f904b178c0b28e8ac9a99da8ef24eba5f26ed97b63124304a847baea2f71125629a272df58dbb61cd799ff6a7e4878e5a4c28d8a699b84730
+  checksum: 10c0/f5f56d66d5072b69ab74af2196833e35b888c18d92906d75aff81afc0aeabf00a4092a5b9dbc1bddd250bf54ec3c5d5933c7353589b5cb7efd75b21651cda399
   languageName: node
   linkType: hard
 
@@ -2873,7 +2873,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "miyulab-fe@workspace:."
   dependencies:
-    "@biomejs/biome": "npm:^2.4.4"
+    "@biomejs/biome": "npm:^2.4.6"
     "@dnd-kit/core": "npm:^6.3.1"
     "@dnd-kit/sortable": "npm:^10.0.0"
     "@dnd-kit/utilities": "npm:^3.2.2"
@@ -2881,7 +2881,7 @@ __metadata:
     "@radix-ui/react-slot": "npm:1.2.4"
     "@sqlite.org/sqlite-wasm": "npm:^3.51.2-build6"
     "@tailwindcss/postcss": "npm:^4.2.1"
-    "@types/node": "npm:^25.3.3"
+    "@types/node": "npm:^25.3.5"
     "@types/react": "npm:^19.2.14"
     "@types/react-dom": "npm:^19.2.3"
     "@types/slick-carousel": "npm:^1.6.40"
@@ -2898,21 +2898,21 @@ __metadata:
     html-react-parser: "npm:^5.2.17"
     husky: "npm:9.1.7"
     jquery: "npm:^4.0.0"
-    lint-staged: "npm:^16.3.1"
-    lucide-react: "npm:^0.575.0"
+    lint-staged: "npm:^16.3.2"
+    lucide-react: "npm:^0.577.0"
     megalodon: "npm:^10.2.4"
     next: "npm:^16.1.6"
     node-emoji: "npm:^2.2.0"
-    postcss: "npm:^8.5.6"
+    postcss: "npm:^8.5.8"
     react: "npm:19.2.4"
     react-dom: "npm:19.2.4"
     react-dropzone: "npm:^15.0.0"
     react-hook-form: "npm:^7.71.2"
     react-hot-toast: "npm:^2.6.0"
-    react-icons: "npm:^5.5.0"
+    react-icons: "npm:^5.6.0"
     react-innertext: "npm:^1.1.5"
     react-player: "npm:^3.4.0"
-    react-virtuoso: "npm:^4.18.1"
+    react-virtuoso: "npm:^4.18.3"
     rich-textarea: "npm:0.27.0"
     sharp: "npm:0.34.5"
     slick-carousel: "npm:^1.8.1"
@@ -3117,6 +3117,17 @@ __metadata:
   languageName: node
   linkType: hard
 
+"postcss@npm:^8.5.8":
+  version: 8.5.8
+  resolution: "postcss@npm:8.5.8"
+  dependencies:
+    nanoid: "npm:^3.3.11"
+    picocolors: "npm:^1.1.1"
+    source-map-js: "npm:^1.2.1"
+  checksum: 10c0/dd918f7127ee7c60a0295bae2e72b3787892296e1d1c3c564d7a2a00c68d8df83cadc3178491259daa19ccc54804fb71ed8c937c6787e08d8bd4bedf8d17044c
+  languageName: node
+  linkType: hard
+
 "prop-types@npm:^15.8.1":
   version: 15.8.1
   resolution: "prop-types@npm:15.8.1"
@@ -3181,12 +3192,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"react-icons@npm:^5.5.0":
-  version: 5.5.0
-  resolution: "react-icons@npm:5.5.0"
+"react-icons@npm:^5.6.0":
+  version: 5.6.0
+  resolution: "react-icons@npm:5.6.0"
   peerDependencies:
     react: "*"
-  checksum: 10c0/a24309bfc993c19cbcbfc928157e53a137851822779977b9588f6dd41ffc4d11ebc98b447f4039b0d309a858f0a42980f6bfb4477fb19f9f2d1bc2e190fcf79c
+  checksum: 10c0/addba1ebfd45cdf7f69291d0c93df64fca1271cfdb66df657abd223e3451c73356b035f50e75858627dd182b02129596c79eaaaa45d32eb52658e443a992645c
   languageName: node
   linkType: hard
 
@@ -3287,13 +3298,13 @@ __metadata:
   languageName: node
   linkType: hard
 
-"react-virtuoso@npm:^4.18.1":
-  version: 4.18.1
-  resolution: "react-virtuoso@npm:4.18.1"
+"react-virtuoso@npm:^4.18.3":
+  version: 4.18.3
+  resolution: "react-virtuoso@npm:4.18.3"
   peerDependencies:
     react: ">=16 || >=17 || >= 18 || >= 19"
     react-dom: ">=16 || >=17 || >= 18 || >=19"
-  checksum: 10c0/ed17f580ad8d625ef9e0278ed12190bbadbacf7e39434047b7994e4967ad9d868b66eaee8a66a2890d2964d99d9b266a4657375488c19b1e58de252fb2e8d3e5
+  checksum: 10c0/7a6e318e827a1d200dcd2bfa20055f4fac3605f8ed25d4d9bbc27f28722d0265e1930748f759002b5b3b0902b995075619e921e7d02b4f772e8808b2f4967e35
   languageName: node
   linkType: hard
 
