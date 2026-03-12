@@ -402,13 +402,13 @@ function buildNotificationTypeCondition(
  * バックエンドフィルタ条件を構築する
  *
  * クエリコンテキストに応じて適切なテーブル別名を使用する:
- * - statuses のみ: sb.backendUrl（statuses_backends テーブル）
- * - notifications のみ: n.backendUrl（notifications テーブル）
+ * - statuses のみ: sb.backendUrl（posts_backends テーブル）
+ * - notifications のみ: n.backend_url（notifications 互換サブクエリ）
  * - 混合: 両方の条件を OR で結合
  *
  * - mode: 'all' → 条件なし（全バックエンド対象）
- * - mode: 'single' → {alias}.backend_url = 'xxx'
- * - mode: 'composite' → {alias}.backend_url IN ('xxx', 'yyy')
+ * - mode: 'single' → sb.backendUrl = 'xxx' / n.backend_url = 'xxx'
+ * - mode: 'composite' → sb.backendUrl IN ('xxx', 'yyy') / n.backend_url IN (...)
  */
 function buildBackendFilterCondition(
   filter: BackendFilter | undefined,
@@ -426,13 +426,21 @@ function buildBackendFilterCondition(
     aliases.push('n')
   }
 
+  /**
+   * エイリアスに応じたバックエンドURLカラム名を返す
+   * - sb: posts_backends の実カラム名 backendUrl
+   * - n: 互換サブクエリの仮想カラム名 backend_url
+   */
+  const backendCol = (alias: string) =>
+    alias === 'sb' ? 'backendUrl' : 'backend_url'
+
   if (filter.mode === 'single') {
     const escaped = escapeSqlString(filter.backendUrl)
     if (aliases.length === 1) {
-      return `${aliases[0]}.backend_url = '${escaped}'`
+      return `${aliases[0]}.${backendCol(aliases[0])} = '${escaped}'`
     }
     // 混合クエリ: 両テーブルの条件を OR で結合
-    return `(${aliases.map((a) => `${a}.backend_url = '${escaped}'`).join(' OR ')})`
+    return `(${aliases.map((a) => `${a}.${backendCol(a)} = '${escaped}'`).join(' OR ')})`
   }
 
   if (filter.mode === 'composite' && filter.backendUrls.length > 0) {
@@ -440,10 +448,10 @@ function buildBackendFilterCondition(
       .map((url) => `'${escapeSqlString(url)}'`)
       .join(', ')
     if (aliases.length === 1) {
-      return `${aliases[0]}.backend_url IN (${escapedList})`
+      return `${aliases[0]}.${backendCol(aliases[0])} IN (${escapedList})`
     }
     // 混合クエリ: 両テーブルの条件を OR で結合
-    return `(${aliases.map((a) => `${a}.backend_url IN (${escapedList})`).join(' OR ')})`
+    return `(${aliases.map((a) => `${a}.${backendCol(a)} IN (${escapedList})`).join(' OR ')})`
   }
 
   return null
@@ -743,7 +751,7 @@ export function parseQueryToConfig(
     query.match(/n\.backend_url\s*=\s*'([^']+)'/i)
   const backendInMatch =
     query.match(
-      /sb\.(?:backend_url|backendUrl)\s+IN\s*\(\s*('(?:[^']|'')+' s*(?:,\s*'(?:[^']|'')+' s*)*)\)/i,
+      /sb\.(?:backend_url|backendUrl)\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
     ) ??
     query.match(
       /s\.origin_backend_url\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,

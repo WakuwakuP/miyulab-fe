@@ -788,6 +788,15 @@ export async function validateCustomQuery(
     const isMixed = isMixedQuery(sanitized)
     const isNotifQuery = !isMixed && isNotificationQuery(sanitized)
 
+    // sb. → pb. 変換（useCustomQueryTimeline と同じランタイム変換を適用）
+    const rewritten = sanitized
+      .replace(/\bsb\./g, 'pb.')
+      .replace(/\bpb\.backend_url\b/g, 'pb.backendUrl')
+
+    /** stt 互換サブクエリ: timeline_items + timelines + channel_kinds → (post_id, timelineType) */
+    const sttCompat =
+      '(SELECT ti2.post_id, ck2.code AS timelineType FROM timeline_items ti2 INNER JOIN timelines t2 ON t2.timeline_id = ti2.timeline_id INNER JOIN channel_kinds ck2 ON ck2.channel_kind_id = t2.channel_kind_id WHERE ti2.post_id IS NOT NULL)'
+
     let sql: string
     if (isMixed) {
       sql = `
@@ -804,7 +813,7 @@ export async function validateCustomQuery(
               COALESCE((SELECT ps2.replies_count FROM post_stats ps2 WHERE ps2.post_id = p.post_id), 0) AS replies_count
             FROM posts p
           ) s
-          LEFT JOIN posts_timeline_types stt
+          LEFT JOIN ${sttCompat} stt
             ON s.post_id = stt.post_id
           LEFT JOIN posts_belonging_tags sbt
             ON s.post_id = sbt.post_id
@@ -821,7 +830,7 @@ export async function validateCustomQuery(
               COALESCE((SELECT pr3.acct FROM profiles pr3 WHERE pr3.profile_id = n2.actor_profile_id), '') AS account_acct
             FROM notifications n2
           ) n ON 0 = 1
-          WHERE (${sanitized})
+          WHERE (${rewritten})
           UNION ALL
           SELECT n.notification_id, n.created_at_ms
           FROM (
@@ -837,7 +846,7 @@ export async function validateCustomQuery(
               COALESCE((SELECT pr4.acct FROM profiles pr4 WHERE pr4.profile_id = p2.author_profile_id), '') AS account_acct
             FROM posts p2
           ) s ON 0 = 1
-          LEFT JOIN posts_timeline_types stt
+          LEFT JOIN ${sttCompat} stt
             ON 0 = 1
           LEFT JOIN posts_belonging_tags sbt
             ON 0 = 1
@@ -847,7 +856,7 @@ export async function validateCustomQuery(
             ON 0 = 1
           LEFT JOIN posts_reblogs sr
             ON 0 = 1
-          WHERE (${sanitized})
+          WHERE (${rewritten})
         )
         LIMIT 1;
       `
@@ -862,7 +871,7 @@ export async function validateCustomQuery(
             COALESCE((SELECT pr3.acct FROM profiles pr3 WHERE pr3.profile_id = n2.actor_profile_id), '') AS account_acct
           FROM notifications n2
         ) n
-        WHERE (${sanitized})
+        WHERE (${rewritten})
         LIMIT 1;
       `
     } else {
@@ -879,7 +888,7 @@ export async function validateCustomQuery(
             COALESCE((SELECT ps2.replies_count FROM post_stats ps2 WHERE ps2.post_id = p.post_id), 0) AS replies_count
           FROM posts p
         ) s
-        LEFT JOIN posts_timeline_types stt
+        LEFT JOIN ${sttCompat} stt
           ON s.post_id = stt.post_id
         LEFT JOIN posts_belonging_tags sbt
           ON s.post_id = sbt.post_id
@@ -889,7 +898,7 @@ export async function validateCustomQuery(
           ON s.post_id = pb.post_id
         LEFT JOIN posts_reblogs sr
           ON s.post_id = sr.post_id
-        WHERE (${sanitized})
+        WHERE (${rewritten})
         LIMIT 1;
       `
     }
@@ -924,7 +933,7 @@ export async function getDistinctTimelineTypes(): Promise<string[]> {
   try {
     const handle = await getSqliteDb()
     const rows = (await handle.execAsync(
-      'SELECT DISTINCT timelineType FROM posts_timeline_types ORDER BY timelineType;',
+      'SELECT DISTINCT ck.code FROM timelines t INNER JOIN channel_kinds ck ON ck.channel_kind_id = t.channel_kind_id ORDER BY ck.code;',
       { returnValue: 'resultRows' },
     )) as string[][]
     return rows.map((r) => r[0])
@@ -940,13 +949,13 @@ export async function getDistinctTimelineTypes(): Promise<string[]> {
  */
 /** 許可リスト（安全なテーブル＋カラムの組み合わせ） */
 const ALLOWED_COLUMN_VALUES: Record<string, string[]> = {
+  channel_kinds: ['code'],
   notification_types: ['code'],
   posts: ['object_uri', 'language'],
   posts_backends: ['backendUrl', 'local_id'],
   posts_belonging_tags: ['tag'],
   posts_mentions: ['acct'],
   posts_reblogs: ['original_uri', 'reblogger_acct'],
-  posts_timeline_types: ['timelineType'],
   profiles: ['acct'],
   servers: ['base_url'],
   visibility_types: ['code'],
