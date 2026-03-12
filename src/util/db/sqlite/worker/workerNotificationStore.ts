@@ -4,7 +4,14 @@
 
 import type { Entity } from 'megalodon'
 import type { TableName } from '../protocol'
-import { ensureServer, extractNotificationColumns } from '../shared'
+import {
+  ACTION_TO_ENGAGEMENT,
+  ensureProfile,
+  ensureServer,
+  resolveLocalAccountId,
+  resolvePostId,
+  toggleEngagement,
+} from '../shared'
 
 type DbExec = {
   exec: (
@@ -37,40 +44,38 @@ export function handleAddNotification(
   const notification = JSON.parse(notificationJson) as Entity.Notification
   const created_at_ms = new Date(notification.created_at).getTime()
   const now = Date.now()
-  const cols = extractNotificationColumns(notification)
   const serverId = ensureServer(db, backendUrl)
-  const notificationTypeId = resolveNotificationTypeId(
-    db,
-    cols.notification_type,
-  )
+  const notificationTypeId = resolveNotificationTypeId(db, notification.type)
+  const actorProfileId = notification.account
+    ? ensureProfile(db, notification.account)
+    : null
+  const relatedPostId = notification.status
+    ? resolvePostId(db, backendUrl, notification.status.id)
+    : null
 
-  // (backend_url, local_id) で既存チェック
+  // (server_id, local_id) で既存チェック
   const existing = db.exec(
-    'SELECT notification_id FROM notifications WHERE backend_url = ? AND local_id = ?;',
-    { bind: [backendUrl, notification.id], returnValue: 'resultRows' },
+    'SELECT notification_id FROM notifications WHERE server_id = ? AND local_id = ?;',
+    { bind: [serverId, notification.id], returnValue: 'resultRows' },
   ) as number[][]
 
   if (existing.length > 0) {
     const notificationId = existing[0][0]
     db.exec(
       `UPDATE notifications SET
-        created_at_ms        = ?,
-        stored_at            = ?,
-        notification_type    = ?,
         notification_type_id = ?,
-        status_id            = ?,
-        account_acct         = ?,
-        json                 = ?
+        actor_profile_id     = ?,
+        related_post_id      = ?,
+        created_at_ms        = ?,
+        stored_at            = ?
       WHERE notification_id = ?;`,
       {
         bind: [
+          notificationTypeId,
+          actorProfileId,
+          relatedPostId,
           created_at_ms,
           now,
-          cols.notification_type,
-          notificationTypeId,
-          cols.status_id,
-          cols.account_acct,
-          JSON.stringify(notification),
           notificationId,
         ],
       },
@@ -78,22 +83,18 @@ export function handleAddNotification(
   } else {
     db.exec(
       `INSERT INTO notifications (
-        backend_url, server_id, local_id, created_at_ms, stored_at,
-        notification_type, notification_type_id, status_id, account_acct,
-        json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+        server_id, local_id, notification_type_id, actor_profile_id,
+        related_post_id, created_at_ms, stored_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?);`,
       {
         bind: [
-          backendUrl,
           serverId,
           notification.id,
+          notificationTypeId,
+          actorProfileId,
+          relatedPostId,
           created_at_ms,
           now,
-          cols.notification_type,
-          notificationTypeId,
-          cols.status_id,
-          cols.account_acct,
-          JSON.stringify(notification),
         ],
       },
     )
@@ -118,38 +119,39 @@ export function handleBulkAddNotifications(
     for (const nJson of notificationsJson) {
       const notification = JSON.parse(nJson) as Entity.Notification
       const created_at_ms = new Date(notification.created_at).getTime()
-      const cols = extractNotificationColumns(notification)
       const notificationTypeId = resolveNotificationTypeId(
         db,
-        cols.notification_type,
+        notification.type,
       )
+      const actorProfileId = notification.account
+        ? ensureProfile(db, notification.account)
+        : null
+      const relatedPostId = notification.status
+        ? resolvePostId(db, backendUrl, notification.status.id)
+        : null
 
       const existing = db.exec(
-        'SELECT notification_id FROM notifications WHERE backend_url = ? AND local_id = ?;',
-        { bind: [backendUrl, notification.id], returnValue: 'resultRows' },
+        'SELECT notification_id FROM notifications WHERE server_id = ? AND local_id = ?;',
+        { bind: [serverId, notification.id], returnValue: 'resultRows' },
       ) as number[][]
 
       if (existing.length > 0) {
         const notificationId = existing[0][0]
         db.exec(
           `UPDATE notifications SET
-            created_at_ms        = ?,
-            stored_at            = ?,
-            notification_type    = ?,
             notification_type_id = ?,
-            status_id            = ?,
-            account_acct         = ?,
-            json                 = ?
+            actor_profile_id     = ?,
+            related_post_id      = ?,
+            created_at_ms        = ?,
+            stored_at            = ?
           WHERE notification_id = ?;`,
           {
             bind: [
+              notificationTypeId,
+              actorProfileId,
+              relatedPostId,
               created_at_ms,
               now,
-              cols.notification_type,
-              notificationTypeId,
-              cols.status_id,
-              cols.account_acct,
-              JSON.stringify(notification),
               notificationId,
             ],
           },
@@ -157,22 +159,18 @@ export function handleBulkAddNotifications(
       } else {
         db.exec(
           `INSERT INTO notifications (
-            backend_url, server_id, local_id, created_at_ms, stored_at,
-            notification_type, notification_type_id, status_id, account_acct,
-            json
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+            server_id, local_id, notification_type_id, actor_profile_id,
+            related_post_id, created_at_ms, stored_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?);`,
           {
             bind: [
-              backendUrl,
               serverId,
               notification.id,
+              notificationTypeId,
+              actorProfileId,
+              relatedPostId,
               created_at_ms,
               now,
-              cols.notification_type,
-              notificationTypeId,
-              cols.status_id,
-              cols.account_acct,
-              JSON.stringify(notification),
             ],
           },
         )
@@ -194,63 +192,17 @@ export function handleUpdateNotificationStatusAction(
   action: 'reblogged' | 'favourited' | 'bookmarked',
   value: boolean,
 ): HandlerResult {
-  // posts_backends 経由で post_id を解決
-  const pbRows = db.exec(
-    'SELECT post_id FROM posts_backends WHERE backendUrl = ? AND local_id = ?;',
-    { bind: [backendUrl, statusId], returnValue: 'resultRows' },
-  ) as number[][]
-  const postId = pbRows.length > 0 ? pbRows[0][0] : null
+  // 通知関連のステータスの engagement 更新は post_engagements で処理
+  const postId = resolvePostId(db, backendUrl, statusId)
+  if (postId === null) return { changedTables: [] }
 
-  const statusIds: string[] = [statusId]
+  const localAccountId = resolveLocalAccountId(db, backendUrl)
+  if (localAccountId === null) return { changedTables: [] }
 
-  if (postId !== null) {
-    const localIdRows = db.exec(
-      'SELECT local_id FROM posts_backends WHERE post_id = ?;',
-      { bind: [postId], returnValue: 'resultRows' },
-    ) as string[][]
-    for (const r of localIdRows) {
-      if (!statusIds.includes(r[0])) {
-        statusIds.push(r[0])
-      }
-    }
-  }
+  const engagementCode = ACTION_TO_ENGAGEMENT[action]
+  if (!engagementCode) return { changedTables: [] }
 
-  const placeholders = statusIds.map(() => '?').join(',')
-  const rows = db.exec(
-    `SELECT notification_id, json FROM notifications
-     WHERE status_id IN (${placeholders});`,
-    { bind: statusIds, returnValue: 'resultRows' },
-  ) as (string | number)[][]
+  toggleEngagement(db, localAccountId, postId, engagementCode, value)
 
-  const updates: { id: number; json: string }[] = []
-  for (const row of rows) {
-    const notification = JSON.parse(row[1] as string) as Entity.Notification
-    if (notification.status) {
-      ;(notification.status as Record<string, unknown>)[action] = value
-      updates.push({
-        id: row[0] as number,
-        json: JSON.stringify(notification),
-      })
-    }
-  }
-
-  if (updates.length > 0) {
-    db.exec('BEGIN;')
-    try {
-      for (const u of updates) {
-        db.exec(
-          'UPDATE notifications SET json = ? WHERE notification_id = ?;',
-          {
-            bind: [u.json, u.id],
-          },
-        )
-      }
-      db.exec('COMMIT;')
-    } catch (e) {
-      db.exec('ROLLBACK;')
-      throw e
-    }
-  }
-
-  return { changedTables: updates.length > 0 ? ['notifications'] : [] }
+  return { changedTables: ['notifications'] }
 }

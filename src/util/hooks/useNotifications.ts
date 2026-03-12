@@ -3,7 +3,12 @@
 import { useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { NotificationAddAppIndex, TimelineConfigV2 } from 'types/types'
 import { getSqliteDb, subscribe } from 'util/db/sqlite/connection'
-import type { SqliteStoredNotification } from 'util/db/sqlite/notificationStore'
+import {
+  NOTIFICATION_BASE_JOINS,
+  NOTIFICATION_SELECT,
+  rowToStoredNotification,
+  type SqliteStoredNotification,
+} from 'util/db/sqlite/notificationStore'
 import { TIMELINE_QUERY_LIMIT } from 'util/environment'
 import { useQueryDuration } from 'util/hooks/useQueryDuration'
 import { AppsContext } from 'util/provider/AppsProvider'
@@ -78,23 +83,24 @@ export function useNotifications(config?: TimelineConfigV2): {
 
       // バックエンドフィルタ
       const placeholders = targetBackendUrls.map(() => '?').join(',')
-      conditions.push(`backend_url IN (${placeholders})`)
+      conditions.push(`sv.base_url IN (${placeholders})`)
       binds.push(...targetBackendUrls)
 
       // 通知タイプフィルタ
       const notificationFilter = config?.notificationFilter
       if (notificationFilter != null && notificationFilter.length > 0) {
         const typePlaceholders = notificationFilter.map(() => '?').join(',')
-        conditions.push(`notification_type IN (${typePlaceholders})`)
+        conditions.push(`nt.code IN (${typePlaceholders})`)
         binds.push(...notificationFilter)
       }
 
       const whereClause = conditions.join(' AND ')
       const sql = `
-        SELECT notification_id, backend_url, created_at_ms, stored_at, json
-        FROM notifications
+        SELECT ${NOTIFICATION_SELECT}
+        FROM notifications n
+        ${NOTIFICATION_BASE_JOINS}
         WHERE ${whereClause}
-        ORDER BY created_at_ms DESC
+        ORDER BY n.created_at_ms DESC
         LIMIT ?;
       `
       binds.push(queryLimit)
@@ -106,16 +112,9 @@ export function useNotifications(config?: TimelineConfigV2): {
       })) as (string | number)[][]
       recordDuration(performance.now() - start)
 
-      const results: SqliteStoredNotification[] = rows.map((row) => {
-        const notification = JSON.parse(row[4] as string)
-        return {
-          ...notification,
-          backendUrl: row[1] as string,
-          created_at_ms: row[2] as number,
-          notification_id: row[0] as number,
-          storedAt: row[3] as number,
-        }
-      })
+      const results: SqliteStoredNotification[] = rows.map((row) =>
+        rowToStoredNotification(row),
+      )
 
       setNotifications(results)
     } catch (e) {

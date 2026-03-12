@@ -40,29 +40,33 @@ export const Notification = ({
     case 'poll_expired':
       return (
         <div className="ml-1 mt-2 box-border border-b-2 border-l-2 border-teal-300 pl-2">
-          <Status
-            scrolling={scrolling}
-            status={
-              {
-                ...notification.status,
-                appIndex: notification.appIndex,
-              } as StatusAddAppIndex
-            }
-          />
+          {notification.status != null && (
+            <Status
+              scrolling={scrolling}
+              status={
+                {
+                  ...notification.status,
+                  appIndex: notification.appIndex,
+                } as StatusAddAppIndex
+              }
+            />
+          )}
         </div>
       )
     case 'mention':
       return (
         <div className="ml-1 mt-2 box-border border-b-2 border-l-2 border-green-500 pl-2">
-          <Status
-            scrolling={scrolling}
-            status={
-              {
-                ...notification.status,
-                appIndex: notification.appIndex,
-              } as StatusAddAppIndex
-            }
-          />
+          {notification.status != null && (
+            <Status
+              scrolling={scrolling}
+              status={
+                {
+                  ...notification.status,
+                  appIndex: notification.appIndex,
+                } as StatusAddAppIndex
+              }
+            />
+          )}
         </div>
       )
     case 'reblog':
@@ -109,16 +113,18 @@ export const Notification = ({
               </p>
             </div>
           </h3>
-          <Status
-            scrolling={scrolling}
-            small
-            status={
-              {
-                ...notification.status,
-                appIndex: notification.appIndex,
-              } as StatusAddAppIndex
-            }
-          />
+          {notification.status != null && (
+            <Status
+              scrolling={scrolling}
+              small
+              status={
+                {
+                  ...notification.status,
+                  appIndex: notification.appIndex,
+                } as StatusAddAppIndex
+              }
+            />
+          )}
         </div>
       )
     case 'favourite':
@@ -168,16 +174,18 @@ export const Notification = ({
           <div>
             <RiStarFill className="text-4xl text-orange-300" />
           </div>
-          <Status
-            scrolling={scrolling}
-            small
-            status={
-              {
-                ...notification.status,
-                appIndex: notification.appIndex,
-              } as StatusAddAppIndex
-            }
-          />
+          {notification.status != null && (
+            <Status
+              scrolling={scrolling}
+              small
+              status={
+                {
+                  ...notification.status,
+                  appIndex: notification.appIndex,
+                } as StatusAddAppIndex
+              }
+            />
+          )}
         </div>
       )
     case 'reaction':
@@ -249,16 +257,18 @@ export const Notification = ({
               )}
             </div>
           </h3>
-          <Status
-            scrolling={scrolling}
-            small
-            status={
-              {
-                ...notification.status,
-                appIndex: notification.appIndex,
-              } as StatusAddAppIndex
-            }
-          />
+          {notification.status != null && (
+            <Status
+              scrolling={scrolling}
+              small
+              status={
+                {
+                  ...notification.status,
+                  appIndex: notification.appIndex,
+                } as StatusAddAppIndex
+              }
+            />
+          )}
         </div>
       )
     case 'follow':
@@ -358,15 +368,17 @@ export const Notification = ({
     case 'status':
       return (
         <div className="ml-1 mt-2 box-border border-b-2 border-l-2 border-green-500 pl-2">
-          <Status
-            scrolling={scrolling}
-            status={
-              {
-                ...notification.status,
-                appIndex: notification.appIndex,
-              } as StatusAddAppIndex
-            }
-          />
+          {notification.status != null && (
+            <Status
+              scrolling={scrolling}
+              status={
+                {
+                  ...notification.status,
+                  appIndex: notification.appIndex,
+                } as StatusAddAppIndex
+              }
+            />
+          )}
         </div>
       )
     default:

@@ -26,46 +26,49 @@ export function handleEnforceMaxLength(
   db: DbExec,
   maxLength = 100000,
 ): HandlerResult {
-  const timelineTypes = ['home', 'local', 'public', 'tag']
   const changedTables: TableName[] = []
 
   db.exec('BEGIN;')
   try {
-    for (const type of timelineTypes) {
+    // 全 timeline を取得してそれぞれ上限チェック
+    const timelines = db.exec('SELECT timeline_id FROM timelines;', {
+      returnValue: 'resultRows',
+    }) as number[][]
+
+    let postsDeleted = false
+    for (const [timelineId] of timelines) {
       const countRows = db.exec(
-        'SELECT COUNT(*) FROM posts_timeline_types WHERE timelineType = ?;',
-        { bind: [type], returnValue: 'resultRows' },
+        'SELECT COUNT(*) FROM timeline_items WHERE timeline_id = ?;',
+        { bind: [timelineId], returnValue: 'resultRows' },
       ) as number[][]
       const count = countRows[0][0]
 
       if (count > maxLength) {
-        // 1. まず posts_timeline_types から最古のエントリを除去
+        // 1. timeline_items から最古のエントリを除去 (sort_key ASC)
         db.exec(
-          `DELETE FROM posts_timeline_types
-           WHERE timelineType = ?
-             AND post_id IN (
-               SELECT ptt2.post_id
-               FROM posts_timeline_types ptt2
-               INNER JOIN posts p ON p.post_id = ptt2.post_id
-               WHERE ptt2.timelineType = ?
-               ORDER BY p.created_at_ms ASC
-               LIMIT ?
-             );`,
-          { bind: [type, type, count - maxLength] },
-        )
-
-        // 2. どのタイムラインにも属さなくなった孤立 posts を削除
-        db.exec(
-          `DELETE FROM posts
-           WHERE post_id NOT IN (
-             SELECT DISTINCT post_id FROM posts_timeline_types
+          `DELETE FROM timeline_items
+           WHERE timeline_item_id IN (
+             SELECT timeline_item_id
+             FROM timeline_items
+             WHERE timeline_id = ?
+             ORDER BY sort_key ASC
+             LIMIT ?
            );`,
+          { bind: [timelineId, count - maxLength] },
         )
-
-        if (!changedTables.includes('posts')) {
-          changedTables.push('posts')
-        }
+        postsDeleted = true
       }
+    }
+
+    // どのタイムラインにも属さなくなった孤立 posts を削除
+    if (postsDeleted) {
+      db.exec(
+        `DELETE FROM posts
+         WHERE post_id NOT IN (
+           SELECT DISTINCT post_id FROM timeline_items WHERE post_id IS NOT NULL
+         );`,
+      )
+      changedTables.push('posts')
     }
 
     const notifCount = (

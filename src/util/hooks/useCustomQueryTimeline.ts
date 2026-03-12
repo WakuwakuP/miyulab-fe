@@ -7,8 +7,18 @@ import type {
   TimelineConfigV2,
 } from 'types/types'
 import { getSqliteDb, subscribe } from 'util/db/sqlite/connection'
-import type { SqliteStoredNotification } from 'util/db/sqlite/notificationStore'
-import type { SqliteStoredStatus } from 'util/db/sqlite/statusStore'
+import {
+  NOTIFICATION_BASE_JOINS,
+  NOTIFICATION_SELECT,
+  rowToStoredNotification,
+  type SqliteStoredNotification,
+} from 'util/db/sqlite/notificationStore'
+import {
+  rowToStoredStatus,
+  type SqliteStoredStatus,
+  STATUS_BASE_JOINS,
+  STATUS_SELECT,
+} from 'util/db/sqlite/statusStore'
 import { TIMELINE_QUERY_LIMIT } from 'util/environment'
 import { useQueryDuration } from 'util/hooks/useQueryDuration'
 import { AppsContext } from 'util/provider/AppsProvider'
@@ -52,40 +62,71 @@ function hasUnquotedQuestionMark(query: string): boolean {
 }
 
 // ================================================================
+// 互換サブクエリ: 旧カラム名をカスタム WHERE 句で使えるようにする
+// ================================================================
+
+/** posts 互換サブクエリ FROM 句（旧カラム名を後方互換で提供） */
+const STATUS_COMPAT_FROM = `(
+      SELECT p.*,
+        COALESCE((SELECT sv.base_url FROM servers sv WHERE sv.server_id = p.origin_server_id), '') AS origin_backend_url,
+        COALESCE((SELECT pr2.acct FROM profiles pr2 WHERE pr2.profile_id = p.author_profile_id), '') AS account_acct,
+        '' AS account_id,
+        COALESCE((SELECT vt2.code FROM visibility_types vt2 WHERE vt2.visibility_id = p.visibility_id), 'public') AS visibility,
+        NULL AS reblog_of_id,
+        COALESCE((SELECT ps2.favourites_count FROM post_stats ps2 WHERE ps2.post_id = p.post_id), 0) AS favourites_count,
+        COALESCE((SELECT ps2.reblogs_count FROM post_stats ps2 WHERE ps2.post_id = p.post_id), 0) AS reblogs_count,
+        COALESCE((SELECT ps2.replies_count FROM post_stats ps2 WHERE ps2.post_id = p.post_id), 0) AS replies_count
+      FROM posts p
+    ) s`
+
+/** notifications 互換サブクエリ FROM 句（旧カラム名を後方互換で提供） */
+const NOTIF_COMPAT_FROM = `(
+      SELECT n2.*,
+        COALESCE((SELECT sv2.base_url FROM servers sv2 WHERE sv2.server_id = n2.server_id), '') AS backend_url,
+        COALESCE((SELECT nt2.code FROM notification_types nt2 WHERE nt2.notification_type_id = n2.notification_type_id), '') AS notification_type,
+        COALESCE((SELECT pr3.acct FROM profiles pr3 WHERE pr3.profile_id = n2.actor_profile_id), '') AS account_acct
+      FROM notifications n2
+    ) n`
+
+// ================================================================
 // 混合クエリ用の空サブクエリ定数
 // ================================================================
 
 /**
  * ダミー JOIN 用の空サブクエリ定数
  *
- * 混合クエリ（UNION ALL）で対向テーブルのカラムを NULL として提供するために使用する。
+ * 混合クエリで対向テーブルのカラムを NULL として提供するために使用する。
  * 実テーブルへの LEFT JOIN ... ON 0 = 1 はフルスキャンを引き起こすため、
  * 0行のサブクエリで代替することでスキャンを完全に回避する。
  */
 const EMPTY_N = `(SELECT
-      NULL AS notification_id, NULL AS backend_url,
-      NULL AS notification_type, NULL AS status_id,
-      NULL AS account_acct, NULL AS created_at_ms,
-      NULL AS stored_at, NULL AS json
+      NULL AS notification_id, NULL AS server_id, NULL AS local_id,
+      NULL AS notification_type_id, NULL AS actor_profile_id,
+      NULL AS related_post_id, NULL AS created_at_ms,
+      NULL AS stored_at, NULL AS is_read,
+      NULL AS backend_url, NULL AS notification_type, NULL AS account_acct
     LIMIT 0)`
 
 const EMPTY_S = `(SELECT
-      NULL AS post_id, NULL AS origin_backend_url,
-      NULL AS created_at_ms, NULL AS stored_at,
-      NULL AS object_uri, NULL AS account_acct, NULL AS account_id,
-      NULL AS visibility, NULL AS language,
-      NULL AS has_media, NULL AS media_count,
-      NULL AS is_reblog, NULL AS reblog_of_id, NULL AS reblog_of_uri,
-      NULL AS is_sensitive, NULL AS has_spoiler,
-      NULL AS in_reply_to_id,
-      NULL AS favourites_count, NULL AS reblogs_count,
-      NULL AS replies_count, NULL AS json
+      NULL AS post_id, NULL AS object_uri, NULL AS origin_server_id,
+      NULL AS author_profile_id, NULL AS created_at_ms, NULL AS stored_at,
+      NULL AS visibility_id, NULL AS language, NULL AS content_html,
+      NULL AS spoiler_text, NULL AS canonical_url, NULL AS has_media,
+      NULL AS media_count, NULL AS is_reblog, NULL AS reblog_of_uri,
+      NULL AS is_sensitive, NULL AS has_spoiler, NULL AS in_reply_to_id,
+      NULL AS is_local_only, NULL AS edited_at,
+      NULL AS origin_backend_url, NULL AS account_acct, NULL AS account_id,
+      NULL AS visibility, NULL AS reblog_of_id,
+      NULL AS favourites_count, NULL AS reblogs_count, NULL AS replies_count
     LIMIT 0)`
+
+/** stt 互換サブクエリ: timeline_items + timelines + channel_kinds → (post_id, timelineType) */
+const STT_COMPAT = `(SELECT ti2.post_id, ck2.code AS timelineType FROM timeline_items ti2 INNER JOIN timelines t2 ON t2.timeline_id = ti2.timeline_id INNER JOIN channel_kinds ck2 ON ck2.channel_kind_id = t2.channel_kind_id WHERE ti2.post_id IS NOT NULL)`
 
 const EMPTY_STT = `(SELECT NULL AS post_id, NULL AS timelineType LIMIT 0)`
 const EMPTY_SBT = `(SELECT NULL AS post_id, NULL AS tag LIMIT 0)`
 const EMPTY_SM = `(SELECT NULL AS post_id, NULL AS acct LIMIT 0)`
-const EMPTY_SB = `(SELECT NULL AS post_id, NULL AS backend_url, NULL AS local_id LIMIT 0)`
+const EMPTY_SB = `(SELECT NULL AS post_id, NULL AS backendUrl, NULL AS local_id LIMIT 0)`
 const EMPTY_SR = `(SELECT NULL AS post_id, NULL AS original_uri, NULL AS reblogger_acct, NULL AS reblogged_at_ms LIMIT 0)`
 
 /**
@@ -186,17 +227,19 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
 
       if (queryMode === 'mixed') {
         // ============================
-        // 混合クエリ: statuses + notifications を UNION ALL で結合
+        // 混合クエリ: statuses + notifications を別々に取得して JS で統合
         // ============================
-        // 不要な JOIN を除外し、ダミー JOIN は空サブクエリで代替する
-        // （実テーブルへの ON 0 = 1 はフルスキャンを引き起こすため）
         const refs = detectReferencedAliases(sanitized)
+        // sb. 参照を pb. に書き換え（STATUS_BASE_JOINS が pb を提供）
+        const rewrittenWhere = sanitized
+          .replace(/\bsb\./g, 'pb.')
+          .replace(/\bpb\.backend_url\b/g, 'pb.backendUrl')
 
-        // statuses サブクエリ: 参照されているテーブルのみ実 JOIN
+        // --- Status sub-query ---
         const statusJoinLines: string[] = []
         if (refs.stt)
           statusJoinLines.push(
-            'LEFT JOIN posts_timeline_types stt\n              ON s.post_id = stt.post_id',
+            `LEFT JOIN ${STT_COMPAT} stt\n              ON s.post_id = stt.post_id`,
           )
         if (refs.sbt)
           statusJoinLines.push(
@@ -206,10 +249,6 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           statusJoinLines.push(
             'LEFT JOIN posts_mentions sm\n              ON s.post_id = sm.post_id',
           )
-        if (refs.sb)
-          statusJoinLines.push(
-            'LEFT JOIN posts_backends sb\n              ON s.post_id = sb.post_id',
-          )
         if (refs.sr)
           statusJoinLines.push(
             'LEFT JOIN posts_reblogs sr\n              ON s.post_id = sr.post_id',
@@ -217,30 +256,11 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         // n.* は空サブクエリでダミー提供（実テーブルスキャンを回避）
         statusJoinLines.push(`LEFT JOIN ${EMPTY_N} n ON 1 = 1`)
 
-        const statusJoinsClause =
+        const statusExtraJoins =
           statusJoinLines.length > 0
             ? `\n            ${statusJoinLines.join('\n            ')}`
             : ''
 
-        const hasMultiRowJoin = refs.stt || refs.sbt || refs.sm || refs.sb
-        const backendSelect = refs.sb
-          ? 'MIN(sb.backend_url)'
-          : 's.origin_backend_url'
-        const groupByClause = hasMultiRowJoin
-          ? '\n            GROUP BY s.post_id'
-          : ''
-
-        // notifications サブクエリ: s.*/stt.*/sbt.*/sm.*/sb.*/sr.* は空サブクエリで提供
-        const notifDummyJoins = [
-          `LEFT JOIN ${EMPTY_S} s ON 1 = 1`,
-          `LEFT JOIN ${EMPTY_STT} stt ON 1 = 1`,
-          `LEFT JOIN ${EMPTY_SBT} sbt ON 1 = 1`,
-          `LEFT JOIN ${EMPTY_SM} sm ON 1 = 1`,
-          `LEFT JOIN ${EMPTY_SB} sb ON 1 = 1`,
-          `LEFT JOIN ${EMPTY_SR} sr ON 1 = 1`,
-        ].join('\n            ')
-
-        // statuses サブクエリ用のメディアフィルタ条件
         let statusMediaConditions = ''
         const statusMediaBinds: (string | number)[] = []
         if (minMediaCount != null && minMediaCount > 0) {
@@ -250,60 +270,59 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           statusMediaConditions += '\n              AND s.has_media = 1'
         }
 
-        const binds: (string | number)[] = [...statusMediaBinds, queryLimit]
+        const statusSql = `
+          SELECT ${STATUS_SELECT}
+          FROM ${STATUS_COMPAT_FROM}
+          ${STATUS_BASE_JOINS}${statusExtraJoins}
+          WHERE (${rewrittenWhere})${statusMediaConditions}
+          GROUP BY s.post_id
+          ORDER BY s.created_at_ms DESC
+          LIMIT ?;
+        `
 
-        const sql = `
-          SELECT post_id, backendUrl, created_at_ms, stored_at, json, _type
-          FROM (
-            SELECT s.post_id, ${backendSelect} AS backendUrl,
-                   s.created_at_ms, s.stored_at, s.json,
-                   'status' AS _type
-            FROM posts s${statusJoinsClause}
-            WHERE (${sanitized})${statusMediaConditions}${groupByClause}
-            UNION ALL
-            SELECT n.notification_id, n.backend_url,
-                   n.created_at_ms, n.stored_at, n.json,
-                   'notification' AS _type
-            FROM notifications n
+        // --- Notification sub-query ---
+        const notifDummyJoins = [
+          `LEFT JOIN ${EMPTY_S} s ON 1 = 1`,
+          `LEFT JOIN ${EMPTY_STT} stt ON 1 = 1`,
+          `LEFT JOIN ${EMPTY_SBT} sbt ON 1 = 1`,
+          `LEFT JOIN ${EMPTY_SM} sm ON 1 = 1`,
+          `LEFT JOIN ${EMPTY_SB} sb ON 1 = 1`,
+          `LEFT JOIN ${EMPTY_SR} sr ON 1 = 1`,
+        ].join('\n            ')
+
+        const notifSql = `
+          SELECT ${NOTIFICATION_SELECT}
+          FROM ${NOTIF_COMPAT_FROM}
+          ${NOTIFICATION_BASE_JOINS}
             ${notifDummyJoins}
-            WHERE (${sanitized})
-          )
-          ORDER BY created_at_ms DESC
+          WHERE (${sanitized})
+          ORDER BY n.created_at_ms DESC
           LIMIT ?;
         `
 
         const start = performance.now()
-        const rows = (await handle.execAsync(sql, {
-          bind: binds,
+        const statusRows = (await handle.execAsync(statusSql, {
+          bind: [...statusMediaBinds, queryLimit],
           returnValue: 'resultRows',
-        })) as (string | number)[][]
+        })) as (string | number | null)[][]
+        const notifRows = (await handle.execAsync(notifSql, {
+          bind: [queryLimit],
+          returnValue: 'resultRows',
+        })) as (string | number | null)[][]
         recordDuration(performance.now() - start)
 
-        const mixed = rows.map((row) => {
-          const type = row[5] as string
-          if (type === 'notification') {
-            const notification = JSON.parse(row[4] as string)
-            return {
-              ...notification,
-              _type: 'notification' as const,
-              backendUrl: row[1] as string,
-              created_at_ms: row[2] as number,
-              notification_id: row[0] as number,
-              storedAt: row[3] as number,
-            }
-          }
-          const status = JSON.parse(row[4] as string)
-          return {
-            ...status,
-            _type: 'status' as const,
-            backendUrl: row[1] as string,
-            belongingTags: [],
-            created_at_ms: row[2] as number,
-            post_id: row[0] as number,
-            storedAt: row[3] as number,
-            timelineTypes: [],
-          }
-        })
+        const statusResults = statusRows.map((row) => ({
+          ...rowToStoredStatus(row),
+          _type: 'status' as const,
+        }))
+        const notifResults = notifRows.map((row) => ({
+          ...rowToStoredNotification(row),
+          _type: 'notification' as const,
+        }))
+
+        const mixed = [...statusResults, ...notifResults]
+          .sort((a, b) => b.created_at_ms - a.created_at_ms)
+          .slice(0, queryLimit)
 
         setResults(mixed)
       } else if (queryMode === 'notification') {
@@ -313,9 +332,9 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         const binds: (string | number)[] = [queryLimit]
 
         const sql = `
-          SELECT n.notification_id, n.backend_url,
-                 n.created_at_ms, n.stored_at, n.json
-          FROM notifications n
+          SELECT ${NOTIFICATION_SELECT}
+          FROM ${NOTIF_COMPAT_FROM}
+          ${NOTIFICATION_BASE_JOINS}
           WHERE (${sanitized})
           ORDER BY n.created_at_ms DESC
           LIMIT ?;
@@ -325,20 +344,13 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         const rows = (await handle.execAsync(sql, {
           bind: binds,
           returnValue: 'resultRows',
-        })) as (string | number)[][]
+        })) as (string | number | null)[][]
         recordDuration(performance.now() - start)
 
-        const notifResults = rows.map((row) => {
-          const notification = JSON.parse(row[4] as string)
-          return {
-            ...notification,
-            _type: 'notification' as const,
-            backendUrl: row[1] as string,
-            created_at_ms: row[2] as number,
-            notification_id: row[0] as number,
-            storedAt: row[3] as number,
-          }
-        })
+        const notifResults = rows.map((row) => ({
+          ...rowToStoredNotification(row),
+          _type: 'notification' as const,
+        }))
 
         setResults(notifResults)
       } else {
@@ -347,11 +359,15 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         // ============================
         // 参照されているテーブルのみ JOIN する（不要な JOIN を除外）
         const refs = detectReferencedAliases(sanitized)
+        // sb. 参照を pb. に書き換え（STATUS_BASE_JOINS が pb を提供）
+        const rewrittenWhere = sanitized
+          .replace(/\bsb\./g, 'pb.')
+          .replace(/\bpb\.backend_url\b/g, 'pb.backendUrl')
 
         const joinLines: string[] = []
         if (refs.stt)
           joinLines.push(
-            'LEFT JOIN posts_timeline_types stt\n            ON s.post_id = stt.post_id',
+            `LEFT JOIN ${STT_COMPAT} stt\n            ON s.post_id = stt.post_id`,
           )
         if (refs.sbt)
           joinLines.push(
@@ -361,19 +377,11 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           joinLines.push(
             'LEFT JOIN posts_mentions sm\n            ON s.post_id = sm.post_id',
           )
-        if (refs.sb)
-          joinLines.push(
-            'LEFT JOIN posts_backends sb\n            ON s.post_id = sb.post_id',
-          )
         if (refs.sr)
           joinLines.push(
             'LEFT JOIN posts_reblogs sr\n            ON s.post_id = sr.post_id',
           )
 
-        const hasMultiRowJoin = refs.stt || refs.sbt || refs.sm || refs.sb
-        const backendSelect = refs.sb
-          ? 'MIN(sb.backend_url) AS backendUrl'
-          : 's.origin_backend_url'
         const joinsClause =
           joinLines.length > 0
             ? `\n          ${joinLines.join('\n          ')}`
@@ -394,10 +402,11 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
 
         // backendUrl フィルタはクエリ自体に含まれるため自動付与しない
         const sql = `
-          SELECT s.post_id, ${backendSelect},
-                 s.created_at_ms, s.stored_at, s.json
-          FROM posts s${joinsClause}
-          WHERE (${sanitized})${additionalConditions}${hasMultiRowJoin ? '\n          GROUP BY s.post_id' : ''}
+          SELECT ${STATUS_SELECT}
+          FROM ${STATUS_COMPAT_FROM}
+          ${STATUS_BASE_JOINS}${joinsClause}
+          WHERE (${rewrittenWhere})${additionalConditions}
+          GROUP BY s.post_id
           ORDER BY s.created_at_ms DESC
           LIMIT ?;
         `
@@ -406,22 +415,13 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         const rows = (await handle.execAsync(sql, {
           bind: binds,
           returnValue: 'resultRows',
-        })) as (string | number)[][]
+        })) as (string | number | null)[][]
         recordDuration(performance.now() - start)
 
-        const statusResults = rows.map((row) => {
-          const status = JSON.parse(row[4] as string)
-          return {
-            ...status,
-            _type: 'status' as const,
-            backendUrl: row[1] as string,
-            belongingTags: [],
-            created_at_ms: row[2] as number,
-            post_id: row[0] as number,
-            storedAt: row[3] as number,
-            timelineTypes: [],
-          }
-        })
+        const statusResults = rows.map((row) => ({
+          ...rowToStoredStatus(row),
+          _type: 'status' as const,
+        }))
 
         setResults(statusResults)
       }

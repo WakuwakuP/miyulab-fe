@@ -4,7 +4,12 @@ import { useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { StatusAddAppIndex, TimelineConfigV2 } from 'types/types'
 import type { TimelineType as DbTimelineType } from 'util/db/database'
 import { getSqliteDb, subscribe } from 'util/db/sqlite/connection'
-import type { SqliteStoredStatus } from 'util/db/sqlite/statusStore'
+import {
+  rowToStoredStatus,
+  type SqliteStoredStatus,
+  STATUS_BASE_JOINS,
+  STATUS_SELECT,
+} from 'util/db/sqlite/statusStore'
 import { TIMELINE_QUERY_LIMIT } from 'util/environment'
 import { buildFilterConditions } from 'util/hooks/timelineFilterBuilder'
 import { useQueryDuration } from 'util/hooks/useQueryDuration'
@@ -40,7 +45,7 @@ function resolveAppIndex(
  * ## クエリ戦略
  *
  * backendFilter.mode に応じてクエリ対象の backendUrl を決定し、
- * posts_timeline_types テーブルとの JOIN で
+ * timeline_items + timelines + channel_kinds テーブルとの JOIN で
  * DB 側でソート・フィルタを行う。
  *
  * ## v2 スキーマ対応
@@ -109,7 +114,7 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
           visibilityFilter,
         } as TimelineConfigV2,
         targetBackendUrls,
-        '', // マテリアライズド・ビューのサブクエリ内ではテーブルエイリアス不要
+        's', // posts テーブルのエイリアス
       ),
     [
       onlyMedia,
@@ -154,27 +159,25 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
 
       const backendPlaceholders = targetBackendUrls.map(() => '?').join(',')
 
-      // WHERE 条件を組み立て（timeline_entries のカラムを直接参照）
+      // WHERE 条件を組み立て（posts + JOIN テーブルのカラムを参照）
       const whereConditions = [
-        'timelineType = ?',
-        `backend_url IN (${backendPlaceholders})`,
+        'ck.code = ?',
+        `pb.backendUrl IN (${backendPlaceholders})`,
         ...filterConditions,
       ]
 
-      // timeline_entries サブクエリで高速に絞り込み＆ソートし、
-      // 最後に posts を結合して json を取得する
+      // posts を各テーブルと JOIN し、フィルタ・ソート・LIMIT を適用する
       const sql = `
-        SELECT s.post_id, te.backend_url,
-               s.created_at_ms, s.stored_at, s.json
-        FROM (
-          SELECT post_id, MIN(backend_url) AS backend_url
-          FROM timeline_entries
-          WHERE ${whereConditions.join('\n            AND ')}
-          GROUP BY post_id
-          ORDER BY created_at_ms DESC
-          LIMIT ?
-        ) te
-        INNER JOIN posts s ON s.post_id = te.post_id;
+        SELECT ${STATUS_SELECT}
+        FROM posts s
+        ${STATUS_BASE_JOINS}
+        INNER JOIN timeline_items ti ON s.post_id = ti.post_id
+        INNER JOIN timelines t ON t.timeline_id = ti.timeline_id
+        INNER JOIN channel_kinds ck ON ck.channel_kind_id = t.channel_kind_id
+        WHERE ${whereConditions.join('\n          AND ')}
+        GROUP BY s.post_id
+        ORDER BY s.created_at_ms DESC
+        LIMIT ?;
       `
       const binds: (string | number)[] = [
         configType as DbTimelineType,
@@ -190,18 +193,9 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
       })) as (string | number)[][]
       recordDuration(performance.now() - start)
 
-      const results: SqliteStoredStatus[] = rows.map((row) => {
-        const status = JSON.parse(row[4] as string)
-        return {
-          ...status,
-          backendUrl: row[1] as string,
-          belongingTags: [],
-          created_at_ms: row[2] as number,
-          post_id: row[0] as number,
-          storedAt: row[3] as number,
-          timelineTypes: [],
-        }
-      })
+      const results: SqliteStoredStatus[] = rows.map((row) =>
+        rowToStoredStatus(row),
+      )
 
       setStatuses(results)
     } catch (e) {

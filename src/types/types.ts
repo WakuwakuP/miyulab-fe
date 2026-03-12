@@ -74,7 +74,7 @@ export type AccountFilter = {
 export type TimelineType = 'home' | 'local' | 'public' | 'notification' | 'tag'
 
 /**
- * 取得するタイムラインの種類（posts_timeline_types テーブルの値）
+ * 取得するタイムラインの種類（timelines + channel_kinds テーブルの値）
  *
  * TimelineType から 'notification' と 'tag' を除いたサブセット。
  * 通常UIでどのタイムラインを取得するか選択するために使用する。
@@ -156,7 +156,7 @@ export type TimelineConfigV2 = {
   /**
    * カスタム SQL WHERE 句（advanced option）
    *
-   * posts (s), posts_timeline_types (stt),
+   * posts (s), timeline_items/timelines/channel_kinds (stt),
    * posts_belonging_tags (sbt), posts_mentions (sm),
    * posts_backends (sb), notifications (n) テーブルを参照可能。
    * LIMIT / OFFSET は自動設定されるため指定不要。

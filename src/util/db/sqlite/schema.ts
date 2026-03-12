@@ -32,7 +32,7 @@
 import type { SchemaDbHandle as DbHandle } from './worker/workerSchema'
 
 /** 現在のスキーマバージョン */
-const SCHEMA_VERSION = 8
+const SCHEMA_VERSION = 15
 
 /**
  * スキーマの初期化・マイグレーション
@@ -51,8 +51,8 @@ export function ensureSchema(handle: DbHandle): void {
   db.exec('BEGIN;')
   try {
     if (currentVersion < 1) {
-      // フレッシュインストール: v8 スキーマを直接作成
-      createSchemaV8(handle)
+      // フレッシュインストール: v14 スキーマを直接作成
+      createSchemaV14(handle)
     } else if (currentVersion < 2) {
       migrateV1toV2(handle)
       migrateV2toV3(handle)
@@ -61,6 +61,12 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV5toV6(handle)
       migrateV6toV7(handle)
       migrateV7toV8(handle)
+      migrateV8toV9(handle)
+      migrateV9toV10(handle)
+      migrateV10toV11(handle)
+      migrateV11toV12(handle)
+      migrateV12toV13(handle)
+      migrateV13toV14(handle)
     } else if (currentVersion < 3) {
       migrateV2toV3(handle)
       migrateV3toV4(handle)
@@ -68,26 +74,89 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV5toV6(handle)
       migrateV6toV7(handle)
       migrateV7toV8(handle)
+      migrateV8toV9(handle)
+      migrateV9toV10(handle)
+      migrateV10toV11(handle)
+      migrateV11toV12(handle)
+      migrateV12toV13(handle)
+      migrateV13toV14(handle)
     } else if (currentVersion < 4) {
       migrateV3toV4(handle)
       migrateV4toV5(handle)
       migrateV5toV6(handle)
       migrateV6toV7(handle)
       migrateV7toV8(handle)
+      migrateV8toV9(handle)
+      migrateV9toV10(handle)
+      migrateV10toV11(handle)
+      migrateV11toV12(handle)
+      migrateV12toV13(handle)
+      migrateV13toV14(handle)
     } else if (currentVersion < 5) {
       migrateV4toV5(handle)
       migrateV5toV6(handle)
       migrateV6toV7(handle)
       migrateV7toV8(handle)
+      migrateV8toV9(handle)
+      migrateV9toV10(handle)
+      migrateV10toV11(handle)
+      migrateV11toV12(handle)
+      migrateV12toV13(handle)
+      migrateV13toV14(handle)
     } else if (currentVersion < 6) {
       migrateV5toV6(handle)
       migrateV6toV7(handle)
       migrateV7toV8(handle)
+      migrateV8toV9(handle)
+      migrateV9toV10(handle)
+      migrateV10toV11(handle)
+      migrateV11toV12(handle)
+      migrateV12toV13(handle)
+      migrateV13toV14(handle)
     } else if (currentVersion < 7) {
       migrateV6toV7(handle)
       migrateV7toV8(handle)
+      migrateV8toV9(handle)
+      migrateV9toV10(handle)
+      migrateV10toV11(handle)
+      migrateV11toV12(handle)
+      migrateV12toV13(handle)
+      migrateV13toV14(handle)
     } else if (currentVersion < 8) {
       migrateV7toV8(handle)
+      migrateV8toV9(handle)
+      migrateV9toV10(handle)
+      migrateV10toV11(handle)
+      migrateV11toV12(handle)
+      migrateV12toV13(handle)
+      migrateV13toV14(handle)
+    } else if (currentVersion < 9) {
+      migrateV8toV9(handle)
+      migrateV9toV10(handle)
+      migrateV10toV11(handle)
+      migrateV11toV12(handle)
+      migrateV12toV13(handle)
+      migrateV13toV14(handle)
+    } else if (currentVersion < 10) {
+      migrateV9toV10(handle)
+      migrateV10toV11(handle)
+      migrateV11toV12(handle)
+      migrateV12toV13(handle)
+      migrateV13toV14(handle)
+    } else if (currentVersion < 11) {
+      migrateV10toV11(handle)
+      migrateV11toV12(handle)
+      migrateV12toV13(handle)
+      migrateV13toV14(handle)
+    } else if (currentVersion < 12) {
+      migrateV11toV12(handle)
+      migrateV12toV13(handle)
+      migrateV13toV14(handle)
+    } else if (currentVersion < 13) {
+      migrateV12toV13(handle)
+      migrateV13toV14(handle)
+    } else if (currentVersion < 14) {
+      migrateV13toV14(handle)
     }
 
     db.exec(`PRAGMA user_version = ${SCHEMA_VERSION};`)
@@ -99,18 +168,104 @@ export function ensureSchema(handle: DbHandle): void {
 }
 
 // ================================================================
-// v8 フルスキーマ作成（フレッシュインストール用）
+// v14 フルスキーマ作成（フレッシュインストール用）
 // ================================================================
 
 /**
- * v8 スキーマのフル作成（フレッシュインストール用）
+ * v14 スキーマのフル作成（フレッシュインストール用）
+ *
+ * v13 スキーマから posts_timeline_types を廃止し、
+ * timelines + timeline_items + feed_events テーブルを導入。
+ */
+function createSchemaV14(handle: DbHandle): void {
+  createSchemaV13(handle)
+  migrateV13toV14(handle)
+}
+
+// ================================================================
+// v13 フルスキーマ作成（v14 から内部呼び出し）
+// ================================================================
+
+/**
+ * v13 スキーマのフル作成（フレッシュインストール用）
+ *
+ * v12 スキーマから json カラムとレガシーカラムを除去し、
+ * 新規コンテンツカラムを追加。
+ */
+function createSchemaV13(handle: DbHandle): void {
+  createSchemaV12(handle)
+  migrateV12toV13(handle)
+}
+
+// ================================================================
+// v12 フルスキーマ作成（v13 から内部呼び出し）
+// ================================================================
+
+/**
+ * v12 スキーマのフル作成（フレッシュインストール用）
+ *
+ * v11 スキーマからマテリアライズドビューを除去し、代替インデックスを追加。
+ */
+function createSchemaV12(handle: DbHandle): void {
+  createSchemaV11(handle)
+  removeMaterializedViewsV12(handle)
+  createReplacementIndexesV12(handle)
+}
+
+// ================================================================
+// v11 フルスキーマ作成（v12 から内部呼び出し）
+// ================================================================
+
+/**
+ * v11 スキーマのフル作成
+ *
+ * v10 スキーマ + post_engagements テーブル。
+ */
+function createSchemaV11(handle: DbHandle): void {
+  createSchemaV10(handle)
+  createEngagementsTableV11(handle)
+}
+
+// ================================================================
+// v10 フルスキーマ作成（v11 から内部呼び出し）
+// ================================================================
+
+/**
+ * v10 スキーマのフル作成
+ *
+ * v9 スキーマ + 投稿データ正規化テーブル。
+ */
+function createSchemaV10(handle: DbHandle): void {
+  createSchemaV9(handle)
+  createPostNormalizationTablesV10(handle)
+}
+
+// ================================================================
+// v9 フルスキーマ作成（v10 から内部呼び出し）
+// ================================================================
+
+/**
+ * v9 スキーマのフル作成
+ *
+ * v8 スキーマ + profiles 関連テーブル + author_profile_id / actor_profile_id カラム。
+ */
+function createSchemaV9(handle: DbHandle): void {
+  createSchemaV8(handle)
+  createProfileTablesV9(handle)
+  addV9Columns(handle)
+}
+
+// ================================================================
+// v8 フルスキーマ作成（v9 から内部呼び出し）
+// ================================================================
+
+/**
+ * v8 スキーマのフル作成
  *
  * v7 スキーマ + マスターテーブル群 + server_id / visibility_id / notification_type_id カラム。
  */
 function createSchemaV8(handle: DbHandle): void {
-  // v7 ベーススキーマを作成
   createSchemaV7(handle)
-  // v8 マスターテーブル + 新カラムを追加
   createMasterTablesV8(handle)
   addV8Columns(handle)
 }
@@ -1190,8 +1345,978 @@ function migrateV7toV8(handle: DbHandle): void {
 }
 
 // ================================================================
-// v5 スキーマ作成（v6 から内部呼び出し）
+// v9 プロフィールテーブル作成
 // ================================================================
+
+/**
+ * profiles, profile_aliases, profile_fields, local_accounts テーブルを作成する。
+ */
+function createProfileTablesV9(handle: DbHandle): void {
+  const { db } = handle
+
+  // profiles
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS profiles (
+      profile_id      INTEGER PRIMARY KEY,
+      actor_uri       TEXT NOT NULL UNIQUE,
+      home_server_id  INTEGER,
+      acct            TEXT,
+      username        TEXT NOT NULL,
+      domain          TEXT,
+      display_name    TEXT,
+      note_html       TEXT,
+      avatar_url      TEXT,
+      header_url      TEXT,
+      locked          INTEGER NOT NULL DEFAULT 0,
+      bot             INTEGER NOT NULL DEFAULT 0,
+      discoverable    INTEGER,
+      created_at      TEXT,
+      updated_at      TEXT NOT NULL,
+      FOREIGN KEY (home_server_id) REFERENCES servers(server_id)
+    );
+  `)
+  db.exec('CREATE INDEX IF NOT EXISTS idx_profiles_acct ON profiles(acct);')
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_profiles_server ON profiles(home_server_id, profile_id);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_profiles_username ON profiles(username);',
+  )
+
+  // profile_aliases
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS profile_aliases (
+      profile_alias_id  INTEGER PRIMARY KEY,
+      server_id         INTEGER NOT NULL,
+      remote_account_id TEXT NOT NULL,
+      profile_id        INTEGER NOT NULL,
+      fetched_at        TEXT NOT NULL,
+      UNIQUE (server_id, remote_account_id),
+      FOREIGN KEY (server_id) REFERENCES servers(server_id),
+      FOREIGN KEY (profile_id) REFERENCES profiles(profile_id)
+    );
+  `)
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_pa_profile ON profile_aliases(profile_id);',
+  )
+
+  // profile_fields
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS profile_fields (
+      profile_field_id  INTEGER PRIMARY KEY,
+      profile_id        INTEGER NOT NULL,
+      field_name        TEXT NOT NULL,
+      field_value       TEXT NOT NULL,
+      verified_at       TEXT,
+      sort_order        INTEGER NOT NULL,
+      UNIQUE (profile_id, sort_order),
+      FOREIGN KEY (profile_id) REFERENCES profiles(profile_id) ON DELETE CASCADE
+    );
+  `)
+
+  // local_accounts
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS local_accounts (
+      local_account_id        INTEGER PRIMARY KEY,
+      server_id               INTEGER NOT NULL,
+      profile_id              INTEGER NOT NULL,
+      is_default_post_account INTEGER NOT NULL DEFAULT 0,
+      last_authenticated_at   TEXT,
+      UNIQUE (server_id, profile_id),
+      FOREIGN KEY (server_id) REFERENCES servers(server_id),
+      FOREIGN KEY (profile_id) REFERENCES profiles(profile_id)
+    );
+  `)
+}
+
+// ================================================================
+// v9 カラム追加
+// ================================================================
+
+function addV9Columns(handle: DbHandle): void {
+  const { db } = handle
+
+  // posts: author_profile_id
+  db.exec(
+    'ALTER TABLE posts ADD COLUMN author_profile_id INTEGER REFERENCES profiles(profile_id);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_posts_author ON posts(author_profile_id, created_at_ms DESC);',
+  )
+
+  // notifications: actor_profile_id
+  db.exec(
+    'ALTER TABLE notifications ADD COLUMN actor_profile_id INTEGER REFERENCES profiles(profile_id);',
+  )
+}
+
+// ================================================================
+// v8 → v9 マイグレーション
+// ================================================================
+
+/**
+ * v8 → v9 マイグレーション
+ *
+ * profiles 関連テーブルを作成し、既存データからプロフィールを抽出。
+ * posts.author_profile_id / notifications.actor_profile_id を追加・バックフィル。
+ */
+function migrateV8toV9(handle: DbHandle): void {
+  const { db } = handle
+
+  // Step 1: テーブル作成
+  createProfileTablesV9(handle)
+
+  // Step 2: カラム追加
+  addV9Columns(handle)
+
+  // Step 3: 既存データからプロフィールを抽出
+  db.exec(`
+    INSERT OR IGNORE INTO profiles (
+      actor_uri, acct, username, domain, display_name,
+      avatar_url, header_url, locked, bot, updated_at
+    )
+    SELECT DISTINCT
+      json_extract(json, '$.account.url') AS actor_uri,
+      json_extract(json, '$.account.acct') AS acct,
+      json_extract(json, '$.account.username') AS username,
+      CASE
+        WHEN INSTR(json_extract(json, '$.account.acct'), '@') > 0
+        THEN SUBSTR(json_extract(json, '$.account.acct'),
+                    INSTR(json_extract(json, '$.account.acct'), '@') + 1)
+        ELSE NULL
+      END AS domain,
+      json_extract(json, '$.account.display_name') AS display_name,
+      json_extract(json, '$.account.avatar') AS avatar_url,
+      json_extract(json, '$.account.header') AS header_url,
+      COALESCE(json_extract(json, '$.account.locked'), 0) AS locked,
+      COALESCE(json_extract(json, '$.account.bot'), 0) AS bot,
+      datetime('now') AS updated_at
+    FROM posts
+    WHERE json_extract(json, '$.account.url') IS NOT NULL
+      AND json_extract(json, '$.account.url') != '';
+  `)
+
+  // notifications からもプロフィールを抽出
+  db.exec(`
+    INSERT OR IGNORE INTO profiles (
+      actor_uri, acct, username, domain, display_name,
+      avatar_url, header_url, locked, bot, updated_at
+    )
+    SELECT DISTINCT
+      json_extract(json, '$.account.url') AS actor_uri,
+      json_extract(json, '$.account.acct') AS acct,
+      json_extract(json, '$.account.username') AS username,
+      CASE
+        WHEN INSTR(json_extract(json, '$.account.acct'), '@') > 0
+        THEN SUBSTR(json_extract(json, '$.account.acct'),
+                    INSTR(json_extract(json, '$.account.acct'), '@') + 1)
+        ELSE NULL
+      END AS domain,
+      json_extract(json, '$.account.display_name') AS display_name,
+      json_extract(json, '$.account.avatar') AS avatar_url,
+      json_extract(json, '$.account.header') AS header_url,
+      COALESCE(json_extract(json, '$.account.locked'), 0) AS locked,
+      COALESCE(json_extract(json, '$.account.bot'), 0) AS bot,
+      datetime('now') AS updated_at
+    FROM notifications
+    WHERE json_extract(json, '$.account.url') IS NOT NULL
+      AND json_extract(json, '$.account.url') != '';
+  `)
+
+  // Step 4: profile_aliases の生成
+  db.exec(`
+    INSERT OR IGNORE INTO profile_aliases (server_id, remote_account_id, profile_id, fetched_at)
+    SELECT DISTINCT
+      pb.server_id,
+      p.account_id,
+      pr.profile_id,
+      datetime('now')
+    FROM posts p
+    INNER JOIN posts_backends pb ON p.post_id = pb.post_id
+    INNER JOIN profiles pr ON pr.acct = p.account_acct
+    WHERE pb.server_id IS NOT NULL
+      AND p.account_id != '';
+  `)
+
+  // Step 5: posts.author_profile_id をバックフィル
+  db.exec(`
+    UPDATE posts SET author_profile_id = (
+      SELECT pr.profile_id FROM profiles pr WHERE pr.acct = posts.account_acct
+    )
+    WHERE author_profile_id IS NULL;
+  `)
+
+  // Step 6: notifications.actor_profile_id をバックフィル
+  db.exec(`
+    UPDATE notifications SET actor_profile_id = (
+      SELECT pr.profile_id FROM profiles pr WHERE pr.acct = notifications.account_acct
+    )
+    WHERE actor_profile_id IS NULL;
+  `)
+
+  // Step 7: home_server_id の補完
+  db.exec(`
+    UPDATE profiles SET home_server_id = (
+      SELECT s.server_id FROM servers s WHERE s.host = profiles.domain
+    )
+    WHERE domain IS NOT NULL AND home_server_id IS NULL;
+  `)
+}
+
+// ================================================================
+// v10 テーブル作成（投稿データ正規化）
+// ================================================================
+
+/**
+ * v10 で導入するサブテーブルを作成する。
+ * post_media, hashtags, post_hashtags, post_stats,
+ * custom_emojis, polls, poll_options, link_cards, post_links
+ */
+function createPostNormalizationTablesV10(handle: DbHandle): void {
+  const { db } = handle
+
+  // 4-1. post_media
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS post_media (
+      media_id        INTEGER PRIMARY KEY,
+      post_id         INTEGER NOT NULL,
+      media_type_id   INTEGER NOT NULL,
+      remote_media_id TEXT,
+      url             TEXT NOT NULL,
+      preview_url     TEXT,
+      description     TEXT,
+      blurhash        TEXT,
+      width           INTEGER,
+      height          INTEGER,
+      duration_ms     INTEGER,
+      sort_order      INTEGER NOT NULL,
+      is_sensitive    INTEGER NOT NULL DEFAULT 0,
+      UNIQUE (post_id, sort_order),
+      FOREIGN KEY (post_id) REFERENCES posts(post_id) ON DELETE CASCADE,
+      FOREIGN KEY (media_type_id) REFERENCES media_types(media_type_id)
+    );
+  `)
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_post_media_post ON post_media(post_id);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_post_media_type ON post_media(media_type_id);',
+  )
+
+  // 4-2. hashtags
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS hashtags (
+      hashtag_id      INTEGER PRIMARY KEY,
+      normalized_name TEXT NOT NULL UNIQUE,
+      display_name    TEXT NOT NULL
+    );
+  `)
+
+  // 4-3. post_hashtags
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS post_hashtags (
+      post_id    INTEGER NOT NULL,
+      hashtag_id INTEGER NOT NULL,
+      sort_order INTEGER,
+      PRIMARY KEY (post_id, hashtag_id),
+      FOREIGN KEY (post_id) REFERENCES posts(post_id) ON DELETE CASCADE,
+      FOREIGN KEY (hashtag_id) REFERENCES hashtags(hashtag_id)
+    );
+  `)
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_ph_hashtag ON post_hashtags(hashtag_id, post_id);',
+  )
+
+  // 4-4. post_stats
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS post_stats (
+      post_id           INTEGER PRIMARY KEY,
+      replies_count     INTEGER,
+      reblogs_count     INTEGER,
+      favourites_count  INTEGER,
+      reactions_count   INTEGER,
+      quotes_count      INTEGER,
+      fetched_at        TEXT NOT NULL,
+      FOREIGN KEY (post_id) REFERENCES posts(post_id) ON DELETE CASCADE
+    );
+  `)
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_ps_favourites ON post_stats(favourites_count, post_id);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_ps_reblogs ON post_stats(reblogs_count, post_id);',
+  )
+
+  // 4-5. custom_emojis
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS custom_emojis (
+      emoji_id          INTEGER PRIMARY KEY,
+      server_id         INTEGER NOT NULL,
+      shortcode         TEXT NOT NULL,
+      domain            TEXT,
+      image_url         TEXT NOT NULL,
+      static_url        TEXT,
+      visible_in_picker INTEGER NOT NULL DEFAULT 1,
+      UNIQUE (server_id, shortcode),
+      FOREIGN KEY (server_id) REFERENCES servers(server_id)
+    );
+  `)
+
+  // 4-6. polls
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS polls (
+      poll_id       INTEGER PRIMARY KEY,
+      post_id       INTEGER NOT NULL UNIQUE,
+      expires_at    TEXT,
+      multiple      INTEGER NOT NULL DEFAULT 0,
+      votes_count   INTEGER,
+      voters_count  INTEGER,
+      FOREIGN KEY (post_id) REFERENCES posts(post_id) ON DELETE CASCADE
+    );
+  `)
+
+  // 4-7. poll_options
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS poll_options (
+      poll_option_id  INTEGER PRIMARY KEY,
+      poll_id         INTEGER NOT NULL,
+      option_index    INTEGER NOT NULL,
+      title           TEXT NOT NULL,
+      votes_count     INTEGER,
+      UNIQUE (poll_id, option_index),
+      FOREIGN KEY (poll_id) REFERENCES polls(poll_id) ON DELETE CASCADE
+    );
+  `)
+
+  // 4-8. link_cards
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS link_cards (
+      link_card_id  INTEGER PRIMARY KEY,
+      canonical_url TEXT NOT NULL UNIQUE,
+      title         TEXT,
+      description   TEXT,
+      image_url     TEXT,
+      provider_name TEXT,
+      fetched_at    TEXT NOT NULL
+    );
+  `)
+
+  // 4-9. post_links
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS post_links (
+      post_id       INTEGER NOT NULL,
+      link_card_id  INTEGER NOT NULL,
+      url_in_post   TEXT NOT NULL,
+      sort_order    INTEGER,
+      PRIMARY KEY (post_id, link_card_id, url_in_post),
+      FOREIGN KEY (post_id) REFERENCES posts(post_id) ON DELETE CASCADE,
+      FOREIGN KEY (link_card_id) REFERENCES link_cards(link_card_id)
+    );
+  `)
+}
+
+// ================================================================
+// v9 → v10 マイグレーション
+// ================================================================
+
+/**
+ * v9 → v10 マイグレーション
+ *
+ * 投稿データ正規化テーブルを作成し、既存 JSON からバックフィル。
+ */
+function migrateV9toV10(handle: DbHandle): void {
+  const { db } = handle
+
+  // Step 1: テーブル作成
+  createPostNormalizationTablesV10(handle)
+
+  // Step 2: post_media のバックフィル
+  db.exec(`
+    INSERT OR IGNORE INTO post_media (
+      post_id, media_type_id, remote_media_id, url, preview_url,
+      description, blurhash, sort_order, is_sensitive
+    )
+    SELECT
+      p.post_id,
+      COALESCE(
+        (SELECT mt.media_type_id FROM media_types mt
+         WHERE mt.code = json_extract(m.value, '$.type')),
+        (SELECT mt.media_type_id FROM media_types mt WHERE mt.code = 'unknown')
+      ),
+      json_extract(m.value, '$.id'),
+      json_extract(m.value, '$.url'),
+      json_extract(m.value, '$.preview_url'),
+      json_extract(m.value, '$.description'),
+      json_extract(m.value, '$.blurhash'),
+      m.key,
+      p.is_sensitive
+    FROM posts p, json_each(json_extract(p.json, '$.media_attachments')) m
+    WHERE p.has_media = 1;
+  `)
+
+  // Step 3: hashtags / post_hashtags のバックフィル
+  db.exec(`
+    INSERT OR IGNORE INTO hashtags (normalized_name, display_name)
+    SELECT DISTINCT LOWER(tag), tag
+    FROM posts_belonging_tags;
+  `)
+  db.exec(`
+    INSERT OR IGNORE INTO post_hashtags (post_id, hashtag_id)
+    SELECT pbt.post_id, h.hashtag_id
+    FROM posts_belonging_tags pbt
+    INNER JOIN hashtags h ON LOWER(pbt.tag) = h.normalized_name;
+  `)
+
+  // Step 4: post_stats のバックフィル
+  db.exec(`
+    INSERT OR IGNORE INTO post_stats (
+      post_id, replies_count, reblogs_count, favourites_count, fetched_at
+    )
+    SELECT
+      post_id, replies_count, reblogs_count, favourites_count, datetime('now')
+    FROM posts;
+  `)
+
+  // Step 5: polls のバックフィル
+  db.exec(`
+    INSERT OR IGNORE INTO polls (post_id, expires_at, multiple, votes_count, voters_count)
+    SELECT
+      p.post_id,
+      json_extract(p.json, '$.poll.expires_at'),
+      COALESCE(json_extract(p.json, '$.poll.multiple'), 0),
+      json_extract(p.json, '$.poll.votes_count'),
+      json_extract(p.json, '$.poll.voters_count')
+    FROM posts p
+    WHERE json_extract(p.json, '$.poll') IS NOT NULL;
+  `)
+  db.exec(`
+    INSERT OR IGNORE INTO poll_options (poll_id, option_index, title, votes_count)
+    SELECT
+      pl.poll_id,
+      o.key,
+      json_extract(o.value, '$.title'),
+      json_extract(o.value, '$.votes_count')
+    FROM polls pl
+    INNER JOIN posts p ON pl.post_id = p.post_id,
+    json_each(json_extract(p.json, '$.poll.options')) o;
+  `)
+
+  // Step 6: link_cards のバックフィル
+  db.exec(`
+    INSERT OR IGNORE INTO link_cards (
+      canonical_url, title, description, image_url, provider_name, fetched_at
+    )
+    SELECT DISTINCT
+      json_extract(p.json, '$.card.url'),
+      json_extract(p.json, '$.card.title'),
+      json_extract(p.json, '$.card.description'),
+      json_extract(p.json, '$.card.image'),
+      json_extract(p.json, '$.card.provider_name'),
+      datetime('now')
+    FROM posts p
+    WHERE json_extract(p.json, '$.card.url') IS NOT NULL
+      AND json_extract(p.json, '$.card.url') != '';
+  `)
+  db.exec(`
+    INSERT OR IGNORE INTO post_links (post_id, link_card_id, url_in_post, sort_order)
+    SELECT
+      p.post_id,
+      lc.link_card_id,
+      json_extract(p.json, '$.card.url'),
+      0
+    FROM posts p
+    INNER JOIN link_cards lc ON lc.canonical_url = json_extract(p.json, '$.card.url')
+    WHERE json_extract(p.json, '$.card.url') IS NOT NULL;
+  `)
+}
+
+// ================================================================
+// v11 テーブル作成（エンゲージメント統一）
+// ================================================================
+
+/**
+ * v11 で導入する post_engagements テーブルを作成する。
+ */
+function createEngagementsTableV11(handle: DbHandle): void {
+  const { db } = handle
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS post_engagements (
+      post_engagement_id  INTEGER PRIMARY KEY,
+      local_account_id    INTEGER NOT NULL,
+      post_id             INTEGER NOT NULL,
+      engagement_type_id  INTEGER NOT NULL,
+      emoji_id            INTEGER,
+      created_at          TEXT NOT NULL,
+      FOREIGN KEY (local_account_id) REFERENCES local_accounts(local_account_id),
+      FOREIGN KEY (post_id) REFERENCES posts(post_id) ON DELETE CASCADE,
+      FOREIGN KEY (engagement_type_id) REFERENCES engagement_types(engagement_type_id),
+      FOREIGN KEY (emoji_id) REFERENCES custom_emojis(emoji_id)
+    );
+  `)
+
+  // favourite / reblog / bookmark は (account, post, type) で一意
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_pe_unique
+    ON post_engagements(local_account_id, post_id, engagement_type_id)
+    WHERE emoji_id IS NULL;
+  `)
+
+  // reaction は同じ投稿に複数絵文字が可能なため emoji_id も含む
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_pe_unique_reaction
+    ON post_engagements(local_account_id, post_id, engagement_type_id, emoji_id)
+    WHERE emoji_id IS NOT NULL;
+  `)
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_pe_account_type
+    ON post_engagements(local_account_id, engagement_type_id, created_at DESC);
+  `)
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_pe_post ON post_engagements(post_id);',
+  )
+}
+
+// ================================================================
+// v10 → v11 マイグレーション
+// ================================================================
+
+/**
+ * v10 → v11 マイグレーション
+ *
+ * post_engagements テーブルを作成し、既存 JSON のフラグからバックフィル。
+ * local_accounts にデータが未投入の場合、バックフィルは空になる。
+ */
+function migrateV10toV11(handle: DbHandle): void {
+  const { db } = handle
+
+  // Step 1: テーブル作成
+  createEngagementsTableV11(handle)
+
+  // Step 2: 既存データのバックフィル
+  // favourite
+  db.exec(`
+    INSERT OR IGNORE INTO post_engagements (
+      local_account_id, post_id, engagement_type_id, created_at
+    )
+    SELECT
+      la.local_account_id,
+      p.post_id,
+      (SELECT engagement_type_id FROM engagement_types WHERE code = 'favourite'),
+      datetime('now')
+    FROM posts p
+    INNER JOIN posts_backends pb ON p.post_id = pb.post_id
+    INNER JOIN servers sv ON pb.server_id = sv.server_id
+    INNER JOIN local_accounts la ON la.server_id = sv.server_id
+    WHERE json_extract(p.json, '$.favourited') = 1;
+  `)
+
+  // reblog
+  db.exec(`
+    INSERT OR IGNORE INTO post_engagements (
+      local_account_id, post_id, engagement_type_id, created_at
+    )
+    SELECT
+      la.local_account_id,
+      p.post_id,
+      (SELECT engagement_type_id FROM engagement_types WHERE code = 'reblog'),
+      datetime('now')
+    FROM posts p
+    INNER JOIN posts_backends pb ON p.post_id = pb.post_id
+    INNER JOIN servers sv ON pb.server_id = sv.server_id
+    INNER JOIN local_accounts la ON la.server_id = sv.server_id
+    WHERE json_extract(p.json, '$.reblogged') = 1;
+  `)
+
+  // bookmark
+  db.exec(`
+    INSERT OR IGNORE INTO post_engagements (
+      local_account_id, post_id, engagement_type_id, created_at
+    )
+    SELECT
+      la.local_account_id,
+      p.post_id,
+      (SELECT engagement_type_id FROM engagement_types WHERE code = 'bookmark'),
+      datetime('now')
+    FROM posts p
+    INNER JOIN posts_backends pb ON p.post_id = pb.post_id
+    INNER JOIN servers sv ON pb.server_id = sv.server_id
+    INNER JOIN local_accounts la ON la.server_id = sv.server_id
+    WHERE json_extract(p.json, '$.bookmarked') = 1;
+  `)
+}
+
+// ================================================================
+// v11 → v12 マイグレーション
+// ================================================================
+
+/**
+ * v11 → v12 マイグレーション
+ *
+ * timeline_entries / tag_entries マテリアライズドビューと
+ * 7 つの自動同期トリガーを廃止し、代替インデックスを作成する。
+ */
+function migrateV11toV12(handle: DbHandle): void {
+  removeMaterializedViewsV12(handle)
+  createReplacementIndexesV12(handle)
+}
+
+/**
+ * マテリアライズドビュー関連のトリガーとテーブルを削除する
+ */
+function removeMaterializedViewsV12(handle: DbHandle): void {
+  const { db } = handle
+
+  // V7 トリガーの削除
+  db.exec('DROP TRIGGER IF EXISTS trg_mv_ptt_insert;')
+  db.exec('DROP TRIGGER IF EXISTS trg_mv_ptt_delete;')
+  db.exec('DROP TRIGGER IF EXISTS trg_mv_pbt_insert;')
+  db.exec('DROP TRIGGER IF EXISTS trg_mv_pbt_delete;')
+  db.exec('DROP TRIGGER IF EXISTS trg_mv_pb_insert;')
+  db.exec('DROP TRIGGER IF EXISTS trg_mv_pb_delete;')
+  db.exec('DROP TRIGGER IF EXISTS trg_mv_post_update;')
+
+  // V6 トリガーの削除（安全のため）
+  db.exec('DROP TRIGGER IF EXISTS trg_mv_stt_insert;')
+  db.exec('DROP TRIGGER IF EXISTS trg_mv_stt_delete;')
+  db.exec('DROP TRIGGER IF EXISTS trg_mv_sbt_insert;')
+  db.exec('DROP TRIGGER IF EXISTS trg_mv_sbt_delete;')
+  db.exec('DROP TRIGGER IF EXISTS trg_mv_sb_insert;')
+  db.exec('DROP TRIGGER IF EXISTS trg_mv_sb_delete;')
+  db.exec('DROP TRIGGER IF EXISTS trg_mv_status_update;')
+
+  // マテビューテーブルの削除
+  db.exec('DROP TABLE IF EXISTS timeline_entries;')
+  db.exec('DROP TABLE IF EXISTS tag_entries;')
+}
+
+/**
+ * マテビュー廃止後の代替インデックスを作成する
+ *
+ * JOIN ベースのタイムラインクエリを高速化するためのインデックス。
+ * 既存インデックスと重複するものはスキップ。
+ */
+function createReplacementIndexesV12(handle: DbHandle): void {
+  const { db } = handle
+
+  // posts: ソート + フィルタ用複合インデックス
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_posts_created_media ON posts(created_at_ms DESC, has_media);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_posts_created_visibility ON posts(created_at_ms DESC, visibility);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_posts_created_reblog ON posts(created_at_ms DESC, is_reblog);',
+  )
+}
+
+// ================================================================
+// v12 → v13 マイグレーション: JSON blob 廃止
+// ================================================================
+
+/**
+ * v12 → v13 マイグレーション
+ *
+ * posts.json / notifications.json カラムを廃止し、
+ * 不足していたコンテンツカラムを追加してテーブルを再構築する。
+ * レガシーカラム（origin_backend_url, account_acct 等）も除去。
+ */
+function migrateV12toV13(handle: DbHandle): void {
+  const { db } = handle
+
+  // Step 1: posts テーブルに不足カラムを追加
+  db.exec('ALTER TABLE posts ADD COLUMN content_html TEXT;')
+  db.exec('ALTER TABLE posts ADD COLUMN spoiler_text TEXT;')
+  db.exec(
+    'ALTER TABLE posts ADD COLUMN is_local_only INTEGER NOT NULL DEFAULT 0;',
+  )
+  db.exec('ALTER TABLE posts ADD COLUMN edited_at TEXT;')
+  db.exec('ALTER TABLE posts ADD COLUMN canonical_url TEXT;')
+
+  // Step 2: 新カラムへのバックフィル
+  db.exec(`
+    UPDATE posts SET
+      content_html  = json_extract(json, '$.content'),
+      spoiler_text  = json_extract(json, '$.spoiler_text'),
+      edited_at     = json_extract(json, '$.edited_at'),
+      canonical_url = json_extract(json, '$.url');
+  `)
+
+  // Step 3: notifications に related_post_id を追加しバックフィル
+  db.exec(
+    'ALTER TABLE notifications ADD COLUMN related_post_id INTEGER REFERENCES posts(post_id);',
+  )
+  db.exec(`
+    UPDATE notifications SET related_post_id = (
+      SELECT pb.post_id FROM posts_backends pb
+      WHERE pb.backendUrl = notifications.backend_url
+        AND pb.local_id = notifications.status_id
+    ) WHERE status_id IS NOT NULL;
+  `)
+
+  // Step 4: posts テーブルを json / レガシーカラムなしで再構築
+  db.exec(`
+    CREATE TABLE posts_v13 (
+      post_id           INTEGER PRIMARY KEY,
+      object_uri        TEXT NOT NULL DEFAULT '',
+      origin_server_id  INTEGER,
+      author_profile_id INTEGER,
+      created_at_ms     INTEGER NOT NULL,
+      stored_at         INTEGER NOT NULL,
+      visibility_id     INTEGER,
+      language          TEXT,
+      content_html      TEXT,
+      spoiler_text      TEXT,
+      canonical_url     TEXT,
+      has_media         INTEGER NOT NULL DEFAULT 0,
+      media_count       INTEGER NOT NULL DEFAULT 0,
+      is_reblog         INTEGER NOT NULL DEFAULT 0,
+      reblog_of_uri     TEXT,
+      is_sensitive      INTEGER NOT NULL DEFAULT 0,
+      has_spoiler       INTEGER NOT NULL DEFAULT 0,
+      in_reply_to_id    TEXT,
+      is_local_only     INTEGER NOT NULL DEFAULT 0,
+      edited_at         TEXT,
+      FOREIGN KEY (origin_server_id) REFERENCES servers(server_id),
+      FOREIGN KEY (author_profile_id) REFERENCES profiles(profile_id),
+      FOREIGN KEY (visibility_id) REFERENCES visibility_types(visibility_id)
+    );
+  `)
+  db.exec(`
+    INSERT INTO posts_v13
+    SELECT
+      post_id, object_uri, origin_server_id, author_profile_id,
+      created_at_ms, stored_at, visibility_id, language,
+      content_html, spoiler_text, canonical_url,
+      has_media, media_count, is_reblog, reblog_of_uri,
+      is_sensitive, has_spoiler, in_reply_to_id, is_local_only, edited_at
+    FROM posts;
+  `)
+
+  // Step 4b: notifications テーブルを再構築（local_id は dedup 用に保持）
+  db.exec(`
+    CREATE TABLE notifications_v13 (
+      notification_id      INTEGER PRIMARY KEY,
+      server_id            INTEGER,
+      local_id             TEXT NOT NULL DEFAULT '',
+      notification_type_id INTEGER,
+      actor_profile_id     INTEGER,
+      related_post_id      INTEGER,
+      created_at_ms        INTEGER NOT NULL,
+      stored_at            INTEGER NOT NULL,
+      is_read              INTEGER NOT NULL DEFAULT 0,
+      FOREIGN KEY (server_id) REFERENCES servers(server_id),
+      FOREIGN KEY (notification_type_id) REFERENCES notification_types(notification_type_id),
+      FOREIGN KEY (actor_profile_id) REFERENCES profiles(profile_id),
+      FOREIGN KEY (related_post_id) REFERENCES posts_v13(post_id)
+    );
+  `)
+  db.exec(`
+    INSERT INTO notifications_v13
+    SELECT
+      notification_id, server_id, local_id, notification_type_id,
+      actor_profile_id, related_post_id, created_at_ms, stored_at, 0
+    FROM notifications;
+  `)
+
+  // Step 5: テーブル置き換え
+  db.exec('DROP TABLE posts;')
+  db.exec('ALTER TABLE posts_v13 RENAME TO posts;')
+  db.exec('DROP TABLE notifications;')
+  db.exec('ALTER TABLE notifications_v13 RENAME TO notifications;')
+
+  // Step 6: インデックス再作成
+  db.exec(
+    "CREATE UNIQUE INDEX idx_posts_uri ON posts(object_uri) WHERE object_uri != '';",
+  )
+  db.exec('CREATE INDEX idx_posts_created ON posts(created_at_ms DESC);')
+  db.exec(
+    'CREATE INDEX idx_posts_author ON posts(author_profile_id, created_at_ms DESC);',
+  )
+  db.exec(
+    'CREATE INDEX idx_posts_server ON posts(origin_server_id, created_at_ms DESC);',
+  )
+  db.exec(
+    'CREATE INDEX idx_posts_visibility ON posts(visibility_id, created_at_ms DESC);',
+  )
+  db.exec(
+    'CREATE INDEX idx_posts_language ON posts(language, created_at_ms DESC);',
+  )
+  db.exec('CREATE INDEX idx_posts_stored_at ON posts(stored_at);')
+  db.exec('CREATE INDEX idx_posts_reblog_of_uri ON posts(reblog_of_uri);')
+  db.exec(
+    'CREATE INDEX idx_posts_created_media ON posts(created_at_ms DESC, has_media);',
+  )
+  db.exec(
+    'CREATE INDEX idx_posts_created_reblog ON posts(created_at_ms DESC, is_reblog);',
+  )
+
+  db.exec(
+    "CREATE UNIQUE INDEX idx_notifications_server_local ON notifications(server_id, local_id) WHERE local_id != '';",
+  )
+  db.exec(
+    'CREATE INDEX idx_notifications_created ON notifications(created_at_ms DESC);',
+  )
+  db.exec(
+    'CREATE INDEX idx_notifications_type ON notifications(notification_type_id, created_at_ms DESC);',
+  )
+  db.exec(
+    'CREATE INDEX idx_notifications_actor ON notifications(actor_profile_id, created_at_ms DESC);',
+  )
+  db.exec(
+    'CREATE INDEX idx_notifications_stored_at ON notifications(stored_at);',
+  )
+  db.exec(
+    'CREATE INDEX idx_notifications_related_post ON notifications(related_post_id);',
+  )
+}
+
+// ================================================================
+// v13 → v14 マイグレーション: タイムライン再構築
+// ================================================================
+
+/**
+ * posts_timeline_types を廃止し、timelines + timeline_items + feed_events に移行する。
+ *
+ * - timelines: server_id × channel_kind_id × tag で論理タイムラインを定義
+ * - timeline_items: 各タイムラインに属する投稿/通知を管理
+ * - feed_events: 投稿・通知の統合時系列表示用（テーブル作成のみ）
+ */
+function migrateV13toV14(handle: DbHandle): void {
+  const { db } = handle
+
+  // Step 1: channel_kinds に 'public' を追加（アプリは 'public' を使用、既存は 'federated'）
+  db.exec(
+    "INSERT OR IGNORE INTO channel_kinds (code, display_name) VALUES ('public', '連合（パブリック）');",
+  )
+
+  // Step 2: timelines テーブル作成
+  db.exec(`
+    CREATE TABLE timelines (
+      timeline_id      INTEGER NOT NULL PRIMARY KEY,
+      server_id        INTEGER NOT NULL REFERENCES servers(server_id),
+      channel_kind_id  INTEGER NOT NULL REFERENCES channel_kinds(channel_kind_id),
+      tag              TEXT,
+      created_at       TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+  `)
+  db.exec(`
+    CREATE UNIQUE INDEX idx_timelines_identity
+      ON timelines(server_id, channel_kind_id, COALESCE(tag, ''));
+  `)
+
+  // Step 3: timeline_items テーブル作成
+  db.exec(`
+    CREATE TABLE timeline_items (
+      timeline_item_id      INTEGER NOT NULL PRIMARY KEY,
+      timeline_id           INTEGER NOT NULL REFERENCES timelines(timeline_id) ON DELETE CASCADE,
+      timeline_item_kind_id INTEGER NOT NULL REFERENCES timeline_item_kinds(timeline_item_kind_id),
+      post_id               INTEGER REFERENCES posts(post_id) ON DELETE CASCADE,
+      notification_id       INTEGER REFERENCES notifications(notification_id) ON DELETE CASCADE,
+      sort_key              INTEGER NOT NULL,
+      inserted_at           INTEGER NOT NULL
+    );
+  `)
+  db.exec(
+    'CREATE INDEX idx_timeline_items_timeline_sort ON timeline_items(timeline_id, sort_key DESC);',
+  )
+  db.exec(
+    'CREATE UNIQUE INDEX idx_timeline_items_post ON timeline_items(timeline_id, post_id) WHERE post_id IS NOT NULL;',
+  )
+  db.exec(
+    'CREATE UNIQUE INDEX idx_timeline_items_notification ON timeline_items(timeline_id, notification_id) WHERE notification_id IS NOT NULL;',
+  )
+
+  // Step 4: feed_events テーブル作成（アプリ層の統合は後日）
+  db.exec(`
+    CREATE TABLE feed_events (
+      feed_event_id      INTEGER NOT NULL PRIMARY KEY,
+      server_id          INTEGER NOT NULL REFERENCES servers(server_id),
+      event_type         TEXT NOT NULL,
+      post_id            INTEGER REFERENCES posts(post_id) ON DELETE CASCADE,
+      notification_id    INTEGER REFERENCES notifications(notification_id) ON DELETE CASCADE,
+      actor_profile_id   INTEGER REFERENCES profiles(profile_id),
+      occurred_at        INTEGER NOT NULL,
+      sort_key           INTEGER NOT NULL
+    );
+  `)
+  db.exec(
+    'CREATE INDEX idx_feed_events_server_sort ON feed_events(server_id, sort_key DESC);',
+  )
+
+  // Step 5: データ移行 — posts_timeline_types → timelines + timeline_items
+
+  // 5a: 非タグの timelines を生成（server × channel_kind の DISTINCT 組み合わせ）
+  db.exec(`
+    INSERT OR IGNORE INTO timelines (server_id, channel_kind_id, tag, created_at)
+    SELECT DISTINCT
+      pb.server_id,
+      ck.channel_kind_id,
+      NULL,
+      datetime('now')
+    FROM posts_timeline_types ptt
+    INNER JOIN posts_backends pb ON pb.post_id = ptt.post_id
+    INNER JOIN channel_kinds ck ON ck.code = ptt.timelineType
+    WHERE ptt.timelineType != 'tag';
+  `)
+
+  // 5b: タグ timelines を生成（server × 'tag' channel_kind × tag の DISTINCT 組み合わせ）
+  db.exec(`
+    INSERT OR IGNORE INTO timelines (server_id, channel_kind_id, tag, created_at)
+    SELECT DISTINCT
+      pb.server_id,
+      ck.channel_kind_id,
+      pbt.tag,
+      datetime('now')
+    FROM posts_belonging_tags pbt
+    INNER JOIN posts_backends pb ON pb.post_id = pbt.post_id
+    INNER JOIN channel_kinds ck ON ck.code = 'tag';
+  `)
+
+  // 5c: 非タグの timeline_items を生成
+  db.exec(`
+    INSERT OR IGNORE INTO timeline_items (timeline_id, timeline_item_kind_id, post_id, sort_key, inserted_at)
+    SELECT
+      t.timeline_id,
+      (SELECT timeline_item_kind_id FROM timeline_item_kinds WHERE code = 'post'),
+      ptt.post_id,
+      p.created_at_ms,
+      p.stored_at
+    FROM posts_timeline_types ptt
+    INNER JOIN posts p ON p.post_id = ptt.post_id
+    INNER JOIN posts_backends pb ON pb.post_id = ptt.post_id
+    INNER JOIN channel_kinds ck ON ck.code = ptt.timelineType
+    INNER JOIN timelines t
+      ON t.server_id = pb.server_id
+      AND t.channel_kind_id = ck.channel_kind_id
+      AND t.tag IS NULL
+    WHERE ptt.timelineType != 'tag';
+  `)
+
+  // 5d: タグ timeline_items を生成
+  db.exec(`
+    INSERT OR IGNORE INTO timeline_items (timeline_id, timeline_item_kind_id, post_id, sort_key, inserted_at)
+    SELECT
+      t.timeline_id,
+      (SELECT timeline_item_kind_id FROM timeline_item_kinds WHERE code = 'post'),
+      pbt.post_id,
+      p.created_at_ms,
+      p.stored_at
+    FROM posts_belonging_tags pbt
+    INNER JOIN posts p ON p.post_id = pbt.post_id
+    INNER JOIN posts_backends pb ON pb.post_id = pbt.post_id
+    INNER JOIN channel_kinds ck ON ck.code = 'tag'
+    INNER JOIN timelines t
+      ON t.server_id = pb.server_id
+      AND t.channel_kind_id = ck.channel_kind_id
+      AND t.tag = pbt.tag;
+  `)
+
+  // Step 6: 旧テーブルを削除
+  db.exec('DROP TABLE IF EXISTS posts_timeline_types;')
+}
 
 /**
  * v5 スキーマのフル作成

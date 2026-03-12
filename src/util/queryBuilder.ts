@@ -516,7 +516,7 @@ function nullTolerant(condition: string): string {
  * backendUrls をパラメータとして受け取る。
  *
  * @param tableAlias カラム参照に付けるテーブルエイリアス（デフォルト: 's'）。
- *   マテリアライズド・ビューのサブクエリ内で使用する場合は '' を指定する。
+ *   JOIN クエリで posts テーブルを参照する場合は 'p' を指定する。
  * @returns SQL 条件文字列とバインド変数の配列
  *
  * @example
@@ -539,8 +539,8 @@ export function buildMuteCondition(
   const placeholders = backendUrls.map(() => '?').join(',')
   return {
     binds: [...backendUrls],
-    sql: `${prefix}account_acct NOT IN (
-      SELECT account_acct FROM muted_accounts WHERE backend_url IN (${placeholders})
+    sql: `(SELECT acct FROM profiles WHERE profile_id = ${prefix}author_profile_id) NOT IN (
+      SELECT account_acct FROM muted_accounts WHERE backendUrl IN (${placeholders})
     )`,
   }
 }
@@ -551,7 +551,7 @@ export function buildMuteCondition(
  * blocked_instances テーブルが空の場合でもクエリは高速に実行される（空テーブルの EXISTS は即座に false）。
  *
  * @param tableAlias カラム参照に付けるテーブルエイリアス（デフォルト: 's'）。
- *   マテリアライズド・ビューのサブクエリ内で使用する場合は '' を指定する。
+ *   JOIN クエリで posts テーブルを参照する場合は 'p' を指定する。
  * @returns SQL 条件文字列（バインド変数なし、静的サブクエリ）
  *
  * @example
@@ -562,7 +562,7 @@ export function buildInstanceBlockCondition(tableAlias = 's'): string {
   const prefix = tableAlias ? `${tableAlias}.` : ''
   return `NOT EXISTS (
     SELECT 1 FROM blocked_instances bi
-    WHERE ${prefix}account_acct LIKE '%@' || REPLACE(REPLACE(bi.instance_domain, '%', '\\%'), '_', '\\_') ESCAPE '\\'
+    WHERE (SELECT acct FROM profiles WHERE profile_id = ${prefix}author_profile_id) LIKE '%@' || REPLACE(REPLACE(bi.instance_domain, '%', '\\%'), '_', '\\_') ESCAPE '\\'
   )`
 }
 
@@ -738,12 +738,12 @@ export function parseQueryToConfig(
   // backendFilter の検出
   // ========================================
   const backendSingleMatch =
-    query.match(/sb\.backend_url\s*=\s*'([^']+)'/i) ??
+    query.match(/sb\.(?:backend_url|backendUrl)\s*=\s*'([^']+)'/i) ??
     query.match(/s\.origin_backend_url\s*=\s*'([^']+)'/i) ??
     query.match(/n\.backend_url\s*=\s*'([^']+)'/i)
   const backendInMatch =
     query.match(
-      /sb\.backend_url\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
+      /sb\.(?:backend_url|backendUrl)\s+IN\s*\(\s*('(?:[^']|'')+' s*(?:,\s*'(?:[^']|'')+' s*)*)\)/i,
     ) ??
     query.match(
       /s\.origin_backend_url\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
@@ -882,10 +882,10 @@ export function canParseQuery(
 export function upgradeQueryToV2(query: string): string {
   let result = query
 
-  // v7: s.backendUrl / s.origin_backend_url → sb.backend_url
-  result = result.replace(/\bs\.backendUrl\b/g, 'sb.backend_url')
-  result = result.replace(/\bs\.origin_backend_url\b/g, 'sb.backend_url')
-  result = result.replace(/\bsb\.backendUrl\b/g, 'sb.backend_url')
+  // v7→v13: s.backendUrl / s.origin_backend_url / sb.backend_url → sb.backendUrl
+  result = result.replace(/\bs\.backendUrl\b/g, 'sb.backendUrl')
+  result = result.replace(/\bs\.origin_backend_url\b/g, 'sb.backendUrl')
+  result = result.replace(/\bsb\.backend_url\b/g, 'sb.backendUrl')
 
   // メディア: json_extract(s.json, '$.media_attachments') != '[]'
   result = result.replace(

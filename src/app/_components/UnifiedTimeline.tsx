@@ -132,88 +132,78 @@ export const UnifiedTimeline = ({
 
         // 該当 backend の最古投稿を取得
         // まず現在のタイムライン表示から探す
-        let oldestStatus = timeline
+        const oldestStatus = timeline
           .filter((s) => apps[s.appIndex]?.backendUrl === url)
           .at(-1)
 
-        // 表示上に該当バックエンドの投稿がない場合は DB から直接取得
-        // （フィルタリングにより表示されていないが、実際には存在する可能性）
-        if (!oldestStatus) {
-          const { getSqliteDb } = await import('util/db/sqlite/connection')
-          const handle = await getSqliteDb()
-          const timelineType = config.type as
-            | 'home'
-            | 'local'
-            | 'public'
-            | 'tag'
-
-          if (config.type === 'tag') {
-            // タグタイムラインの場合は該当タグの最古投稿を取得
-            const tags = config.tagConfig?.tags ?? []
-            for (const tag of tags) {
-              const rows = (await handle.execAsync(
-                `SELECT s.post_id, s.origin_backend_url, s.created_at_ms, s.stored_at, s.json
-                 FROM posts s
-                 INNER JOIN posts_belonging_tags sbt ON s.post_id = sbt.post_id
-                 WHERE sbt.tag = ? AND s.origin_backend_url = ?
-                 ORDER BY s.created_at_ms ASC
-                 LIMIT 1;`,
-                { bind: [tag, url], returnValue: 'resultRows' },
-              )) as (string | number)[][]
-              if (rows.length > 0) {
-                const status = JSON.parse(rows[0][4] as string)
-                oldestStatus = {
-                  ...status,
-                  appIndex: apps.findIndex((a) => a.backendUrl === url),
-                  backendUrl: rows[0][1] as string,
-                  created_at_ms: rows[0][2] as number,
-                  post_id: rows[0][0] as number,
-                  storedAt: rows[0][3] as number,
-                }
-                break
-              }
-            }
-          } else {
-            // 通常のタイムラインの場合
-            const rows = (await handle.execAsync(
-              `SELECT s.post_id, s.origin_backend_url, s.created_at_ms, s.stored_at, s.json
-               FROM posts s
-               INNER JOIN posts_timeline_types stt ON s.post_id = stt.post_id
-               WHERE s.origin_backend_url = ? AND stt.timelineType = ?
-               ORDER BY s.created_at_ms ASC
-               LIMIT 1;`,
-              { bind: [url, timelineType], returnValue: 'resultRows' },
-            )) as (string | number)[][]
-            if (rows.length > 0) {
-              const status = JSON.parse(rows[0][4] as string)
-              oldestStatus = {
-                ...status,
-                appIndex: apps.findIndex((a) => a.backendUrl === url),
-                backendUrl: rows[0][1] as string,
-                created_at_ms: rows[0][2] as number,
-                post_id: rows[0][0] as number,
-                storedAt: rows[0][3] as number,
-              }
-            }
+        if (oldestStatus) {
+          const client = GetClient(app)
+          try {
+            return await fetchMoreData(client, config, url, oldestStatus.id)
+          } catch (error) {
+            console.error(`Failed to fetch more data for ${url}:`, error)
+            return 0
           }
         }
 
-        // それでも見つからない場合は初期データを取得
-        if (!oldestStatus) {
-          const client = GetClient(app)
+        // 表示上に該当バックエンドの投稿がない場合は DB から直接取得
+        // （フィルタリングにより表示されていないが、実際には存在する可能性）
+        const { getSqliteDb } = await import('util/db/sqlite/connection')
+        const handle = await getSqliteDb()
+        const timelineType = config.type as 'home' | 'local' | 'public' | 'tag'
+
+        // DB から最古の status_id を取得するだけでよい（fetchMoreData が max_id として使用）
+        let oldestId: string | undefined
+
+        if (config.type === 'tag') {
+          const tags = config.tagConfig?.tags ?? []
+          for (const tag of tags) {
+            const rows = (await handle.execAsync(
+              `SELECT s.status_id
+               FROM posts s
+               INNER JOIN posts_backends pb2 ON pb2.post_id = s.post_id
+               INNER JOIN posts_belonging_tags sbt ON s.post_id = sbt.post_id
+               WHERE sbt.tag = ? AND pb2.backendUrl = ?
+               ORDER BY s.created_at_ms ASC
+               LIMIT 1;`,
+              { bind: [tag, url], returnValue: 'resultRows' },
+            )) as string[][]
+            if (rows.length > 0) {
+              oldestId = rows[0][0]
+              break
+            }
+          }
+        } else {
+          const rows = (await handle.execAsync(
+            `SELECT s.status_id
+             FROM posts s
+             INNER JOIN posts_backends pb2 ON pb2.post_id = s.post_id
+             INNER JOIN timeline_items ti ON s.post_id = ti.post_id
+             INNER JOIN timelines t ON t.timeline_id = ti.timeline_id
+             INNER JOIN channel_kinds ck ON ck.channel_kind_id = t.channel_kind_id
+             WHERE pb2.backendUrl = ? AND ck.code = ?
+             ORDER BY s.created_at_ms ASC
+             LIMIT 1;`,
+            { bind: [url, timelineType], returnValue: 'resultRows' },
+          )) as string[][]
+          if (rows.length > 0) {
+            oldestId = rows[0][0]
+          }
+        }
+
+        const client = GetClient(app)
+        if (!oldestId) {
           try {
             await fetchInitialData(client, config, url)
-            return 0 // 初期データ取得のため追加カウントは0
+            return 0
           } catch (error) {
             console.error(`Failed to fetch initial data for ${url}:`, error)
             return 0
           }
         }
 
-        // 追加データを取得
-        const client = GetClient(app)
         try {
-          return await fetchMoreData(client, config, url, oldestStatus.id)
+          return await fetchMoreData(client, config, url, oldestId)
         } catch (error) {
           console.error(`Failed to fetch more data for ${url}:`, error)
           return 0

@@ -1,14 +1,8 @@
 /**
  * SQLite ベースの Notification ストア
  *
- * v2 スキーマでは正規化カラム（notification_type, status_id, account_acct）を
- * 追加・更新時に同時に書き込み、フィルタ / 逆引きに利用する。
- *
- * v7 スキーマでは posts_backends テーブルを利用した post_id 解決を行い、
- * notifications テーブルは notification_id INTEGER PRIMARY KEY を使用する。
- *
- * Worker モードでは write 系は sendCommand で Worker に委譲し、
- * read 系は execAsync で直接クエリを発行する。
+ * v13 スキーマでは json カラムを廃止し、正規化テーブルから
+ * Entity.Notification を構築する。
  */
 
 import type { Entity } from 'megalodon'
@@ -25,29 +19,168 @@ export interface SqliteStoredNotification extends Entity.Notification {
 }
 
 /**
- * Entity.Notification から正規化カラムの値を抽出する
- *
- * UPSERT 時に使用する。
- * (shared.ts の extractNotificationColumns と同等だが互換性のため残す)
+ * 正規化テーブルから Entity.Notification を構築するための SELECT 句
  */
-export { extractNotificationColumns } from './shared'
+export const NOTIFICATION_SELECT = `
+  n.notification_id,
+  COALESCE(sv.base_url, '') AS backendUrl,
+  n.created_at_ms,
+  n.stored_at,
+  COALESCE(nt.code, '') AS notification_type,
+  n.local_id,
+  n.is_read,
+  COALESCE(ap.acct, '') AS actor_acct,
+  COALESCE(ap.username, '') AS actor_username,
+  COALESCE(ap.display_name, '') AS actor_display_name,
+  COALESCE(ap.avatar_url, '') AS actor_avatar,
+  COALESCE(ap.header_url, '') AS actor_header,
+  COALESCE(ap.locked, 0) AS actor_locked,
+  COALESCE(ap.bot, 0) AS actor_bot,
+  COALESCE(ap.actor_uri, '') AS actor_url,
+  rp.post_id AS rp_post_id,
+  COALESCE(rp.content_html, '') AS rp_content,
+  COALESCE(rp.spoiler_text, '') AS rp_spoiler_text,
+  rp.canonical_url AS rp_url,
+  rp.object_uri AS rp_uri,
+  rp.created_at_ms AS rp_created_at_ms,
+  COALESCE(rp.is_sensitive, 0) AS rp_sensitive,
+  COALESCE((SELECT vt2.code FROM visibility_types vt2 WHERE vt2.visibility_id = rp.visibility_id), 'public') AS rp_visibility,
+  rp.language AS rp_language,
+  COALESCE(rppr.acct, '') AS rp_author_acct,
+  COALESCE(rppr.username, '') AS rp_author_username,
+  COALESCE(rppr.display_name, '') AS rp_author_display_name,
+  COALESCE(rppr.avatar_url, '') AS rp_author_avatar,
+  COALESCE(rppr.actor_uri, '') AS rp_author_url,
+  (SELECT MIN(rpb.local_id) FROM posts_backends rpb WHERE rpb.post_id = rp.post_id) AS rp_local_id,
+  rp.in_reply_to_id AS rp_in_reply_to_id,
+  rp.edited_at AS rp_edited_at`
 
-function rowToStoredNotification(
-  row: (string | number)[],
+export const NOTIFICATION_BASE_JOINS = `
+  LEFT JOIN servers sv ON n.server_id = sv.server_id
+  LEFT JOIN notification_types nt ON n.notification_type_id = nt.notification_type_id
+  LEFT JOIN profiles ap ON n.actor_profile_id = ap.profile_id
+  LEFT JOIN posts rp ON n.related_post_id = rp.post_id
+  LEFT JOIN profiles rppr ON rp.author_profile_id = rppr.profile_id`
+
+/**
+ * row layout:
+ *   [0] notification_id  [1] backendUrl      [2] created_at_ms
+ *   [3] stored_at        [4] notification_type [5] local_id
+ *   [6] is_read
+ *   [7] actor_acct       [8] actor_username   [9] actor_display_name
+ *   [10] actor_avatar    [11] actor_header    [12] actor_locked
+ *   [13] actor_bot       [14] actor_url
+ *   [15] rp_post_id      [16] rp_content      [17] rp_spoiler_text
+ *   [18] rp_url          [19] rp_uri          [20] rp_created_at_ms
+ *   [21] rp_sensitive     [22] rp_visibility   [23] rp_language
+ *   [24] rp_author_acct  [25] rp_author_username [26] rp_author_display_name
+ *   [27] rp_author_avatar [28] rp_author_url  [29] rp_local_id
+ *   [30] rp_in_reply_to_id [31] rp_edited_at
+ */
+export function rowToStoredNotification(
+  row: (string | number | null)[],
 ): SqliteStoredNotification {
-  const notification_id = row[0] as number
-  const backendUrl = row[1] as string
-  const created_at_ms = row[2] as number
-  const storedAt = row[3] as number
-  const json = row[4] as string
-  const notification = JSON.parse(json) as Entity.Notification
+  const rpPostId = row[15] as number | null
+  let status: Entity.Status | undefined
+
+  if (rpPostId !== null) {
+    const rpCreatedAtMs = row[20] as number | null
+    status = {
+      account: {
+        acct: (row[24] as string) ?? '',
+        avatar: (row[27] as string) ?? '',
+        avatar_static: (row[27] as string) ?? '',
+        bot: false,
+        created_at: '',
+        display_name: (row[26] as string) ?? '',
+        emojis: [],
+        fields: [],
+        followers_count: 0,
+        following_count: 0,
+        group: null,
+        header: '',
+        header_static: '',
+        id: '',
+        limited: null,
+        locked: false,
+        moved: null,
+        noindex: null,
+        note: '',
+        statuses_count: 0,
+        suspended: null,
+        url: (row[28] as string) ?? '',
+        username: (row[25] as string) ?? '',
+      },
+      application: null,
+      bookmarked: false,
+      card: null,
+      content: (row[16] as string) ?? '',
+      created_at: rpCreatedAtMs ? new Date(rpCreatedAtMs).toISOString() : '',
+      edited_at: row[31] as string | null,
+      emoji_reactions: [],
+      emojis: [],
+      favourited: null,
+      favourites_count: 0,
+      id: (row[29] as string) ?? '',
+      in_reply_to_account_id: null,
+      in_reply_to_id: row[30] as string | null,
+      language: row[23] as string | null,
+      media_attachments: [],
+      mentions: [],
+      muted: null,
+      pinned: null,
+      plain_content: null,
+      poll: null,
+      quote: null,
+      quote_approval: { automatic: [], current_user: '', manual: [] },
+      reblog: null,
+      reblogged: null,
+      reblogs_count: 0,
+      replies_count: 0,
+      sensitive: (row[21] as number) === 1,
+      spoiler_text: (row[17] as string) ?? '',
+      tags: [],
+      uri: (row[19] as string) ?? '',
+      url: (row[18] as string | null) ?? undefined,
+      visibility: ((row[22] as string) ?? 'public') as Entity.StatusVisibility,
+    }
+  }
 
   return {
-    ...notification,
-    backendUrl,
-    created_at_ms,
-    notification_id,
-    storedAt,
+    account: {
+      acct: (row[7] as string) ?? '',
+      avatar: (row[10] as string) ?? '',
+      avatar_static: (row[10] as string) ?? '',
+      bot: (row[13] as number) === 1,
+      created_at: '',
+      display_name: (row[9] as string) ?? '',
+      emojis: [],
+      fields: [],
+      followers_count: 0,
+      following_count: 0,
+      group: null,
+      header: (row[11] as string) ?? '',
+      header_static: (row[11] as string) ?? '',
+      id: '',
+      limited: null,
+      locked: (row[12] as number) === 1,
+      moved: null,
+      noindex: null,
+      note: '',
+      statuses_count: 0,
+      suspended: null,
+      url: (row[14] as string) ?? '',
+      username: (row[8] as string) ?? '',
+    },
+    backendUrl: (row[1] as string) ?? '',
+    created_at: new Date(row[2] as number).toISOString(),
+    created_at_ms: row[2] as number,
+    id: (row[5] as string) ?? String(row[0]),
+    // SqliteStoredNotification extra fields
+    notification_id: row[0] as number,
+    status,
+    storedAt: row[3] as number,
+    type: (row[4] as string) ?? '',
   }
 }
 
@@ -92,33 +225,28 @@ export async function getNotifications(
 ): Promise<SqliteStoredNotification[]> {
   const handle = await getSqliteDb()
 
-  let sql: string
   const binds: (string | number)[] = []
-
+  let backendFilter = ''
   if (backendUrls && backendUrls.length > 0) {
     const placeholders = backendUrls.map(() => '?').join(',')
-    sql = `
-      SELECT notification_id, backend_url, created_at_ms, stored_at, json
-      FROM notifications
-      WHERE backend_url IN (${placeholders})
-      ORDER BY created_at_ms DESC
-      LIMIT ?;
-    `
-    binds.push(...backendUrls, limit ?? MAX_QUERY_LIMIT)
-  } else {
-    sql = `
-      SELECT notification_id, backend_url, created_at_ms, stored_at, json
-      FROM notifications
-      ORDER BY created_at_ms DESC
-      LIMIT ?;
-    `
-    binds.push(limit ?? MAX_QUERY_LIMIT)
+    backendFilter = `WHERE sv.base_url IN (${placeholders})`
+    binds.push(...backendUrls)
   }
+
+  const sql = `
+    SELECT ${NOTIFICATION_SELECT}
+    FROM notifications n
+    ${NOTIFICATION_BASE_JOINS}
+    ${backendFilter}
+    ORDER BY n.created_at_ms DESC
+    LIMIT ?;
+  `
+  binds.push(limit ?? MAX_QUERY_LIMIT)
 
   const rows = (await handle.execAsync(sql, {
     bind: binds,
     returnValue: 'resultRows',
-  })) as (string | number)[][]
+  })) as (string | number | null)[][]
 
   return rows.map(rowToStoredNotification)
 }

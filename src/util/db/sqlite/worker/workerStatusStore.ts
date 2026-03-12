@@ -7,7 +7,17 @@
 
 import type { Entity } from 'megalodon'
 import type { TableName } from '../protocol'
-import { ensureServer, extractStatusColumns } from '../shared'
+import {
+  ACTION_TO_ENGAGEMENT,
+  ensureProfile,
+  ensureServer,
+  ensureTimeline,
+  extractStatusColumns,
+  resolveLocalAccountId,
+  resolvePostId,
+  resolvePostItemKindId,
+  toggleEngagement,
+} from '../shared'
 
 // ================================================================
 // 内部型（Worker / フォールバック共通）
@@ -35,11 +45,7 @@ function resolvePostIdInternal(
   backendUrl: string,
   localId: string,
 ): number | null {
-  const rows = db.exec(
-    'SELECT post_id FROM posts_backends WHERE backendUrl = ? AND local_id = ?;',
-    { bind: [backendUrl, localId], returnValue: 'resultRows' },
-  ) as number[][]
-  return rows.length > 0 ? rows[0][0] : null
+  return resolvePostId(db, backendUrl, localId)
 }
 
 function getLastInsertRowId(db: DbExec): number {
@@ -74,6 +80,77 @@ function upsertMentionsInternal(
   }
 }
 
+function resolveMediaTypeId(db: DbExec, mediaType: string): number {
+  const rows = db.exec(
+    'SELECT media_type_id FROM media_types WHERE code = ?;',
+    { bind: [mediaType], returnValue: 'resultRows' },
+  ) as number[][]
+  if (rows.length > 0) return rows[0][0]
+  // フォールバック: unknown
+  const fallback = db.exec(
+    "SELECT media_type_id FROM media_types WHERE code = 'unknown';",
+    { returnValue: 'resultRows' },
+  ) as number[][]
+  return fallback[0][0]
+}
+
+function syncPostMedia(
+  db: DbExec,
+  postId: number,
+  mediaAttachments: Entity.Attachment[],
+  isSensitive: boolean,
+): void {
+  db.exec('DELETE FROM post_media WHERE post_id = ?;', { bind: [postId] })
+  for (let i = 0; i < mediaAttachments.length; i++) {
+    const media = mediaAttachments[i]
+    const mediaTypeId = resolveMediaTypeId(db, media.type)
+    db.exec(
+      `INSERT INTO post_media (
+        post_id, media_type_id, remote_media_id, url, preview_url,
+        description, blurhash, sort_order, is_sensitive
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+      {
+        bind: [
+          postId,
+          mediaTypeId,
+          media.id,
+          media.url,
+          media.preview_url ?? null,
+          media.description ?? null,
+          media.blurhash ?? null,
+          i,
+          isSensitive ? 1 : 0,
+        ],
+      },
+    )
+  }
+}
+
+function syncPostStats(
+  db: DbExec,
+  postId: number,
+  status: Entity.Status,
+): void {
+  db.exec(
+    `INSERT INTO post_stats (
+      post_id, replies_count, reblogs_count, favourites_count, fetched_at
+    ) VALUES (?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(post_id) DO UPDATE SET
+      replies_count    = excluded.replies_count,
+      reblogs_count    = excluded.reblogs_count,
+      favourites_count = excluded.favourites_count,
+      fetched_at       = excluded.fetched_at;`,
+    {
+      bind: [
+        postId,
+        status.replies_count,
+        status.reblogs_count,
+        status.favourites_count,
+      ],
+    },
+  )
+}
+
 // ================================================================
 // 公開ハンドラ
 // ================================================================
@@ -95,6 +172,7 @@ export function handleUpsertStatus(
   try {
     const serverId = ensureServer(db, backendUrl)
     const visibilityId = resolveVisibilityId(db, cols.visibility)
+    const profileId = ensureProfile(db, status.account)
 
     let postId: number | undefined
     let existingIsOriginal = false
@@ -120,90 +198,77 @@ export function handleUpsertStatus(
     }
 
     if (postId !== undefined) {
-      // 既存投稿を更新
       db.exec(
         `UPDATE posts SET
-          stored_at        = ?,
-          account_acct     = ?,
-          account_id       = ?,
-          visibility       = ?,
-          visibility_id    = ?,
-          language         = ?,
-          has_media        = ?,
-          media_count      = ?,
-          is_reblog        = ?,
-          reblog_of_id     = ?,
-          reblog_of_uri    = ?,
-          is_sensitive     = ?,
-          has_spoiler      = ?,
-          in_reply_to_id   = ?,
-          favourites_count = ?,
-          reblogs_count    = ?,
-          replies_count    = ?,
-          json             = ?
+          stored_at          = ?,
+          visibility_id      = ?,
+          language           = ?,
+          content_html       = ?,
+          spoiler_text       = ?,
+          canonical_url      = ?,
+          has_media          = ?,
+          media_count        = ?,
+          is_reblog          = ?,
+          reblog_of_uri      = ?,
+          is_sensitive       = ?,
+          has_spoiler        = ?,
+          in_reply_to_id     = ?,
+          edited_at          = ?,
+          author_profile_id  = ?
         WHERE post_id = ?;`,
         {
           bind: [
             now,
-            cols.account_acct,
-            cols.account_id,
-            cols.visibility,
             visibilityId,
             cols.language,
+            cols.content_html,
+            cols.spoiler_text,
+            cols.canonical_url,
             cols.has_media,
             cols.media_count,
             cols.is_reblog,
-            cols.reblog_of_id,
             cols.reblog_of_uri,
             cols.is_sensitive,
             cols.has_spoiler,
             cols.in_reply_to_id,
-            cols.favourites_count,
-            cols.reblogs_count,
-            cols.replies_count,
-            JSON.stringify(status),
+            cols.edited_at,
+            profileId,
             postId,
           ],
         },
       )
     } else {
-      // 新規投稿を挿入（post_id は自動生成）
-      // リブログが元投稿の URI と衝突する場合は空文字にして UNIQUE 制約違反を回避
       const insertUri = existingIsOriginal ? '' : cols.uri
       db.exec(
         `INSERT INTO posts (
-          origin_backend_url, origin_server_id, created_at_ms, stored_at,
-          object_uri,
-          account_acct, account_id, visibility, visibility_id, language,
-          has_media, media_count, is_reblog, reblog_of_id, reblog_of_uri,
+          object_uri, origin_server_id, created_at_ms, stored_at,
+          author_profile_id, visibility_id, language,
+          content_html, spoiler_text, canonical_url,
+          has_media, media_count, is_reblog, reblog_of_uri,
           is_sensitive, has_spoiler, in_reply_to_id,
-          favourites_count, reblogs_count, replies_count,
-          json
-        ) VALUES (?,?,?,?, ?, ?,?,?,?,?, ?,?,?,?,?, ?,?,?, ?,?,?, ?);`,
+          is_local_only, edited_at
+        ) VALUES (?,?,?,?, ?,?,?, ?,?,?, ?,?,?,?, ?,?,?, ?,?);`,
         {
           bind: [
-            backendUrl,
+            insertUri,
             serverId,
             created_at_ms,
             now,
-            insertUri,
-            cols.account_acct,
-            cols.account_id,
-            cols.visibility,
+            profileId,
             visibilityId,
             cols.language,
+            cols.content_html,
+            cols.spoiler_text,
+            cols.canonical_url,
             cols.has_media,
             cols.media_count,
             cols.is_reblog,
-            cols.reblog_of_id,
             cols.reblog_of_uri,
             cols.is_sensitive,
             cols.has_spoiler,
             cols.in_reply_to_id,
-            cols.favourites_count,
-            cols.reblogs_count,
-            cols.replies_count,
-            JSON.stringify(status),
+            0,
+            cols.edited_at,
           ],
         },
       )
@@ -216,10 +281,13 @@ export function handleUpsertStatus(
       { bind: [postId, backendUrl, status.id, serverId] },
     )
 
+    // timeline_items に登録（timelines が未作成なら自動作成）
+    const timelineId = ensureTimeline(db, serverId, timelineType, tag)
+    const postItemKindId = resolvePostItemKindId(db)
     db.exec(
-      `INSERT OR IGNORE INTO posts_timeline_types (post_id, timelineType)
-       VALUES (?, ?);`,
-      { bind: [postId, timelineType] },
+      `INSERT OR IGNORE INTO timeline_items (timeline_id, timeline_item_kind_id, post_id, sort_key, inserted_at)
+       VALUES (?, ?, ?, ?, ?);`,
+      { bind: [timelineId, postItemKindId, postId, created_at_ms, now] },
     )
 
     for (const t of status.tags) {
@@ -239,14 +307,20 @@ export function handleUpsertStatus(
     }
 
     upsertMentionsInternal(db, postId, status.mentions)
+    syncPostMedia(db, postId, status.media_attachments, status.sensitive)
+    syncPostStats(db, postId, status)
 
-    // リブログ関係を posts_reblogs に記録（元投稿の URI が存在する場合のみ）
     if (cols.is_reblog === 1 && cols.reblog_of_uri) {
       db.exec(
         `INSERT OR REPLACE INTO posts_reblogs (post_id, original_uri, reblogger_acct, reblogged_at_ms)
          VALUES (?, ?, ?, ?);`,
         {
-          bind: [postId, cols.reblog_of_uri, cols.account_acct, created_at_ms],
+          bind: [
+            postId,
+            cols.reblog_of_uri,
+            status.account.acct,
+            created_at_ms,
+          ],
         },
       )
     }
@@ -282,6 +356,7 @@ export function handleBulkUpsertStatuses(
       const created_at_ms = new Date(status.created_at).getTime()
       const cols = extractStatusColumns(status)
       const visibilityId = resolveVisibilityId(db, cols.visibility)
+      const profileId = ensureProfile(db, status.account)
 
       let postId: number | undefined = normalizedUri
         ? uriCache.get(normalizedUri)
@@ -312,86 +387,75 @@ export function handleBulkUpsertStatuses(
       if (postId !== undefined) {
         db.exec(
           `UPDATE posts SET
-            stored_at        = ?,
-            account_acct     = ?,
-            account_id       = ?,
-            visibility       = ?,
-            visibility_id    = ?,
-            language         = ?,
-            has_media        = ?,
-            media_count      = ?,
-            is_reblog        = ?,
-            reblog_of_id     = ?,
-            reblog_of_uri    = ?,
-            is_sensitive     = ?,
-            has_spoiler      = ?,
-            in_reply_to_id   = ?,
-            favourites_count = ?,
-            reblogs_count    = ?,
-            replies_count    = ?,
-            json             = ?
+            stored_at          = ?,
+            visibility_id      = ?,
+            language           = ?,
+            content_html       = ?,
+            spoiler_text       = ?,
+            canonical_url      = ?,
+            has_media          = ?,
+            media_count        = ?,
+            is_reblog          = ?,
+            reblog_of_uri      = ?,
+            is_sensitive       = ?,
+            has_spoiler        = ?,
+            in_reply_to_id     = ?,
+            edited_at          = ?,
+            author_profile_id  = ?
           WHERE post_id = ?;`,
           {
             bind: [
               now,
-              cols.account_acct,
-              cols.account_id,
-              cols.visibility,
               visibilityId,
               cols.language,
+              cols.content_html,
+              cols.spoiler_text,
+              cols.canonical_url,
               cols.has_media,
               cols.media_count,
               cols.is_reblog,
-              cols.reblog_of_id,
               cols.reblog_of_uri,
               cols.is_sensitive,
               cols.has_spoiler,
               cols.in_reply_to_id,
-              cols.favourites_count,
-              cols.reblogs_count,
-              cols.replies_count,
-              JSON.stringify(status),
+              cols.edited_at,
+              profileId,
               postId,
             ],
           },
         )
       } else {
-        // リブログが元投稿の URI と衝突する場合は空文字にして UNIQUE 制約違反を回避
         const insertUri = existingIsOriginal ? '' : cols.uri
         db.exec(
           `INSERT INTO posts (
-            origin_backend_url, origin_server_id, created_at_ms, stored_at,
-            object_uri,
-            account_acct, account_id, visibility, visibility_id, language,
-            has_media, media_count, is_reblog, reblog_of_id, reblog_of_uri,
+            object_uri, origin_server_id, created_at_ms, stored_at,
+            author_profile_id, visibility_id, language,
+            content_html, spoiler_text, canonical_url,
+            has_media, media_count, is_reblog, reblog_of_uri,
             is_sensitive, has_spoiler, in_reply_to_id,
-            favourites_count, reblogs_count, replies_count,
-            json
-          ) VALUES (?,?,?,?, ?, ?,?,?,?,?, ?,?,?,?,?, ?,?,?, ?,?,?, ?);`,
+            is_local_only, edited_at
+          ) VALUES (?,?,?,?, ?,?,?, ?,?,?, ?,?,?,?, ?,?,?, ?,?);`,
           {
             bind: [
-              backendUrl,
+              insertUri,
               serverId,
               created_at_ms,
               now,
-              insertUri,
-              cols.account_acct,
-              cols.account_id,
-              cols.visibility,
+              profileId,
               visibilityId,
               cols.language,
+              cols.content_html,
+              cols.spoiler_text,
+              cols.canonical_url,
               cols.has_media,
               cols.media_count,
               cols.is_reblog,
-              cols.reblog_of_id,
               cols.reblog_of_uri,
               cols.is_sensitive,
               cols.has_spoiler,
               cols.in_reply_to_id,
-              cols.favourites_count,
-              cols.reblogs_count,
-              cols.replies_count,
-              JSON.stringify(status),
+              0,
+              cols.edited_at,
             ],
           },
         )
@@ -408,10 +472,13 @@ export function handleBulkUpsertStatuses(
         { bind: [postId, backendUrl, status.id, serverId] },
       )
 
+      // timeline_items に登録（timelines が未作成なら自動作成）
+      const timelineId = ensureTimeline(db, serverId, timelineType, tag)
+      const postItemKindId = resolvePostItemKindId(db)
       db.exec(
-        `INSERT OR IGNORE INTO posts_timeline_types (post_id, timelineType)
-         VALUES (?, ?);`,
-        { bind: [postId, timelineType] },
+        `INSERT OR IGNORE INTO timeline_items (timeline_id, timeline_item_kind_id, post_id, sort_key, inserted_at)
+         VALUES (?, ?, ?, ?, ?);`,
+        { bind: [timelineId, postItemKindId, postId, created_at_ms, now] },
       )
 
       for (const t of status.tags) {
@@ -431,6 +498,8 @@ export function handleBulkUpsertStatuses(
       }
 
       upsertMentionsInternal(db, postId, status.mentions)
+      syncPostMedia(db, postId, status.media_attachments, status.sensitive)
+      syncPostStats(db, postId, status)
 
       // リブログ関係を posts_reblogs に記録（元投稿の URI が存在する場合のみ）
       if (cols.is_reblog === 1 && cols.reblog_of_uri) {
@@ -441,7 +510,7 @@ export function handleBulkUpsertStatuses(
             bind: [
               postId,
               cols.reblog_of_uri,
-              cols.account_acct,
+              status.account.acct,
               created_at_ms,
             ],
           },
@@ -467,37 +536,35 @@ export function handleRemoveFromTimeline(
   const postId = resolvePostIdInternal(db, backendUrl, statusId)
   if (postId === null) return { changedTables: [] }
 
+  const serverId = ensureServer(db, backendUrl)
+
   db.exec('BEGIN;')
   try {
-    db.exec(
-      'DELETE FROM posts_timeline_types WHERE post_id = ? AND timelineType = ?;',
-      { bind: [postId, timelineType] },
-    )
+    // 該当タイムラインから timeline_items を削除
+    const timelineRows = db.exec(
+      `SELECT t.timeline_id FROM timelines t
+       INNER JOIN channel_kinds ck ON ck.channel_kind_id = t.channel_kind_id
+       WHERE t.server_id = ? AND ck.code = ? AND COALESCE(t.tag, '') = ?;`,
+      { bind: [serverId, timelineType, tag ?? ''], returnValue: 'resultRows' },
+    ) as number[][]
+
+    for (const [timelineId] of timelineRows) {
+      db.exec(
+        'DELETE FROM timeline_items WHERE timeline_id = ? AND post_id = ?;',
+        { bind: [timelineId, postId] },
+      )
+    }
 
     if (timelineType === 'tag' && tag) {
       db.exec(
         'DELETE FROM posts_belonging_tags WHERE post_id = ? AND tag = ?;',
         { bind: [postId, tag] },
       )
-
-      const remainingTags = (
-        db.exec(
-          'SELECT COUNT(*) FROM posts_belonging_tags WHERE post_id = ?;',
-          { bind: [postId], returnValue: 'resultRows' },
-        ) as number[][]
-      )[0][0]
-
-      if (remainingTags > 0) {
-        db.exec(
-          `INSERT OR IGNORE INTO posts_timeline_types (post_id, timelineType)
-           VALUES (?, 'tag');`,
-          { bind: [postId] },
-        )
-      }
     }
 
+    // どのタイムラインにも属さなくなった投稿を削除
     const remaining = (
-      db.exec('SELECT COUNT(*) FROM posts_timeline_types WHERE post_id = ?;', {
+      db.exec('SELECT COUNT(*) FROM timeline_items WHERE post_id = ?;', {
         bind: [postId],
         returnValue: 'resultRows',
       }) as number[][]
@@ -528,6 +595,8 @@ export function handleDeleteEvent(
   const postId = resolvePostIdInternal(db, backendUrl, statusId)
   if (postId === null) return { changedTables: [] }
 
+  const serverId = ensureServer(db, backendUrl)
+
   db.exec('BEGIN;')
   try {
     db.exec(
@@ -547,38 +616,37 @@ export function handleDeleteEvent(
         bind: [postId],
       })
     } else {
-      db.exec(
-        'DELETE FROM posts_timeline_types WHERE post_id = ? AND timelineType = ?;',
-        { bind: [postId, sourceTimelineType] },
-      )
+      // 該当タイムラインから timeline_items を削除
+      const timelineRows = db.exec(
+        `SELECT t.timeline_id FROM timelines t
+         INNER JOIN channel_kinds ck ON ck.channel_kind_id = t.channel_kind_id
+         WHERE t.server_id = ? AND ck.code = ? AND COALESCE(t.tag, '') = ?;`,
+        {
+          bind: [serverId, sourceTimelineType, tag ?? ''],
+          returnValue: 'resultRows',
+        },
+      ) as number[][]
+
+      for (const [timelineId] of timelineRows) {
+        db.exec(
+          'DELETE FROM timeline_items WHERE timeline_id = ? AND post_id = ?;',
+          { bind: [timelineId, postId] },
+        )
+      }
 
       if (sourceTimelineType === 'tag' && tag) {
         db.exec(
           'DELETE FROM posts_belonging_tags WHERE post_id = ? AND tag = ?;',
           { bind: [postId, tag] },
         )
-
-        // 残りのタグが存在する場合は 'tag' タイムラインタイプを再挿入
-        const remainingTags = (
-          db.exec(
-            'SELECT COUNT(*) FROM posts_belonging_tags WHERE post_id = ?;',
-            { bind: [postId], returnValue: 'resultRows' },
-          ) as number[][]
-        )[0][0]
-
-        if (remainingTags > 0) {
-          db.exec(
-            `INSERT OR IGNORE INTO posts_timeline_types (post_id, timelineType) VALUES (?, 'tag');`,
-            { bind: [postId] },
-          )
-        }
       }
 
+      // どのタイムラインにも属さなくなった投稿を削除
       const remainingTimelines = (
-        db.exec(
-          'SELECT COUNT(*) FROM posts_timeline_types WHERE post_id = ?;',
-          { bind: [postId], returnValue: 'resultRows' },
-        ) as number[][]
+        db.exec('SELECT COUNT(*) FROM timeline_items WHERE post_id = ?;', {
+          bind: [postId],
+          returnValue: 'resultRows',
+        }) as number[][]
       )[0][0]
 
       if (remainingTimelines === 0) {
@@ -609,58 +677,55 @@ export function handleUpdateStatusAction(
 
   db.exec('BEGIN;')
   try {
-    const rows = db.exec(
-      'SELECT json, object_uri FROM posts WHERE post_id = ?;',
-      { bind: [postId], returnValue: 'resultRows' },
-    ) as string[][]
+    const localAccountId = resolveLocalAccountId(db, backendUrl)
+    if (localAccountId !== null) {
+      const engagementCode = ACTION_TO_ENGAGEMENT[action]
+      if (engagementCode) {
+        // 自分自身のエンゲージメントをトグル
+        toggleEngagement(db, localAccountId, postId, engagementCode, value)
 
-    if (rows.length > 0) {
-      const status = JSON.parse(rows[0][0]) as Entity.Status
-      const statusUri = rows[0][1] as string
-      ;(status as Record<string, unknown>)[action] = value
+        // reblog チェーン: object_uri と reblog_of_uri から関連投稿を更新
+        const postInfo = db.exec(
+          'SELECT object_uri, reblog_of_uri FROM posts WHERE post_id = ?;',
+          { bind: [postId], returnValue: 'resultRows' },
+        ) as (string | null)[][]
 
-      db.exec('UPDATE posts SET json = ? WHERE post_id = ?;', {
-        bind: [JSON.stringify(status), postId],
-      })
+        if (postInfo.length > 0) {
+          const objectUri = postInfo[0][0] as string
+          const reblogOfUri = postInfo[0][1] as string | null
 
-      // reblog 元の更新
-      if (status.reblog) {
-        const reblogUri = status.reblog.uri
-        if (reblogUri) {
-          const reblogRows = db.exec(
-            'SELECT post_id, json FROM posts WHERE object_uri = ?;',
-            { bind: [reblogUri], returnValue: 'resultRows' },
-          ) as (string | number)[][]
-
-          if (reblogRows.length > 0) {
-            const reblogPostId = reblogRows[0][0] as number
-            const reblogStatus = JSON.parse(
-              reblogRows[0][1] as string,
-            ) as Entity.Status
-            ;(reblogStatus as Record<string, unknown>)[action] = value
-            db.exec('UPDATE posts SET json = ? WHERE post_id = ?;', {
-              bind: [JSON.stringify(reblogStatus), reblogPostId],
-            })
+          // reblog 元の投稿もトグル
+          if (reblogOfUri) {
+            const originalRows = db.exec(
+              'SELECT post_id FROM posts WHERE object_uri = ?;',
+              { bind: [reblogOfUri], returnValue: 'resultRows' },
+            ) as number[][]
+            if (originalRows.length > 0) {
+              toggleEngagement(
+                db,
+                localAccountId,
+                originalRows[0][0],
+                engagementCode,
+                value,
+              )
+            }
           }
-        }
-      }
 
-      // この Status を reblog として持つ他の Status も更新（posts_reblogs 経由）
-      if (statusUri) {
-        const relatedRows = db.exec(
-          `SELECT p.post_id, p.json FROM posts p
-           INNER JOIN posts_reblogs pr ON p.post_id = pr.post_id
-           WHERE pr.original_uri = ?;`,
-          { bind: [statusUri], returnValue: 'resultRows' },
-        ) as (string | number)[][]
-
-        for (const row of relatedRows) {
-          const json = JSON.parse(row[1] as string) as Entity.Status
-          if (json.reblog) {
-            ;(json.reblog as Record<string, unknown>)[action] = value
-            db.exec('UPDATE posts SET json = ? WHERE post_id = ?;', {
-              bind: [JSON.stringify(json), row[0] as number],
-            })
+          // この投稿を reblog として持つ他の投稿もトグル
+          if (objectUri) {
+            const reblogRows = db.exec(
+              `SELECT pr.post_id FROM posts_reblogs pr WHERE pr.original_uri = ?;`,
+              { bind: [objectUri], returnValue: 'resultRows' },
+            ) as number[][]
+            for (const row of reblogRows) {
+              toggleEngagement(
+                db,
+                localAccountId,
+                row[0],
+                engagementCode,
+                value,
+              )
+            }
           }
         }
       }
@@ -698,52 +763,47 @@ export function handleUpdateStatus(
   db.exec('BEGIN;')
   try {
     const visibilityId = resolveVisibilityId(db, cols.visibility)
+    const profileId = ensureProfile(db, status.account)
 
     db.exec(
       `UPDATE posts SET
-         created_at_ms    = ?,
-         stored_at        = ?,
-         object_uri       = ?,
-         account_acct     = ?,
-         account_id       = ?,
-         visibility       = ?,
-         visibility_id    = ?,
-         language         = ?,
-         has_media        = ?,
-         media_count      = ?,
-         is_reblog        = ?,
-         reblog_of_id     = ?,
-         reblog_of_uri    = ?,
-         is_sensitive     = ?,
-         has_spoiler      = ?,
-         in_reply_to_id   = ?,
-         favourites_count = ?,
-         reblogs_count    = ?,
-         replies_count    = ?,
-         json             = ?
+         created_at_ms      = ?,
+         stored_at          = ?,
+         object_uri         = ?,
+         visibility_id      = ?,
+         language           = ?,
+         content_html       = ?,
+         spoiler_text       = ?,
+         canonical_url      = ?,
+         has_media          = ?,
+         media_count        = ?,
+         is_reblog          = ?,
+         reblog_of_uri      = ?,
+         is_sensitive       = ?,
+         has_spoiler        = ?,
+         in_reply_to_id     = ?,
+         edited_at          = ?,
+         author_profile_id  = ?
        WHERE post_id = ?;`,
       {
         bind: [
           created_at_ms,
           now,
           cols.uri,
-          cols.account_acct,
-          cols.account_id,
-          cols.visibility,
           visibilityId,
           cols.language,
+          cols.content_html,
+          cols.spoiler_text,
+          cols.canonical_url,
           cols.has_media,
           cols.media_count,
           cols.is_reblog,
-          cols.reblog_of_id,
           cols.reblog_of_uri,
           cols.is_sensitive,
           cols.has_spoiler,
           cols.in_reply_to_id,
-          cols.favourites_count,
-          cols.reblogs_count,
-          cols.replies_count,
-          JSON.stringify(status),
+          cols.edited_at,
+          profileId,
           postId,
         ],
       },
@@ -761,6 +821,8 @@ export function handleUpdateStatus(
     }
 
     upsertMentionsInternal(db, postId, status.mentions)
+    syncPostMedia(db, postId, status.media_attachments, status.sensitive)
+    syncPostStats(db, postId, status)
 
     db.exec('COMMIT;')
   } catch (e) {

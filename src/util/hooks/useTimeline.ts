@@ -4,7 +4,12 @@ import { useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { StatusAddAppIndex } from 'types/types'
 import type { TimelineType } from 'util/db/database'
 import { getSqliteDb, subscribe } from 'util/db/sqlite/connection'
-import type { SqliteStoredStatus } from 'util/db/sqlite/statusStore'
+import {
+  rowToStoredStatus,
+  type SqliteStoredStatus,
+  STATUS_BASE_JOINS,
+  STATUS_SELECT,
+} from 'util/db/sqlite/statusStore'
 import { TIMELINE_QUERY_LIMIT } from 'util/environment'
 import { AppsContext } from 'util/provider/AppsProvider'
 
@@ -47,12 +52,15 @@ export function useTimeline(timelineType: TimelineType): StatusAddAppIndex[] {
 
       const placeholders = backendUrls.map(() => '?').join(',')
       const sql = `
-        SELECT s.post_id, s.origin_backend_url, s.created_at_ms, s.stored_at, s.json
+        SELECT ${STATUS_SELECT}
         FROM posts s
-        INNER JOIN posts_timeline_types stt
-          ON s.post_id = stt.post_id
-        WHERE stt.timelineType = ?
-          AND s.origin_backend_url IN (${placeholders})
+        ${STATUS_BASE_JOINS}
+        INNER JOIN timeline_items ti ON s.post_id = ti.post_id
+        INNER JOIN timelines t ON t.timeline_id = ti.timeline_id
+        INNER JOIN channel_kinds ck ON ck.channel_kind_id = t.channel_kind_id
+        WHERE ck.code = ?
+          AND pb.backendUrl IN (${placeholders})
+        GROUP BY s.post_id
         ORDER BY s.created_at_ms DESC
         LIMIT ?;
       `
@@ -65,20 +73,9 @@ export function useTimeline(timelineType: TimelineType): StatusAddAppIndex[] {
       const rows = (await handle.execAsync(sql, {
         bind: binds,
         returnValue: 'resultRows',
-      })) as (string | number)[][]
+      })) as (string | number | null)[][]
 
-      const results: SqliteStoredStatus[] = rows.map((row) => {
-        const status = JSON.parse(row[4] as string)
-        return {
-          ...status,
-          backendUrl: row[1] as string,
-          belongingTags: [],
-          created_at_ms: row[2] as number,
-          post_id: row[0] as number,
-          storedAt: row[3] as number,
-          timelineTypes: [],
-        }
-      })
+      const results: SqliteStoredStatus[] = rows.map(rowToStoredStatus)
 
       setStatuses(results)
     } catch (e) {
@@ -130,12 +127,14 @@ export function useTagTimeline(
 
       const placeholders = backendUrls.map(() => '?').join(',')
       const sql = `
-        SELECT s.post_id, s.origin_backend_url, s.created_at_ms, s.stored_at, s.json
+        SELECT ${STATUS_SELECT}
         FROM posts s
+        ${STATUS_BASE_JOINS}
         INNER JOIN posts_belonging_tags sbt
           ON s.post_id = sbt.post_id
         WHERE sbt.tag = ?
-          AND s.origin_backend_url IN (${placeholders})
+          AND pb.backendUrl IN (${placeholders})
+        GROUP BY s.post_id
         ORDER BY s.created_at_ms DESC
         LIMIT ?;
       `
@@ -148,20 +147,9 @@ export function useTagTimeline(
       const rows = (await handle.execAsync(sql, {
         bind: binds,
         returnValue: 'resultRows',
-      })) as (string | number)[][]
+      })) as (string | number | null)[][]
 
-      let results: SqliteStoredStatus[] = rows.map((row) => {
-        const status = JSON.parse(row[4] as string)
-        return {
-          ...status,
-          backendUrl: row[1] as string,
-          belongingTags: [],
-          created_at_ms: row[2] as number,
-          post_id: row[0] as number,
-          storedAt: row[3] as number,
-          timelineTypes: [],
-        }
-      })
+      let results: SqliteStoredStatus[] = rows.map(rowToStoredStatus)
 
       if (onlyMedia) {
         results = results.filter(

@@ -3,7 +3,12 @@
 import { useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { StatusAddAppIndex, TimelineConfigV2 } from 'types/types'
 import { getSqliteDb, subscribe } from 'util/db/sqlite/connection'
-import type { SqliteStoredStatus } from 'util/db/sqlite/statusStore'
+import {
+  rowToStoredStatus,
+  type SqliteStoredStatus,
+  STATUS_BASE_JOINS,
+  STATUS_SELECT,
+} from 'util/db/sqlite/statusStore'
 import { TIMELINE_QUERY_LIMIT } from 'util/environment'
 import { buildFilterConditions } from 'util/hooks/timelineFilterBuilder'
 import { useQueryDuration } from 'util/hooks/useQueryDuration'
@@ -106,7 +111,7 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
           visibilityFilter,
         } as TimelineConfigV2,
         targetBackendUrls,
-        '', // マテリアライズド・ビューのサブクエリ内ではテーブルエイリアス不要
+        's', // posts テーブルのエイリアス
       ),
     [
       onlyMedia,
@@ -151,48 +156,42 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
       const binds: (string | number)[] = []
 
       if (tagMode === 'or') {
-        // OR: いずれかのタグを含む（tag_entries サブクエリで高速絞り込み）
+        // OR: いずれかのタグを含む（posts_belonging_tags JOIN で絞り込み）
         const whereConditions = [
-          `tag IN (${tagPlaceholders})`,
-          `backend_url IN (${backendPlaceholders})`,
+          `pbt.tag IN (${tagPlaceholders})`,
+          `pb.backendUrl IN (${backendPlaceholders})`,
           ...filterConditions,
         ]
 
         sql = `
-          SELECT s.post_id, tge.backend_url,
-                 s.created_at_ms, s.stored_at, s.json
-          FROM (
-            SELECT post_id, MIN(backend_url) AS backend_url
-            FROM tag_entries
-            WHERE ${whereConditions.join('\n              AND ')}
-            GROUP BY post_id
-            ORDER BY created_at_ms DESC
-            LIMIT ?
-          ) tge
-          INNER JOIN posts s ON s.post_id = tge.post_id;
+          SELECT ${STATUS_SELECT}
+          FROM posts s
+          ${STATUS_BASE_JOINS}
+          INNER JOIN posts_belonging_tags pbt ON s.post_id = pbt.post_id
+          WHERE ${whereConditions.join('\n            AND ')}
+          GROUP BY s.post_id
+          ORDER BY s.created_at_ms DESC
+          LIMIT ?;
         `
         binds.push(...tags, ...targetBackendUrls, ...filterBinds, queryLimit)
       } else {
-        // AND: すべてのタグを含む（tag_entries サブクエリで高速絞り込み）
+        // AND: すべてのタグを含む（HAVING COUNT(DISTINCT tag) で全タグ一致を確認）
         const whereConditions = [
-          `tag IN (${tagPlaceholders})`,
-          `backend_url IN (${backendPlaceholders})`,
+          `pbt.tag IN (${tagPlaceholders})`,
+          `pb.backendUrl IN (${backendPlaceholders})`,
           ...filterConditions,
         ]
 
         sql = `
-          SELECT s.post_id, tge.backend_url,
-                 s.created_at_ms, s.stored_at, s.json
-          FROM (
-            SELECT post_id, MIN(backend_url) AS backend_url
-            FROM tag_entries
-            WHERE ${whereConditions.join('\n              AND ')}
-            GROUP BY post_id
-            HAVING COUNT(DISTINCT tag) = ?
-            ORDER BY created_at_ms DESC
-            LIMIT ?
-          ) tge
-          INNER JOIN posts s ON s.post_id = tge.post_id;
+          SELECT ${STATUS_SELECT}
+          FROM posts s
+          ${STATUS_BASE_JOINS}
+          INNER JOIN posts_belonging_tags pbt ON s.post_id = pbt.post_id
+          WHERE ${whereConditions.join('\n            AND ')}
+          GROUP BY s.post_id
+          HAVING COUNT(DISTINCT pbt.tag) = ?
+          ORDER BY s.created_at_ms DESC
+          LIMIT ?;
         `
         binds.push(
           ...tags,
@@ -210,18 +209,9 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
       })) as (string | number)[][]
       recordDuration(performance.now() - start)
 
-      const results: SqliteStoredStatus[] = rows.map((row) => {
-        const status = JSON.parse(row[4] as string)
-        return {
-          ...status,
-          backendUrl: row[1] as string,
-          belongingTags: [],
-          created_at_ms: row[2] as number,
-          post_id: row[0] as number,
-          storedAt: row[3] as number,
-          timelineTypes: [],
-        }
-      })
+      const results: SqliteStoredStatus[] = rows.map((row) =>
+        rowToStoredStatus(row),
+      )
 
       setStatuses(results)
     } catch (e) {
