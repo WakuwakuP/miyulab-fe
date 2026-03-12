@@ -695,7 +695,7 @@ export const QUERY_COMPLETIONS = {
       description:
         'ふぁぼ・リアクション・ブースト通知と通知元ユーザーの直後の1投稿(3分以内)をまとめて表示する',
       query:
-        "n.notification_type IN ('favourite', 'reaction', 'reblog') OR EXISTS (SELECT 1 FROM notifications ntf WHERE ntf.notification_type IN ('favourite', 'reaction', 'reblog') AND ntf.account_acct = s.account_acct AND s.created_at_ms > ntf.created_at_ms AND s.created_at_ms <= ntf.created_at_ms + 180000 AND s.created_at_ms = (SELECT MIN(s2.created_at_ms) FROM posts s2 WHERE s2.account_acct = ntf.account_acct AND s2.created_at_ms > ntf.created_at_ms AND s2.created_at_ms <= ntf.created_at_ms + 180000))",
+        "n.notification_type IN ('favourite', 'reaction', 'reblog') OR EXISTS (SELECT 1 FROM notifications ntf INNER JOIN notification_types ntt ON ntt.notification_type_id = ntf.notification_type_id INNER JOIN profiles pra ON pra.profile_id = ntf.actor_profile_id WHERE ntt.code IN ('favourite', 'reaction', 'reblog') AND pra.acct = s.account_acct AND s.created_at_ms > ntf.created_at_ms AND s.created_at_ms <= ntf.created_at_ms + 180000 AND s.created_at_ms = (SELECT MIN(s2.created_at_ms) FROM posts s2 INNER JOIN profiles pr2 ON pr2.profile_id = s2.author_profile_id WHERE pr2.acct = pra.acct AND s2.created_at_ms > ntf.created_at_ms AND s2.created_at_ms <= ntf.created_at_ms + 180000))",
     },
     {
       description: '特定ユーザーがリブログした投稿を取得する',
