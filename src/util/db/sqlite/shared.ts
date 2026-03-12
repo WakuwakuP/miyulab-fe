@@ -9,9 +9,37 @@ import type { Entity } from 'megalodon'
 
 /**
  * compositeKey を生成する
+ *
+ * @deprecated v7 以降は post_id (INTEGER PK) を使用。Dexie 互換用に残す。
  */
 export function createCompositeKey(backendUrl: string, id: string): string {
   return `${backendUrl}:${id}`
+}
+
+/**
+ * posts_backends から post_id を解決する
+ *
+ * backendUrl + localId から post_id を逆引きする。
+ * 見つからない場合は null を返す。
+ */
+export function resolvePostId(
+  db: {
+    exec: (
+      sql: string,
+      opts?: {
+        bind?: (string | number | null)[]
+        returnValue?: 'resultRows'
+      },
+    ) => unknown
+  },
+  backendUrl: string,
+  localId: string,
+): number | null {
+  const rows = db.exec(
+    'SELECT post_id FROM posts_backends WHERE backendUrl = ? AND local_id = ?;',
+    { bind: [backendUrl, localId], returnValue: 'resultRows' },
+  ) as number[][]
+  return rows.length > 0 ? rows[0][0] : null
 }
 
 /**

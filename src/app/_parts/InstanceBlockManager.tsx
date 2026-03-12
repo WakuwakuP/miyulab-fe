@@ -62,7 +62,7 @@ async function blockInstance(domain: string): Promise<void> {
      VALUES (?, ?);`,
     { bind: [domain, Date.now()] },
   )
-  notifyChange('statuses') // タイムラインの再クエリをトリガー
+  notifyChange('posts') // タイムラインの再クエリをトリガー
 }
 
 /**
@@ -76,7 +76,7 @@ async function unblockInstance(domain: string): Promise<void> {
       bind: [domain],
     },
   )
-  notifyChange('statuses')
+  notifyChange('posts')
 }
 
 /**

@@ -16,9 +16,6 @@ import {
 } from 'util/queryBuilder'
 import type { TimelineType } from '../database'
 import { getSqliteDb } from './connection'
-import { createCompositeKey } from './shared'
-
-export { createCompositeKey }
 
 // ================================================================
 // 定数
@@ -31,7 +28,7 @@ const MAX_QUERY_LIMIT = 2147483647
 // StoredStatus 型
 // ================================================================
 export interface SqliteStoredStatus extends Entity.Status {
-  compositeKey: string
+  post_id: number
   backendUrl: string
   timelineTypes: TimelineType[]
   belongingTags: string[]
@@ -57,10 +54,10 @@ export interface SqliteStoredStatus extends Entity.Status {
 function rowToStoredStatus(
   row: (string | number | null)[],
 ): SqliteStoredStatus {
-  const compositeKey = row[0] as string
+  const post_id = row[0] as number
   const backendUrl = row[1] as string
   const created_at_ms = row[2] as number
-  const storedAt = row[3] as number
+  const stored_at = row[3] as number
   const json = row[4] as string
   const timelineTypesJson = row[5] as string | null
   const belongingTagsJson = row[6] as string | null
@@ -72,9 +69,9 @@ function rowToStoredStatus(
     belongingTags: belongingTagsJson
       ? (JSON.parse(belongingTagsJson) as string[])
       : [],
-    compositeKey,
     created_at_ms,
-    storedAt,
+    post_id,
+    storedAt: stored_at,
     timelineTypes: timelineTypesJson
       ? (JSON.parse(timelineTypesJson) as TimelineType[])
       : [],
@@ -83,9 +80,9 @@ function rowToStoredStatus(
 
 /** timelineTypes / belongingTags を集約するサブクエリ（SELECT 句に埋め込む） */
 const TIMELINE_TYPES_SUBQUERY =
-  '(SELECT json_group_array(timelineType) FROM statuses_timeline_types WHERE compositeKey = s.compositeKey) AS timelineTypes'
+  '(SELECT json_group_array(timelineType) FROM posts_timeline_types WHERE post_id = s.post_id) AS timelineTypes'
 const BELONGING_TAGS_SUBQUERY =
-  '(SELECT json_group_array(tag) FROM statuses_belonging_tags WHERE compositeKey = s.compositeKey) AS belongingTags'
+  '(SELECT json_group_array(tag) FROM posts_belonging_tags WHERE post_id = s.post_id) AS belongingTags'
 
 // ================================================================
 // Public API
@@ -103,8 +100,8 @@ export function toStoredStatus(
     ...status,
     backendUrl,
     belongingTags: status.tags.map((tag) => tag.name),
-    compositeKey: createCompositeKey(backendUrl, status.id),
     created_at_ms: new Date(status.created_at).getTime(),
+    post_id: 0,
     storedAt: Date.now(),
     timelineTypes,
   }
@@ -242,30 +239,30 @@ export async function getStatusesByTimelineType(
   if (backendUrls && backendUrls.length > 0) {
     const placeholders = backendUrls.map(() => '?').join(',')
     sql = `
-      SELECT s.compositeKey, MIN(sb.backendUrl) AS backendUrl,
-             s.created_at_ms, s.storedAt, s.json,
+      SELECT s.post_id, MIN(pb.backend_url) AS backendUrl,
+             s.created_at_ms, s.stored_at, s.json,
              ${TIMELINE_TYPES_SUBQUERY},
              ${BELONGING_TAGS_SUBQUERY}
-      FROM statuses s
-      INNER JOIN statuses_timeline_types stt
-        ON s.compositeKey = stt.compositeKey
-      INNER JOIN statuses_backends sb
-        ON s.compositeKey = sb.compositeKey
+      FROM posts s
+      INNER JOIN posts_timeline_types stt
+        ON s.post_id = stt.post_id
+      INNER JOIN posts_backends pb
+        ON s.post_id = pb.post_id
       WHERE stt.timelineType = ?
-        AND sb.backendUrl IN (${placeholders})
-      GROUP BY s.compositeKey
+        AND pb.backend_url IN (${placeholders})
+      GROUP BY s.post_id
       ORDER BY s.created_at_ms DESC
       LIMIT ?;
     `
     binds.push(timelineType, ...backendUrls, limit ?? MAX_QUERY_LIMIT)
   } else {
     sql = `
-      SELECT s.compositeKey, s.backendUrl, s.created_at_ms, s.storedAt, s.json,
+      SELECT s.post_id, s.origin_backend_url, s.created_at_ms, s.stored_at, s.json,
              ${TIMELINE_TYPES_SUBQUERY},
              ${BELONGING_TAGS_SUBQUERY}
-      FROM statuses s
-      INNER JOIN statuses_timeline_types stt
-        ON s.compositeKey = stt.compositeKey
+      FROM posts s
+      INNER JOIN posts_timeline_types stt
+        ON s.post_id = stt.post_id
       WHERE stt.timelineType = ?
       ORDER BY s.created_at_ms DESC
       LIMIT ?;
@@ -297,30 +294,30 @@ export async function getStatusesByTag(
   if (backendUrls && backendUrls.length > 0) {
     const placeholders = backendUrls.map(() => '?').join(',')
     sql = `
-      SELECT s.compositeKey, MIN(sb.backendUrl) AS backendUrl,
-             s.created_at_ms, s.storedAt, s.json,
+      SELECT s.post_id, MIN(pb.backend_url) AS backendUrl,
+             s.created_at_ms, s.stored_at, s.json,
              ${TIMELINE_TYPES_SUBQUERY},
              ${BELONGING_TAGS_SUBQUERY}
-      FROM statuses s
-      INNER JOIN statuses_belonging_tags sbt
-        ON s.compositeKey = sbt.compositeKey
-      INNER JOIN statuses_backends sb
-        ON s.compositeKey = sb.compositeKey
+      FROM posts s
+      INNER JOIN posts_belonging_tags sbt
+        ON s.post_id = sbt.post_id
+      INNER JOIN posts_backends pb
+        ON s.post_id = pb.post_id
       WHERE sbt.tag = ?
-        AND sb.backendUrl IN (${placeholders})
-      GROUP BY s.compositeKey
+        AND pb.backend_url IN (${placeholders})
+      GROUP BY s.post_id
       ORDER BY s.created_at_ms DESC
       LIMIT ?;
     `
     binds.push(tag, ...backendUrls, limit ?? MAX_QUERY_LIMIT)
   } else {
     sql = `
-      SELECT s.compositeKey, s.backendUrl, s.created_at_ms, s.storedAt, s.json,
+      SELECT s.post_id, s.origin_backend_url, s.created_at_ms, s.stored_at, s.json,
              ${TIMELINE_TYPES_SUBQUERY},
              ${BELONGING_TAGS_SUBQUERY}
-      FROM statuses s
-      INNER JOIN statuses_belonging_tags sbt
-        ON s.compositeKey = sbt.compositeKey
+      FROM posts s
+      INNER JOIN posts_belonging_tags sbt
+        ON s.post_id = sbt.post_id
       WHERE sbt.tag = ?
       ORDER BY s.created_at_ms DESC
       LIMIT ?;
@@ -403,36 +400,36 @@ export async function getStatusesByCustomQuery(
   const joinLines: string[] = []
   if (refs.stt)
     joinLines.push(
-      'LEFT JOIN statuses_timeline_types stt\n      ON s.compositeKey = stt.compositeKey',
+      'LEFT JOIN posts_timeline_types stt\n      ON s.post_id = stt.post_id',
     )
   if (refs.sbt)
     joinLines.push(
-      'LEFT JOIN statuses_belonging_tags sbt\n      ON s.compositeKey = sbt.compositeKey',
+      'LEFT JOIN posts_belonging_tags sbt\n      ON s.post_id = sbt.post_id',
     )
   if (refs.sm)
     joinLines.push(
-      'LEFT JOIN statuses_mentions sm\n      ON s.compositeKey = sm.compositeKey',
+      'LEFT JOIN posts_mentions sm\n      ON s.post_id = sm.post_id',
     )
   if (needSb)
     joinLines.push(
-      'LEFT JOIN statuses_backends sb\n      ON s.compositeKey = sb.compositeKey',
+      'LEFT JOIN posts_backends sb\n      ON s.post_id = sb.post_id',
     )
   if (refs.sr)
     joinLines.push(
-      'LEFT JOIN statuses_reblogs sr\n      ON s.compositeKey = sr.compositeKey',
+      'LEFT JOIN posts_reblogs sr\n      ON s.post_id = sr.post_id',
     )
 
   const hasMultiRowJoin = refs.stt || refs.sbt || refs.sm || needSb
   const backendSelect = needSb
-    ? 'MIN(sb.backendUrl) AS backendUrl'
-    : 's.backendUrl'
+    ? 'MIN(sb.backend_url) AS backendUrl'
+    : 's.origin_backend_url'
 
   let backendFilter = ''
   const binds: (string | number)[] = []
 
   if (backendUrls && backendUrls.length > 0) {
     const placeholders = backendUrls.map(() => '?').join(',')
-    backendFilter = `AND sb.backendUrl IN (${placeholders})`
+    backendFilter = `AND sb.backend_url IN (${placeholders})`
     binds.push(...backendUrls)
   }
 
@@ -440,13 +437,13 @@ export async function getStatusesByCustomQuery(
     joinLines.length > 0 ? `\n    ${joinLines.join('\n    ')}` : ''
 
   const sql = `
-    SELECT s.compositeKey, ${backendSelect},
-           s.created_at_ms, s.storedAt, s.json,
+    SELECT s.post_id, ${backendSelect},
+           s.created_at_ms, s.stored_at, s.json,
            ${TIMELINE_TYPES_SUBQUERY},
            ${BELONGING_TAGS_SUBQUERY}
-    FROM statuses s${joinsClause}
+    FROM posts s${joinsClause}
     WHERE (${sanitized || '1=1'})
-      ${backendFilter}${hasMultiRowJoin ? '\n    GROUP BY s.compositeKey' : ''}
+      ${backendFilter}${hasMultiRowJoin ? '\n    GROUP BY s.post_id' : ''}
     ORDER BY s.created_at_ms DESC
     LIMIT ?
     OFFSET ?;
@@ -468,21 +465,21 @@ export const QUERY_COMPLETIONS = {
   aliases: ['s', 'stt', 'sbt', 'sm', 'sb', 'sr', 'n'],
   columns: {
     n: [
-      'compositeKey',
-      'backendUrl',
+      'notification_id',
+      'backend_url',
       'created_at_ms',
-      'storedAt',
+      'stored_at',
       'notification_type',
       'status_id',
       'account_acct',
       'json',
     ],
     s: [
-      'compositeKey',
-      'backendUrl',
+      'post_id',
+      'origin_backend_url',
       'created_at_ms',
-      'storedAt',
-      'uri',
+      'stored_at',
+      'object_uri',
       'account_acct',
       'account_id',
       'visibility',
@@ -500,11 +497,11 @@ export const QUERY_COMPLETIONS = {
       'replies_count',
       'json',
     ],
-    sb: ['compositeKey', 'backendUrl', 'local_id'],
-    sbt: ['compositeKey', 'tag'],
-    sm: ['compositeKey', 'acct'],
-    sr: ['compositeKey', 'original_uri', 'reblogger_acct', 'reblogged_at_ms'],
-    stt: ['compositeKey', 'timelineType'],
+    sb: ['post_id', 'backend_url', 'local_id'],
+    sbt: ['post_id', 'tag'],
+    sm: ['post_id', 'acct'],
+    sr: ['post_id', 'original_uri', 'reblogger_acct', 'reblogged_at_ms'],
+    stt: ['post_id', 'timelineType'],
   },
   examples: [
     {
@@ -593,7 +590,7 @@ export const QUERY_COMPLETIONS = {
       description:
         'ふぁぼ・リアクション・ブースト通知と通知元ユーザーの直後の1投稿(3分以内)をまとめて表示する',
       query:
-        "n.notification_type IN ('favourite', 'reaction', 'reblog') OR EXISTS (SELECT 1 FROM notifications ntf WHERE ntf.notification_type IN ('favourite', 'reaction', 'reblog') AND ntf.account_acct = s.account_acct AND s.created_at_ms > ntf.created_at_ms AND s.created_at_ms <= ntf.created_at_ms + 180000 AND s.created_at_ms = (SELECT MIN(s2.created_at_ms) FROM statuses s2 WHERE s2.account_acct = ntf.account_acct AND s2.created_at_ms > ntf.created_at_ms AND s2.created_at_ms <= ntf.created_at_ms + 180000))",
+        "n.notification_type IN ('favourite', 'reaction', 'reblog') OR EXISTS (SELECT 1 FROM notifications ntf WHERE ntf.notification_type IN ('favourite', 'reaction', 'reblog') AND ntf.account_acct = s.account_acct AND s.created_at_ms > ntf.created_at_ms AND s.created_at_ms <= ntf.created_at_ms + 180000 AND s.created_at_ms = (SELECT MIN(s2.created_at_ms) FROM posts s2 WHERE s2.account_acct = ntf.account_acct AND s2.created_at_ms > ntf.created_at_ms AND s2.created_at_ms <= ntf.created_at_ms + 180000))",
     },
     {
       description: '特定ユーザーがリブログした投稿を取得する',
@@ -711,42 +708,42 @@ export async function validateCustomQuery(
 
     let sql: string
     if (isMixed) {
-      // 混合クエリ: statuses + notifications の両テーブルを UNION で検証
+      // 混合クエリ: posts + notifications の両テーブルを UNION で検証
       // WHERE 句が両テーブルのカラムを参照するため、個別の SELECT で EXPLAIN する
       sql = `
         EXPLAIN
-        SELECT compositeKey FROM (
-          SELECT s.compositeKey, s.created_at_ms
-          FROM statuses s
-          LEFT JOIN statuses_timeline_types stt
-            ON s.compositeKey = stt.compositeKey
-          LEFT JOIN statuses_belonging_tags sbt
-            ON s.compositeKey = sbt.compositeKey
-          LEFT JOIN statuses_mentions sm
-            ON s.compositeKey = sm.compositeKey
-          LEFT JOIN statuses_backends sb
-            ON s.compositeKey = sb.compositeKey
-          LEFT JOIN statuses_reblogs sr
-            ON s.compositeKey = sr.compositeKey
+        SELECT post_id FROM (
+          SELECT s.post_id, s.created_at_ms
+          FROM posts s
+          LEFT JOIN posts_timeline_types stt
+            ON s.post_id = stt.post_id
+          LEFT JOIN posts_belonging_tags sbt
+            ON s.post_id = sbt.post_id
+          LEFT JOIN posts_mentions sm
+            ON s.post_id = sm.post_id
+          LEFT JOIN posts_backends sb
+            ON s.post_id = sb.post_id
+          LEFT JOIN posts_reblogs sr
+            ON s.post_id = sr.post_id
           -- Dummy join: n.* columns resolve to NULL so mixed WHERE clause passes
           LEFT JOIN notifications n
             ON 0 = 1
           WHERE (${sanitized})
           UNION ALL
-          SELECT n.compositeKey, n.created_at_ms
+          SELECT n.notification_id, n.created_at_ms
           FROM notifications n
           -- Dummy joins: s.*/stt.*/sbt.*/sm.*/sb.*/sr.* columns resolve to NULL
-          LEFT JOIN statuses s
+          LEFT JOIN posts s
             ON 0 = 1
-          LEFT JOIN statuses_timeline_types stt
+          LEFT JOIN posts_timeline_types stt
             ON 0 = 1
-          LEFT JOIN statuses_belonging_tags sbt
+          LEFT JOIN posts_belonging_tags sbt
             ON 0 = 1
-          LEFT JOIN statuses_mentions sm
+          LEFT JOIN posts_mentions sm
             ON 0 = 1
-          LEFT JOIN statuses_backends sb
+          LEFT JOIN posts_backends sb
             ON 0 = 1
-          LEFT JOIN statuses_reblogs sr
+          LEFT JOIN posts_reblogs sr
             ON 0 = 1
           WHERE (${sanitized})
         )
@@ -756,27 +753,27 @@ export async function validateCustomQuery(
       // notifications テーブル対象のクエリ
       sql = `
         EXPLAIN
-        SELECT DISTINCT n.compositeKey
+        SELECT DISTINCT n.notification_id
         FROM notifications n
         WHERE (${sanitized})
         LIMIT 1;
       `
     } else {
-      // statuses テーブル対象のクエリ（v3: statuses_backends, v5: statuses_reblogs も LEFT JOIN）
+      // posts テーブル対象のクエリ（posts_backends, posts_reblogs も LEFT JOIN）
       sql = `
         EXPLAIN
-        SELECT DISTINCT s.compositeKey
-        FROM statuses s
-        LEFT JOIN statuses_timeline_types stt
-          ON s.compositeKey = stt.compositeKey
-        LEFT JOIN statuses_belonging_tags sbt
-          ON s.compositeKey = sbt.compositeKey
-        LEFT JOIN statuses_mentions sm
-          ON s.compositeKey = sm.compositeKey
-        LEFT JOIN statuses_backends sb
-          ON s.compositeKey = sb.compositeKey
-        LEFT JOIN statuses_reblogs sr
-          ON s.compositeKey = sr.compositeKey
+        SELECT DISTINCT s.post_id
+        FROM posts s
+        LEFT JOIN posts_timeline_types stt
+          ON s.post_id = stt.post_id
+        LEFT JOIN posts_belonging_tags sbt
+          ON s.post_id = sbt.post_id
+        LEFT JOIN posts_mentions sm
+          ON s.post_id = sm.post_id
+        LEFT JOIN posts_backends sb
+          ON s.post_id = sb.post_id
+        LEFT JOIN posts_reblogs sr
+          ON s.post_id = sr.post_id
         WHERE (${sanitized})
         LIMIT 1;
       `
@@ -796,7 +793,7 @@ export async function getDistinctTags(): Promise<string[]> {
   try {
     const handle = await getSqliteDb()
     const rows = (await handle.execAsync(
-      'SELECT DISTINCT tag FROM statuses_belonging_tags ORDER BY tag;',
+      'SELECT DISTINCT tag FROM posts_belonging_tags ORDER BY tag;',
       { returnValue: 'resultRows' },
     )) as string[][]
     return rows.map((r) => r[0])
@@ -812,7 +809,7 @@ export async function getDistinctTimelineTypes(): Promise<string[]> {
   try {
     const handle = await getSqliteDb()
     const rows = (await handle.execAsync(
-      'SELECT DISTINCT timelineType FROM statuses_timeline_types ORDER BY timelineType;',
+      'SELECT DISTINCT timelineType FROM posts_timeline_types ORDER BY timelineType;',
       { returnValue: 'resultRows' },
     )) as string[][]
     return rows.map((r) => r[0])
@@ -833,7 +830,7 @@ export async function getJsonKeysFromSample(
   try {
     const handle = await getSqliteDb()
     const rows = (await handle.execAsync(
-      `SELECT json FROM statuses ORDER BY created_at_ms DESC LIMIT ?;`,
+      `SELECT json FROM posts ORDER BY created_at_ms DESC LIMIT ?;`,
       { bind: [sampleSize], returnValue: 'resultRows' },
     )) as string[][]
 
@@ -907,7 +904,7 @@ export async function getDistinctJsonValues(
     const rows = (await handle.execAsync(
       `WITH vals AS (
          SELECT json_extract(json, ?) AS val
-         FROM statuses
+         FROM posts
        )
        SELECT DISTINCT val
        FROM vals
@@ -930,24 +927,24 @@ export async function getDistinctJsonValues(
 /** 許可リスト（安全なテーブル＋カラムの組み合わせ） */
 const ALLOWED_COLUMN_VALUES: Record<string, string[]> = {
   notifications: [
-    'backendUrl',
+    'backend_url',
     'notification_type',
     'status_id',
     'account_acct',
   ],
-  statuses: [
-    'backendUrl',
-    'uri',
+  posts: [
+    'origin_backend_url',
+    'object_uri',
     'account_acct',
     'account_id',
     'visibility',
     'language',
   ],
-  statuses_backends: ['backendUrl', 'local_id'],
-  statuses_belonging_tags: ['tag'],
-  statuses_mentions: ['acct'],
-  statuses_reblogs: ['original_uri', 'reblogger_acct'],
-  statuses_timeline_types: ['timelineType'],
+  posts_backends: ['backend_url', 'local_id'],
+  posts_belonging_tags: ['tag'],
+  posts_mentions: ['acct'],
+  posts_reblogs: ['original_uri', 'reblogger_acct'],
+  posts_timeline_types: ['timelineType'],
 }
 
 /** エイリアスからテーブル名・カラム名へのマッピング */
@@ -958,7 +955,7 @@ export const ALIAS_TO_TABLE: Record<
   n: {
     columns: {
       account_acct: 'account_acct',
-      backendUrl: 'backendUrl',
+      backend_url: 'backend_url',
       notification_type: 'notification_type',
       status_id: 'status_id',
     },
@@ -968,44 +965,44 @@ export const ALIAS_TO_TABLE: Record<
     columns: {
       account_acct: 'account_acct',
       account_id: 'account_id',
-      backendUrl: 'backendUrl',
       language: 'language',
-      uri: 'uri',
+      object_uri: 'object_uri',
+      origin_backend_url: 'origin_backend_url',
       visibility: 'visibility',
     },
-    table: 'statuses',
+    table: 'posts',
   },
   sb: {
     columns: {
-      backendUrl: 'backendUrl',
+      backend_url: 'backend_url',
       local_id: 'local_id',
     },
-    table: 'statuses_backends',
+    table: 'posts_backends',
   },
   sbt: {
     columns: {
       tag: 'tag',
     },
-    table: 'statuses_belonging_tags',
+    table: 'posts_belonging_tags',
   },
   sm: {
     columns: {
       acct: 'acct',
     },
-    table: 'statuses_mentions',
+    table: 'posts_mentions',
   },
   sr: {
     columns: {
       original_uri: 'original_uri',
       reblogger_acct: 'reblogger_acct',
     },
-    table: 'statuses_reblogs',
+    table: 'posts_reblogs',
   },
   stt: {
     columns: {
       timelineType: 'timelineType',
     },
-    table: 'statuses_timeline_types',
+    table: 'posts_timeline_types',
   },
 }
 

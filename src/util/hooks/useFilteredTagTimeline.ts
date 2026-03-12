@@ -32,7 +32,7 @@ function resolveAppIndex(
  * タグタイムライン用の統合 Hook (SQLite版)
  *
  * ## OR 条件 (tagConfig.mode === 'or')
- * SQL の IN 句で一括クエリし、compositeKey で DISTINCT する。
+ * SQL の IN 句で一括クエリし、post_id で DISTINCT する。
  *
  * ## AND 条件 (tagConfig.mode === 'and')
  * HAVING COUNT(DISTINCT tag) = タグ数 で全タグを含む Status のみ取得する。
@@ -154,45 +154,45 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
         // OR: いずれかのタグを含む（tag_entries サブクエリで高速絞り込み）
         const whereConditions = [
           `tag IN (${tagPlaceholders})`,
-          `backendUrl IN (${backendPlaceholders})`,
+          `backend_url IN (${backendPlaceholders})`,
           ...filterConditions,
         ]
 
         sql = `
-          SELECT s.compositeKey, tge.backendUrl,
-                 s.created_at_ms, s.storedAt, s.json
+          SELECT s.post_id, tge.backend_url,
+                 s.created_at_ms, s.stored_at, s.json
           FROM (
-            SELECT compositeKey, MIN(backendUrl) AS backendUrl
+            SELECT post_id, MIN(backend_url) AS backend_url
             FROM tag_entries
             WHERE ${whereConditions.join('\n              AND ')}
-            GROUP BY compositeKey
+            GROUP BY post_id
             ORDER BY created_at_ms DESC
             LIMIT ?
           ) tge
-          INNER JOIN statuses s ON s.compositeKey = tge.compositeKey;
+          INNER JOIN posts s ON s.post_id = tge.post_id;
         `
         binds.push(...tags, ...targetBackendUrls, ...filterBinds, queryLimit)
       } else {
         // AND: すべてのタグを含む（tag_entries サブクエリで高速絞り込み）
         const whereConditions = [
           `tag IN (${tagPlaceholders})`,
-          `backendUrl IN (${backendPlaceholders})`,
+          `backend_url IN (${backendPlaceholders})`,
           ...filterConditions,
         ]
 
         sql = `
-          SELECT s.compositeKey, tge.backendUrl,
-                 s.created_at_ms, s.storedAt, s.json
+          SELECT s.post_id, tge.backend_url,
+                 s.created_at_ms, s.stored_at, s.json
           FROM (
-            SELECT compositeKey, MIN(backendUrl) AS backendUrl
+            SELECT post_id, MIN(backend_url) AS backend_url
             FROM tag_entries
             WHERE ${whereConditions.join('\n              AND ')}
-            GROUP BY compositeKey
+            GROUP BY post_id
             HAVING COUNT(DISTINCT tag) = ?
             ORDER BY created_at_ms DESC
             LIMIT ?
           ) tge
-          INNER JOIN statuses s ON s.compositeKey = tge.compositeKey;
+          INNER JOIN posts s ON s.post_id = tge.post_id;
         `
         binds.push(
           ...tags,
@@ -216,8 +216,8 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
           ...status,
           backendUrl: row[1] as string,
           belongingTags: [],
-          compositeKey: row[0] as string,
           created_at_ms: row[2] as number,
+          post_id: row[0] as number,
           storedAt: row[3] as number,
           timelineTypes: [],
         }
@@ -242,7 +242,7 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
   // 初回取得 + 変更通知で再取得
   useEffect(() => {
     fetchData()
-    return subscribe('statuses', fetchData)
+    return subscribe('posts', fetchData)
   }, [fetchData])
 
   const data = useMemo(

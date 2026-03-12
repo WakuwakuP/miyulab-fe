@@ -9,11 +9,11 @@ type TableCount = {
 }
 
 const TABLE_NAMES = [
-  'statuses',
-  'statuses_timeline_types',
-  'statuses_belonging_tags',
-  'statuses_mentions',
-  'statuses_backends',
+  'posts',
+  'posts_timeline_types',
+  'posts_belonging_tags',
+  'posts_mentions',
+  'posts_backends',
   'notifications',
   'muted_accounts',
   'blocked_instances',
@@ -24,8 +24,8 @@ const TABLE_NAMES = [
  * INDEXED BY ヒントで小さいインデックスをスキャンさせることで高速化する。
  */
 const INDEX_HINTS: Partial<Record<(typeof TABLE_NAMES)[number], string>> = {
-  notifications: ' INDEXED BY idx_notifications_storedAt',
-  statuses: ' INDEXED BY idx_statuses_storedAt',
+  notifications: ' INDEXED BY idx_notifications_stored_at',
+  posts: ' INDEXED BY idx_posts_stored_at',
 }
 
 export const DatabaseStatsPanel = () => {

@@ -152,10 +152,10 @@ export const UnifiedTimeline = ({
             const tags = config.tagConfig?.tags ?? []
             for (const tag of tags) {
               const rows = (await handle.execAsync(
-                `SELECT s.compositeKey, s.backendUrl, s.created_at_ms, s.storedAt, s.json
-                 FROM statuses s
-                 INNER JOIN statuses_belonging_tags sbt ON s.compositeKey = sbt.compositeKey
-                 WHERE sbt.tag = ? AND s.backendUrl = ?
+                `SELECT s.post_id, s.origin_backend_url, s.created_at_ms, s.stored_at, s.json
+                 FROM posts s
+                 INNER JOIN posts_belonging_tags sbt ON s.post_id = sbt.post_id
+                 WHERE sbt.tag = ? AND s.origin_backend_url = ?
                  ORDER BY s.created_at_ms ASC
                  LIMIT 1;`,
                 { bind: [tag, url], returnValue: 'resultRows' },
@@ -166,8 +166,8 @@ export const UnifiedTimeline = ({
                   ...status,
                   appIndex: apps.findIndex((a) => a.backendUrl === url),
                   backendUrl: rows[0][1] as string,
-                  compositeKey: rows[0][0] as string,
                   created_at_ms: rows[0][2] as number,
+                  post_id: rows[0][0] as number,
                   storedAt: rows[0][3] as number,
                 }
                 break
@@ -176,10 +176,10 @@ export const UnifiedTimeline = ({
           } else {
             // 通常のタイムラインの場合
             const rows = (await handle.execAsync(
-              `SELECT s.compositeKey, s.backendUrl, s.created_at_ms, s.storedAt, s.json
-               FROM statuses s
-               INNER JOIN statuses_timeline_types stt ON s.compositeKey = stt.compositeKey
-               WHERE s.backendUrl = ? AND stt.timelineType = ?
+              `SELECT s.post_id, s.origin_backend_url, s.created_at_ms, s.stored_at, s.json
+               FROM posts s
+               INNER JOIN posts_timeline_types stt ON s.post_id = stt.post_id
+               WHERE s.origin_backend_url = ? AND stt.timelineType = ?
                ORDER BY s.created_at_ms ASC
                LIMIT 1;`,
               { bind: [url, timelineType], returnValue: 'resultRows' },
@@ -190,8 +190,8 @@ export const UnifiedTimeline = ({
                 ...status,
                 appIndex: apps.findIndex((a) => a.backendUrl === url),
                 backendUrl: rows[0][1] as string,
-                compositeKey: rows[0][0] as string,
                 created_at_ms: rows[0][2] as number,
+                post_id: rows[0][0] as number,
                 storedAt: rows[0][3] as number,
               }
             }

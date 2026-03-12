@@ -78,7 +78,7 @@ export function useNotifications(config?: TimelineConfigV2): {
 
       // バックエンドフィルタ
       const placeholders = targetBackendUrls.map(() => '?').join(',')
-      conditions.push(`backendUrl IN (${placeholders})`)
+      conditions.push(`backend_url IN (${placeholders})`)
       binds.push(...targetBackendUrls)
 
       // 通知タイプフィルタ
@@ -91,7 +91,7 @@ export function useNotifications(config?: TimelineConfigV2): {
 
       const whereClause = conditions.join(' AND ')
       const sql = `
-        SELECT compositeKey, backendUrl, created_at_ms, storedAt, json
+        SELECT notification_id, backend_url, created_at_ms, stored_at, json
         FROM notifications
         WHERE ${whereClause}
         ORDER BY created_at_ms DESC
@@ -111,8 +111,8 @@ export function useNotifications(config?: TimelineConfigV2): {
         return {
           ...notification,
           backendUrl: row[1] as string,
-          compositeKey: row[0] as string,
           created_at_ms: row[2] as number,
+          notification_id: row[0] as number,
           storedAt: row[3] as number,
         }
       })

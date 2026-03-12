@@ -11,7 +11,7 @@
 
 export type BindValue = string | number | null
 
-export type TableName = 'statuses' | 'notifications'
+export type TableName = 'posts' | 'notifications'
 
 // ================================================================
 // Main Thread → Worker (リクエスト)

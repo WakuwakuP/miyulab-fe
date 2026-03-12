@@ -47,12 +47,12 @@ export function useTimeline(timelineType: TimelineType): StatusAddAppIndex[] {
 
       const placeholders = backendUrls.map(() => '?').join(',')
       const sql = `
-        SELECT s.compositeKey, s.backendUrl, s.created_at_ms, s.storedAt, s.json
-        FROM statuses s
-        INNER JOIN statuses_timeline_types stt
-          ON s.compositeKey = stt.compositeKey
+        SELECT s.post_id, s.origin_backend_url, s.created_at_ms, s.stored_at, s.json
+        FROM posts s
+        INNER JOIN posts_timeline_types stt
+          ON s.post_id = stt.post_id
         WHERE stt.timelineType = ?
-          AND s.backendUrl IN (${placeholders})
+          AND s.origin_backend_url IN (${placeholders})
         ORDER BY s.created_at_ms DESC
         LIMIT ?;
       `
@@ -73,8 +73,8 @@ export function useTimeline(timelineType: TimelineType): StatusAddAppIndex[] {
           ...status,
           backendUrl: row[1] as string,
           belongingTags: [],
-          compositeKey: row[0] as string,
           created_at_ms: row[2] as number,
+          post_id: row[0] as number,
           storedAt: row[3] as number,
           timelineTypes: [],
         }
@@ -88,7 +88,7 @@ export function useTimeline(timelineType: TimelineType): StatusAddAppIndex[] {
 
   useEffect(() => {
     fetchData()
-    return subscribe('statuses', fetchData)
+    return subscribe('posts', fetchData)
   }, [fetchData])
 
   // appIndex を都度算出して付与し、解決できなかったレコードは除外する
@@ -130,12 +130,12 @@ export function useTagTimeline(
 
       const placeholders = backendUrls.map(() => '?').join(',')
       const sql = `
-        SELECT s.compositeKey, s.backendUrl, s.created_at_ms, s.storedAt, s.json
-        FROM statuses s
-        INNER JOIN statuses_belonging_tags sbt
-          ON s.compositeKey = sbt.compositeKey
+        SELECT s.post_id, s.origin_backend_url, s.created_at_ms, s.stored_at, s.json
+        FROM posts s
+        INNER JOIN posts_belonging_tags sbt
+          ON s.post_id = sbt.post_id
         WHERE sbt.tag = ?
-          AND s.backendUrl IN (${placeholders})
+          AND s.origin_backend_url IN (${placeholders})
         ORDER BY s.created_at_ms DESC
         LIMIT ?;
       `
@@ -156,8 +156,8 @@ export function useTagTimeline(
           ...status,
           backendUrl: row[1] as string,
           belongingTags: [],
-          compositeKey: row[0] as string,
           created_at_ms: row[2] as number,
+          post_id: row[0] as number,
           storedAt: row[3] as number,
           timelineTypes: [],
         }
@@ -177,7 +177,7 @@ export function useTagTimeline(
 
   useEffect(() => {
     fetchData()
-    return subscribe('statuses', fetchData)
+    return subscribe('posts', fetchData)
   }, [fetchData])
 
   // appIndex を都度算出して付与し、解決できなかったレコードは除外する

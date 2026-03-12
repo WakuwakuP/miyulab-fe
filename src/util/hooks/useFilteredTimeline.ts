@@ -40,7 +40,7 @@ function resolveAppIndex(
  * ## クエリ戦略
  *
  * backendFilter.mode に応じてクエリ対象の backendUrl を決定し、
- * statuses_timeline_types テーブルとの JOIN で
+ * posts_timeline_types テーブルとの JOIN で
  * DB 側でソート・フィルタを行う。
  *
  * ## v2 スキーマ対応
@@ -157,24 +157,24 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
       // WHERE 条件を組み立て（timeline_entries のカラムを直接参照）
       const whereConditions = [
         'timelineType = ?',
-        `backendUrl IN (${backendPlaceholders})`,
+        `backend_url IN (${backendPlaceholders})`,
         ...filterConditions,
       ]
 
       // timeline_entries サブクエリで高速に絞り込み＆ソートし、
-      // 最後に statuses を結合して json を取得する
+      // 最後に posts を結合して json を取得する
       const sql = `
-        SELECT s.compositeKey, te.backendUrl,
-               s.created_at_ms, s.storedAt, s.json
+        SELECT s.post_id, te.backend_url,
+               s.created_at_ms, s.stored_at, s.json
         FROM (
-          SELECT compositeKey, MIN(backendUrl) AS backendUrl
+          SELECT post_id, MIN(backend_url) AS backend_url
           FROM timeline_entries
           WHERE ${whereConditions.join('\n            AND ')}
-          GROUP BY compositeKey
+          GROUP BY post_id
           ORDER BY created_at_ms DESC
           LIMIT ?
         ) te
-        INNER JOIN statuses s ON s.compositeKey = te.compositeKey;
+        INNER JOIN posts s ON s.post_id = te.post_id;
       `
       const binds: (string | number)[] = [
         configType as DbTimelineType,
@@ -196,8 +196,8 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
           ...status,
           backendUrl: row[1] as string,
           belongingTags: [],
-          compositeKey: row[0] as string,
           created_at_ms: row[2] as number,
+          post_id: row[0] as number,
           storedAt: row[3] as number,
           timelineTypes: [],
         }
@@ -220,7 +220,7 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
   // 初回取得 + 変更通知で再取得
   useEffect(() => {
     fetchData()
-    return subscribe('statuses', fetchData)
+    return subscribe('posts', fetchData)
   }, [fetchData])
 
   // 4. appIndex を付与

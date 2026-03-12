@@ -38,7 +38,7 @@ async function muteAccount(
      VALUES (?, ?, ?);`,
     { bind: [backendUrl, accountAcct, Date.now()] },
   )
-  notifyChange('statuses') // タイムラインの再クエリをトリガー
+  notifyChange('posts') // タイムラインの再クエリをトリガー
 }
 
 /**
@@ -53,7 +53,7 @@ async function unmuteAccount(
     'DELETE FROM muted_accounts WHERE backendUrl = ? AND account_acct = ?;',
     { bind: [backendUrl, accountAcct] },
   )
-  notifyChange('statuses')
+  notifyChange('posts')
 }
 
 /**

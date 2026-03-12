@@ -106,9 +106,9 @@ export async function fetchMoreData(
         const { getSqliteDb } = await import('util/db/sqlite/connection')
         const handle = await getSqliteDb()
         const rows = (await handle.execAsync(
-          `SELECT s.json FROM statuses s
-           INNER JOIN statuses_belonging_tags sbt ON s.compositeKey = sbt.compositeKey
-           WHERE sbt.tag = ? AND s.backendUrl = ?
+          `SELECT s.json FROM posts s
+           INNER JOIN posts_belonging_tags sbt ON s.post_id = sbt.post_id
+           WHERE sbt.tag = ? AND s.origin_backend_url = ?
            ORDER BY s.created_at_ms ASC
            LIMIT 1;`,
           { bind: [tag, backendUrl], returnValue: 'resultRows' },

@@ -32,7 +32,7 @@
 import type { SchemaDbHandle as DbHandle } from './worker/workerSchema'
 
 /** 現在のスキーマバージョン */
-const SCHEMA_VERSION = 6
+const SCHEMA_VERSION = 7
 
 /**
  * スキーマの初期化・マイグレーション
@@ -51,33 +51,35 @@ export function ensureSchema(handle: DbHandle): void {
   db.exec('BEGIN;')
   try {
     if (currentVersion < 1) {
-      // フレッシュインストール: v6 スキーマを直接作成
-      createSchemaV6(handle)
+      // フレッシュインストール: v7 スキーマを直接作成
+      createSchemaV7(handle)
     } else if (currentVersion < 2) {
-      // v1 → v2 → v3 → v4 → v5 → v6 マイグレーション
       migrateV1toV2(handle)
       migrateV2toV3(handle)
       migrateV3toV4(handle)
       migrateV4toV5(handle)
       migrateV5toV6(handle)
+      migrateV6toV7(handle)
     } else if (currentVersion < 3) {
-      // v2 → v3 → v4 → v5 → v6 マイグレーション
       migrateV2toV3(handle)
       migrateV3toV4(handle)
       migrateV4toV5(handle)
       migrateV5toV6(handle)
+      migrateV6toV7(handle)
     } else if (currentVersion < 4) {
-      // v3 → v4 → v5 → v6 マイグレーション
       migrateV3toV4(handle)
       migrateV4toV5(handle)
       migrateV5toV6(handle)
+      migrateV6toV7(handle)
     } else if (currentVersion < 5) {
-      // v4 → v5 → v6 マイグレーション
       migrateV4toV5(handle)
       migrateV5toV6(handle)
+      migrateV6toV7(handle)
     } else if (currentVersion < 6) {
-      // v5 → v6 マイグレーション
       migrateV5toV6(handle)
+      migrateV6toV7(handle)
+    } else if (currentVersion < 7) {
+      migrateV6toV7(handle)
     }
 
     db.exec(`PRAGMA user_version = ${SCHEMA_VERSION};`)
@@ -89,25 +91,811 @@ export function ensureSchema(handle: DbHandle): void {
 }
 
 // ================================================================
-// v6 フルスキーマ作成（フレッシュインストール用）
+// v7 フルスキーマ作成（フレッシュインストール用）
 // ================================================================
 
 /**
- * v6 スキーマのフル作成（フレッシュインストール用）
+ * v7 スキーマのフル作成（フレッシュインストール用）
  *
- * v5 に加え、マテリアライズド・ビュー（timeline_entries, tag_entries）と
- * 自動同期トリガー、カスタムクエリ用インデックスを含む。
+ * compositeKey TEXT PK → post_id INTEGER PK に移行した新スキーマ。
+ * テーブル名を statuses → posts に変更し、全関連テーブルの FK を post_id に統一。
+ * notifications も notification_id INTEGER PK に変更。
  */
-function createSchemaV6(handle: DbHandle): void {
-  // v5 までのスキーマを作成
-  createSchemaV5(handle)
+function createSchemaV7(handle: DbHandle): void {
+  const { db } = handle
 
   // ============================================
-  // マテリアライズド・ビューテーブル + トリガー + インデックス (v6)
+  // posts テーブル
   // ============================================
-  createMaterializedViewTables(handle)
-  createMaterializedViewTriggers(handle)
-  createCustomQueryIndexes(handle)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS posts (
+      post_id           INTEGER PRIMARY KEY,
+      object_uri        TEXT NOT NULL DEFAULT '',
+      origin_backend_url TEXT NOT NULL,
+      created_at_ms     INTEGER NOT NULL,
+      stored_at         INTEGER NOT NULL,
+      account_acct      TEXT NOT NULL DEFAULT '',
+      account_id        TEXT NOT NULL DEFAULT '',
+      visibility        TEXT NOT NULL DEFAULT 'public',
+      language          TEXT,
+      has_media         INTEGER NOT NULL DEFAULT 0,
+      media_count       INTEGER NOT NULL DEFAULT 0,
+      is_reblog         INTEGER NOT NULL DEFAULT 0,
+      reblog_of_id      TEXT,
+      reblog_of_uri     TEXT,
+      is_sensitive      INTEGER NOT NULL DEFAULT 0,
+      has_spoiler       INTEGER NOT NULL DEFAULT 0,
+      in_reply_to_id    TEXT,
+      favourites_count  INTEGER NOT NULL DEFAULT 0,
+      reblogs_count     INTEGER NOT NULL DEFAULT 0,
+      replies_count     INTEGER NOT NULL DEFAULT 0,
+      json              TEXT NOT NULL
+    );
+  `)
+
+  db.exec(
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_posts_uri ON posts(object_uri) WHERE object_uri != '';",
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_posts_backend_created ON posts(origin_backend_url, created_at_ms DESC);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_posts_account_acct ON posts(account_acct);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_posts_created ON posts(created_at_ms DESC);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_posts_media_filter ON posts(origin_backend_url, has_media, created_at_ms DESC);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_posts_visibility_filter ON posts(origin_backend_url, visibility, created_at_ms DESC);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_posts_language_filter ON posts(origin_backend_url, language, created_at_ms DESC);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_posts_reblog_filter ON posts(origin_backend_url, is_reblog, created_at_ms DESC);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_posts_reblog_of_uri ON posts(reblog_of_uri);',
+  )
+  db.exec('CREATE INDEX IF NOT EXISTS idx_posts_stored_at ON posts(stored_at);')
+
+  // ============================================
+  // posts_timeline_types
+  // ============================================
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS posts_timeline_types (
+      post_id       INTEGER NOT NULL,
+      timelineType  TEXT NOT NULL,
+      PRIMARY KEY (post_id, timelineType),
+      FOREIGN KEY (post_id) REFERENCES posts(post_id) ON DELETE CASCADE
+    );
+  `)
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_ptt_type ON posts_timeline_types(timelineType);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_ptt_type_key ON posts_timeline_types(timelineType, post_id);',
+  )
+
+  // ============================================
+  // posts_belonging_tags
+  // ============================================
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS posts_belonging_tags (
+      post_id  INTEGER NOT NULL,
+      tag      TEXT NOT NULL,
+      PRIMARY KEY (post_id, tag),
+      FOREIGN KEY (post_id) REFERENCES posts(post_id) ON DELETE CASCADE
+    );
+  `)
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_pbt_tag ON posts_belonging_tags(tag);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_pbt_tag_key ON posts_belonging_tags(tag, post_id);',
+  )
+
+  // ============================================
+  // posts_mentions
+  // ============================================
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS posts_mentions (
+      post_id  INTEGER NOT NULL,
+      acct     TEXT NOT NULL,
+      PRIMARY KEY (post_id, acct),
+      FOREIGN KEY (post_id) REFERENCES posts(post_id) ON DELETE CASCADE
+    );
+  `)
+  db.exec('CREATE INDEX IF NOT EXISTS idx_pm_acct ON posts_mentions(acct);')
+
+  // ============================================
+  // posts_backends
+  // ============================================
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS posts_backends (
+      post_id     INTEGER NOT NULL,
+      backendUrl  TEXT NOT NULL,
+      local_id    TEXT NOT NULL,
+      PRIMARY KEY (backendUrl, local_id),
+      FOREIGN KEY (post_id) REFERENCES posts(post_id) ON DELETE CASCADE
+    );
+  `)
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_pb_post_id ON posts_backends(post_id);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_pb_backendUrl ON posts_backends(backendUrl);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_pb_backend_key ON posts_backends(backendUrl, post_id);',
+  )
+
+  // ============================================
+  // posts_reblogs
+  // ============================================
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS posts_reblogs (
+      post_id         INTEGER PRIMARY KEY,
+      original_uri    TEXT NOT NULL DEFAULT '',
+      reblogger_acct  TEXT NOT NULL DEFAULT '',
+      reblogged_at_ms INTEGER NOT NULL,
+      FOREIGN KEY (post_id) REFERENCES posts(post_id) ON DELETE CASCADE
+    );
+  `)
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_pr_original_uri ON posts_reblogs(original_uri);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_pr_reblogger_acct ON posts_reblogs(reblogger_acct);',
+  )
+
+  // ============================================
+  // muted_accounts / blocked_instances
+  // ============================================
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS muted_accounts (
+      backendUrl    TEXT NOT NULL,
+      account_acct  TEXT NOT NULL,
+      muted_at      INTEGER NOT NULL,
+      PRIMARY KEY (backendUrl, account_acct)
+    );
+  `)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS blocked_instances (
+      instance_domain TEXT PRIMARY KEY,
+      blocked_at      INTEGER NOT NULL
+    );
+  `)
+
+  // ============================================
+  // notifications テーブル
+  // ============================================
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS notifications (
+      notification_id   INTEGER PRIMARY KEY,
+      backend_url       TEXT NOT NULL,
+      local_id          TEXT NOT NULL DEFAULT '',
+      created_at_ms     INTEGER NOT NULL,
+      stored_at         INTEGER NOT NULL,
+      notification_type TEXT NOT NULL DEFAULT '',
+      status_id         TEXT,
+      account_acct      TEXT NOT NULL DEFAULT '',
+      json              TEXT NOT NULL
+    );
+  `)
+  db.exec(
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_backend_local ON notifications(backend_url, local_id) WHERE local_id != '';",
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_notifications_backend ON notifications(backend_url);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_notifications_backend_created ON notifications(backend_url, created_at_ms DESC);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_notifications_stored_at ON notifications(stored_at);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_notifications_type ON notifications(notification_type);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_notifications_status_id ON notifications(backend_url, status_id);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_notifications_account_acct ON notifications(account_acct);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_notifications_acct_type_time ON notifications(account_acct, notification_type, created_at_ms);',
+  )
+
+  // ============================================
+  // マテリアライズド・ビュー
+  // ============================================
+  createMaterializedViewTablesV7(handle)
+  createMaterializedViewTriggersV7(handle)
+
+  // カスタムクエリ用インデックス
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_posts_acct_time ON posts(account_acct, created_at_ms);',
+  )
+}
+
+// ================================================================
+// v7 マテリアライズド・ビュー テーブル作成
+// ================================================================
+
+function createMaterializedViewTablesV7(handle: DbHandle): void {
+  const { db } = handle
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS timeline_entries (
+      post_id          INTEGER NOT NULL,
+      timelineType     TEXT NOT NULL,
+      backendUrl       TEXT NOT NULL,
+      created_at_ms    INTEGER NOT NULL,
+      has_media        INTEGER NOT NULL DEFAULT 0,
+      media_count      INTEGER NOT NULL DEFAULT 0,
+      visibility       TEXT NOT NULL DEFAULT 'public',
+      language         TEXT,
+      is_reblog        INTEGER NOT NULL DEFAULT 0,
+      in_reply_to_id   TEXT,
+      has_spoiler      INTEGER NOT NULL DEFAULT 0,
+      is_sensitive     INTEGER NOT NULL DEFAULT 0,
+      account_acct     TEXT NOT NULL DEFAULT '',
+      PRIMARY KEY (timelineType, backendUrl, post_id),
+      FOREIGN KEY (post_id) REFERENCES posts(post_id) ON DELETE CASCADE
+    );
+  `)
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_te_cover ON timeline_entries(timelineType, backendUrl, created_at_ms DESC);',
+  )
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS tag_entries (
+      post_id          INTEGER NOT NULL,
+      tag              TEXT NOT NULL,
+      backendUrl       TEXT NOT NULL,
+      created_at_ms    INTEGER NOT NULL,
+      has_media        INTEGER NOT NULL DEFAULT 0,
+      media_count      INTEGER NOT NULL DEFAULT 0,
+      visibility       TEXT NOT NULL DEFAULT 'public',
+      language         TEXT,
+      is_reblog        INTEGER NOT NULL DEFAULT 0,
+      in_reply_to_id   TEXT,
+      has_spoiler      INTEGER NOT NULL DEFAULT 0,
+      is_sensitive     INTEGER NOT NULL DEFAULT 0,
+      account_acct     TEXT NOT NULL DEFAULT '',
+      PRIMARY KEY (tag, backendUrl, post_id),
+      FOREIGN KEY (post_id) REFERENCES posts(post_id) ON DELETE CASCADE
+    );
+  `)
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_tge_cover ON tag_entries(tag, backendUrl, created_at_ms DESC);',
+  )
+}
+
+// ================================================================
+// v7 マテリアライズド・ビュー 自動同期トリガー
+// ================================================================
+
+function createMaterializedViewTriggersV7(handle: DbHandle): void {
+  const { db } = handle
+
+  // posts_timeline_types INSERT → timeline_entries
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS trg_mv_ptt_insert
+    AFTER INSERT ON posts_timeline_types
+    BEGIN
+      INSERT OR IGNORE INTO timeline_entries (
+        post_id, timelineType, backendUrl, created_at_ms,
+        has_media, media_count, visibility, language,
+        is_reblog, in_reply_to_id, has_spoiler, is_sensitive, account_acct
+      )
+      SELECT
+        NEW.post_id, NEW.timelineType, pb.backendUrl, p.created_at_ms,
+        p.has_media, p.media_count, p.visibility, p.language,
+        p.is_reblog, p.in_reply_to_id, p.has_spoiler, p.is_sensitive, p.account_acct
+      FROM posts p
+      INNER JOIN posts_backends pb ON p.post_id = pb.post_id
+      WHERE p.post_id = NEW.post_id;
+    END;
+  `)
+
+  // posts_timeline_types DELETE → timeline_entries
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS trg_mv_ptt_delete
+    AFTER DELETE ON posts_timeline_types
+    BEGIN
+      DELETE FROM timeline_entries
+      WHERE post_id = OLD.post_id AND timelineType = OLD.timelineType;
+    END;
+  `)
+
+  // posts_belonging_tags INSERT → tag_entries
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS trg_mv_pbt_insert
+    AFTER INSERT ON posts_belonging_tags
+    BEGIN
+      INSERT OR IGNORE INTO tag_entries (
+        post_id, tag, backendUrl, created_at_ms,
+        has_media, media_count, visibility, language,
+        is_reblog, in_reply_to_id, has_spoiler, is_sensitive, account_acct
+      )
+      SELECT
+        NEW.post_id, NEW.tag, pb.backendUrl, p.created_at_ms,
+        p.has_media, p.media_count, p.visibility, p.language,
+        p.is_reblog, p.in_reply_to_id, p.has_spoiler, p.is_sensitive, p.account_acct
+      FROM posts p
+      INNER JOIN posts_backends pb ON p.post_id = pb.post_id
+      WHERE p.post_id = NEW.post_id;
+    END;
+  `)
+
+  // posts_belonging_tags DELETE → tag_entries
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS trg_mv_pbt_delete
+    AFTER DELETE ON posts_belonging_tags
+    BEGIN
+      DELETE FROM tag_entries
+      WHERE post_id = OLD.post_id AND tag = OLD.tag;
+    END;
+  `)
+
+  // posts_backends INSERT → timeline_entries + tag_entries
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS trg_mv_pb_insert
+    AFTER INSERT ON posts_backends
+    BEGIN
+      INSERT OR IGNORE INTO timeline_entries (
+        post_id, timelineType, backendUrl, created_at_ms,
+        has_media, media_count, visibility, language,
+        is_reblog, in_reply_to_id, has_spoiler, is_sensitive, account_acct
+      )
+      SELECT
+        NEW.post_id, ptt.timelineType, NEW.backendUrl, p.created_at_ms,
+        p.has_media, p.media_count, p.visibility, p.language,
+        p.is_reblog, p.in_reply_to_id, p.has_spoiler, p.is_sensitive, p.account_acct
+      FROM posts p
+      INNER JOIN posts_timeline_types ptt ON p.post_id = ptt.post_id
+      WHERE p.post_id = NEW.post_id;
+
+      INSERT OR IGNORE INTO tag_entries (
+        post_id, tag, backendUrl, created_at_ms,
+        has_media, media_count, visibility, language,
+        is_reblog, in_reply_to_id, has_spoiler, is_sensitive, account_acct
+      )
+      SELECT
+        NEW.post_id, pbt.tag, NEW.backendUrl, p.created_at_ms,
+        p.has_media, p.media_count, p.visibility, p.language,
+        p.is_reblog, p.in_reply_to_id, p.has_spoiler, p.is_sensitive, p.account_acct
+      FROM posts p
+      INNER JOIN posts_belonging_tags pbt ON p.post_id = pbt.post_id
+      WHERE p.post_id = NEW.post_id;
+    END;
+  `)
+
+  // posts_backends DELETE → timeline_entries + tag_entries
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS trg_mv_pb_delete
+    AFTER DELETE ON posts_backends
+    BEGIN
+      DELETE FROM timeline_entries
+      WHERE post_id = OLD.post_id AND backendUrl = OLD.backendUrl;
+
+      DELETE FROM tag_entries
+      WHERE post_id = OLD.post_id AND backendUrl = OLD.backendUrl;
+    END;
+  `)
+
+  // posts UPDATE → フィルタカラムを timeline_entries + tag_entries に同期
+  db.exec(`
+    CREATE TRIGGER IF NOT EXISTS trg_mv_post_update
+    AFTER UPDATE ON posts
+    BEGIN
+      UPDATE timeline_entries SET
+        created_at_ms  = NEW.created_at_ms,
+        has_media      = NEW.has_media,
+        media_count    = NEW.media_count,
+        visibility     = NEW.visibility,
+        language       = NEW.language,
+        is_reblog      = NEW.is_reblog,
+        in_reply_to_id = NEW.in_reply_to_id,
+        has_spoiler    = NEW.has_spoiler,
+        is_sensitive   = NEW.is_sensitive,
+        account_acct   = NEW.account_acct
+      WHERE post_id = OLD.post_id;
+
+      UPDATE tag_entries SET
+        created_at_ms  = NEW.created_at_ms,
+        has_media      = NEW.has_media,
+        media_count    = NEW.media_count,
+        visibility     = NEW.visibility,
+        language       = NEW.language,
+        is_reblog      = NEW.is_reblog,
+        in_reply_to_id = NEW.in_reply_to_id,
+        has_spoiler    = NEW.has_spoiler,
+        is_sensitive   = NEW.is_sensitive,
+        account_acct   = NEW.account_acct
+      WHERE post_id = OLD.post_id;
+    END;
+  `)
+}
+
+// ================================================================
+// v6 → v7 マイグレーション
+// ================================================================
+
+/**
+ * v6 → v7 マイグレーション
+ *
+ * compositeKey TEXT PK → post_id INTEGER PK への移行。
+ * テーブル名を statuses → posts に変更し、全関連テーブルの FK を post_id に統一。
+ * notifications も notification_id INTEGER PK に変更。
+ *
+ * 手順:
+ * 1. 既存トリガーを削除
+ * 2. key_map (compositeKey → post_id) を作成
+ * 3. 新テーブルを作成しデータをコピー
+ * 4. 旧テーブルを削除
+ * 5. notifications は _new で作成後リネーム
+ * 6. マテリアライズド・ビュー + トリガー + インデックスを再作成
+ */
+function migrateV6toV7(handle: DbHandle): void {
+  const { db } = handle
+
+  // ============================================
+  // Step 1: 既存トリガーを削除
+  // ============================================
+  db.exec('DROP TRIGGER IF EXISTS trg_mv_stt_insert;')
+  db.exec('DROP TRIGGER IF EXISTS trg_mv_stt_delete;')
+  db.exec('DROP TRIGGER IF EXISTS trg_mv_sbt_insert;')
+  db.exec('DROP TRIGGER IF EXISTS trg_mv_sbt_delete;')
+  db.exec('DROP TRIGGER IF EXISTS trg_mv_sb_insert;')
+  db.exec('DROP TRIGGER IF EXISTS trg_mv_sb_delete;')
+  db.exec('DROP TRIGGER IF EXISTS trg_mv_status_update;')
+
+  // ============================================
+  // Step 2: key_map 作成 (compositeKey → post_id)
+  // ============================================
+  db.exec(`
+    CREATE TEMP TABLE key_map AS
+    SELECT compositeKey, ROWID AS post_id FROM statuses;
+  `)
+
+  // ============================================
+  // Step 3: posts テーブル作成 + データコピー
+  // ============================================
+  db.exec(`
+    CREATE TABLE posts (
+      post_id           INTEGER PRIMARY KEY,
+      object_uri        TEXT NOT NULL DEFAULT '',
+      origin_backend_url TEXT NOT NULL,
+      created_at_ms     INTEGER NOT NULL,
+      stored_at         INTEGER NOT NULL,
+      account_acct      TEXT NOT NULL DEFAULT '',
+      account_id        TEXT NOT NULL DEFAULT '',
+      visibility        TEXT NOT NULL DEFAULT 'public',
+      language          TEXT,
+      has_media         INTEGER NOT NULL DEFAULT 0,
+      media_count       INTEGER NOT NULL DEFAULT 0,
+      is_reblog         INTEGER NOT NULL DEFAULT 0,
+      reblog_of_id      TEXT,
+      reblog_of_uri     TEXT,
+      is_sensitive      INTEGER NOT NULL DEFAULT 0,
+      has_spoiler       INTEGER NOT NULL DEFAULT 0,
+      in_reply_to_id    TEXT,
+      favourites_count  INTEGER NOT NULL DEFAULT 0,
+      reblogs_count     INTEGER NOT NULL DEFAULT 0,
+      replies_count     INTEGER NOT NULL DEFAULT 0,
+      json              TEXT NOT NULL
+    );
+  `)
+  db.exec(`
+    INSERT INTO posts (
+      post_id, object_uri, origin_backend_url, created_at_ms, stored_at,
+      account_acct, account_id, visibility, language,
+      has_media, media_count, is_reblog, reblog_of_id, reblog_of_uri,
+      is_sensitive, has_spoiler, in_reply_to_id,
+      favourites_count, reblogs_count, replies_count, json
+    )
+    SELECT
+      km.post_id, s.uri, s.backendUrl, s.created_at_ms, s.storedAt,
+      s.account_acct, s.account_id, s.visibility, s.language,
+      s.has_media, s.media_count, s.is_reblog, s.reblog_of_id, s.reblog_of_uri,
+      s.is_sensitive, s.has_spoiler, s.in_reply_to_id,
+      s.favourites_count, s.reblogs_count, s.replies_count, s.json
+    FROM statuses s
+    INNER JOIN key_map km ON s.compositeKey = km.compositeKey;
+  `)
+
+  // ============================================
+  // Step 4: posts_timeline_types
+  // ============================================
+  db.exec(`
+    CREATE TABLE posts_timeline_types (
+      post_id       INTEGER NOT NULL,
+      timelineType  TEXT NOT NULL,
+      PRIMARY KEY (post_id, timelineType),
+      FOREIGN KEY (post_id) REFERENCES posts(post_id) ON DELETE CASCADE
+    );
+  `)
+  db.exec(`
+    INSERT INTO posts_timeline_types (post_id, timelineType)
+    SELECT km.post_id, stt.timelineType
+    FROM statuses_timeline_types stt
+    INNER JOIN key_map km ON stt.compositeKey = km.compositeKey;
+  `)
+
+  // ============================================
+  // Step 5: posts_belonging_tags
+  // ============================================
+  db.exec(`
+    CREATE TABLE posts_belonging_tags (
+      post_id  INTEGER NOT NULL,
+      tag      TEXT NOT NULL,
+      PRIMARY KEY (post_id, tag),
+      FOREIGN KEY (post_id) REFERENCES posts(post_id) ON DELETE CASCADE
+    );
+  `)
+  db.exec(`
+    INSERT INTO posts_belonging_tags (post_id, tag)
+    SELECT km.post_id, sbt.tag
+    FROM statuses_belonging_tags sbt
+    INNER JOIN key_map km ON sbt.compositeKey = km.compositeKey;
+  `)
+
+  // ============================================
+  // Step 6: posts_mentions
+  // ============================================
+  db.exec(`
+    CREATE TABLE posts_mentions (
+      post_id  INTEGER NOT NULL,
+      acct     TEXT NOT NULL,
+      PRIMARY KEY (post_id, acct),
+      FOREIGN KEY (post_id) REFERENCES posts(post_id) ON DELETE CASCADE
+    );
+  `)
+  db.exec(`
+    INSERT INTO posts_mentions (post_id, acct)
+    SELECT km.post_id, sm.acct
+    FROM statuses_mentions sm
+    INNER JOIN key_map km ON sm.compositeKey = km.compositeKey;
+  `)
+
+  // ============================================
+  // Step 7: posts_backends
+  // ============================================
+  db.exec(`
+    CREATE TABLE posts_backends (
+      post_id     INTEGER NOT NULL,
+      backendUrl  TEXT NOT NULL,
+      local_id    TEXT NOT NULL,
+      PRIMARY KEY (backendUrl, local_id),
+      FOREIGN KEY (post_id) REFERENCES posts(post_id) ON DELETE CASCADE
+    );
+  `)
+  db.exec(`
+    INSERT INTO posts_backends (post_id, backendUrl, local_id)
+    SELECT km.post_id, sb.backendUrl, sb.local_id
+    FROM statuses_backends sb
+    INNER JOIN key_map km ON sb.compositeKey = km.compositeKey;
+  `)
+
+  // ============================================
+  // Step 8: posts_reblogs
+  // ============================================
+  db.exec(`
+    CREATE TABLE posts_reblogs (
+      post_id         INTEGER PRIMARY KEY,
+      original_uri    TEXT NOT NULL DEFAULT '',
+      reblogger_acct  TEXT NOT NULL DEFAULT '',
+      reblogged_at_ms INTEGER NOT NULL,
+      FOREIGN KEY (post_id) REFERENCES posts(post_id) ON DELETE CASCADE
+    );
+  `)
+  db.exec(`
+    INSERT INTO posts_reblogs (post_id, original_uri, reblogger_acct, reblogged_at_ms)
+    SELECT km.post_id, sr.original_uri, sr.reblogger_acct, sr.reblogged_at_ms
+    FROM statuses_reblogs sr
+    INNER JOIN key_map km ON sr.compositeKey = km.compositeKey;
+  `)
+
+  // ============================================
+  // Step 9: notifications_new
+  // ============================================
+  db.exec(`
+    CREATE TABLE notifications_new (
+      notification_id   INTEGER PRIMARY KEY,
+      backend_url       TEXT NOT NULL,
+      local_id          TEXT NOT NULL DEFAULT '',
+      created_at_ms     INTEGER NOT NULL,
+      stored_at         INTEGER NOT NULL,
+      notification_type TEXT NOT NULL DEFAULT '',
+      status_id         TEXT,
+      account_acct      TEXT NOT NULL DEFAULT '',
+      json              TEXT NOT NULL
+    );
+  `)
+  db.exec(`
+    INSERT INTO notifications_new (
+      notification_id, backend_url, local_id, created_at_ms, stored_at,
+      notification_type, status_id, account_acct, json
+    )
+    SELECT
+      ROWID, backendUrl, SUBSTR(compositeKey, LENGTH(backendUrl) + 2),
+      created_at_ms, storedAt,
+      notification_type, status_id, account_acct, json
+    FROM notifications;
+  `)
+
+  // ============================================
+  // Step 10: 旧テーブルを削除
+  // ============================================
+  db.exec('DROP TABLE IF EXISTS timeline_entries;')
+  db.exec('DROP TABLE IF EXISTS tag_entries;')
+  db.exec('DROP TABLE IF EXISTS statuses_reblogs;')
+  db.exec('DROP TABLE IF EXISTS statuses_backends;')
+  db.exec('DROP TABLE IF EXISTS statuses_mentions;')
+  db.exec('DROP TABLE IF EXISTS statuses_belonging_tags;')
+  db.exec('DROP TABLE IF EXISTS statuses_timeline_types;')
+  db.exec('DROP TABLE IF EXISTS statuses;')
+  db.exec('DROP TABLE IF EXISTS notifications;')
+
+  // ============================================
+  // Step 11: notifications_new → notifications
+  // ============================================
+  db.exec('ALTER TABLE notifications_new RENAME TO notifications;')
+
+  // ============================================
+  // Step 12: key_map を削除
+  // ============================================
+  db.exec('DROP TABLE IF EXISTS key_map;')
+
+  // ============================================
+  // Step 13: posts インデックス
+  // ============================================
+  db.exec(
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_posts_uri ON posts(object_uri) WHERE object_uri != '';",
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_posts_backend_created ON posts(origin_backend_url, created_at_ms DESC);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_posts_account_acct ON posts(account_acct);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_posts_created ON posts(created_at_ms DESC);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_posts_media_filter ON posts(origin_backend_url, has_media, created_at_ms DESC);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_posts_visibility_filter ON posts(origin_backend_url, visibility, created_at_ms DESC);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_posts_language_filter ON posts(origin_backend_url, language, created_at_ms DESC);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_posts_reblog_filter ON posts(origin_backend_url, is_reblog, created_at_ms DESC);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_posts_reblog_of_uri ON posts(reblog_of_uri);',
+  )
+  db.exec('CREATE INDEX IF NOT EXISTS idx_posts_stored_at ON posts(stored_at);')
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_posts_acct_time ON posts(account_acct, created_at_ms);',
+  )
+
+  // posts_timeline_types インデックス
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_ptt_type ON posts_timeline_types(timelineType);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_ptt_type_key ON posts_timeline_types(timelineType, post_id);',
+  )
+
+  // posts_belonging_tags インデックス
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_pbt_tag ON posts_belonging_tags(tag);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_pbt_tag_key ON posts_belonging_tags(tag, post_id);',
+  )
+
+  // posts_mentions インデックス
+  db.exec('CREATE INDEX IF NOT EXISTS idx_pm_acct ON posts_mentions(acct);')
+
+  // posts_backends インデックス
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_pb_post_id ON posts_backends(post_id);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_pb_backendUrl ON posts_backends(backendUrl);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_pb_backend_key ON posts_backends(backendUrl, post_id);',
+  )
+
+  // posts_reblogs インデックス
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_pr_original_uri ON posts_reblogs(original_uri);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_pr_reblogger_acct ON posts_reblogs(reblogger_acct);',
+  )
+
+  // notifications インデックス
+  db.exec(
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_backend_local ON notifications(backend_url, local_id) WHERE local_id != '';",
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_notifications_backend ON notifications(backend_url);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_notifications_backend_created ON notifications(backend_url, created_at_ms DESC);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_notifications_stored_at ON notifications(stored_at);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_notifications_type ON notifications(notification_type);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_notifications_status_id ON notifications(backend_url, status_id);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_notifications_account_acct ON notifications(account_acct);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_notifications_acct_type_time ON notifications(account_acct, notification_type, created_at_ms);',
+  )
+
+  // ============================================
+  // Step 14: マテリアライズド・ビュー + トリガー + バックフィル
+  // ============================================
+  createMaterializedViewTablesV7(handle)
+  createMaterializedViewTriggersV7(handle)
+  backfillMaterializedViewsV7(handle)
+}
+
+/**
+ * v7 マテリアライズド・ビューのバックフィル
+ */
+function backfillMaterializedViewsV7(handle: DbHandle): void {
+  const { db } = handle
+
+  db.exec(`
+    INSERT OR IGNORE INTO timeline_entries (
+      post_id, timelineType, backendUrl, created_at_ms,
+      has_media, media_count, visibility, language,
+      is_reblog, in_reply_to_id, has_spoiler, is_sensitive, account_acct
+    )
+    SELECT
+      p.post_id, ptt.timelineType, pb.backendUrl, p.created_at_ms,
+      p.has_media, p.media_count, p.visibility, p.language,
+      p.is_reblog, p.in_reply_to_id, p.has_spoiler, p.is_sensitive, p.account_acct
+    FROM posts p
+    INNER JOIN posts_timeline_types ptt ON p.post_id = ptt.post_id
+    INNER JOIN posts_backends pb ON p.post_id = pb.post_id;
+  `)
+
+  db.exec(`
+    INSERT OR IGNORE INTO tag_entries (
+      post_id, tag, backendUrl, created_at_ms,
+      has_media, media_count, visibility, language,
+      is_reblog, in_reply_to_id, has_spoiler, is_sensitive, account_acct
+    )
+    SELECT
+      p.post_id, pbt.tag, pb.backendUrl, p.created_at_ms,
+      p.has_media, p.media_count, p.visibility, p.language,
+      p.is_reblog, p.in_reply_to_id, p.has_spoiler, p.is_sensitive, p.account_acct
+    FROM posts p
+    INNER JOIN posts_belonging_tags pbt ON p.post_id = pbt.post_id
+    INNER JOIN posts_backends pb ON p.post_id = pb.post_id;
+  `)
 }
 
 // ================================================================
@@ -119,9 +907,9 @@ function createSchemaV6(handle: DbHandle): void {
  *
  * v4 に加え、リブログ関係を管理する statuses_reblogs テーブルを含む。
  */
-function createSchemaV5(handle: DbHandle): void {
+function _createSchemaV5(handle: DbHandle): void {
   // v4 までのスキーマを作成
-  createSchemaV4(handle)
+  _createSchemaV4(handle)
 
   // ============================================
   // statuses_reblogs (v5: リブログ関係管理)
@@ -138,7 +926,7 @@ function createSchemaV5(handle: DbHandle): void {
  *
  * v3 に加え、JOIN 最適化用のカバリングインデックスを含む。
  */
-function createSchemaV4(handle: DbHandle): void {
+function _createSchemaV4(handle: DbHandle): void {
   const { db } = handle
 
   // ============================================
