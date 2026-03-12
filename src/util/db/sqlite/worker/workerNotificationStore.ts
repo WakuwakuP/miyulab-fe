@@ -4,7 +4,7 @@
 
 import type { Entity } from 'megalodon'
 import type { TableName } from '../protocol'
-import { extractNotificationColumns } from '../shared'
+import { ensureServer, extractNotificationColumns } from '../shared'
 
 type DbExec = {
   exec: (
@@ -18,6 +18,17 @@ type DbExec = {
 
 type HandlerResult = { changedTables: TableName[] }
 
+function resolveNotificationTypeId(
+  db: DbExec,
+  notificationType: string,
+): number | null {
+  const rows = db.exec(
+    'SELECT notification_type_id FROM notification_types WHERE code = ?;',
+    { bind: [notificationType], returnValue: 'resultRows' },
+  ) as number[][]
+  return rows.length > 0 ? rows[0][0] : null
+}
+
 export function handleAddNotification(
   db: DbExec,
   notificationJson: string,
@@ -27,6 +38,11 @@ export function handleAddNotification(
   const created_at_ms = new Date(notification.created_at).getTime()
   const now = Date.now()
   const cols = extractNotificationColumns(notification)
+  const serverId = ensureServer(db, backendUrl)
+  const notificationTypeId = resolveNotificationTypeId(
+    db,
+    cols.notification_type,
+  )
 
   // (backend_url, local_id) で既存チェック
   const existing = db.exec(
@@ -38,18 +54,20 @@ export function handleAddNotification(
     const notificationId = existing[0][0]
     db.exec(
       `UPDATE notifications SET
-        created_at_ms     = ?,
-        stored_at         = ?,
-        notification_type = ?,
-        status_id         = ?,
-        account_acct      = ?,
-        json              = ?
+        created_at_ms        = ?,
+        stored_at            = ?,
+        notification_type    = ?,
+        notification_type_id = ?,
+        status_id            = ?,
+        account_acct         = ?,
+        json                 = ?
       WHERE notification_id = ?;`,
       {
         bind: [
           created_at_ms,
           now,
           cols.notification_type,
+          notificationTypeId,
           cols.status_id,
           cols.account_acct,
           JSON.stringify(notification),
@@ -60,17 +78,19 @@ export function handleAddNotification(
   } else {
     db.exec(
       `INSERT INTO notifications (
-        backend_url, local_id, created_at_ms, stored_at,
-        notification_type, status_id, account_acct,
+        backend_url, server_id, local_id, created_at_ms, stored_at,
+        notification_type, notification_type_id, status_id, account_acct,
         json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
       {
         bind: [
           backendUrl,
+          serverId,
           notification.id,
           created_at_ms,
           now,
           cols.notification_type,
+          notificationTypeId,
           cols.status_id,
           cols.account_acct,
           JSON.stringify(notification),
@@ -93,10 +113,16 @@ export function handleBulkAddNotifications(
 
   db.exec('BEGIN;')
   try {
+    const serverId = ensureServer(db, backendUrl)
+
     for (const nJson of notificationsJson) {
       const notification = JSON.parse(nJson) as Entity.Notification
       const created_at_ms = new Date(notification.created_at).getTime()
       const cols = extractNotificationColumns(notification)
+      const notificationTypeId = resolveNotificationTypeId(
+        db,
+        cols.notification_type,
+      )
 
       const existing = db.exec(
         'SELECT notification_id FROM notifications WHERE backend_url = ? AND local_id = ?;',
@@ -107,18 +133,20 @@ export function handleBulkAddNotifications(
         const notificationId = existing[0][0]
         db.exec(
           `UPDATE notifications SET
-            created_at_ms     = ?,
-            stored_at         = ?,
-            notification_type = ?,
-            status_id         = ?,
-            account_acct      = ?,
-            json              = ?
+            created_at_ms        = ?,
+            stored_at            = ?,
+            notification_type    = ?,
+            notification_type_id = ?,
+            status_id            = ?,
+            account_acct         = ?,
+            json                 = ?
           WHERE notification_id = ?;`,
           {
             bind: [
               created_at_ms,
               now,
               cols.notification_type,
+              notificationTypeId,
               cols.status_id,
               cols.account_acct,
               JSON.stringify(notification),
@@ -129,17 +157,19 @@ export function handleBulkAddNotifications(
       } else {
         db.exec(
           `INSERT INTO notifications (
-            backend_url, local_id, created_at_ms, stored_at,
-            notification_type, status_id, account_acct,
+            backend_url, server_id, local_id, created_at_ms, stored_at,
+            notification_type, notification_type_id, status_id, account_acct,
             json
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
           {
             bind: [
               backendUrl,
+              serverId,
               notification.id,
               created_at_ms,
               now,
               cols.notification_type,
+              notificationTypeId,
               cols.status_id,
               cols.account_acct,
               JSON.stringify(notification),

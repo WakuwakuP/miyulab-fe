@@ -7,7 +7,7 @@
 
 import type { Entity } from 'megalodon'
 import type { TableName } from '../protocol'
-import { extractStatusColumns } from '../shared'
+import { ensureServer, extractStatusColumns } from '../shared'
 
 // ================================================================
 // 内部型（Worker / フォールバック共通）
@@ -50,6 +50,14 @@ function getLastInsertRowId(db: DbExec): number {
   )[0][0]
 }
 
+function resolveVisibilityId(db: DbExec, visibility: string): number | null {
+  const rows = db.exec(
+    'SELECT visibility_id FROM visibility_types WHERE code = ?;',
+    { bind: [visibility], returnValue: 'resultRows' },
+  ) as number[][]
+  return rows.length > 0 ? rows[0][0] : null
+}
+
 function upsertMentionsInternal(
   db: DbExec,
   postId: number,
@@ -85,6 +93,9 @@ export function handleUpsertStatus(
 
   db.exec('BEGIN;')
   try {
+    const serverId = ensureServer(db, backendUrl)
+    const visibilityId = resolveVisibilityId(db, cols.visibility)
+
     let postId: number | undefined
     let existingIsOriginal = false
 
@@ -116,6 +127,7 @@ export function handleUpsertStatus(
           account_acct     = ?,
           account_id       = ?,
           visibility       = ?,
+          visibility_id    = ?,
           language         = ?,
           has_media        = ?,
           media_count      = ?,
@@ -136,6 +148,7 @@ export function handleUpsertStatus(
             cols.account_acct,
             cols.account_id,
             cols.visibility,
+            visibilityId,
             cols.language,
             cols.has_media,
             cols.media_count,
@@ -159,23 +172,25 @@ export function handleUpsertStatus(
       const insertUri = existingIsOriginal ? '' : cols.uri
       db.exec(
         `INSERT INTO posts (
-          origin_backend_url, created_at_ms, stored_at,
+          origin_backend_url, origin_server_id, created_at_ms, stored_at,
           object_uri,
-          account_acct, account_id, visibility, language,
+          account_acct, account_id, visibility, visibility_id, language,
           has_media, media_count, is_reblog, reblog_of_id, reblog_of_uri,
           is_sensitive, has_spoiler, in_reply_to_id,
           favourites_count, reblogs_count, replies_count,
           json
-        ) VALUES (?,?,?, ?, ?,?,?,?, ?,?,?,?,?, ?,?,?, ?,?,?, ?);`,
+        ) VALUES (?,?,?,?, ?, ?,?,?,?,?, ?,?,?,?,?, ?,?,?, ?,?,?, ?);`,
         {
           bind: [
             backendUrl,
+            serverId,
             created_at_ms,
             now,
             insertUri,
             cols.account_acct,
             cols.account_id,
             cols.visibility,
+            visibilityId,
             cols.language,
             cols.has_media,
             cols.media_count,
@@ -196,9 +211,9 @@ export function handleUpsertStatus(
     }
 
     db.exec(
-      `INSERT OR IGNORE INTO posts_backends (post_id, backendUrl, local_id)
-       VALUES (?, ?, ?);`,
-      { bind: [postId, backendUrl, status.id] },
+      `INSERT OR IGNORE INTO posts_backends (post_id, backendUrl, local_id, server_id)
+       VALUES (?, ?, ?, ?);`,
+      { bind: [postId, backendUrl, status.id, serverId] },
     )
 
     db.exec(
@@ -259,11 +274,14 @@ export function handleBulkUpsertStatuses(
 
   db.exec('BEGIN;')
   try {
+    const serverId = ensureServer(db, backendUrl)
+
     for (const sJson of statusesJson) {
       const status = JSON.parse(sJson) as Entity.Status
       const normalizedUri = status.uri?.trim() || ''
       const created_at_ms = new Date(status.created_at).getTime()
       const cols = extractStatusColumns(status)
+      const visibilityId = resolveVisibilityId(db, cols.visibility)
 
       let postId: number | undefined = normalizedUri
         ? uriCache.get(normalizedUri)
@@ -298,6 +316,7 @@ export function handleBulkUpsertStatuses(
             account_acct     = ?,
             account_id       = ?,
             visibility       = ?,
+            visibility_id    = ?,
             language         = ?,
             has_media        = ?,
             media_count      = ?,
@@ -318,6 +337,7 @@ export function handleBulkUpsertStatuses(
               cols.account_acct,
               cols.account_id,
               cols.visibility,
+              visibilityId,
               cols.language,
               cols.has_media,
               cols.media_count,
@@ -340,23 +360,25 @@ export function handleBulkUpsertStatuses(
         const insertUri = existingIsOriginal ? '' : cols.uri
         db.exec(
           `INSERT INTO posts (
-            origin_backend_url, created_at_ms, stored_at,
+            origin_backend_url, origin_server_id, created_at_ms, stored_at,
             object_uri,
-            account_acct, account_id, visibility, language,
+            account_acct, account_id, visibility, visibility_id, language,
             has_media, media_count, is_reblog, reblog_of_id, reblog_of_uri,
             is_sensitive, has_spoiler, in_reply_to_id,
             favourites_count, reblogs_count, replies_count,
             json
-          ) VALUES (?,?,?, ?, ?,?,?,?, ?,?,?,?,?, ?,?,?, ?,?,?, ?);`,
+          ) VALUES (?,?,?,?, ?, ?,?,?,?,?, ?,?,?,?,?, ?,?,?, ?,?,?, ?);`,
           {
             bind: [
               backendUrl,
+              serverId,
               created_at_ms,
               now,
               insertUri,
               cols.account_acct,
               cols.account_id,
               cols.visibility,
+              visibilityId,
               cols.language,
               cols.has_media,
               cols.media_count,
@@ -381,9 +403,9 @@ export function handleBulkUpsertStatuses(
       }
 
       db.exec(
-        `INSERT OR IGNORE INTO posts_backends (post_id, backendUrl, local_id)
-         VALUES (?, ?, ?);`,
-        { bind: [postId, backendUrl, status.id] },
+        `INSERT OR IGNORE INTO posts_backends (post_id, backendUrl, local_id, server_id)
+         VALUES (?, ?, ?, ?);`,
+        { bind: [postId, backendUrl, status.id, serverId] },
       )
 
       db.exec(
@@ -675,6 +697,8 @@ export function handleUpdateStatus(
 
   db.exec('BEGIN;')
   try {
+    const visibilityId = resolveVisibilityId(db, cols.visibility)
+
     db.exec(
       `UPDATE posts SET
          created_at_ms    = ?,
@@ -683,6 +707,7 @@ export function handleUpdateStatus(
          account_acct     = ?,
          account_id       = ?,
          visibility       = ?,
+         visibility_id    = ?,
          language         = ?,
          has_media        = ?,
          media_count      = ?,
@@ -705,6 +730,7 @@ export function handleUpdateStatus(
           cols.account_acct,
           cols.account_id,
           cols.visibility,
+          visibilityId,
           cols.language,
           cols.has_media,
           cols.media_count,

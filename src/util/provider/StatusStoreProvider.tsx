@@ -27,6 +27,7 @@ import {
 } from 'util/db/sqlite/statusStore'
 import { GetClient } from 'util/GetClient'
 import { getRetryDelay, MAX_RETRY_COUNT } from 'util/streaming/constants'
+import { restartStream, stopStream } from 'util/streaming/stopStream'
 import { AppsContext } from './AppsProvider'
 import { SetTagsContext, SetUsersContext } from './ResourceProvider'
 
@@ -179,7 +180,8 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
     const onError = (stream: WebSocketInterface) => {
       return (err: Error | undefined) => {
         console.warn('userStreaming error:', err?.message ?? 'unknown error')
-        stream.stop()
+        // megalodon のゴースト再接続を防止しつつ停止
+        stopStream(stream)
 
         retryState.count += 1
 
@@ -192,7 +194,8 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
 
         const delay = getRetryDelay(retryState.count - 1)
         const timeout = setTimeout(() => {
-          stream.start()
+          // 再接続能力を復元してから start()
+          restartStream(stream)
           console.info(
             `reconnecting userStreaming (retry ${retryState.count}/${MAX_RETRY_COUNT}, delay ${delay}ms)`,
           )
@@ -313,7 +316,7 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
     return () => {
       stopCleanup?.()
       for (const stream of streamsRef.current.values()) {
-        stream.stop()
+        stopStream(stream)
       }
       streamsRef.current.clear()
     }

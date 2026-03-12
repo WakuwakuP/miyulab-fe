@@ -32,7 +32,7 @@
 import type { SchemaDbHandle as DbHandle } from './worker/workerSchema'
 
 /** 現在のスキーマバージョン */
-const SCHEMA_VERSION = 7
+const SCHEMA_VERSION = 8
 
 /**
  * スキーマの初期化・マイグレーション
@@ -51,8 +51,8 @@ export function ensureSchema(handle: DbHandle): void {
   db.exec('BEGIN;')
   try {
     if (currentVersion < 1) {
-      // フレッシュインストール: v7 スキーマを直接作成
-      createSchemaV7(handle)
+      // フレッシュインストール: v8 スキーマを直接作成
+      createSchemaV8(handle)
     } else if (currentVersion < 2) {
       migrateV1toV2(handle)
       migrateV2toV3(handle)
@@ -60,26 +60,34 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV4toV5(handle)
       migrateV5toV6(handle)
       migrateV6toV7(handle)
+      migrateV7toV8(handle)
     } else if (currentVersion < 3) {
       migrateV2toV3(handle)
       migrateV3toV4(handle)
       migrateV4toV5(handle)
       migrateV5toV6(handle)
       migrateV6toV7(handle)
+      migrateV7toV8(handle)
     } else if (currentVersion < 4) {
       migrateV3toV4(handle)
       migrateV4toV5(handle)
       migrateV5toV6(handle)
       migrateV6toV7(handle)
+      migrateV7toV8(handle)
     } else if (currentVersion < 5) {
       migrateV4toV5(handle)
       migrateV5toV6(handle)
       migrateV6toV7(handle)
+      migrateV7toV8(handle)
     } else if (currentVersion < 6) {
       migrateV5toV6(handle)
       migrateV6toV7(handle)
+      migrateV7toV8(handle)
     } else if (currentVersion < 7) {
       migrateV6toV7(handle)
+      migrateV7toV8(handle)
+    } else if (currentVersion < 8) {
+      migrateV7toV8(handle)
     }
 
     db.exec(`PRAGMA user_version = ${SCHEMA_VERSION};`)
@@ -91,7 +99,24 @@ export function ensureSchema(handle: DbHandle): void {
 }
 
 // ================================================================
-// v7 フルスキーマ作成（フレッシュインストール用）
+// v8 フルスキーマ作成（フレッシュインストール用）
+// ================================================================
+
+/**
+ * v8 スキーマのフル作成（フレッシュインストール用）
+ *
+ * v7 スキーマ + マスターテーブル群 + server_id / visibility_id / notification_type_id カラム。
+ */
+function createSchemaV8(handle: DbHandle): void {
+  // v7 ベーススキーマを作成
+  createSchemaV7(handle)
+  // v8 マスターテーブル + 新カラムを追加
+  createMasterTablesV8(handle)
+  addV8Columns(handle)
+}
+
+// ================================================================
+// v7 フルスキーマ作成（v8 から内部呼び出し）
 // ================================================================
 
 /**
@@ -895,6 +920,272 @@ function backfillMaterializedViewsV7(handle: DbHandle): void {
     FROM posts p
     INNER JOIN posts_belonging_tags pbt ON p.post_id = pbt.post_id
     INNER JOIN posts_backends pb ON p.post_id = pb.post_id;
+  `)
+}
+
+// ================================================================
+// v8 マスターテーブル作成
+// ================================================================
+
+/**
+ * v8 マスターテーブル群を作成し、初期データを投入する。
+ */
+function createMasterTablesV8(handle: DbHandle): void {
+  const { db } = handle
+
+  // software_types
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS software_types (
+      software_type_id  INTEGER PRIMARY KEY,
+      code              TEXT NOT NULL UNIQUE,
+      display_name      TEXT NOT NULL
+    );
+  `)
+  db.exec(`
+    INSERT OR IGNORE INTO software_types (code, display_name) VALUES
+      ('mastodon', 'Mastodon'),
+      ('pleroma', 'Pleroma'),
+      ('misskey', 'Misskey'),
+      ('firefish', 'Firefish'),
+      ('akkoma', 'Akkoma'),
+      ('gotosocial', 'GoToSocial'),
+      ('unknown', 'Unknown');
+  `)
+
+  // servers
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS servers (
+      server_id         INTEGER PRIMARY KEY,
+      host              TEXT NOT NULL UNIQUE,
+      base_url          TEXT NOT NULL,
+      software_type_id  INTEGER,
+      software_version  TEXT,
+      detected_at       TEXT,
+      FOREIGN KEY (software_type_id) REFERENCES software_types(software_type_id)
+    );
+  `)
+  db.exec('CREATE INDEX IF NOT EXISTS idx_servers_host ON servers(host);')
+
+  // visibility_types
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS visibility_types (
+      visibility_id  INTEGER PRIMARY KEY,
+      code           TEXT NOT NULL UNIQUE,
+      display_name   TEXT NOT NULL
+    );
+  `)
+  db.exec(`
+    INSERT OR IGNORE INTO visibility_types (code, display_name) VALUES
+      ('public', '公開'),
+      ('unlisted', '未収載'),
+      ('private', 'フォロワー限定'),
+      ('direct', 'ダイレクト');
+  `)
+
+  // notification_types
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS notification_types (
+      notification_type_id  INTEGER PRIMARY KEY,
+      code                  TEXT NOT NULL UNIQUE,
+      display_name          TEXT NOT NULL
+    );
+  `)
+  db.exec(`
+    INSERT OR IGNORE INTO notification_types (code, display_name) VALUES
+      ('follow', 'フォロー'),
+      ('follow_request', 'フォローリクエスト'),
+      ('mention', 'メンション'),
+      ('reblog', 'ブースト'),
+      ('favourite', 'お気に入り'),
+      ('reaction', 'リアクション'),
+      ('poll_expired', '投票終了'),
+      ('status', '投稿');
+  `)
+
+  // media_types
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS media_types (
+      media_type_id  INTEGER PRIMARY KEY,
+      code           TEXT NOT NULL UNIQUE,
+      display_name   TEXT NOT NULL
+    );
+  `)
+  db.exec(`
+    INSERT OR IGNORE INTO media_types (code, display_name) VALUES
+      ('image', '画像'),
+      ('video', '動画'),
+      ('gifv', 'GIF動画'),
+      ('audio', '音声'),
+      ('unknown', '不明');
+  `)
+
+  // engagement_types
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS engagement_types (
+      engagement_type_id  INTEGER PRIMARY KEY,
+      code                TEXT NOT NULL UNIQUE,
+      display_name        TEXT NOT NULL
+    );
+  `)
+  db.exec(`
+    INSERT OR IGNORE INTO engagement_types (code, display_name) VALUES
+      ('favourite', 'お気に入り'),
+      ('reblog', 'ブースト'),
+      ('bookmark', 'ブックマーク'),
+      ('reaction', 'リアクション');
+  `)
+
+  // channel_kinds
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS channel_kinds (
+      channel_kind_id  INTEGER PRIMARY KEY,
+      code             TEXT NOT NULL UNIQUE,
+      display_name     TEXT NOT NULL
+    );
+  `)
+  db.exec(`
+    INSERT OR IGNORE INTO channel_kinds (code, display_name) VALUES
+      ('home', 'ホーム'),
+      ('local', 'ローカル'),
+      ('federated', '連合'),
+      ('tag', 'タグ'),
+      ('notification', '通知'),
+      ('bookmark', 'ブックマーク'),
+      ('conversation', 'DM');
+  `)
+
+  // timeline_item_kinds
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS timeline_item_kinds (
+      timeline_item_kind_id  INTEGER PRIMARY KEY,
+      code                   TEXT NOT NULL UNIQUE,
+      display_name           TEXT NOT NULL
+    );
+  `)
+  db.exec(`
+    INSERT OR IGNORE INTO timeline_item_kinds (code, display_name) VALUES
+      ('post', '投稿'),
+      ('notification', '通知'),
+      ('event', 'イベント');
+  `)
+}
+
+// ================================================================
+// v8 カラム追加（フレッシュインストール / マイグレーション共用）
+// ================================================================
+
+/**
+ * v8 で追加されるカラムを ALTER TABLE で追加する。
+ * フレッシュインストール時も v7 の CREATE TABLE をそのまま再利用するため、
+ * ALTER TABLE で後から追加する形式を取る。
+ */
+function addV8Columns(handle: DbHandle): void {
+  const { db } = handle
+
+  // posts: origin_server_id
+  db.exec(
+    'ALTER TABLE posts ADD COLUMN origin_server_id INTEGER REFERENCES servers(server_id);',
+  )
+
+  // posts: visibility_id
+  db.exec(
+    'ALTER TABLE posts ADD COLUMN visibility_id INTEGER REFERENCES visibility_types(visibility_id);',
+  )
+
+  // posts_backends: server_id
+  db.exec(
+    'ALTER TABLE posts_backends ADD COLUMN server_id INTEGER REFERENCES servers(server_id);',
+  )
+
+  // notifications: server_id
+  db.exec(
+    'ALTER TABLE notifications ADD COLUMN server_id INTEGER REFERENCES servers(server_id);',
+  )
+
+  // notifications: notification_type_id
+  db.exec(
+    'ALTER TABLE notifications ADD COLUMN notification_type_id INTEGER REFERENCES notification_types(notification_type_id);',
+  )
+}
+
+// ================================================================
+// v7 → v8 マイグレーション
+// ================================================================
+
+/**
+ * v7 → v8 マイグレーション
+ *
+ * マスターテーブル群（software_types, servers, visibility_types, notification_types,
+ * media_types, engagement_types, channel_kinds, timeline_item_kinds）を作成し、
+ * 既存データからサーバー情報を抽出して servers テーブルに移行する。
+ * posts / posts_backends / notifications に server_id / visibility_id / notification_type_id を追加。
+ */
+function migrateV7toV8(handle: DbHandle): void {
+  const { db } = handle
+
+  // Step 1: マスターテーブル作成 & 初期データ投入
+  createMasterTablesV8(handle)
+
+  // Step 2: カラム追加
+  addV8Columns(handle)
+
+  // Step 3: 既存の backendUrl から servers レコードを生成
+  db.exec(`
+    INSERT OR IGNORE INTO servers (host, base_url)
+    SELECT DISTINCT
+      REPLACE(REPLACE(origin_backend_url, 'https://', ''), 'http://', '') AS host,
+      origin_backend_url AS base_url
+    FROM posts
+    WHERE origin_backend_url != '';
+  `)
+  db.exec(`
+    INSERT OR IGNORE INTO servers (host, base_url)
+    SELECT DISTINCT
+      REPLACE(REPLACE(backend_url, 'https://', ''), 'http://', '') AS host,
+      backend_url AS base_url
+    FROM notifications
+    WHERE backend_url != '';
+  `)
+
+  // Step 4: posts.origin_server_id をバックフィル
+  db.exec(`
+    UPDATE posts SET origin_server_id = (
+      SELECT s.server_id FROM servers s WHERE s.base_url = posts.origin_backend_url
+    )
+    WHERE origin_server_id IS NULL;
+  `)
+
+  // Step 5: posts_backends.server_id をバックフィル
+  db.exec(`
+    UPDATE posts_backends SET server_id = (
+      SELECT s.server_id FROM servers s WHERE s.base_url = posts_backends.backendUrl
+    )
+    WHERE server_id IS NULL;
+  `)
+
+  // Step 6: notifications.server_id をバックフィル
+  db.exec(`
+    UPDATE notifications SET server_id = (
+      SELECT s.server_id FROM servers s WHERE s.base_url = notifications.backend_url
+    )
+    WHERE server_id IS NULL;
+  `)
+
+  // Step 7: posts.visibility_id をバックフィル
+  db.exec(`
+    UPDATE posts SET visibility_id = (
+      SELECT v.visibility_id FROM visibility_types v WHERE v.code = posts.visibility
+    )
+    WHERE visibility_id IS NULL;
+  `)
+
+  // Step 8: notifications.notification_type_id をバックフィル
+  db.exec(`
+    UPDATE notifications SET notification_type_id = (
+      SELECT nt.notification_type_id FROM notification_types nt
+      WHERE nt.code = notifications.notification_type
+    )
+    WHERE notification_type_id IS NULL;
   `)
 }
 
