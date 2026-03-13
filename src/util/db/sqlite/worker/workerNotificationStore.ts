@@ -155,15 +155,18 @@ function ensurePostForNotification(
   return postId
 }
 
-export function handleAddNotification(
+/**
+ * 単一通知を解決して notifications テーブルに upsert する。
+ * handleAddNotification と handleBulkAddNotifications の共通処理を集約。
+ */
+function upsertNotification(
   db: DbExec,
-  notificationJson: string,
+  notification: Entity.Notification,
+  serverId: number,
   backendUrl: string,
-): HandlerResult {
-  const notification = JSON.parse(notificationJson) as Entity.Notification
+  now: number,
+): void {
   const created_at_ms = new Date(notification.created_at).getTime()
-  const now = Date.now()
-  const serverId = ensureServer(db, backendUrl)
   const notificationTypeId = resolveNotificationTypeId(db, notification.type)
   const actorProfileId = notification.account
     ? ensureProfile(db, notification.account)
@@ -233,7 +236,17 @@ export function handleAddNotification(
       },
     )
   }
+}
 
+export function handleAddNotification(
+  db: DbExec,
+  notificationJson: string,
+  backendUrl: string,
+): HandlerResult {
+  const notification = JSON.parse(notificationJson) as Entity.Notification
+  const now = Date.now()
+  const serverId = ensureServer(db, backendUrl)
+  upsertNotification(db, notification, serverId, backendUrl, now)
   return { changedTables: ['notifications'] }
 }
 
@@ -249,91 +262,9 @@ export function handleBulkAddNotifications(
   db.exec('BEGIN;')
   try {
     const serverId = ensureServer(db, backendUrl)
-
     for (const nJson of notificationsJson) {
       const notification = JSON.parse(nJson) as Entity.Notification
-      const created_at_ms = new Date(notification.created_at).getTime()
-      const notificationTypeId = resolveNotificationTypeId(
-        db,
-        notification.type,
-      )
-      const actorProfileId = notification.account
-        ? ensureProfile(db, notification.account)
-        : null
-      if (actorProfileId !== null && notification.account) {
-        ensureProfileAlias(
-          db,
-          actorProfileId,
-          serverId,
-          notification.account.id,
-        )
-      }
-      if (
-        actorProfileId !== null &&
-        notification.account &&
-        notification.account.emojis.length > 0
-      ) {
-        syncProfileCustomEmojis(
-          db,
-          actorProfileId,
-          serverId,
-          notification.account.emojis,
-        )
-      }
-      const relatedPostId = notification.status
-        ? ensurePostForNotification(
-            db,
-            notification.status,
-            backendUrl,
-            serverId,
-          )
-        : null
-
-      const existing = db.exec(
-        'SELECT notification_id FROM notifications WHERE server_id = ? AND local_id = ?;',
-        { bind: [serverId, notification.id], returnValue: 'resultRows' },
-      ) as number[][]
-
-      if (existing.length > 0) {
-        const notificationId = existing[0][0]
-        db.exec(
-          `UPDATE notifications SET
-            notification_type_id = ?,
-            actor_profile_id     = ?,
-            related_post_id      = ?,
-            created_at_ms        = ?,
-            stored_at            = ?
-          WHERE notification_id = ?;`,
-          {
-            bind: [
-              notificationTypeId,
-              actorProfileId,
-              relatedPostId,
-              created_at_ms,
-              now,
-              notificationId,
-            ],
-          },
-        )
-      } else {
-        db.exec(
-          `INSERT INTO notifications (
-            server_id, local_id, notification_type_id, actor_profile_id,
-            related_post_id, created_at_ms, stored_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?);`,
-          {
-            bind: [
-              serverId,
-              notification.id,
-              notificationTypeId,
-              actorProfileId,
-              relatedPostId,
-              created_at_ms,
-              now,
-            ],
-          },
-        )
-      }
+      upsertNotification(db, notification, serverId, backendUrl, now)
     }
     db.exec('COMMIT;')
   } catch (e) {
