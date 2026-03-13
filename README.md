@@ -27,3 +27,7 @@ NEXT_PUBLIC_BACKEND_SNS=<SNS名> // 例 'mastodon' | 'pleroma' | 'friendica' | '
 yarn
 yarn build
 ```
+
+## maintenance
+
+SQLite WASM のバージョン更新するときは node_modules/@sqlite.org/sqlite-wasm/sqlite-wasm/jswasm/sqlite3.wasm を public/sqlite3.wasm にファイルをコピーする
