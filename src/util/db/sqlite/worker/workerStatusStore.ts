@@ -155,6 +155,151 @@ function syncPostStats(
 }
 
 // ================================================================
+// リブログ元投稿の保存ヘルパー
+// ================================================================
+
+/**
+ * リブログ元投稿（status.reblog）を posts テーブルに保存する。
+ * タイムラインへの紐付けは行わない（元投稿は直接タイムラインに属さないため）。
+ */
+function ensureReblogOriginalPost(
+  db: DbExec,
+  originalStatus: Entity.Status,
+  backendUrl: string,
+  serverId: number,
+  now: number,
+): void {
+  const normalizedUri = originalStatus.uri?.trim() || ''
+  if (!normalizedUri) return
+
+  const cols = extractStatusColumns(originalStatus)
+  const created_at_ms = new Date(originalStatus.created_at).getTime()
+  const visibilityId = resolveVisibilityId(db, cols.visibility)
+  const profileId = ensureProfile(db, originalStatus.account)
+  if (originalStatus.account.emojis.length > 0) {
+    syncProfileCustomEmojis(
+      db,
+      profileId,
+      serverId,
+      originalStatus.account.emojis,
+    )
+  }
+
+  let postId: number | undefined
+
+  // URI で既存投稿を検索
+  const existingRows = db.exec(
+    'SELECT post_id FROM posts WHERE object_uri = ?;',
+    { bind: [normalizedUri], returnValue: 'resultRows' },
+  ) as number[][]
+  if (existingRows.length > 0) {
+    postId = existingRows[0][0]
+  }
+
+  // posts_backends で検索
+  if (postId === undefined) {
+    postId =
+      resolvePostIdInternal(db, backendUrl, originalStatus.id) ?? undefined
+  }
+
+  if (postId !== undefined) {
+    db.exec(
+      `UPDATE posts SET
+        stored_at          = ?,
+        visibility_id      = ?,
+        language           = ?,
+        content_html       = ?,
+        spoiler_text       = ?,
+        canonical_url      = ?,
+        has_media          = ?,
+        media_count        = ?,
+        is_reblog          = 0,
+        reblog_of_uri      = NULL,
+        is_sensitive       = ?,
+        has_spoiler        = ?,
+        in_reply_to_id     = ?,
+        edited_at          = ?,
+        author_profile_id  = ?
+      WHERE post_id = ?;`,
+      {
+        bind: [
+          now,
+          visibilityId,
+          cols.language,
+          cols.content_html,
+          cols.spoiler_text,
+          cols.canonical_url,
+          cols.has_media,
+          cols.media_count,
+          cols.is_sensitive,
+          cols.has_spoiler,
+          cols.in_reply_to_id,
+          cols.edited_at,
+          profileId,
+          postId,
+        ],
+      },
+    )
+  } else {
+    db.exec(
+      `INSERT INTO posts (
+        object_uri, origin_server_id, created_at_ms, stored_at,
+        author_profile_id, visibility_id, language,
+        content_html, spoiler_text, canonical_url,
+        has_media, media_count, is_reblog, reblog_of_uri,
+        is_sensitive, has_spoiler, in_reply_to_id,
+        is_local_only, edited_at
+      ) VALUES (?,?,?,?, ?,?,?, ?,?,?, ?,?,0,NULL, ?,?,?, ?,?);`,
+      {
+        bind: [
+          normalizedUri,
+          serverId,
+          created_at_ms,
+          now,
+          profileId,
+          visibilityId,
+          cols.language,
+          cols.content_html,
+          cols.spoiler_text,
+          cols.canonical_url,
+          cols.has_media,
+          cols.media_count,
+          cols.is_sensitive,
+          cols.has_spoiler,
+          cols.in_reply_to_id,
+          0,
+          cols.edited_at,
+        ],
+      },
+    )
+    postId = getLastInsertRowId(db)
+  }
+
+  db.exec(
+    `INSERT OR IGNORE INTO posts_backends (post_id, backendUrl, local_id, server_id)
+     VALUES (?, ?, ?, ?);`,
+    { bind: [postId, backendUrl, originalStatus.id, serverId] },
+  )
+
+  upsertMentionsInternal(db, postId, originalStatus.mentions)
+  syncPostMedia(
+    db,
+    postId,
+    originalStatus.media_attachments,
+    originalStatus.sensitive,
+  )
+  syncPostStats(db, postId, originalStatus)
+  syncPostCustomEmojis(
+    db,
+    postId,
+    serverId,
+    originalStatus.emojis ?? [],
+    originalStatus.account?.emojis ?? [],
+  )
+  syncPollData(db, postId, originalStatus.poll)
+}
+
+// ================================================================
 // 公開ハンドラ
 // ================================================================
 
@@ -337,6 +482,11 @@ export function handleUpsertStatus(
           ],
         },
       )
+
+      // リブログ元投稿も保存（reblog フィールド復元用）
+      if (status.reblog) {
+        ensureReblogOriginalPost(db, status.reblog, backendUrl, serverId, now)
+      }
     }
 
     db.exec('COMMIT;')
@@ -540,6 +690,11 @@ export function handleBulkUpsertStatuses(
             ],
           },
         )
+
+        // リブログ元投稿も保存（reblog フィールド復元用）
+        if (status.reblog) {
+          ensureReblogOriginalPost(db, status.reblog, backendUrl, serverId, now)
+        }
       }
     }
     db.exec('COMMIT;')

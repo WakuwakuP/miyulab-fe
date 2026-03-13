@@ -13,6 +13,7 @@ import {
   useContext,
   useEffect,
   useEffectEvent,
+  useMemo,
   useState,
 } from 'react'
 import { CiWarning } from 'react-icons/ci'
@@ -20,18 +21,32 @@ import { RiArrowLeftSLine } from 'react-icons/ri'
 import { Virtuoso } from 'react-virtuoso'
 import type { StatusAddAppIndex } from 'types/types'
 import { GetClient } from 'util/GetClient'
+import {
+  navigatePanel,
+  routeToAccountIndex,
+  routeToView,
+  usePanelRoute,
+} from 'util/panelNavigation'
 import { AppsContext } from 'util/provider/AppsProvider'
 
 import { AccountsPanel } from './AccountsPanel'
 
 export const GettingStarted = () => {
   const apps = useContext(AppsContext)
-  const [appIndex, setAppIndex] = useState(0)
-  const [selected, setSelected] = useState<
-    'bookmark' | 'dm' | 'setting' | 'timeline' | 'accounts' | 'database' | null
-  >(null)
+  const route = usePanelRoute()
+  const selected = routeToView(route)
+  const appIndex = routeToAccountIndex(route)
 
-  const [title, setTitle] = useState<string>('Getting Started')
+  const title = useMemo(() => {
+    switch (selected) {
+      case 'bookmark':
+        return 'Bookmark'
+      case 'dm':
+        return 'Direct Message'
+      default:
+        return 'Getting Started'
+    }
+  }, [selected])
 
   const [bookmarks, setBookmarks] = useState<{
     [key: number]: StatusAddAppIndex[]
@@ -101,7 +116,6 @@ export const GettingStarted = () => {
 
     switch (selected) {
       case 'bookmark':
-        setTitle('Bookmark')
         client
           .getBookmarks({
             limit: 20,
@@ -121,7 +135,6 @@ export const GettingStarted = () => {
           })
         break
       case 'dm':
-        setTitle('Direct Message')
         client
           .getConversationTimeline()
           .then((res) => {
@@ -140,7 +153,6 @@ export const GettingStarted = () => {
           })
         break
       default:
-        setTitle('Getting Started')
         break
     }
   }, [appIndex, apps, selected, setMaxIdCallback])
@@ -206,7 +218,7 @@ export const GettingStarted = () => {
         {selected !== null ? (
           <button
             className="flex rounded-md border pr-4 text-xl text-blue-500"
-            onClick={() => setSelected(null)}
+            onClick={() => navigatePanel('/')}
             type="button"
           >
             <RiArrowLeftSLine size={30} />
@@ -237,20 +249,14 @@ export const GettingStarted = () => {
                 </div>
                 <button
                   className="w-full border-b px-4 py-2 text-xl hover:bg-slate-800"
-                  onClick={() => {
-                    setAppIndex(index)
-                    setSelected('bookmark')
-                  }}
+                  onClick={() => navigatePanel(`/bookmark/${index}`)}
                   type="button"
                 >
                   Bookmark
                 </button>
                 <button
                   className="w-full border-b px-4 py-2 text-xl hover:bg-slate-800"
-                  onClick={() => {
-                    setAppIndex(index)
-                    setSelected('dm')
-                  }}
+                  onClick={() => navigatePanel(`/dm/${index}`)}
                   type="button"
                 >
                   Direct Message
@@ -260,28 +266,28 @@ export const GettingStarted = () => {
             <div className="w-full border-b px-4 py-2 text-xl">Setting</div>
             <button
               className="w-full border-b px-4 py-2 text-xl hover:bg-slate-800"
-              onClick={() => setSelected('setting')}
+              onClick={() => navigatePanel('/setting')}
               type="button"
             >
               Setting
             </button>
             <button
               className="w-full border-b px-4 py-2 text-xl hover:bg-slate-800"
-              onClick={() => setSelected('timeline')}
+              onClick={() => navigatePanel('/timeline')}
               type="button"
             >
               Timeline Management
             </button>
             <button
               className="w-full border-b px-4 py-2 text-xl hover:bg-slate-800"
-              onClick={() => setSelected('accounts')}
+              onClick={() => navigatePanel('/accounts')}
               type="button"
             >
               Accounts
             </button>
             <button
               className="w-full border-b px-4 py-2 text-xl hover:bg-slate-800"
-              onClick={() => setSelected('database')}
+              onClick={() => navigatePanel('/database')}
               type="button"
             >
               Database

@@ -57,6 +57,18 @@ export interface SqliteStoredStatus extends Entity.Status {
  *   [30] timelineTypes   [31] belongingTags
  *   [32] status_emojis_json [33] account_emojis_json
  *   [34] poll_json
+ *
+ * リブログ元 (is_reblog=1 の場合):
+ *   [35] rb_post_id      [36] rb_content_html  [37] rb_spoiler_text
+ *   [38] rb_canonical_url [39] rb_language     [40] rb_visibility_code
+ *   [41] rb_is_sensitive  [42] rb_in_reply_to_id [43] rb_edited_at
+ *   [44] rb_created_at_ms [45] rb_object_uri   [46] rb_author_acct
+ *   [47] rb_author_username [48] rb_author_display [49] rb_author_avatar
+ *   [50] rb_author_header [51] rb_author_locked [52] rb_author_bot
+ *   [53] rb_author_url   [54] rb_replies_count [55] rb_reblogs_count
+ *   [56] rb_favourites_count [57] rb_engagements_csv [58] rb_media_json
+ *   [59] rb_mentions_json [60] rb_status_emojis_json
+ *   [61] rb_account_emojis_json [62] rb_poll_json [63] rb_local_id
  */
 export function rowToStoredStatus(
   row: (string | number | null)[],
@@ -126,6 +138,100 @@ export function rowToStoredStatus(
     }
   }
 
+  const parseMediaAttachments = (json: string | null): Entity.Attachment[] => {
+    if (!json) return []
+    return (JSON.parse(json) as (Entity.Attachment | null)[]).filter(
+      (m): m is Entity.Attachment => m !== null,
+    )
+  }
+
+  const parseMentions = (json: string | null): Entity.Mention[] => {
+    if (!json) return []
+    return (JSON.parse(json) as ({ acct: string } | null)[])
+      .filter((m): m is { acct: string } => m !== null)
+      .map((m) => ({
+        acct: m.acct,
+        id: '',
+        url: '',
+        username: m.acct.split('@')[0] ?? '',
+      }))
+  }
+
+  // リブログ元投稿の復元
+  const isReblog = (row[12] as number) === 1
+  const rbPostId = row[35] as number | null
+  let reblog: Entity.Status | null = null
+
+  if (isReblog && rbPostId !== null) {
+    const rbEngagementsCsv = row[57] as string | null
+    const rbEngagements = rbEngagementsCsv ? rbEngagementsCsv.split(',') : []
+    const rbMediaJson = row[58] as string | null
+    const rbMentionsJson = row[59] as string | null
+    const rbStatusEmojisJson = row[60] as string | null
+    const rbAccountEmojisJson = row[61] as string | null
+    const rbPollJson = row[62] as string | null
+
+    reblog = {
+      account: {
+        acct: (row[46] as string) ?? '',
+        avatar: (row[49] as string) ?? '',
+        avatar_static: (row[49] as string) ?? '',
+        bot: (row[52] as number) === 1,
+        created_at: '',
+        display_name: (row[48] as string) ?? '',
+        emojis: parseEmojis(rbAccountEmojisJson),
+        fields: [],
+        followers_count: 0,
+        following_count: 0,
+        group: null,
+        header: (row[50] as string) ?? '',
+        header_static: (row[50] as string) ?? '',
+        id: '',
+        limited: null,
+        locked: (row[51] as number) === 1,
+        moved: null,
+        noindex: null,
+        note: '',
+        statuses_count: 0,
+        suspended: null,
+        url: (row[53] as string) ?? '',
+        username: (row[47] as string) ?? '',
+      },
+      application: null,
+      bookmarked: rbEngagements.includes('bookmark'),
+      card: null,
+      content: (row[36] as string) ?? '',
+      created_at: row[44] ? new Date(row[44] as number).toISOString() : '',
+      edited_at: row[43] as string | null,
+      emoji_reactions: [],
+      emojis: parseEmojis(rbStatusEmojisJson),
+      favourited: rbEngagements.includes('favourite'),
+      favourites_count: (row[56] as number) ?? 0,
+      id: (row[63] as string) ?? '',
+      in_reply_to_account_id: null,
+      in_reply_to_id: row[42] as string | null,
+      language: row[39] as string | null,
+      media_attachments: parseMediaAttachments(rbMediaJson),
+      mentions: parseMentions(rbMentionsJson),
+      muted: null,
+      pinned: null,
+      plain_content: null,
+      poll: rbPollJson ? parsePoll(rbPollJson) : null,
+      quote: null,
+      quote_approval: { automatic: [], current_user: '', manual: [] },
+      reblog: null,
+      reblogged: rbEngagements.includes('reblog'),
+      reblogs_count: (row[55] as number) ?? 0,
+      replies_count: (row[54] as number) ?? 0,
+      sensitive: (row[41] as number) === 1,
+      spoiler_text: (row[37] as string) ?? '',
+      tags: [],
+      uri: (row[45] as string) ?? '',
+      url: (row[38] as string | null) ?? undefined,
+      visibility: ((row[40] as string) ?? 'public') as Entity.StatusVisibility,
+    }
+  }
+
   return {
     account: {
       acct: (row[16] as string) ?? '',
@@ -169,21 +275,8 @@ export function rowToStoredStatus(
     in_reply_to_account_id: null,
     in_reply_to_id: row[14] as string | null,
     language: row[9] as string | null,
-    media_attachments: mediaJson
-      ? (JSON.parse(mediaJson) as (Entity.Attachment | null)[]).filter(
-          (m): m is Entity.Attachment => m !== null,
-        )
-      : [],
-    mentions: mentionsJson
-      ? (JSON.parse(mentionsJson) as ({ acct: string } | null)[])
-          .filter((m): m is { acct: string } => m !== null)
-          .map((m) => ({
-            acct: m.acct,
-            id: '',
-            url: '',
-            username: m.acct.split('@')[0] ?? '',
-          }))
-      : [],
+    media_attachments: parseMediaAttachments(mediaJson),
+    mentions: parseMentions(mentionsJson),
     muted: null,
     pinned: null,
     plain_content: null,
@@ -192,7 +285,7 @@ export function rowToStoredStatus(
     post_id: row[0] as number,
     quote: null,
     quote_approval: { automatic: [], current_user: '', manual: [] },
-    reblog: null,
+    reblog,
     reblogged: engagements.includes('reblog'),
     reblogs_count: (row[25] as number) ?? 0,
     replies_count: (row[24] as number) ?? 0,
@@ -250,7 +343,36 @@ export const STATUS_SELECT = `
   (SELECT json_group_array(tag) FROM posts_belonging_tags WHERE post_id = s.post_id) AS belongingTags,
   (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.image_url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM post_custom_emojis pce INNER JOIN custom_emojis ce ON pce.emoji_id = ce.emoji_id WHERE pce.post_id = s.post_id AND pce.usage_context = 'status') AS status_emojis_json,
   (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.image_url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM post_custom_emojis pce INNER JOIN custom_emojis ce ON pce.emoji_id = ce.emoji_id WHERE pce.post_id = s.post_id AND pce.usage_context = 'account') AS account_emojis_json,
-  (SELECT json_object('id', pl.poll_id, 'expires_at', pl.expires_at, 'multiple', pl.multiple, 'votes_count', pl.votes_count, 'options', (SELECT json_group_array(json_object('title', po.title, 'votes_count', po.votes_count)) FROM poll_options po WHERE po.poll_id = pl.poll_id ORDER BY po.option_index)) FROM polls pl WHERE pl.post_id = s.post_id) AS poll_json`
+  (SELECT json_object('id', pl.poll_id, 'expires_at', pl.expires_at, 'multiple', pl.multiple, 'votes_count', pl.votes_count, 'options', (SELECT json_group_array(json_object('title', po.title, 'votes_count', po.votes_count)) FROM poll_options po WHERE po.poll_id = pl.poll_id ORDER BY po.option_index)) FROM polls pl WHERE pl.post_id = s.post_id) AS poll_json,
+  rs.post_id AS rb_post_id,
+  COALESCE(rs.content_html, '') AS rb_content_html,
+  COALESCE(rs.spoiler_text, '') AS rb_spoiler_text,
+  rs.canonical_url AS rb_canonical_url,
+  rs.language AS rb_language,
+  COALESCE(rvt.code, 'public') AS rb_visibility_code,
+  rs.is_sensitive AS rb_is_sensitive,
+  rs.in_reply_to_id AS rb_in_reply_to_id,
+  rs.edited_at AS rb_edited_at,
+  rs.created_at_ms AS rb_created_at_ms,
+  rs.object_uri AS rb_object_uri,
+  COALESCE(rpr.acct, '') AS rb_author_acct,
+  COALESCE(rpr.username, '') AS rb_author_username,
+  COALESCE(rpr.display_name, '') AS rb_author_display_name,
+  COALESCE(rpr.avatar_url, '') AS rb_author_avatar,
+  COALESCE(rpr.header_url, '') AS rb_author_header,
+  COALESCE(rpr.locked, 0) AS rb_author_locked,
+  COALESCE(rpr.bot, 0) AS rb_author_bot,
+  COALESCE(rpr.actor_uri, '') AS rb_author_url,
+  COALESCE((SELECT ps.replies_count FROM post_stats ps WHERE ps.post_id = rs.post_id), 0) AS rb_replies_count,
+  COALESCE((SELECT ps.reblogs_count FROM post_stats ps WHERE ps.post_id = rs.post_id), 0) AS rb_reblogs_count,
+  COALESCE((SELECT ps.favourites_count FROM post_stats ps WHERE ps.post_id = rs.post_id), 0) AS rb_favourites_count,
+  (SELECT group_concat(et.code, ',') FROM post_engagements pe INNER JOIN engagement_types et ON pe.engagement_type_id = et.engagement_type_id WHERE pe.post_id = rs.post_id) AS rb_engagements_csv,
+  CASE WHEN rs.has_media = 1 THEN (SELECT json_group_array(json_object('id', pm.remote_media_id, 'type', COALESCE((SELECT mt.code FROM media_types mt WHERE mt.media_type_id = pm.media_type_id), 'unknown'), 'url', pm.url, 'preview_url', pm.preview_url, 'description', pm.description, 'blurhash', pm.blurhash, 'remote_url', pm.url)) FROM post_media pm WHERE pm.post_id = rs.post_id ORDER BY pm.sort_order) ELSE NULL END AS rb_media_json,
+  (SELECT json_group_array(json_object('acct', pme.acct)) FROM posts_mentions pme WHERE pme.post_id = rs.post_id) AS rb_mentions_json,
+  (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.image_url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM post_custom_emojis pce INNER JOIN custom_emojis ce ON pce.emoji_id = ce.emoji_id WHERE pce.post_id = rs.post_id AND pce.usage_context = 'status') AS rb_status_emojis_json,
+  (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.image_url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM post_custom_emojis pce INNER JOIN custom_emojis ce ON pce.emoji_id = ce.emoji_id WHERE pce.post_id = rs.post_id AND pce.usage_context = 'account') AS rb_account_emojis_json,
+  (SELECT json_object('id', pl.poll_id, 'expires_at', pl.expires_at, 'multiple', pl.multiple, 'votes_count', pl.votes_count, 'options', (SELECT json_group_array(json_object('title', po.title, 'votes_count', po.votes_count)) FROM poll_options po WHERE po.poll_id = pl.poll_id ORDER BY po.option_index)) FROM polls pl WHERE pl.post_id = rs.post_id) AS rb_poll_json,
+  (SELECT MIN(rpb.local_id) FROM posts_backends rpb WHERE rpb.post_id = rs.post_id) AS rb_local_id`
 
 /**
  * 正規化テーブルの基本 JOIN 句（profiles, visibility_types, posts_backends）
@@ -258,7 +380,10 @@ export const STATUS_SELECT = `
 export const STATUS_BASE_JOINS = `
   LEFT JOIN profiles pr ON s.author_profile_id = pr.profile_id
   LEFT JOIN visibility_types vt ON s.visibility_id = vt.visibility_id
-  LEFT JOIN posts_backends pb ON s.post_id = pb.post_id`
+  LEFT JOIN posts_backends pb ON s.post_id = pb.post_id
+  LEFT JOIN posts rs ON s.is_reblog = 1 AND s.reblog_of_uri != '' AND s.reblog_of_uri = rs.object_uri
+  LEFT JOIN profiles rpr ON rs.author_profile_id = rpr.profile_id
+  LEFT JOIN visibility_types rvt ON rs.visibility_id = rvt.visibility_id`
 
 // ================================================================
 // Public API
