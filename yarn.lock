@@ -1390,10 +1390,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@sqlite.org/sqlite-wasm@npm:^3.51.2-build6":
-  version: 3.51.2-build6
-  resolution: "@sqlite.org/sqlite-wasm@npm:3.51.2-build6"
-  checksum: 10c0/bf92b3d5c5c01363568225ec2f9a1b6b9659d12e0a21875b72b799c1bc6232d13e3a0b1e389b764205e07054113755bb5527e13c6678ff7699f8f640b2f3f14b
+"@sqlite.org/sqlite-wasm@npm:^3.51.2-build7":
+  version: 3.51.2-build7
+  resolution: "@sqlite.org/sqlite-wasm@npm:3.51.2-build7"
+  checksum: 10c0/962a2d351fd24cdaee4301d02ad5732c48353a3e6a464d8b36330bcad2be3b592fdd330a96f7441ba8ec51bd890fecfee8b5d96fdedd1d18b4aefeeea6ed408c
   languageName: node
   linkType: hard
 
@@ -1604,12 +1604,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/node@npm:^25.3.5":
-  version: 25.3.5
-  resolution: "@types/node@npm:25.3.5"
+"@types/node@npm:^25.5.0":
+  version: 25.5.0
+  resolution: "@types/node@npm:25.5.0"
   dependencies:
     undici-types: "npm:~7.18.0"
-  checksum: 10c0/4cf0834a6f6933bf0aca6afead117ae3db3b8f02a5f7187a24f871db0fb9344e5e46573ba387bc53b7505e1e219c4c535cbe67221ced95bb5ad98573223b19d0
+  checksum: 10c0/70c508165b6758c4f88d4f91abca526c3985eee1985503d4c2bd994dbaf588e52ac57e571160f18f117d76e963570ac82bd20e743c18987e82564312b3b62119
   languageName: node
   linkType: hard
 
@@ -1656,13 +1656,14 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@vercel/analytics@npm:^1.6.1":
-  version: 1.6.1
-  resolution: "@vercel/analytics@npm:1.6.1"
+"@vercel/analytics@npm:^2.0.1":
+  version: 2.0.1
+  resolution: "@vercel/analytics@npm:2.0.1"
   peerDependencies:
     "@remix-run/react": ^2
     "@sveltejs/kit": ^1 || ^2
     next: ">= 13"
+    nuxt: ">= 3"
     react: ^18 || ^19 || ^19.0.0-rc
     svelte: ">= 4"
     vue: ^3
@@ -1674,6 +1675,8 @@ __metadata:
       optional: true
     next:
       optional: true
+    nuxt:
+      optional: true
     react:
       optional: true
     svelte:
@@ -1682,7 +1685,7 @@ __metadata:
       optional: true
     vue-router:
       optional: true
-  checksum: 10c0/df39ec419299b43350ad80a06fe835502f22f71c32d21d58855ac39ef352d3478b8922e44375dbc5b0c02ceae04a9d23b32579eb517a602656f6460c90f5802a
+  checksum: 10c0/c788c03d0f072f6f2be52d3f6f4f0680d2343f0d8765a759a044204223b14a6e14b285d0c5d5d05c0b66d4419746c5b245656ebdc48398328d85d96f1ede982b
   languageName: node
   linkType: hard
 
@@ -2698,9 +2701,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"lint-staged@npm:^16.3.2":
-  version: 16.3.2
-  resolution: "lint-staged@npm:16.3.2"
+"lint-staged@npm:^16.3.3":
+  version: 16.3.3
+  resolution: "lint-staged@npm:16.3.3"
   dependencies:
     commander: "npm:^14.0.3"
     listr2: "npm:^9.0.5"
@@ -2710,7 +2713,7 @@ __metadata:
     yaml: "npm:^2.8.2"
   bin:
     lint-staged: bin/lint-staged.js
-  checksum: 10c0/4cbaa85904a912215660ac3c69400b71beabe3fe7e82969cd32c726dbfb04b0f651d0660906215f955c1446ac6b520319e1c7a03c707353a5f038c3d0441a8c3
+  checksum: 10c0/e404007ca608f2adc8acb1f358a55bc2e613dce7c71dea5ee7a4d1c2da2eaa145f6cffb05eca0db2769586e7cddd58b22ec44934cc62147772d74154aa66f5bd
   languageName: node
   linkType: hard
 
@@ -2879,13 +2882,13 @@ __metadata:
     "@dnd-kit/utilities": "npm:^3.2.2"
     "@radix-ui/react-context-menu": "npm:^2.2.16"
     "@radix-ui/react-slot": "npm:1.2.4"
-    "@sqlite.org/sqlite-wasm": "npm:^3.51.2-build6"
+    "@sqlite.org/sqlite-wasm": "npm:^3.51.2-build7"
     "@tailwindcss/postcss": "npm:^4.2.1"
-    "@types/node": "npm:^25.3.5"
+    "@types/node": "npm:^25.5.0"
     "@types/react": "npm:^19.2.14"
     "@types/react-dom": "npm:^19.2.3"
     "@types/slick-carousel": "npm:^1.6.40"
-    "@vercel/analytics": "npm:^1.6.1"
+    "@vercel/analytics": "npm:^2.0.1"
     babel-plugin-react-compiler: "npm:^1.0.0"
     browser-image-compression: "npm:^2.0.2"
     class-variance-authority: "npm:^0.7.1"
@@ -2898,7 +2901,7 @@ __metadata:
     html-react-parser: "npm:^5.2.17"
     husky: "npm:9.1.7"
     jquery: "npm:^4.0.0"
-    lint-staged: "npm:^16.3.2"
+    lint-staged: "npm:^16.3.3"
     lucide-react: "npm:^0.577.0"
     megalodon: "npm:^10.2.4"
     next: "npm:^16.1.6"
