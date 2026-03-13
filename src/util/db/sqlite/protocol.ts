@@ -11,7 +11,7 @@
 
 export type BindValue = string | number | null
 
-export type TableName = 'statuses' | 'notifications'
+export type TableName = 'posts' | 'notifications'
 
 // ================================================================
 // Main Thread → Worker (リクエスト)
@@ -147,6 +147,20 @@ export type MigrationWriteRequest = {
   notificationBatches: MigrationNotificationBatch[]
 }
 
+/** フォロー関係の同期 */
+export type SyncFollowsRequest = {
+  type: 'syncFollows'
+  id: number
+  backendUrl: string
+  accountsJson: string[]
+}
+
+/** データベースを単一 sqlite3 ファイルとして OPFS にエクスポート */
+export type ExportDatabaseRequest = {
+  type: 'exportDatabase'
+  id: number
+}
+
 // ================================================================
 // マイグレーション用データ型
 // ================================================================
@@ -188,6 +202,8 @@ export type WorkerRequest =
   | UpdateNotificationStatusActionRequest
   | EnforceMaxLengthRequest
   | MigrationWriteRequest
+  | SyncFollowsRequest
+  | ExportDatabaseRequest
 
 // ================================================================
 // Worker → Main Thread (レスポンス)

@@ -86,6 +86,19 @@ export const MainPanel = () => {
     return content
   }
 
+  const getDisplayNameFormatted = (account: Entity.Account) => {
+    let displayName = account.display_name
+    if (account.emojis.length > 0) {
+      account.emojis.forEach((emoji) => {
+        displayName = displayName.replace(
+          new RegExp(`:${emoji.shortcode}:`, 'gm'),
+          `<img src="${emoji.url}" alt="${emoji.shortcode}" class="min-w-4 h-4 inline-block" loading="lazy" />`,
+        )
+      })
+    }
+    return displayName
+  }
+
   const contentFormatted = () => {
     if (replyTo == null) return ''
     return getContentFormatted(replyTo)
@@ -260,7 +273,12 @@ export const MainPanel = () => {
                     />
                     <div>
                       <div>
-                        <span>{replyTo.account.display_name}</span>
+                        <span
+                          // biome-ignore lint/security/noDangerouslySetInnerHtml: emoji replacement
+                          dangerouslySetInnerHTML={{
+                            __html: getDisplayNameFormatted(replyTo.account),
+                          }}
+                        />
                       </div>
                     </div>
                   </div>

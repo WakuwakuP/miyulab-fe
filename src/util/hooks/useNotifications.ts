@@ -1,16 +1,44 @@
 'use client'
 
-import { useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import type { NotificationAddAppIndex, TimelineConfigV2 } from 'types/types'
 import { getSqliteDb, subscribe } from 'util/db/sqlite/connection'
-import type { SqliteStoredNotification } from 'util/db/sqlite/notificationStore'
+import {
+  addNotification,
+  NOTIFICATION_BASE_JOINS,
+  NOTIFICATION_SELECT,
+  rowToStoredNotification,
+  type SqliteStoredNotification,
+} from 'util/db/sqlite/notificationStore'
 import { TIMELINE_QUERY_LIMIT } from 'util/environment'
+import { GetClient } from 'util/GetClient'
 import { useQueryDuration } from 'util/hooks/useQueryDuration'
 import { AppsContext } from 'util/provider/AppsProvider'
 import {
   normalizeBackendFilter,
   resolveBackendUrls,
 } from 'util/timelineConfigValidator'
+import { useConfigRefresh } from 'util/timelineRefresh'
+
+/** status を持つべき通知タイプ */
+const TYPES_WITH_STATUS = new Set([
+  'mention',
+  'favourite',
+  'reblog',
+  'reaction',
+  'poll_expired',
+  'status',
+  'emoji_reaction',
+  'poll',
+  'update',
+])
 
 /**
  * backendUrl から appIndex を算出するヘルパー
@@ -63,12 +91,21 @@ export function useNotifications(config?: TimelineConfigV2): {
     return resolveBackendUrls(filter, apps)
   }, [config, apps])
 
+  // 非同期クエリの競合状態を防止するためのバージョンカウンター
+  const fetchVersionRef = useRef(0)
+
+  // 設定保存時に確実に再取得をトリガーするためのリフレッシュトークン
+  const refreshToken = useConfigRefresh(config?.id ?? '')
+
   const fetchData = useCallback(async () => {
+    void refreshToken
     // customQuery が設定されている場合は useCustomQueryTimeline に委譲するためスキップ
     if (targetBackendUrls.length === 0 || config?.customQuery?.trim()) {
       setNotifications([])
       return
     }
+
+    const version = ++fetchVersionRef.current
 
     try {
       const handle = await getSqliteDb()
@@ -78,23 +115,24 @@ export function useNotifications(config?: TimelineConfigV2): {
 
       // バックエンドフィルタ
       const placeholders = targetBackendUrls.map(() => '?').join(',')
-      conditions.push(`backendUrl IN (${placeholders})`)
+      conditions.push(`sv.base_url IN (${placeholders})`)
       binds.push(...targetBackendUrls)
 
       // 通知タイプフィルタ
       const notificationFilter = config?.notificationFilter
       if (notificationFilter != null && notificationFilter.length > 0) {
         const typePlaceholders = notificationFilter.map(() => '?').join(',')
-        conditions.push(`notification_type IN (${typePlaceholders})`)
+        conditions.push(`nt.code IN (${typePlaceholders})`)
         binds.push(...notificationFilter)
       }
 
       const whereClause = conditions.join(' AND ')
       const sql = `
-        SELECT compositeKey, backendUrl, created_at_ms, storedAt, json
-        FROM notifications
+        SELECT ${NOTIFICATION_SELECT}
+        FROM notifications n
+        ${NOTIFICATION_BASE_JOINS}
         WHERE ${whereClause}
-        ORDER BY created_at_ms DESC
+        ORDER BY n.created_at_ms DESC
         LIMIT ?;
       `
       binds.push(queryLimit)
@@ -106,17 +144,12 @@ export function useNotifications(config?: TimelineConfigV2): {
       })) as (string | number)[][]
       recordDuration(performance.now() - start)
 
-      const results: SqliteStoredNotification[] = rows.map((row) => {
-        const notification = JSON.parse(row[4] as string)
-        return {
-          ...notification,
-          backendUrl: row[1] as string,
-          compositeKey: row[0] as string,
-          created_at_ms: row[2] as number,
-          storedAt: row[3] as number,
-        }
-      })
+      const results: SqliteStoredNotification[] = rows.map((row) =>
+        rowToStoredNotification(row),
+      )
 
+      // 古い非同期クエリの結果が新しいクエリの結果を上書きしないようにする
+      if (fetchVersionRef.current !== version) return
       setNotifications(results)
     } catch (e) {
       console.error('useNotifications query error:', e)
@@ -127,6 +160,7 @@ export function useNotifications(config?: TimelineConfigV2): {
     config?.notificationFilter,
     queryLimit,
     recordDuration,
+    refreshToken,
   ])
 
   // 初回取得 + 変更通知で再取得
@@ -134,6 +168,34 @@ export function useNotifications(config?: TimelineConfigV2): {
     fetchData()
     return subscribe('notifications', fetchData)
   }, [fetchData])
+
+  // status が欠けている通知を検出して API から再取得
+  const fetchedIdsRef = useRef(new Set<string>())
+  useEffect(() => {
+    const missing = notifications.filter(
+      (n) =>
+        n.status === undefined &&
+        TYPES_WITH_STATUS.has(n.type) &&
+        !fetchedIdsRef.current.has(`${n.backendUrl}:${n.id}`),
+    )
+    if (missing.length === 0) return
+
+    for (const n of missing) {
+      const key = `${n.backendUrl}:${n.id}`
+      fetchedIdsRef.current.add(key)
+
+      const app = apps.find((a) => a.backendUrl === n.backendUrl)
+      if (!app) continue
+
+      const client = GetClient(app)
+      client
+        .getNotification(n.id)
+        .then((res) => addNotification(res.data, n.backendUrl))
+        .catch((err) =>
+          console.warn('Failed to fetch notification status:', err),
+        )
+    }
+  }, [notifications, apps])
 
   // appIndex を都度算出して付与し、解決できなかったレコードは除外する
   const data = useMemo(

@@ -66,10 +66,12 @@ export function detectReferencedAliases(whereClause: string): {
   sm: boolean
   sb: boolean
   sr: boolean
+  pe: boolean
   n: boolean
 } {
   return {
     n: /\bn\.\w+/.test(whereClause),
+    pe: /\bpe\.\w+/.test(whereClause),
     sb: /\bsb\.\w+/.test(whereClause),
     sbt: /\bsbt\.\w+/.test(whereClause),
     sm: /\bsm\.\w+/.test(whereClause),
@@ -402,13 +404,13 @@ function buildNotificationTypeCondition(
  * バックエンドフィルタ条件を構築する
  *
  * クエリコンテキストに応じて適切なテーブル別名を使用する:
- * - statuses のみ: sb.backendUrl（statuses_backends テーブル）
- * - notifications のみ: n.backendUrl（notifications テーブル）
+ * - statuses のみ: sb.backendUrl（posts_backends テーブル）
+ * - notifications のみ: n.backend_url（notifications 互換サブクエリ）
  * - 混合: 両方の条件を OR で結合
  *
  * - mode: 'all' → 条件なし（全バックエンド対象）
- * - mode: 'single' → {alias}.backendUrl = 'xxx'
- * - mode: 'composite' → {alias}.backendUrl IN ('xxx', 'yyy')
+ * - mode: 'single' → sb.backendUrl = 'xxx' / n.backend_url = 'xxx'
+ * - mode: 'composite' → sb.backendUrl IN ('xxx', 'yyy') / n.backend_url IN (...)
  */
 function buildBackendFilterCondition(
   filter: BackendFilter | undefined,
@@ -426,13 +428,21 @@ function buildBackendFilterCondition(
     aliases.push('n')
   }
 
+  /**
+   * エイリアスに応じたバックエンドURLカラム名を返す
+   * - sb: posts_backends の実カラム名 backendUrl
+   * - n: 互換サブクエリの仮想カラム名 backend_url
+   */
+  const backendCol = (alias: string) =>
+    alias === 'sb' ? 'backendUrl' : 'backend_url'
+
   if (filter.mode === 'single') {
     const escaped = escapeSqlString(filter.backendUrl)
     if (aliases.length === 1) {
-      return `${aliases[0]}.backendUrl = '${escaped}'`
+      return `${aliases[0]}.${backendCol(aliases[0])} = '${escaped}'`
     }
     // 混合クエリ: 両テーブルの条件を OR で結合
-    return `(${aliases.map((a) => `${a}.backendUrl = '${escaped}'`).join(' OR ')})`
+    return `(${aliases.map((a) => `${a}.${backendCol(a)} = '${escaped}'`).join(' OR ')})`
   }
 
   if (filter.mode === 'composite' && filter.backendUrls.length > 0) {
@@ -440,10 +450,10 @@ function buildBackendFilterCondition(
       .map((url) => `'${escapeSqlString(url)}'`)
       .join(', ')
     if (aliases.length === 1) {
-      return `${aliases[0]}.backendUrl IN (${escapedList})`
+      return `${aliases[0]}.${backendCol(aliases[0])} IN (${escapedList})`
     }
     // 混合クエリ: 両テーブルの条件を OR で結合
-    return `(${aliases.map((a) => `${a}.backendUrl IN (${escapedList})`).join(' OR ')})`
+    return `(${aliases.map((a) => `${a}.${backendCol(a)} IN (${escapedList})`).join(' OR ')})`
   }
 
   return null
@@ -468,11 +478,11 @@ function buildTagCondition(tagConfig: TagConfig): string {
 
   // AND mode: 全タグを含む投稿のみ (GROUP BY + HAVING は WHERE 句内では表現不可)
   // サブクエリで表現する
-  return `s.compositeKey IN (
-    SELECT sbt_inner.compositeKey
-    FROM statuses_belonging_tags sbt_inner
+  return `s.post_id IN (
+    SELECT sbt_inner.post_id
+    FROM posts_belonging_tags sbt_inner
     WHERE sbt_inner.tag IN (${tagList})
-    GROUP BY sbt_inner.compositeKey
+    GROUP BY sbt_inner.post_id
     HAVING COUNT(DISTINCT sbt_inner.tag) = ${tags.length}
   )`
 }
@@ -491,17 +501,17 @@ function escapeSqlString(value: string): string {
  * UNION ALL の notifications サブクエリでは s.* カラムは
  * LEFT JOIN ... ON 0 = 1 により NULL になるため、
  * `s.has_media = 1` は `NULL = 1` → FALSE となり全件除外される。
- * これを防ぐため `(条件 OR s.compositeKey IS NULL)` で囲む。
+ * これを防ぐため `(条件 OR s.post_id IS NULL)` で囲む。
  *
- * s.compositeKey が NULL ＝ notifications 行であるため、
+ * s.post_id が NULL ＝ notifications 行であるため、
  * notifications 行は常に通過する。
  *
  * @example
  * nullTolerant('s.has_media = 1')
- * // → "(s.has_media = 1 OR s.compositeKey IS NULL)"
+ * // → "(s.has_media = 1 OR s.post_id IS NULL)"
  */
 function nullTolerant(condition: string): string {
-  return `(${condition} OR s.compositeKey IS NULL)`
+  return `(${condition} OR s.post_id IS NULL)`
 }
 
 // ================================================================
@@ -516,7 +526,7 @@ function nullTolerant(condition: string): string {
  * backendUrls をパラメータとして受け取る。
  *
  * @param tableAlias カラム参照に付けるテーブルエイリアス（デフォルト: 's'）。
- *   マテリアライズド・ビューのサブクエリ内で使用する場合は '' を指定する。
+ *   JOIN クエリで posts テーブルを参照する場合は 'p' を指定する。
  * @returns SQL 条件文字列とバインド変数の配列
  *
  * @example
@@ -539,7 +549,7 @@ export function buildMuteCondition(
   const placeholders = backendUrls.map(() => '?').join(',')
   return {
     binds: [...backendUrls],
-    sql: `${prefix}account_acct NOT IN (
+    sql: `(SELECT acct FROM profiles WHERE profile_id = ${prefix}author_profile_id) NOT IN (
       SELECT account_acct FROM muted_accounts WHERE backendUrl IN (${placeholders})
     )`,
   }
@@ -551,7 +561,7 @@ export function buildMuteCondition(
  * blocked_instances テーブルが空の場合でもクエリは高速に実行される（空テーブルの EXISTS は即座に false）。
  *
  * @param tableAlias カラム参照に付けるテーブルエイリアス（デフォルト: 's'）。
- *   マテリアライズド・ビューのサブクエリ内で使用する場合は '' を指定する。
+ *   JOIN クエリで posts テーブルを参照する場合は 'p' を指定する。
  * @returns SQL 条件文字列（バインド変数なし、静的サブクエリ）
  *
  * @example
@@ -562,7 +572,7 @@ export function buildInstanceBlockCondition(tableAlias = 's'): string {
   const prefix = tableAlias ? `${tableAlias}.` : ''
   return `NOT EXISTS (
     SELECT 1 FROM blocked_instances bi
-    WHERE ${prefix}account_acct LIKE '%@' || REPLACE(REPLACE(bi.instance_domain, '%', '\\%'), '_', '\\_') ESCAPE '\\'
+    WHERE (SELECT acct FROM profiles WHERE profile_id = ${prefix}author_profile_id) LIKE '%@' || REPLACE(REPLACE(bi.instance_domain, '%', '\\%'), '_', '\\_') ESCAPE '\\'
   )`
 }
 
@@ -738,18 +748,18 @@ export function parseQueryToConfig(
   // backendFilter の検出
   // ========================================
   const backendSingleMatch =
-    query.match(/sb\.backendUrl\s*=\s*'([^']+)'/i) ??
-    query.match(/s\.backendUrl\s*=\s*'([^']+)'/i) ??
-    query.match(/n\.backendUrl\s*=\s*'([^']+)'/i)
+    query.match(/sb\.(?:backend_url|backendUrl)\s*=\s*'([^']+)'/i) ??
+    query.match(/s\.origin_backend_url\s*=\s*'([^']+)'/i) ??
+    query.match(/n\.backend_url\s*=\s*'([^']+)'/i)
   const backendInMatch =
     query.match(
-      /sb\.backendUrl\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
+      /sb\.(?:backend_url|backendUrl)\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
     ) ??
     query.match(
-      /s\.backendUrl\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
+      /s\.origin_backend_url\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
     ) ??
     query.match(
-      /n\.backendUrl\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
+      /n\.backend_url\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
     )
 
   if (backendSingleMatch) {
@@ -882,8 +892,10 @@ export function canParseQuery(
 export function upgradeQueryToV2(query: string): string {
   let result = query
 
-  // v3: s.backendUrl → sb.backendUrl
+  // v7→v13: s.backendUrl / s.origin_backend_url / sb.backend_url → sb.backendUrl
   result = result.replace(/\bs\.backendUrl\b/g, 'sb.backendUrl')
+  result = result.replace(/\bs\.origin_backend_url\b/g, 'sb.backendUrl')
+  result = result.replace(/\bsb\.backend_url\b/g, 'sb.backendUrl')
 
   // メディア: json_extract(s.json, '$.media_attachments') != '[]'
   result = result.replace(

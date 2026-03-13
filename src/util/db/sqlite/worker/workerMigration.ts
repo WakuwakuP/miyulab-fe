@@ -1,5 +1,5 @@
 /**
- * Worker 側: マイグレーションデータ書き込み
+ * Worker 側: マイグレーションデータ書き込み (v13 スキーマ対応)
  */
 
 import type { Entity } from 'megalodon'
@@ -8,7 +8,14 @@ import type {
   MigrationStatusBatch,
   TableName,
 } from '../protocol'
-import { extractNotificationColumns, extractStatusColumns } from '../shared'
+import {
+  ensureProfile,
+  ensureServer,
+  ensureTimeline,
+  extractStatusColumns,
+  resolvePostId,
+  resolvePostItemKindId,
+} from '../shared'
 
 type DbExec = {
   exec: (
@@ -22,18 +29,45 @@ type DbExec = {
 
 type HandlerResult = { changedTables: TableName[] }
 
+function getLastInsertRowId(db: DbExec): number {
+  return (
+    db.exec('SELECT last_insert_rowid();', {
+      returnValue: 'resultRows',
+    }) as number[][]
+  )[0][0]
+}
+
+function resolveVisibilityId(db: DbExec, visibility: string): number | null {
+  const rows = db.exec(
+    'SELECT visibility_id FROM visibility_types WHERE code = ?;',
+    { bind: [visibility], returnValue: 'resultRows' },
+  ) as number[][]
+  return rows.length > 0 ? rows[0][0] : null
+}
+
+function resolveNotificationTypeId(
+  db: DbExec,
+  notificationType: string,
+): number | null {
+  const rows = db.exec(
+    'SELECT notification_type_id FROM notification_types WHERE code = ?;',
+    { bind: [notificationType], returnValue: 'resultRows' },
+  ) as number[][]
+  return rows.length > 0 ? rows[0][0] : null
+}
+
 function upsertMentionsInternal(
   db: DbExec,
-  compositeKey: string,
+  postId: number,
   mentions: Entity.Mention[],
 ): void {
-  db.exec('DELETE FROM statuses_mentions WHERE compositeKey = ?;', {
-    bind: [compositeKey],
+  db.exec('DELETE FROM posts_mentions WHERE post_id = ?;', {
+    bind: [postId],
   })
   for (const mention of mentions) {
     db.exec(
-      'INSERT OR IGNORE INTO statuses_mentions (compositeKey, acct) VALUES (?, ?);',
-      { bind: [compositeKey, mention.acct] },
+      'INSERT OR IGNORE INTO posts_mentions (post_id, acct) VALUES (?, ?);',
+      { bind: [postId, mention.acct] },
     )
   }
 }
@@ -45,154 +79,165 @@ export function handleMigrationWrite(
 ): HandlerResult {
   const changedTables: TableName[] = []
 
-  // ---- statuses ----
+  // ---- statuses → posts ----
   if (statusBatches.length > 0) {
     db.exec('BEGIN;')
     try {
       for (const s of statusBatches) {
         const entityStatus = JSON.parse(s.entityJson) as Entity.Status
         const cols = extractStatusColumns(entityStatus)
+        // compositeKey から local_id を抽出
+        const localId = s.compositeKey.slice(s.backendUrl.length + 1)
+
+        const serverId = ensureServer(db, s.backendUrl)
+        const visibilityId = resolveVisibilityId(db, cols.visibility)
+        const profileId = ensureProfile(db, entityStatus.account)
 
         // URI ベースの重複排除
-        let effectiveCompositeKey = s.compositeKey
+        let postId: number | undefined
         const uri = entityStatus.uri
         if (uri) {
           const existingRows = db.exec(
-            'SELECT compositeKey FROM statuses WHERE uri = ?;',
+            'SELECT post_id FROM posts WHERE object_uri = ?;',
             { bind: [uri], returnValue: 'resultRows' },
-          ) as string[][]
+          ) as number[][]
           if (existingRows.length > 0) {
-            effectiveCompositeKey = existingRows[0][0]
+            postId = existingRows[0][0]
           }
         }
 
-        if (effectiveCompositeKey !== s.compositeKey) {
+        // posts_backends でも検索
+        if (postId === undefined) {
+          postId = resolvePostId(db, s.backendUrl, localId) ?? undefined
+        }
+
+        if (postId !== undefined) {
           db.exec(
-            `UPDATE statuses SET
-              storedAt         = ?,
-              account_acct     = ?,
-              account_id       = ?,
-              visibility       = ?,
-              language         = ?,
-              has_media        = ?,
-              media_count      = ?,
-              is_reblog        = ?,
-              reblog_of_id     = ?,
-              reblog_of_uri    = ?,
-              is_sensitive     = ?,
-              has_spoiler      = ?,
-              in_reply_to_id   = ?,
-              favourites_count = ?,
-              reblogs_count    = ?,
-              replies_count    = ?,
-              json             = ?
-            WHERE compositeKey = ?;`,
+            `UPDATE posts SET
+              stored_at          = ?,
+              author_profile_id  = ?,
+              visibility_id      = ?,
+              language           = ?,
+              content_html       = ?,
+              spoiler_text       = ?,
+              canonical_url      = ?,
+              has_media          = ?,
+              media_count        = ?,
+              is_reblog          = ?,
+              reblog_of_uri      = ?,
+              is_sensitive       = ?,
+              has_spoiler        = ?,
+              in_reply_to_id     = ?,
+              edited_at          = ?
+            WHERE post_id = ?;`,
             {
               bind: [
                 s.storedAt,
-                cols.account_acct,
-                cols.account_id,
-                cols.visibility,
+                profileId,
+                visibilityId,
                 cols.language,
+                cols.content_html,
+                cols.spoiler_text,
+                cols.canonical_url,
                 cols.has_media,
                 cols.media_count,
                 cols.is_reblog,
-                cols.reblog_of_id,
                 cols.reblog_of_uri,
                 cols.is_sensitive,
                 cols.has_spoiler,
                 cols.in_reply_to_id,
-                cols.favourites_count,
-                cols.reblogs_count,
-                cols.replies_count,
-                s.entityJson,
-                effectiveCompositeKey,
+                cols.edited_at,
+                postId,
               ],
             },
           )
         } else {
           db.exec(
-            `INSERT OR REPLACE INTO statuses (
-              compositeKey, backendUrl, created_at_ms, storedAt,
-              uri, reblog_of_uri,
-              account_acct, account_id, visibility, language,
-              has_media, media_count, is_reblog, reblog_of_id,
+            `INSERT INTO posts (
+              object_uri, origin_server_id, created_at_ms, stored_at,
+              author_profile_id, visibility_id, language,
+              content_html, spoiler_text, canonical_url,
+              has_media, media_count, is_reblog, reblog_of_uri,
               is_sensitive, has_spoiler, in_reply_to_id,
-              favourites_count, reblogs_count, replies_count,
-              json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+              is_local_only, edited_at
+            ) VALUES (?,?,?,?, ?,?,?, ?,?,?, ?,?,?,?, ?,?,?, ?,?);`,
             {
               bind: [
-                s.compositeKey,
-                s.backendUrl,
+                cols.uri,
+                serverId,
                 s.created_at_ms,
                 s.storedAt,
-                cols.uri,
-                cols.reblog_of_uri,
-                cols.account_acct,
-                cols.account_id,
-                cols.visibility,
+                profileId,
+                visibilityId,
                 cols.language,
+                cols.content_html,
+                cols.spoiler_text,
+                cols.canonical_url,
                 cols.has_media,
                 cols.media_count,
                 cols.is_reblog,
-                cols.reblog_of_id,
+                cols.reblog_of_uri,
                 cols.is_sensitive,
                 cols.has_spoiler,
                 cols.in_reply_to_id,
-                cols.favourites_count,
-                cols.reblogs_count,
-                cols.replies_count,
-                s.entityJson,
+                0,
+                cols.edited_at,
               ],
             },
           )
+          postId = getLastInsertRowId(db)
         }
 
-        // statuses_backends
+        // posts_backends
         db.exec(
-          `INSERT OR IGNORE INTO statuses_backends (compositeKey, backendUrl, local_id)
-           VALUES (?, ?, ?);`,
-          { bind: [effectiveCompositeKey, s.backendUrl, entityStatus.id] },
+          `INSERT OR IGNORE INTO posts_backends (post_id, backendUrl, local_id, server_id)
+           VALUES (?, ?, ?, ?);`,
+          { bind: [postId, s.backendUrl, localId, serverId] },
         )
 
-        // timeline_types
+        // timeline_items
+        const postItemKindId = resolvePostItemKindId(db)
         for (const tt of s.timelineTypes) {
+          const timelineId = ensureTimeline(db, serverId, tt)
           db.exec(
-            `INSERT OR IGNORE INTO statuses_timeline_types (compositeKey, timelineType)
-             VALUES (?, ?);`,
-            { bind: [effectiveCompositeKey, tt] },
+            `INSERT OR IGNORE INTO timeline_items (timeline_id, timeline_item_kind_id, post_id, sort_key, inserted_at)
+             VALUES (?, ?, ?, ?, ?);`,
+            {
+              bind: [
+                timelineId,
+                postItemKindId,
+                postId,
+                s.created_at_ms,
+                s.storedAt,
+              ],
+            },
           )
         }
 
         // belonging_tags
         for (const tag of s.belongingTags) {
           db.exec(
-            `INSERT OR IGNORE INTO statuses_belonging_tags (compositeKey, tag)
+            `INSERT OR IGNORE INTO posts_belonging_tags (post_id, tag)
              VALUES (?, ?);`,
-            { bind: [effectiveCompositeKey, tag] },
+            { bind: [postId, tag] },
           )
         }
 
         // mentions
         if (entityStatus.mentions && entityStatus.mentions.length > 0) {
-          upsertMentionsInternal(
-            db,
-            effectiveCompositeKey,
-            entityStatus.mentions,
-          )
+          upsertMentionsInternal(db, postId, entityStatus.mentions)
         }
 
         // reblogs（元投稿の URI が存在する場合のみ）
         if (cols.is_reblog === 1 && cols.reblog_of_uri) {
           db.exec(
-            `INSERT OR REPLACE INTO statuses_reblogs (compositeKey, original_uri, reblogger_acct, reblogged_at_ms)
+            `INSERT OR REPLACE INTO posts_reblogs (post_id, original_uri, reblogger_acct, reblogged_at_ms)
              VALUES (?, ?, ?, ?);`,
             {
               bind: [
-                effectiveCompositeKey,
+                postId,
                 cols.reblog_of_uri,
-                cols.account_acct,
+                entityStatus.account.acct,
                 s.created_at_ms,
               ],
             },
@@ -204,7 +249,7 @@ export function handleMigrationWrite(
       db.exec('ROLLBACK;')
       throw e
     }
-    changedTables.push('statuses')
+    changedTables.push('posts')
   }
 
   // ---- notifications ----
@@ -213,27 +258,62 @@ export function handleMigrationWrite(
     try {
       for (const n of notificationBatches) {
         const entity = JSON.parse(n.entityJson) as Entity.Notification
-        const cols = extractNotificationColumns(entity)
+        const localId = n.compositeKey.slice(n.backendUrl.length + 1)
 
-        db.exec(
-          `INSERT OR REPLACE INTO notifications (
-            compositeKey, backendUrl, created_at_ms, storedAt,
-            notification_type, status_id, account_acct,
-            json
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?);`,
-          {
-            bind: [
-              n.compositeKey,
-              n.backendUrl,
-              n.created_at_ms,
-              n.storedAt,
-              cols.notification_type,
-              cols.status_id,
-              cols.account_acct,
-              n.entityJson,
-            ],
-          },
-        )
+        const serverId = ensureServer(db, n.backendUrl)
+        const notificationTypeId = resolveNotificationTypeId(db, entity.type)
+        const actorProfileId = entity.account
+          ? ensureProfile(db, entity.account)
+          : null
+        const relatedPostId = entity.status
+          ? resolvePostId(db, n.backendUrl, entity.status.id)
+          : null
+
+        // (server_id, local_id) で既存チェック
+        const existing = db.exec(
+          'SELECT notification_id FROM notifications WHERE server_id = ? AND local_id = ?;',
+          { bind: [serverId, localId], returnValue: 'resultRows' },
+        ) as number[][]
+
+        if (existing.length > 0) {
+          db.exec(
+            `UPDATE notifications SET
+              notification_type_id = ?,
+              actor_profile_id     = ?,
+              related_post_id      = ?,
+              created_at_ms        = ?,
+              stored_at            = ?
+            WHERE notification_id = ?;`,
+            {
+              bind: [
+                notificationTypeId,
+                actorProfileId,
+                relatedPostId,
+                n.created_at_ms,
+                n.storedAt,
+                existing[0][0],
+              ],
+            },
+          )
+        } else {
+          db.exec(
+            `INSERT INTO notifications (
+              server_id, local_id, notification_type_id, actor_profile_id,
+              related_post_id, created_at_ms, stored_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?);`,
+            {
+              bind: [
+                serverId,
+                localId,
+                notificationTypeId,
+                actorProfileId,
+                relatedPostId,
+                n.created_at_ms,
+                n.storedAt,
+              ],
+            },
+          )
+        }
       }
       db.exec('COMMIT;')
     } catch (e) {

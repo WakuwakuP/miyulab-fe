@@ -1,9 +1,21 @@
 'use client'
 
-import { useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import type { StatusAddAppIndex, TimelineConfigV2 } from 'types/types'
 import { getSqliteDb, subscribe } from 'util/db/sqlite/connection'
-import type { SqliteStoredStatus } from 'util/db/sqlite/statusStore'
+import {
+  rowToStoredStatus,
+  type SqliteStoredStatus,
+  STATUS_BASE_JOINS,
+  STATUS_SELECT,
+} from 'util/db/sqlite/statusStore'
 import { TIMELINE_QUERY_LIMIT } from 'util/environment'
 import { buildFilterConditions } from 'util/hooks/timelineFilterBuilder'
 import { useQueryDuration } from 'util/hooks/useQueryDuration'
@@ -12,6 +24,7 @@ import {
   normalizeBackendFilter,
   resolveBackendUrls,
 } from 'util/timelineConfigValidator'
+import { useConfigRefresh } from 'util/timelineRefresh'
 
 /**
  * backendUrl から appIndex を算出するヘルパー
@@ -32,7 +45,7 @@ function resolveAppIndex(
  * タグタイムライン用の統合 Hook (SQLite版)
  *
  * ## OR 条件 (tagConfig.mode === 'or')
- * SQL の IN 句で一括クエリし、compositeKey で DISTINCT する。
+ * SQL の IN 句で一括クエリし、post_id で DISTINCT する。
  *
  * ## AND 条件 (tagConfig.mode === 'and')
  * HAVING COUNT(DISTINCT tag) = タグ数 で全タグを含む Status のみ取得する。
@@ -53,6 +66,12 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
   const [statuses, setStatuses] = useState<SqliteStoredStatus[]>([])
   const [queryLimit, setQueryLimit] = useState(TIMELINE_QUERY_LIMIT)
   const { queryDuration, recordDuration } = useQueryDuration()
+
+  // 非同期クエリの競合状態を防止するためのバージョンカウンター
+  const fetchVersionRef = useRef(0)
+
+  // 設定保存時に確実に再取得をトリガーするためのリフレッシュトークン
+  const refreshToken = useConfigRefresh(config.id)
 
   const loadMore = useCallback(() => {
     setQueryLimit((prev) => prev + TIMELINE_QUERY_LIMIT)
@@ -106,7 +125,7 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
           visibilityFilter,
         } as TimelineConfigV2,
         targetBackendUrls,
-        '', // マテリアライズド・ビューのサブクエリ内ではテーブルエイリアス不要
+        's', // posts テーブルのエイリアス
       ),
     [
       onlyMedia,
@@ -130,6 +149,7 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
   const customQuery = config.customQuery
 
   const fetchData = useCallback(async () => {
+    void refreshToken
     // tag 以外の type の場合は早期に空配列を返し、不要な DB クエリを防ぐ
     // customQuery が設定されている場合も useCustomQueryTimeline に委譲するためスキップ
     if (configType !== 'tag' || customQuery?.trim()) {
@@ -141,6 +161,8 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
       return
     }
 
+    const version = ++fetchVersionRef.current
+
     try {
       const handle = await getSqliteDb()
 
@@ -151,48 +173,42 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
       const binds: (string | number)[] = []
 
       if (tagMode === 'or') {
-        // OR: いずれかのタグを含む（tag_entries サブクエリで高速絞り込み）
+        // OR: いずれかのタグを含む（posts_belonging_tags JOIN で絞り込み）
         const whereConditions = [
-          `tag IN (${tagPlaceholders})`,
-          `backendUrl IN (${backendPlaceholders})`,
+          `pbt.tag IN (${tagPlaceholders})`,
+          `pb.backendUrl IN (${backendPlaceholders})`,
           ...filterConditions,
         ]
 
         sql = `
-          SELECT s.compositeKey, tge.backendUrl,
-                 s.created_at_ms, s.storedAt, s.json
-          FROM (
-            SELECT compositeKey, MIN(backendUrl) AS backendUrl
-            FROM tag_entries
-            WHERE ${whereConditions.join('\n              AND ')}
-            GROUP BY compositeKey
-            ORDER BY created_at_ms DESC
-            LIMIT ?
-          ) tge
-          INNER JOIN statuses s ON s.compositeKey = tge.compositeKey;
+          SELECT ${STATUS_SELECT}
+          FROM posts s
+          ${STATUS_BASE_JOINS}
+          INNER JOIN posts_belonging_tags pbt ON s.post_id = pbt.post_id
+          WHERE ${whereConditions.join('\n            AND ')}
+          GROUP BY s.post_id
+          ORDER BY s.created_at_ms DESC
+          LIMIT ?;
         `
         binds.push(...tags, ...targetBackendUrls, ...filterBinds, queryLimit)
       } else {
-        // AND: すべてのタグを含む（tag_entries サブクエリで高速絞り込み）
+        // AND: すべてのタグを含む（HAVING COUNT(DISTINCT tag) で全タグ一致を確認）
         const whereConditions = [
-          `tag IN (${tagPlaceholders})`,
-          `backendUrl IN (${backendPlaceholders})`,
+          `pbt.tag IN (${tagPlaceholders})`,
+          `pb.backendUrl IN (${backendPlaceholders})`,
           ...filterConditions,
         ]
 
         sql = `
-          SELECT s.compositeKey, tge.backendUrl,
-                 s.created_at_ms, s.storedAt, s.json
-          FROM (
-            SELECT compositeKey, MIN(backendUrl) AS backendUrl
-            FROM tag_entries
-            WHERE ${whereConditions.join('\n              AND ')}
-            GROUP BY compositeKey
-            HAVING COUNT(DISTINCT tag) = ?
-            ORDER BY created_at_ms DESC
-            LIMIT ?
-          ) tge
-          INNER JOIN statuses s ON s.compositeKey = tge.compositeKey;
+          SELECT ${STATUS_SELECT}
+          FROM posts s
+          ${STATUS_BASE_JOINS}
+          INNER JOIN posts_belonging_tags pbt ON s.post_id = pbt.post_id
+          WHERE ${whereConditions.join('\n            AND ')}
+          GROUP BY s.post_id
+          HAVING COUNT(DISTINCT pbt.tag) = ?
+          ORDER BY s.created_at_ms DESC
+          LIMIT ?;
         `
         binds.push(
           ...tags,
@@ -210,19 +226,12 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
       })) as (string | number)[][]
       recordDuration(performance.now() - start)
 
-      const results: SqliteStoredStatus[] = rows.map((row) => {
-        const status = JSON.parse(row[4] as string)
-        return {
-          ...status,
-          backendUrl: row[1] as string,
-          belongingTags: [],
-          compositeKey: row[0] as string,
-          created_at_ms: row[2] as number,
-          storedAt: row[3] as number,
-          timelineTypes: [],
-        }
-      })
+      const results: SqliteStoredStatus[] = rows.map((row) =>
+        rowToStoredStatus(row),
+      )
 
+      // 古い非同期クエリの結果が新しいクエリの結果を上書きしないようにする
+      if (fetchVersionRef.current !== version) return
       setStatuses(results)
     } catch (e) {
       console.error('useFilteredTagTimeline query error:', e)
@@ -237,12 +246,13 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
     filterBinds,
     queryLimit,
     recordDuration,
+    refreshToken,
   ])
 
   // 初回取得 + 変更通知で再取得
   useEffect(() => {
     fetchData()
-    return subscribe('statuses', fetchData)
+    return subscribe('posts', fetchData)
   }, [fetchData])
 
   const data = useMemo(

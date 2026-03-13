@@ -20,6 +20,7 @@ import {
   handleBulkUpsertStatuses,
   handleDeleteEvent,
   handleRemoveFromTimeline,
+  handleSyncFollows,
   handleUpdateStatus,
   handleUpdateStatusAction,
   handleUpsertStatus,
@@ -29,6 +30,8 @@ import {
 type RawDb = any
 
 let db: RawDb = null
+// biome-ignore lint/suspicious/noExplicitAny: sqlite-wasm module type
+let sqlite3Module: any = null
 
 // ================================================================
 // 初期化
@@ -50,6 +53,7 @@ async function init(origin: string): Promise<'opfs' | 'memory'> {
   })
 
   let persistence: 'opfs' | 'memory' = 'memory'
+  sqlite3Module = sqlite3
 
   // 1. OPFS SAH Pool VFS（最高パフォーマンス）
   try {
@@ -160,6 +164,37 @@ function handleExecBatch(
 }
 
 // ================================================================
+// DB エクスポート（単一 sqlite3 ファイルとして OPFS に保存）
+// ================================================================
+
+async function handleExportDatabase(): Promise<void> {
+  if (!db || !sqlite3Module) {
+    throw new Error('Database or sqlite3 module not initialized')
+  }
+
+  // WAL をフラッシュ
+  db.exec('PRAGMA wal_checkpoint(TRUNCATE);')
+
+  // DB をシリアライズ
+  const bytes: Uint8Array = sqlite3Module.capi.sqlite3_js_db_export(db)
+  // 新しい ArrayBuffer にコピー（TypeScript 型互換性対策）
+  const copy = new Uint8Array(bytes)
+
+  // OPFS ルートに書き込み
+  const root = await navigator.storage.getDirectory()
+  const fileHandle = await root.getFileHandle('miyulab-fe-backup.sqlite3', {
+    create: true,
+  })
+  const writable = await fileHandle.createWritable()
+  await writable.write(copy.buffer as ArrayBuffer)
+  await writable.close()
+
+  console.info(
+    `SQLite Worker: exported database (${(bytes.byteLength / 1024).toFixed(1)} KB) to OPFS`,
+  )
+}
+
+// ================================================================
 // メッセージルーター
 // ================================================================
 
@@ -208,6 +243,14 @@ self.onmessage = (
         }
         self.postMessage(errMsg)
       })
+    return
+  }
+
+  // 非同期コマンド: DB エクスポート
+  if (msg.type === 'exportDatabase') {
+    handleExportDatabase()
+      .then(() => sendResponse(msg.id, { ok: true }))
+      .catch((e) => sendError(msg.id, e))
     return
   }
 
@@ -352,6 +395,13 @@ self.onmessage = (
           msg.statusBatches,
           msg.notificationBatches,
         )
+        sendResponse(msg.id, { ok: true }, r.changedTables)
+        break
+      }
+
+      // ---- Follows ----
+      case 'syncFollows': {
+        const r = handleSyncFollows(db, msg.backendUrl, msg.accountsJson)
         sendResponse(msg.id, { ok: true }, r.changedTables)
         break
       }

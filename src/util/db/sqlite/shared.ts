@@ -9,9 +9,37 @@ import type { Entity } from 'megalodon'
 
 /**
  * compositeKey を生成する
+ *
+ * @deprecated v7 以降は post_id (INTEGER PK) を使用。Dexie 互換用に残す。
  */
 export function createCompositeKey(backendUrl: string, id: string): string {
   return `${backendUrl}:${id}`
+}
+
+/**
+ * posts_backends から post_id を解決する
+ *
+ * backendUrl + localId から post_id を逆引きする。
+ * 見つからない場合は null を返す。
+ */
+export function resolvePostId(
+  db: {
+    exec: (
+      sql: string,
+      opts?: {
+        bind?: (string | number | null)[]
+        returnValue?: 'resultRows'
+      },
+    ) => unknown
+  },
+  backendUrl: string,
+  localId: string,
+): number | null {
+  const rows = db.exec(
+    'SELECT post_id FROM posts_backends WHERE backendUrl = ? AND local_id = ?;',
+    { bind: [backendUrl, localId], returnValue: 'resultRows' },
+  ) as number[][]
+  return rows.length > 0 ? rows[0][0] : null
 }
 
 /**
@@ -19,9 +47,9 @@ export function createCompositeKey(backendUrl: string, id: string): string {
  */
 export function extractStatusColumns(status: Entity.Status) {
   return {
-    account_acct: status.account.acct,
-    account_id: status.account.id,
-    favourites_count: status.favourites_count,
+    canonical_url: status.url ?? null,
+    content_html: status.content ?? null,
+    edited_at: status.edited_at ?? null,
     has_media: status.media_attachments.length > 0 ? 1 : 0,
     has_spoiler: (status.spoiler_text ?? '') !== '' ? 1 : 0,
     in_reply_to_id: status.in_reply_to_id ?? null,
@@ -29,22 +57,451 @@ export function extractStatusColumns(status: Entity.Status) {
     is_sensitive: status.sensitive ? 1 : 0,
     language: status.language ?? null,
     media_count: status.media_attachments.length,
-    reblog_of_id: status.reblog?.id ?? null,
     reblog_of_uri: status.reblog?.uri ?? null,
-    reblogs_count: status.reblogs_count,
-    replies_count: status.replies_count,
+    spoiler_text: status.spoiler_text ?? null,
     uri: status.uri,
     visibility: status.visibility,
   }
 }
 
+// ================================================================
+// エンゲージメント操作ヘルパー（Worker 共通）
+// ================================================================
+
+type DbExecCompat = {
+  exec: (
+    sql: string,
+    opts?: {
+      bind?: (string | number | null)[]
+      returnValue?: 'resultRows'
+    },
+  ) => unknown
+}
+
+/** action コード ('favourited' → 'favourite' 等) をエンゲージメントコードに変換 */
+export const ACTION_TO_ENGAGEMENT: Record<string, string> = {
+  bookmarked: 'bookmark',
+  favourited: 'favourite',
+  reblogged: 'reblog',
+}
+
+export function resolveLocalAccountId(
+  db: DbExecCompat,
+  backendUrl: string,
+): number | null {
+  const rows = db.exec(
+    `SELECT la.local_account_id
+     FROM local_accounts la
+     INNER JOIN servers sv ON la.server_id = sv.server_id
+     WHERE sv.base_url = ?
+     LIMIT 1;`,
+    { bind: [backendUrl], returnValue: 'resultRows' },
+  ) as number[][]
+  return rows.length > 0 ? rows[0][0] : null
+}
+
 /**
- * Entity.Notification から正規化カラムの値を抽出する
+ * channel_kind_id を code から解決する
  */
-export function extractNotificationColumns(notification: Entity.Notification) {
-  return {
-    account_acct: notification.account?.acct ?? '',
-    notification_type: notification.type,
-    status_id: notification.status?.id ?? null,
+export function resolveChannelKindId(
+  db: DbExecCompat,
+  code: string,
+): number | null {
+  const rows = db.exec(
+    'SELECT channel_kind_id FROM channel_kinds WHERE code = ?;',
+    { bind: [code], returnValue: 'resultRows' },
+  ) as number[][]
+  return rows.length > 0 ? rows[0][0] : null
+}
+
+/**
+ * timeline_item_kinds の 'post' の ID を解決する
+ */
+export function resolvePostItemKindId(db: DbExecCompat): number {
+  const rows = db.exec(
+    "SELECT timeline_item_kind_id FROM timeline_item_kinds WHERE code = 'post';",
+    { returnValue: 'resultRows' },
+  ) as number[][]
+  return rows[0][0]
+}
+
+/**
+ * 指定条件の timeline_id を返す。未登録の場合は timelines テーブルに INSERT してから返す。
+ */
+export function ensureTimeline(
+  db: DbExecCompat,
+  serverId: number,
+  channelKindCode: string,
+  tag?: string | null,
+): number {
+  const channelKindId = resolveChannelKindId(db, channelKindCode)
+  if (channelKindId === null) {
+    throw new Error(`Unknown channel_kind code: ${channelKindCode}`)
+  }
+
+  const tagValue = tag ?? null
+
+  // COALESCE(tag, '') でユニーク制約に合わせて検索
+  const existing = db.exec(
+    `SELECT timeline_id FROM timelines
+     WHERE server_id = ? AND channel_kind_id = ? AND COALESCE(tag, '') = ?;`,
+    {
+      bind: [serverId, channelKindId, tagValue ?? ''],
+      returnValue: 'resultRows',
+    },
+  ) as number[][]
+
+  if (existing.length > 0) return existing[0][0]
+
+  db.exec(
+    `INSERT INTO timelines (server_id, channel_kind_id, tag, created_at)
+     VALUES (?, ?, ?, datetime('now'));`,
+    { bind: [serverId, channelKindId, tagValue] },
+  )
+
+  const rows = db.exec(
+    `SELECT timeline_id FROM timelines
+     WHERE server_id = ? AND channel_kind_id = ? AND COALESCE(tag, '') = ?;`,
+    {
+      bind: [serverId, channelKindId, tagValue ?? ''],
+      returnValue: 'resultRows',
+    },
+  ) as number[][]
+
+  return rows[0][0]
+}
+
+export function toggleEngagement(
+  db: DbExecCompat,
+  localAccountId: number,
+  postId: number,
+  engagementCode: string,
+  value: boolean,
+): void {
+  if (value) {
+    db.exec(
+      `INSERT OR IGNORE INTO post_engagements (
+        local_account_id, post_id, engagement_type_id, created_at
+      ) VALUES (
+        ?, ?,
+        (SELECT engagement_type_id FROM engagement_types WHERE code = ?),
+        datetime('now')
+      );`,
+      { bind: [localAccountId, postId, engagementCode] },
+    )
+  } else {
+    db.exec(
+      `DELETE FROM post_engagements
+       WHERE local_account_id = ? AND post_id = ?
+         AND engagement_type_id = (SELECT engagement_type_id FROM engagement_types WHERE code = ?)
+         AND emoji_id IS NULL;`,
+      { bind: [localAccountId, postId, engagementCode] },
+    )
+  }
+}
+
+/**
+ * backendUrl に対応する server_id を返す。
+ * 未登録の場合は servers テーブルに INSERT してから返す。
+ */
+export function ensureServer(
+  db: {
+    exec: (
+      sql: string,
+      opts?: {
+        bind?: (string | number | null)[]
+        returnValue?: 'resultRows'
+      },
+    ) => unknown
+  },
+  backendUrl: string,
+): number {
+  const host = new URL(backendUrl).host
+
+  db.exec('INSERT OR IGNORE INTO servers (host, base_url) VALUES (?, ?);', {
+    bind: [host, backendUrl],
+  })
+
+  const rows = db.exec('SELECT server_id FROM servers WHERE base_url = ?;', {
+    bind: [backendUrl],
+    returnValue: 'resultRows',
+  }) as number[][]
+
+  return rows[0][0]
+}
+
+/**
+ * account に対応する profile_id を返す。
+ * 未登録の場合は profiles テーブルに INSERT し、既存の場合は表示名等を更新する。
+ */
+export function ensureProfile(
+  db: {
+    exec: (
+      sql: string,
+      opts?: {
+        bind?: (string | number | null)[]
+        returnValue?: 'resultRows'
+      },
+    ) => unknown
+  },
+  account: Entity.Account,
+): number {
+  const actorUri = account.url
+  const acct = account.acct
+  const domain = acct.includes('@') ? acct.split('@')[1] : null
+
+  db.exec(
+    `INSERT INTO profiles (
+      actor_uri, acct, username, domain, display_name,
+      avatar_url, header_url, locked, bot, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    ON CONFLICT(actor_uri) DO UPDATE SET
+      display_name = excluded.display_name,
+      avatar_url   = excluded.avatar_url,
+      header_url   = excluded.header_url,
+      locked       = excluded.locked,
+      bot          = excluded.bot,
+      updated_at   = excluded.updated_at;`,
+    {
+      bind: [
+        actorUri,
+        acct,
+        account.username,
+        domain,
+        account.display_name ?? null,
+        account.avatar ?? null,
+        account.header ?? null,
+        account.locked ? 1 : 0,
+        account.bot ? 1 : 0,
+      ],
+    },
+  )
+
+  const rows = db.exec('SELECT profile_id FROM profiles WHERE actor_uri = ?;', {
+    bind: [actorUri],
+    returnValue: 'resultRows',
+  }) as number[][]
+
+  return rows[0][0]
+}
+
+/**
+ * profile_aliases テーブルにリモートアカウント ID のマッピングを UPSERT する。
+ *
+ * Mastodon / Pleroma 等の API では、アカウント ID はサーバーごとに異なる。
+ * この関数で (server_id, remote_account_id) → profile_id のマッピングを記録し、
+ * 読み取りクエリ時にバックエンド固有のアカウント ID を復元できるようにする。
+ */
+export function ensureProfileAlias(
+  db: {
+    exec: (
+      sql: string,
+      opts?: {
+        bind?: (string | number | null)[]
+        returnValue?: 'resultRows'
+      },
+    ) => unknown
+  },
+  profileId: number,
+  serverId: number,
+  remoteAccountId: string,
+): void {
+  if (!remoteAccountId) return
+  db.exec(
+    `INSERT INTO profile_aliases (server_id, remote_account_id, profile_id, fetched_at)
+     VALUES (?, ?, ?, datetime('now'))
+     ON CONFLICT(server_id, remote_account_id) DO UPDATE SET
+       profile_id = excluded.profile_id,
+       fetched_at = excluded.fetched_at;`,
+    { bind: [serverId, remoteAccountId, profileId] },
+  )
+}
+
+/**
+ * カスタム絵文字を custom_emojis に UPSERT し、emoji_id を返す。
+ */
+export function ensureCustomEmoji(
+  db: {
+    exec: (
+      sql: string,
+      opts?: {
+        bind?: (string | number | null)[]
+        returnValue?: 'resultRows'
+      },
+    ) => unknown
+  },
+  serverId: number,
+  emoji: {
+    shortcode: string
+    url: string
+    static_url?: string | null
+    visible_in_picker?: boolean
+  },
+): number {
+  db.exec(
+    `INSERT INTO custom_emojis (server_id, shortcode, image_url, static_url, visible_in_picker)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(server_id, shortcode) DO UPDATE SET
+       image_url  = excluded.image_url,
+       static_url = excluded.static_url;`,
+    {
+      bind: [
+        serverId,
+        emoji.shortcode,
+        emoji.url,
+        emoji.static_url ?? null,
+        emoji.visible_in_picker === false ? 0 : 1,
+      ],
+    },
+  )
+
+  const emojiRows = db.exec(
+    'SELECT emoji_id FROM custom_emojis WHERE server_id = ? AND shortcode = ?;',
+    { bind: [serverId, emoji.shortcode], returnValue: 'resultRows' },
+  ) as number[][]
+
+  return emojiRows[0][0]
+}
+
+/**
+ * 投稿のカスタム絵文字を post_custom_emojis に同期する。
+ */
+export function syncPostCustomEmojis(
+  db: {
+    exec: (
+      sql: string,
+      opts?: {
+        bind?: (string | number | null)[]
+        returnValue?: 'resultRows'
+      },
+    ) => unknown
+  },
+  postId: number,
+  serverId: number,
+  statusEmojis: {
+    shortcode: string
+    url: string
+    static_url?: string | null
+    visible_in_picker?: boolean
+  }[],
+  accountEmojis: {
+    shortcode: string
+    url: string
+    static_url?: string | null
+    visible_in_picker?: boolean
+  }[],
+): void {
+  db.exec('DELETE FROM post_custom_emojis WHERE post_id = ?;', {
+    bind: [postId],
+  })
+
+  for (const emoji of statusEmojis) {
+    const emojiId = ensureCustomEmoji(db, serverId, emoji)
+    db.exec(
+      `INSERT OR IGNORE INTO post_custom_emojis (post_id, emoji_id, usage_context)
+       VALUES (?, ?, 'status');`,
+      { bind: [postId, emojiId] },
+    )
+  }
+
+  for (const emoji of accountEmojis) {
+    const emojiId = ensureCustomEmoji(db, serverId, emoji)
+    db.exec(
+      `INSERT OR IGNORE INTO post_custom_emojis (post_id, emoji_id, usage_context)
+       VALUES (?, ?, 'account');`,
+      { bind: [postId, emojiId] },
+    )
+  }
+}
+
+/**
+ * プロフィールのカスタム絵文字を profile_custom_emojis に同期する。
+ */
+export function syncProfileCustomEmojis(
+  db: {
+    exec: (
+      sql: string,
+      opts?: {
+        bind?: (string | number | null)[]
+        returnValue?: 'resultRows'
+      },
+    ) => unknown
+  },
+  profileId: number,
+  serverId: number,
+  emojis: {
+    shortcode: string
+    url: string
+    static_url?: string | null
+    visible_in_picker?: boolean
+  }[],
+): void {
+  db.exec('DELETE FROM profile_custom_emojis WHERE profile_id = ?;', {
+    bind: [profileId],
+  })
+
+  for (const emoji of emojis) {
+    const emojiId = ensureCustomEmoji(db, serverId, emoji)
+    db.exec(
+      `INSERT OR IGNORE INTO profile_custom_emojis (profile_id, emoji_id)
+       VALUES (?, ?);`,
+      { bind: [profileId, emojiId] },
+    )
+  }
+}
+
+/**
+ * 投稿の投票データを polls / poll_options に同期する。
+ */
+export function syncPollData(
+  db: {
+    exec: (
+      sql: string,
+      opts?: {
+        bind?: (string | number | null)[]
+        returnValue?: 'resultRows'
+      },
+    ) => unknown
+  },
+  postId: number,
+  poll: {
+    expires_at: string | null
+    multiple: boolean
+    votes_count: number
+    options: { title: string; votes_count: number | null }[]
+    voted: boolean
+  } | null,
+): void {
+  if (!poll) {
+    db.exec('DELETE FROM polls WHERE post_id = ?;', { bind: [postId] })
+    return
+  }
+
+  db.exec(
+    `INSERT INTO polls (post_id, expires_at, multiple, votes_count, voters_count)
+     VALUES (?, ?, ?, ?, NULL)
+     ON CONFLICT(post_id) DO UPDATE SET
+       expires_at   = excluded.expires_at,
+       multiple     = excluded.multiple,
+       votes_count  = excluded.votes_count;`,
+    {
+      bind: [postId, poll.expires_at, poll.multiple ? 1 : 0, poll.votes_count],
+    },
+  )
+
+  const pollRows = db.exec('SELECT poll_id FROM polls WHERE post_id = ?;', {
+    bind: [postId],
+    returnValue: 'resultRows',
+  }) as number[][]
+  const pollId = pollRows[0][0]
+
+  db.exec('DELETE FROM poll_options WHERE poll_id = ?;', { bind: [pollId] })
+  for (let i = 0; i < poll.options.length; i++) {
+    const opt = poll.options[i]
+    db.exec(
+      `INSERT INTO poll_options (poll_id, option_index, title, votes_count)
+       VALUES (?, ?, ?, ?);`,
+      { bind: [pollId, i, opt.title, opt.votes_count] },
+    )
   }
 }

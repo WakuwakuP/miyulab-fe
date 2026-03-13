@@ -49,6 +49,7 @@ import {
 } from 'util/provider/TimelineProvider'
 import { ALL_NOTIFICATION_TYPES } from 'util/queryBuilder'
 import { getDefaultTimelineName } from 'util/timelineDisplayName'
+import { notifyRefresh } from 'util/timelineRefresh'
 
 /** タブグループの色テーマパレット（フォルダ数に応じてローテーション） */
 const TAB_GROUP_COLOR_PALETTE: {
@@ -627,6 +628,7 @@ export const TimelineManagement = () => {
           timeline.id === id ? { ...timeline, ...updates } : timeline,
         ),
       }))
+      notifyRefresh(id)
     },
     [setTimelineSettings],
   )

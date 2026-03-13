@@ -16,9 +16,6 @@ import {
 } from 'util/queryBuilder'
 import type { TimelineType } from '../database'
 import { getSqliteDb } from './connection'
-import { createCompositeKey } from './shared'
-
-export { createCompositeKey }
 
 // ================================================================
 // 定数
@@ -31,7 +28,7 @@ const MAX_QUERY_LIMIT = 2147483647
 // StoredStatus 型
 // ================================================================
 export interface SqliteStoredStatus extends Entity.Status {
-  compositeKey: string
+  post_id: number
   backendUrl: string
   timelineTypes: TimelineType[]
   belongingTags: string[]
@@ -47,45 +44,350 @@ export interface SqliteStoredStatus extends Entity.Status {
  * クエリ結果の1行を SqliteStoredStatus に変換する
  *
  * row レイアウト:
- *   [0] compositeKey, [1] backendUrl, [2] created_at_ms, [3] storedAt,
- *   [4] json, [5] timelineTypesJson, [6] belongingTagsJson
+ *   [0]  post_id         [1]  backendUrl       [2]  local_id
+ *   [3]  created_at_ms   [4]  stored_at        [5]  object_uri
+ *   [6]  content_html    [7]  spoiler_text     [8]  canonical_url
+ *   [9]  language        [10] visibility_code  [11] is_sensitive
+ *   [12] is_reblog       [13] reblog_of_uri    [14] in_reply_to_id
+ *   [15] edited_at       [16] author_acct      [17] author_username
+ *   [18] author_display  [19] author_avatar    [20] author_header
+ *   [21] author_locked   [22] author_bot       [23] author_url
+ *   [24] replies_count   [25] reblogs_count    [26] favourites_count
+ *   [27] engagements_csv [28] media_json       [29] mentions_json
+ *   [30] timelineTypes   [31] belongingTags
+ *   [32] status_emojis_json [33] account_emojis_json
+ *   [34] poll_json
  *
- * timelineTypes / belongingTags は SQL 側で json_group_array() を使って
- * 集約済みの JSON 配列文字列として受け取る。
- * これにより、行ごとに個別クエリを発行する N+1 問題を解消している。
+ * リブログ元 (is_reblog=1 の場合):
+ *   [35] rb_post_id      [36] rb_content_html  [37] rb_spoiler_text
+ *   [38] rb_canonical_url [39] rb_language     [40] rb_visibility_code
+ *   [41] rb_is_sensitive  [42] rb_in_reply_to_id [43] rb_edited_at
+ *   [44] rb_created_at_ms [45] rb_object_uri   [46] rb_author_acct
+ *   [47] rb_author_username [48] rb_author_display [49] rb_author_avatar
+ *   [50] rb_author_header [51] rb_author_locked [52] rb_author_bot
+ *   [53] rb_author_url   [54] rb_replies_count [55] rb_reblogs_count
+ *   [56] rb_favourites_count [57] rb_engagements_csv [58] rb_media_json
+ *   [59] rb_mentions_json [60] rb_status_emojis_json
+ *   [61] rb_account_emojis_json [62] rb_poll_json [63] rb_local_id
  */
-function rowToStoredStatus(
+export function rowToStoredStatus(
   row: (string | number | null)[],
 ): SqliteStoredStatus {
-  const compositeKey = row[0] as string
-  const backendUrl = row[1] as string
-  const created_at_ms = row[2] as number
-  const storedAt = row[3] as number
-  const json = row[4] as string
-  const timelineTypesJson = row[5] as string | null
-  const belongingTagsJson = row[6] as string | null
-  const status = JSON.parse(json) as Entity.Status
+  const engagementsCsv = row[27] as string | null
+  const engagements = engagementsCsv ? engagementsCsv.split(',') : []
+  const mediaJson = row[28] as string | null
+  const mentionsJson = row[29] as string | null
+  const timelineTypesJson = row[30] as string | null
+  const belongingTagsJson = row[31] as string | null
+  const statusEmojisJson = row[32] as string | null
+  const accountEmojisJson = row[33] as string | null
+  const pollJson = row[34] as string | null
+
+  const belongingTags: string[] = belongingTagsJson
+    ? (JSON.parse(belongingTagsJson) as (string | null)[]).filter(
+        (t): t is string => t !== null,
+      )
+    : []
+
+  const parseEmojis = (json: string | null): Entity.Emoji[] => {
+    if (!json) return []
+    const parsed = JSON.parse(json) as ({
+      shortcode: string
+      url: string
+      static_url: string | null
+      visible_in_picker: number
+    } | null)[]
+    return parsed
+      .filter(
+        (e): e is NonNullable<typeof e> => e !== null && e.shortcode !== null,
+      )
+      .map((e) => ({
+        shortcode: e.shortcode,
+        static_url: e.static_url ?? e.url,
+        url: e.url,
+        visible_in_picker: e.visible_in_picker === 1,
+      }))
+  }
+
+  const parsePoll = (json: string): Entity.Poll => {
+    const p = JSON.parse(json) as {
+      id: number
+      expires_at: string | null
+      multiple: number
+      votes_count: number
+      options: string | { title: string; votes_count: number | null }[]
+    }
+    const options =
+      typeof p.options === 'string'
+        ? (JSON.parse(p.options) as {
+            title: string
+            votes_count: number | null
+          }[])
+        : p.options
+    return {
+      expired: p.expires_at ? new Date(p.expires_at) < new Date() : false,
+      expires_at: p.expires_at,
+      id: String(p.id),
+      multiple: p.multiple === 1,
+      options: options.map((o) => ({
+        title: o.title,
+        votes_count: o.votes_count,
+      })),
+      voted: false,
+      votes_count: p.votes_count,
+    }
+  }
+
+  const parseMediaAttachments = (json: string | null): Entity.Attachment[] => {
+    if (!json) return []
+    return (JSON.parse(json) as (Entity.Attachment | null)[]).filter(
+      (m): m is Entity.Attachment => m !== null,
+    )
+  }
+
+  const parseMentions = (json: string | null): Entity.Mention[] => {
+    if (!json) return []
+    return (JSON.parse(json) as ({ acct: string } | null)[])
+      .filter((m): m is { acct: string } => m !== null)
+      .map((m) => ({
+        acct: m.acct,
+        id: '',
+        url: '',
+        username: m.acct.split('@')[0] ?? '',
+      }))
+  }
+
+  // リブログ元投稿の復元
+  const isReblog = (row[12] as number) === 1
+  const rbPostId = row[35] as number | null
+  let reblog: Entity.Status | null = null
+
+  if (isReblog && rbPostId !== null) {
+    const rbEngagementsCsv = row[57] as string | null
+    const rbEngagements = rbEngagementsCsv ? rbEngagementsCsv.split(',') : []
+    const rbMediaJson = row[58] as string | null
+    const rbMentionsJson = row[59] as string | null
+    const rbStatusEmojisJson = row[60] as string | null
+    const rbAccountEmojisJson = row[61] as string | null
+    const rbPollJson = row[62] as string | null
+
+    reblog = {
+      account: {
+        acct: (row[46] as string) ?? '',
+        avatar: (row[49] as string) ?? '',
+        avatar_static: (row[49] as string) ?? '',
+        bot: (row[52] as number) === 1,
+        created_at: '',
+        display_name: (row[48] as string) ?? '',
+        emojis: parseEmojis(rbAccountEmojisJson),
+        fields: [],
+        followers_count: 0,
+        following_count: 0,
+        group: null,
+        header: (row[50] as string) ?? '',
+        header_static: (row[50] as string) ?? '',
+        id: (row[65] as string) || '',
+        limited: null,
+        locked: (row[51] as number) === 1,
+        moved: null,
+        noindex: null,
+        note: '',
+        statuses_count: 0,
+        suspended: null,
+        url: (row[53] as string) ?? '',
+        username: (row[47] as string) ?? '',
+      },
+      application: null,
+      bookmarked: rbEngagements.includes('bookmark'),
+      card: null,
+      content: (row[36] as string) ?? '',
+      created_at: row[44] ? new Date(row[44] as number).toISOString() : '',
+      edited_at: row[43] as string | null,
+      emoji_reactions: [],
+      emojis: parseEmojis(rbStatusEmojisJson),
+      favourited: rbEngagements.includes('favourite'),
+      favourites_count: (row[56] as number) ?? 0,
+      id: (row[63] as string) ?? '',
+      in_reply_to_account_id: null,
+      in_reply_to_id: row[42] as string | null,
+      language: row[39] as string | null,
+      media_attachments: parseMediaAttachments(rbMediaJson),
+      mentions: parseMentions(rbMentionsJson),
+      muted: null,
+      pinned: null,
+      plain_content: null,
+      poll: rbPollJson ? parsePoll(rbPollJson) : null,
+      quote: null,
+      quote_approval: { automatic: [], current_user: '', manual: [] },
+      reblog: null,
+      reblogged: rbEngagements.includes('reblog'),
+      reblogs_count: (row[55] as number) ?? 0,
+      replies_count: (row[54] as number) ?? 0,
+      sensitive: (row[41] as number) === 1,
+      spoiler_text: (row[37] as string) ?? '',
+      tags: [],
+      uri: (row[45] as string) ?? '',
+      url: (row[38] as string | null) ?? undefined,
+      visibility: ((row[40] as string) ?? 'public') as Entity.StatusVisibility,
+    }
+  }
 
   return {
-    ...status,
-    backendUrl,
-    belongingTags: belongingTagsJson
-      ? (JSON.parse(belongingTagsJson) as string[])
-      : [],
-    compositeKey,
-    created_at_ms,
-    storedAt,
+    account: {
+      acct: (row[16] as string) ?? '',
+      avatar: (row[19] as string) ?? '',
+      avatar_static: (row[19] as string) ?? '',
+      bot: (row[22] as number) === 1,
+      created_at: '',
+      display_name: (row[18] as string) ?? '',
+      emojis: parseEmojis(accountEmojisJson),
+      fields: [],
+      followers_count: 0,
+      following_count: 0,
+      group: null,
+      header: (row[20] as string) ?? '',
+      header_static: (row[20] as string) ?? '',
+      id: (row[64] as string) || '',
+      limited: null,
+      locked: (row[21] as number) === 1,
+      moved: null,
+      noindex: null,
+      note: '',
+      statuses_count: 0,
+      suspended: null,
+      url: (row[23] as string) ?? '',
+      username: (row[17] as string) ?? '',
+    },
+    application: null,
+    backendUrl: (row[1] as string) ?? '',
+    belongingTags,
+    bookmarked: engagements.includes('bookmark'),
+    card: null,
+    content: (row[6] as string) ?? '',
+    created_at: new Date(row[3] as number).toISOString(),
+    created_at_ms: row[3] as number,
+    edited_at: row[15] as string | null,
+    emoji_reactions: [],
+    emojis: parseEmojis(statusEmojisJson),
+    favourited: engagements.includes('favourite'),
+    favourites_count: (row[26] as number) ?? 0,
+    id: (row[2] as string) ?? '',
+    in_reply_to_account_id: null,
+    in_reply_to_id: row[14] as string | null,
+    language: row[9] as string | null,
+    media_attachments: parseMediaAttachments(mediaJson),
+    mentions: parseMentions(mentionsJson),
+    muted: null,
+    pinned: null,
+    plain_content: null,
+    poll: pollJson ? parsePoll(pollJson) : null,
+    // SqliteStoredStatus extra fields
+    post_id: row[0] as number,
+    quote: null,
+    quote_approval: { automatic: [], current_user: '', manual: [] },
+    reblog,
+    reblogged: engagements.includes('reblog'),
+    reblogs_count: (row[25] as number) ?? 0,
+    replies_count: (row[24] as number) ?? 0,
+    sensitive: (row[11] as number) === 1,
+    spoiler_text: (row[7] as string) ?? '',
+    storedAt: row[4] as number,
+    tags: belongingTags.map((t) => ({ name: t, url: '' })),
     timelineTypes: timelineTypesJson
-      ? (JSON.parse(timelineTypesJson) as TimelineType[])
+      ? (JSON.parse(timelineTypesJson) as (TimelineType | null)[]).filter(
+          (t): t is TimelineType => t !== null,
+        )
       : [],
+    uri: (row[5] as string) ?? '',
+    url: (row[8] as string | null) ?? undefined,
+    visibility: ((row[10] as string) ?? 'public') as Entity.StatusVisibility,
   }
 }
 
-/** timelineTypes / belongingTags を集約するサブクエリ（SELECT 句に埋め込む） */
-const TIMELINE_TYPES_SUBQUERY =
-  '(SELECT json_group_array(timelineType) FROM statuses_timeline_types WHERE compositeKey = s.compositeKey) AS timelineTypes'
-const BELONGING_TAGS_SUBQUERY =
-  '(SELECT json_group_array(tag) FROM statuses_belonging_tags WHERE compositeKey = s.compositeKey) AS belongingTags'
+/**
+ * 正規化テーブルから Entity.Status を構築するための SELECT 句
+ * posts_backends (pb), profiles (pr), visibility_types (vt) の JOIN が必要
+ */
+export const STATUS_SELECT = `
+  s.post_id,
+  MIN(pb.backendUrl) AS backendUrl,
+  MIN(pb.local_id) AS local_id,
+  s.created_at_ms,
+  s.stored_at,
+  s.object_uri,
+  COALESCE(s.content_html, '') AS content_html,
+  COALESCE(s.spoiler_text, '') AS spoiler_text,
+  s.canonical_url,
+  s.language,
+  COALESCE(vt.code, 'public') AS visibility_code,
+  s.is_sensitive,
+  s.is_reblog,
+  s.reblog_of_uri,
+  s.in_reply_to_id,
+  s.edited_at,
+  COALESCE(pr.acct, '') AS author_acct,
+  COALESCE(pr.username, '') AS author_username,
+  COALESCE(pr.display_name, '') AS author_display_name,
+  COALESCE(pr.avatar_url, '') AS author_avatar,
+  COALESCE(pr.header_url, '') AS author_header,
+  COALESCE(pr.locked, 0) AS author_locked,
+  COALESCE(pr.bot, 0) AS author_bot,
+  COALESCE(pr.actor_uri, '') AS author_url,
+  COALESCE((SELECT ps.replies_count FROM post_stats ps WHERE ps.post_id = s.post_id), 0) AS replies_count,
+  COALESCE((SELECT ps.reblogs_count FROM post_stats ps WHERE ps.post_id = s.post_id), 0) AS reblogs_count,
+  COALESCE((SELECT ps.favourites_count FROM post_stats ps WHERE ps.post_id = s.post_id), 0) AS favourites_count,
+  (SELECT group_concat(et.code, ',') FROM post_engagements pe INNER JOIN engagement_types et ON pe.engagement_type_id = et.engagement_type_id WHERE pe.post_id = s.post_id) AS engagements_csv,
+  CASE WHEN s.has_media = 1 THEN (SELECT json_group_array(json_object('id', pm.remote_media_id, 'type', COALESCE((SELECT mt.code FROM media_types mt WHERE mt.media_type_id = pm.media_type_id), 'unknown'), 'url', pm.url, 'preview_url', pm.preview_url, 'description', pm.description, 'blurhash', pm.blurhash, 'remote_url', pm.url)) FROM post_media pm WHERE pm.post_id = s.post_id ORDER BY pm.sort_order) ELSE NULL END AS media_json,
+  (SELECT json_group_array(json_object('acct', pme.acct)) FROM posts_mentions pme WHERE pme.post_id = s.post_id) AS mentions_json,
+  (SELECT json_group_array(ck.code) FROM timeline_items ti INNER JOIN timelines t ON t.timeline_id = ti.timeline_id INNER JOIN channel_kinds ck ON ck.channel_kind_id = t.channel_kind_id WHERE ti.post_id = s.post_id) AS timelineTypes,
+  (SELECT json_group_array(tag) FROM posts_belonging_tags WHERE post_id = s.post_id) AS belongingTags,
+  (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.image_url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM post_custom_emojis pce INNER JOIN custom_emojis ce ON pce.emoji_id = ce.emoji_id WHERE pce.post_id = s.post_id AND pce.usage_context = 'status') AS status_emojis_json,
+  (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.image_url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM post_custom_emojis pce INNER JOIN custom_emojis ce ON pce.emoji_id = ce.emoji_id WHERE pce.post_id = s.post_id AND pce.usage_context = 'account') AS account_emojis_json,
+  (SELECT json_object('id', pl.poll_id, 'expires_at', pl.expires_at, 'multiple', pl.multiple, 'votes_count', pl.votes_count, 'options', (SELECT json_group_array(json_object('title', po.title, 'votes_count', po.votes_count)) FROM poll_options po WHERE po.poll_id = pl.poll_id ORDER BY po.option_index)) FROM polls pl WHERE pl.post_id = s.post_id) AS poll_json,
+  rs.post_id AS rb_post_id,
+  COALESCE(rs.content_html, '') AS rb_content_html,
+  COALESCE(rs.spoiler_text, '') AS rb_spoiler_text,
+  rs.canonical_url AS rb_canonical_url,
+  rs.language AS rb_language,
+  COALESCE(rvt.code, 'public') AS rb_visibility_code,
+  rs.is_sensitive AS rb_is_sensitive,
+  rs.in_reply_to_id AS rb_in_reply_to_id,
+  rs.edited_at AS rb_edited_at,
+  rs.created_at_ms AS rb_created_at_ms,
+  rs.object_uri AS rb_object_uri,
+  COALESCE(rpr.acct, '') AS rb_author_acct,
+  COALESCE(rpr.username, '') AS rb_author_username,
+  COALESCE(rpr.display_name, '') AS rb_author_display_name,
+  COALESCE(rpr.avatar_url, '') AS rb_author_avatar,
+  COALESCE(rpr.header_url, '') AS rb_author_header,
+  COALESCE(rpr.locked, 0) AS rb_author_locked,
+  COALESCE(rpr.bot, 0) AS rb_author_bot,
+  COALESCE(rpr.actor_uri, '') AS rb_author_url,
+  COALESCE((SELECT ps.replies_count FROM post_stats ps WHERE ps.post_id = rs.post_id), 0) AS rb_replies_count,
+  COALESCE((SELECT ps.reblogs_count FROM post_stats ps WHERE ps.post_id = rs.post_id), 0) AS rb_reblogs_count,
+  COALESCE((SELECT ps.favourites_count FROM post_stats ps WHERE ps.post_id = rs.post_id), 0) AS rb_favourites_count,
+  (SELECT group_concat(et.code, ',') FROM post_engagements pe INNER JOIN engagement_types et ON pe.engagement_type_id = et.engagement_type_id WHERE pe.post_id = rs.post_id) AS rb_engagements_csv,
+  CASE WHEN rs.has_media = 1 THEN (SELECT json_group_array(json_object('id', pm.remote_media_id, 'type', COALESCE((SELECT mt.code FROM media_types mt WHERE mt.media_type_id = pm.media_type_id), 'unknown'), 'url', pm.url, 'preview_url', pm.preview_url, 'description', pm.description, 'blurhash', pm.blurhash, 'remote_url', pm.url)) FROM post_media pm WHERE pm.post_id = rs.post_id ORDER BY pm.sort_order) ELSE NULL END AS rb_media_json,
+  (SELECT json_group_array(json_object('acct', pme.acct)) FROM posts_mentions pme WHERE pme.post_id = rs.post_id) AS rb_mentions_json,
+  (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.image_url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM post_custom_emojis pce INNER JOIN custom_emojis ce ON pce.emoji_id = ce.emoji_id WHERE pce.post_id = rs.post_id AND pce.usage_context = 'status') AS rb_status_emojis_json,
+  (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.image_url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM post_custom_emojis pce INNER JOIN custom_emojis ce ON pce.emoji_id = ce.emoji_id WHERE pce.post_id = rs.post_id AND pce.usage_context = 'account') AS rb_account_emojis_json,
+  (SELECT json_object('id', pl.poll_id, 'expires_at', pl.expires_at, 'multiple', pl.multiple, 'votes_count', pl.votes_count, 'options', (SELECT json_group_array(json_object('title', po.title, 'votes_count', po.votes_count)) FROM poll_options po WHERE po.poll_id = pl.poll_id ORDER BY po.option_index)) FROM polls pl WHERE pl.post_id = rs.post_id) AS rb_poll_json,
+  (SELECT MIN(rpb.local_id) FROM posts_backends rpb WHERE rpb.post_id = rs.post_id) AS rb_local_id,
+  COALESCE(pra.remote_account_id, '') AS author_account_id,
+  COALESCE(rpra.remote_account_id, '') AS rb_author_account_id`
+
+/**
+ * 正規化テーブルの基本 JOIN 句（profiles, visibility_types, posts_backends）
+ */
+export const STATUS_BASE_JOINS = `
+  LEFT JOIN profiles pr ON s.author_profile_id = pr.profile_id
+  LEFT JOIN visibility_types vt ON s.visibility_id = vt.visibility_id
+  LEFT JOIN posts_backends pb ON s.post_id = pb.post_id
+  LEFT JOIN posts rs ON s.is_reblog = 1 AND s.reblog_of_uri != '' AND s.reblog_of_uri = rs.object_uri
+  LEFT JOIN profiles rpr ON rs.author_profile_id = rpr.profile_id
+  LEFT JOIN visibility_types rvt ON rs.visibility_id = rvt.visibility_id
+  LEFT JOIN profile_aliases pra ON pra.profile_id = pr.profile_id AND pra.server_id = pb.server_id
+  LEFT JOIN profile_aliases rpra ON rpra.profile_id = rpr.profile_id AND rpra.server_id = pb.server_id`
 
 // ================================================================
 // Public API
@@ -103,8 +405,8 @@ export function toStoredStatus(
     ...status,
     backendUrl,
     belongingTags: status.tags.map((tag) => tag.name),
-    compositeKey: createCompositeKey(backendUrl, status.id),
     created_at_ms: new Date(status.created_at).getTime(),
+    post_id: 0,
     storedAt: Date.now(),
     timelineTypes,
   }
@@ -236,42 +538,26 @@ export async function getStatusesByTimelineType(
 ): Promise<SqliteStoredStatus[]> {
   const handle = await getSqliteDb()
 
-  let sql: string
   const binds: (string | number)[] = []
-
+  let backendFilter = ''
   if (backendUrls && backendUrls.length > 0) {
     const placeholders = backendUrls.map(() => '?').join(',')
-    sql = `
-      SELECT s.compositeKey, MIN(sb.backendUrl) AS backendUrl,
-             s.created_at_ms, s.storedAt, s.json,
-             ${TIMELINE_TYPES_SUBQUERY},
-             ${BELONGING_TAGS_SUBQUERY}
-      FROM statuses s
-      INNER JOIN statuses_timeline_types stt
-        ON s.compositeKey = stt.compositeKey
-      INNER JOIN statuses_backends sb
-        ON s.compositeKey = sb.compositeKey
-      WHERE stt.timelineType = ?
-        AND sb.backendUrl IN (${placeholders})
-      GROUP BY s.compositeKey
-      ORDER BY s.created_at_ms DESC
-      LIMIT ?;
-    `
-    binds.push(timelineType, ...backendUrls, limit ?? MAX_QUERY_LIMIT)
-  } else {
-    sql = `
-      SELECT s.compositeKey, s.backendUrl, s.created_at_ms, s.storedAt, s.json,
-             ${TIMELINE_TYPES_SUBQUERY},
-             ${BELONGING_TAGS_SUBQUERY}
-      FROM statuses s
-      INNER JOIN statuses_timeline_types stt
-        ON s.compositeKey = stt.compositeKey
-      WHERE stt.timelineType = ?
-      ORDER BY s.created_at_ms DESC
-      LIMIT ?;
-    `
-    binds.push(timelineType, limit ?? MAX_QUERY_LIMIT)
+    backendFilter = `AND pb.backendUrl IN (${placeholders})`
+    binds.push(...backendUrls)
   }
+
+  const sql = `
+    SELECT ${STATUS_SELECT}
+    FROM posts s
+    ${STATUS_BASE_JOINS}
+    INNER JOIN posts_timeline_types stt ON s.post_id = stt.post_id
+    WHERE stt.timelineType = ?
+      ${backendFilter}
+    GROUP BY s.post_id
+    ORDER BY s.created_at_ms DESC
+    LIMIT ?;
+  `
+  binds.push(timelineType, limit ?? MAX_QUERY_LIMIT)
 
   const rows = (await handle.execAsync(sql, {
     bind: binds,
@@ -291,42 +577,65 @@ export async function getStatusesByTag(
 ): Promise<SqliteStoredStatus[]> {
   const handle = await getSqliteDb()
 
-  let sql: string
   const binds: (string | number)[] = []
-
+  let backendFilter = ''
   if (backendUrls && backendUrls.length > 0) {
     const placeholders = backendUrls.map(() => '?').join(',')
-    sql = `
-      SELECT s.compositeKey, MIN(sb.backendUrl) AS backendUrl,
-             s.created_at_ms, s.storedAt, s.json,
-             ${TIMELINE_TYPES_SUBQUERY},
-             ${BELONGING_TAGS_SUBQUERY}
-      FROM statuses s
-      INNER JOIN statuses_belonging_tags sbt
-        ON s.compositeKey = sbt.compositeKey
-      INNER JOIN statuses_backends sb
-        ON s.compositeKey = sb.compositeKey
-      WHERE sbt.tag = ?
-        AND sb.backendUrl IN (${placeholders})
-      GROUP BY s.compositeKey
-      ORDER BY s.created_at_ms DESC
-      LIMIT ?;
-    `
-    binds.push(tag, ...backendUrls, limit ?? MAX_QUERY_LIMIT)
-  } else {
-    sql = `
-      SELECT s.compositeKey, s.backendUrl, s.created_at_ms, s.storedAt, s.json,
-             ${TIMELINE_TYPES_SUBQUERY},
-             ${BELONGING_TAGS_SUBQUERY}
-      FROM statuses s
-      INNER JOIN statuses_belonging_tags sbt
-        ON s.compositeKey = sbt.compositeKey
-      WHERE sbt.tag = ?
-      ORDER BY s.created_at_ms DESC
-      LIMIT ?;
-    `
-    binds.push(tag, limit ?? MAX_QUERY_LIMIT)
+    backendFilter = `AND pb.backendUrl IN (${placeholders})`
+    binds.push(...backendUrls)
   }
+
+  const sql = `
+    SELECT ${STATUS_SELECT}
+    FROM posts s
+    ${STATUS_BASE_JOINS}
+    INNER JOIN posts_belonging_tags sbt ON s.post_id = sbt.post_id
+    WHERE sbt.tag = ?
+      ${backendFilter}
+    GROUP BY s.post_id
+    ORDER BY s.created_at_ms DESC
+    LIMIT ?;
+  `
+  binds.push(tag, limit ?? MAX_QUERY_LIMIT)
+
+  const rows = (await handle.execAsync(sql, {
+    bind: binds,
+    returnValue: 'resultRows',
+  })) as (string | number | null)[][]
+
+  return rows.map(rowToStoredStatus)
+}
+
+/**
+ * ブックマークした Status を取得
+ */
+export async function getBookmarkedStatuses(
+  backendUrls?: string[],
+  limit?: number,
+): Promise<SqliteStoredStatus[]> {
+  const handle = await getSqliteDb()
+
+  const binds: (string | number)[] = []
+  let backendFilter = ''
+  if (backendUrls && backendUrls.length > 0) {
+    const placeholders = backendUrls.map(() => '?').join(',')
+    backendFilter = `AND pb.backendUrl IN (${placeholders})`
+    binds.push(...backendUrls)
+  }
+
+  const sql = `
+    SELECT ${STATUS_SELECT}
+    FROM posts s
+    ${STATUS_BASE_JOINS}
+    INNER JOIN post_engagements pe ON s.post_id = pe.post_id
+    INNER JOIN engagement_types et ON pe.engagement_type_id = et.engagement_type_id
+    WHERE et.code = 'bookmark'
+      ${backendFilter}
+    GROUP BY s.post_id
+    ORDER BY s.created_at_ms DESC
+    LIMIT ?;
+  `
+  binds.push(limit ?? MAX_QUERY_LIMIT)
 
   const rows = (await handle.execAsync(sql, {
     bind: binds,
@@ -398,55 +707,66 @@ export async function getStatusesByCustomQuery(
 
   // WHERE 句で参照されているテーブルのみ JOIN する（不要な JOIN を除外）
   const refs = detectReferencedAliases(sanitized)
-  const needSb = refs.sb || (backendUrls != null && backendUrls.length > 0)
+
+  // sb. 参照を pb. に書き換え（posts_backends は常に pb で JOIN）
+  // 旧カラム名 backend_url を正しい backendUrl に修正
+  const rewrittenWhere = sanitized
+    .replace(/\bsb\./g, 'pb.')
+    .replace(/\bpb\.backend_url\b/g, 'pb.backendUrl')
 
   const joinLines: string[] = []
   if (refs.stt)
     joinLines.push(
-      'LEFT JOIN statuses_timeline_types stt\n      ON s.compositeKey = stt.compositeKey',
+      'LEFT JOIN posts_timeline_types stt\n      ON s.post_id = stt.post_id',
     )
   if (refs.sbt)
     joinLines.push(
-      'LEFT JOIN statuses_belonging_tags sbt\n      ON s.compositeKey = sbt.compositeKey',
+      'LEFT JOIN posts_belonging_tags sbt\n      ON s.post_id = sbt.post_id',
     )
   if (refs.sm)
     joinLines.push(
-      'LEFT JOIN statuses_mentions sm\n      ON s.compositeKey = sm.compositeKey',
-    )
-  if (needSb)
-    joinLines.push(
-      'LEFT JOIN statuses_backends sb\n      ON s.compositeKey = sb.compositeKey',
+      'LEFT JOIN posts_mentions sm\n      ON s.post_id = sm.post_id',
     )
   if (refs.sr)
     joinLines.push(
-      'LEFT JOIN statuses_reblogs sr\n      ON s.compositeKey = sr.compositeKey',
+      'LEFT JOIN posts_reblogs sr\n      ON s.post_id = sr.post_id',
     )
-
-  const hasMultiRowJoin = refs.stt || refs.sbt || refs.sm || needSb
-  const backendSelect = needSb
-    ? 'MIN(sb.backendUrl) AS backendUrl'
-    : 's.backendUrl'
+  if (refs.pe)
+    joinLines.push(
+      'LEFT JOIN post_engagements pe\n      ON s.post_id = pe.post_id',
+    )
 
   let backendFilter = ''
   const binds: (string | number)[] = []
 
   if (backendUrls && backendUrls.length > 0) {
     const placeholders = backendUrls.map(() => '?').join(',')
-    backendFilter = `AND sb.backendUrl IN (${placeholders})`
+    backendFilter = `AND pb.backendUrl IN (${placeholders})`
     binds.push(...backendUrls)
   }
 
   const joinsClause =
     joinLines.length > 0 ? `\n    ${joinLines.join('\n    ')}` : ''
 
+  // 旧カラム名の後方互換性のため posts をサブクエリでラップ
   const sql = `
-    SELECT s.compositeKey, ${backendSelect},
-           s.created_at_ms, s.storedAt, s.json,
-           ${TIMELINE_TYPES_SUBQUERY},
-           ${BELONGING_TAGS_SUBQUERY}
-    FROM statuses s${joinsClause}
-    WHERE (${sanitized || '1=1'})
-      ${backendFilter}${hasMultiRowJoin ? '\n    GROUP BY s.compositeKey' : ''}
+    SELECT ${STATUS_SELECT}
+    FROM (
+      SELECT p.*,
+        COALESCE((SELECT sv.base_url FROM servers sv WHERE sv.server_id = p.origin_server_id), '') AS origin_backend_url,
+        COALESCE((SELECT pr2.acct FROM profiles pr2 WHERE pr2.profile_id = p.author_profile_id), '') AS account_acct,
+        '' AS account_id,
+        COALESCE((SELECT vt2.code FROM visibility_types vt2 WHERE vt2.visibility_id = p.visibility_id), 'public') AS visibility,
+        NULL AS reblog_of_id,
+        COALESCE((SELECT ps2.favourites_count FROM post_stats ps2 WHERE ps2.post_id = p.post_id), 0) AS favourites_count,
+        COALESCE((SELECT ps2.reblogs_count FROM post_stats ps2 WHERE ps2.post_id = p.post_id), 0) AS reblogs_count,
+        COALESCE((SELECT ps2.replies_count FROM post_stats ps2 WHERE ps2.post_id = p.post_id), 0) AS replies_count
+      FROM posts p
+    ) s
+    ${STATUS_BASE_JOINS}${joinsClause}
+    WHERE (${rewrittenWhere || '1=1'})
+      ${backendFilter}
+    GROUP BY s.post_id
     ORDER BY s.created_at_ms DESC
     LIMIT ?
     OFFSET ?;
@@ -465,46 +785,58 @@ export async function getStatusesByCustomQuery(
  * テーブルカラム / エイリアス一覧（補完用）
  */
 export const QUERY_COMPLETIONS = {
-  aliases: ['s', 'stt', 'sbt', 'sm', 'sb', 'sr', 'n'],
+  aliases: ['s', 'stt', 'sbt', 'sm', 'sb', 'sr', 'pe', 'n'],
   columns: {
     n: [
-      'compositeKey',
-      'backendUrl',
+      'notification_id',
+      'server_id',
+      'local_id',
+      'notification_type_id',
+      'actor_profile_id',
+      'related_post_id',
       'created_at_ms',
-      'storedAt',
+      'stored_at',
+      'is_read',
+      // 後方互換（互換サブクエリ経由）
+      'backend_url',
       'notification_type',
-      'status_id',
       'account_acct',
-      'json',
     ],
+    pe: ['post_id', 'local_account_id', 'engagement_type_id', 'emoji_id'],
     s: [
-      'compositeKey',
-      'backendUrl',
+      'post_id',
+      'object_uri',
+      'origin_server_id',
+      'author_profile_id',
       'created_at_ms',
-      'storedAt',
-      'uri',
-      'account_acct',
-      'account_id',
-      'visibility',
+      'stored_at',
+      'visibility_id',
       'language',
+      'content_html',
+      'spoiler_text',
+      'canonical_url',
       'has_media',
       'media_count',
       'is_reblog',
-      'reblog_of_id',
       'reblog_of_uri',
       'is_sensitive',
       'has_spoiler',
       'in_reply_to_id',
+      'is_local_only',
+      'edited_at',
+      // 後方互換（互換サブクエリ経由）
+      'origin_backend_url',
+      'account_acct',
+      'visibility',
       'favourites_count',
       'reblogs_count',
       'replies_count',
-      'json',
     ],
-    sb: ['compositeKey', 'backendUrl', 'local_id'],
-    sbt: ['compositeKey', 'tag'],
-    sm: ['compositeKey', 'acct'],
-    sr: ['compositeKey', 'original_uri', 'reblogger_acct', 'reblogged_at_ms'],
-    stt: ['compositeKey', 'timelineType'],
+    sb: ['post_id', 'backendUrl', 'local_id'],
+    sbt: ['post_id', 'tag'],
+    sm: ['post_id', 'acct'],
+    sr: ['post_id', 'original_uri', 'reblogger_acct', 'reblogged_at_ms'],
+    stt: ['post_id', 'timelineType'],
   },
   examples: [
     {
@@ -593,35 +925,12 @@ export const QUERY_COMPLETIONS = {
       description:
         'ふぁぼ・リアクション・ブースト通知と通知元ユーザーの直後の1投稿(3分以内)をまとめて表示する',
       query:
-        "n.notification_type IN ('favourite', 'reaction', 'reblog') OR EXISTS (SELECT 1 FROM notifications ntf WHERE ntf.notification_type IN ('favourite', 'reaction', 'reblog') AND ntf.account_acct = s.account_acct AND s.created_at_ms > ntf.created_at_ms AND s.created_at_ms <= ntf.created_at_ms + 180000 AND s.created_at_ms = (SELECT MIN(s2.created_at_ms) FROM statuses s2 WHERE s2.account_acct = ntf.account_acct AND s2.created_at_ms > ntf.created_at_ms AND s2.created_at_ms <= ntf.created_at_ms + 180000))",
+        "n.notification_type IN ('favourite', 'reaction', 'reblog') OR EXISTS (SELECT 1 FROM notifications ntf INNER JOIN notification_types ntt ON ntt.notification_type_id = ntf.notification_type_id INNER JOIN profiles pra ON pra.profile_id = ntf.actor_profile_id WHERE ntt.code IN ('favourite', 'reaction', 'reblog') AND pra.acct = s.account_acct AND s.created_at_ms > ntf.created_at_ms AND s.created_at_ms <= ntf.created_at_ms + 180000 AND s.created_at_ms = (SELECT MIN(s2.created_at_ms) FROM posts s2 INNER JOIN profiles pr2 ON pr2.profile_id = s2.author_profile_id WHERE pr2.acct = pra.acct AND s2.created_at_ms > ntf.created_at_ms AND s2.created_at_ms <= ntf.created_at_ms + 180000))",
     },
     {
       description: '特定ユーザーがリブログした投稿を取得する',
       query: "sr.reblogger_acct = 'user@example.com'",
     },
-  ],
-  /** json_extract の `$.` パス補完候補 */
-  jsonPaths: [
-    '$.id',
-    '$.content',
-    '$.account.acct',
-    '$.account.display_name',
-    '$.account.username',
-    '$.account.url',
-    '$.media_attachments',
-    '$.reblog',
-    '$.spoiler_text',
-    '$.visibility',
-    '$.language',
-    '$.created_at',
-    '$.favourites_count',
-    '$.reblogs_count',
-    '$.replies_count',
-    '$.sensitive',
-    '$.tags',
-    '$.mentions',
-    '$.url',
-    '$.in_reply_to_id',
   ],
   keywords: [
     'SELECT',
@@ -709,75 +1018,117 @@ export async function validateCustomQuery(
     const isMixed = isMixedQuery(sanitized)
     const isNotifQuery = !isMixed && isNotificationQuery(sanitized)
 
+    // sb. → pb. 変換（useCustomQueryTimeline と同じランタイム変換を適用）
+    const rewritten = sanitized
+      .replace(/\bsb\./g, 'pb.')
+      .replace(/\bpb\.backend_url\b/g, 'pb.backendUrl')
+
+    /** stt 互換サブクエリ: timeline_items + timelines + channel_kinds → (post_id, timelineType) */
+    const sttCompat =
+      '(SELECT ti2.post_id, ck2.code AS timelineType FROM timeline_items ti2 INNER JOIN timelines t2 ON t2.timeline_id = ti2.timeline_id INNER JOIN channel_kinds ck2 ON ck2.channel_kind_id = t2.channel_kind_id WHERE ti2.post_id IS NOT NULL)'
+
     let sql: string
     if (isMixed) {
-      // 混合クエリ: statuses + notifications の両テーブルを UNION で検証
-      // WHERE 句が両テーブルのカラムを参照するため、個別の SELECT で EXPLAIN する
       sql = `
         EXPLAIN
-        SELECT compositeKey FROM (
-          SELECT s.compositeKey, s.created_at_ms
-          FROM statuses s
-          LEFT JOIN statuses_timeline_types stt
-            ON s.compositeKey = stt.compositeKey
-          LEFT JOIN statuses_belonging_tags sbt
-            ON s.compositeKey = sbt.compositeKey
-          LEFT JOIN statuses_mentions sm
-            ON s.compositeKey = sm.compositeKey
-          LEFT JOIN statuses_backends sb
-            ON s.compositeKey = sb.compositeKey
-          LEFT JOIN statuses_reblogs sr
-            ON s.compositeKey = sr.compositeKey
-          -- Dummy join: n.* columns resolve to NULL so mixed WHERE clause passes
-          LEFT JOIN notifications n
-            ON 0 = 1
-          WHERE (${sanitized})
+        SELECT post_id FROM (
+          SELECT s.post_id, s.created_at_ms
+          FROM (
+            SELECT p.*,
+              COALESCE((SELECT sv.base_url FROM servers sv WHERE sv.server_id = p.origin_server_id), '') AS origin_backend_url,
+              COALESCE((SELECT pr2.acct FROM profiles pr2 WHERE pr2.profile_id = p.author_profile_id), '') AS account_acct,
+              COALESCE((SELECT vt2.code FROM visibility_types vt2 WHERE vt2.visibility_id = p.visibility_id), 'public') AS visibility,
+              COALESCE((SELECT ps2.favourites_count FROM post_stats ps2 WHERE ps2.post_id = p.post_id), 0) AS favourites_count,
+              COALESCE((SELECT ps2.reblogs_count FROM post_stats ps2 WHERE ps2.post_id = p.post_id), 0) AS reblogs_count,
+              COALESCE((SELECT ps2.replies_count FROM post_stats ps2 WHERE ps2.post_id = p.post_id), 0) AS replies_count
+            FROM posts p
+          ) s
+          LEFT JOIN ${sttCompat} stt
+            ON s.post_id = stt.post_id
+          LEFT JOIN posts_belonging_tags sbt
+            ON s.post_id = sbt.post_id
+          LEFT JOIN posts_mentions sm
+            ON s.post_id = sm.post_id
+          LEFT JOIN posts_backends pb
+            ON s.post_id = pb.post_id
+          LEFT JOIN posts_reblogs sr
+            ON s.post_id = sr.post_id
+          LEFT JOIN (
+            SELECT n2.*,
+              COALESCE((SELECT sv2.base_url FROM servers sv2 WHERE sv2.server_id = n2.server_id), '') AS backend_url,
+              COALESCE((SELECT nt2.code FROM notification_types nt2 WHERE nt2.notification_type_id = n2.notification_type_id), '') AS notification_type,
+              COALESCE((SELECT pr3.acct FROM profiles pr3 WHERE pr3.profile_id = n2.actor_profile_id), '') AS account_acct
+            FROM notifications n2
+          ) n ON 0 = 1
+          WHERE (${rewritten})
           UNION ALL
-          SELECT n.compositeKey, n.created_at_ms
-          FROM notifications n
-          -- Dummy joins: s.*/stt.*/sbt.*/sm.*/sb.*/sr.* columns resolve to NULL
-          LEFT JOIN statuses s
+          SELECT n.notification_id, n.created_at_ms
+          FROM (
+            SELECT n2.*,
+              COALESCE((SELECT sv2.base_url FROM servers sv2 WHERE sv2.server_id = n2.server_id), '') AS backend_url,
+              COALESCE((SELECT nt2.code FROM notification_types nt2 WHERE nt2.notification_type_id = n2.notification_type_id), '') AS notification_type,
+              COALESCE((SELECT pr3.acct FROM profiles pr3 WHERE pr3.profile_id = n2.actor_profile_id), '') AS account_acct
+            FROM notifications n2
+          ) n
+          LEFT JOIN (
+            SELECT p2.*,
+              COALESCE((SELECT sv3.base_url FROM servers sv3 WHERE sv3.server_id = p2.origin_server_id), '') AS origin_backend_url,
+              COALESCE((SELECT pr4.acct FROM profiles pr4 WHERE pr4.profile_id = p2.author_profile_id), '') AS account_acct
+            FROM posts p2
+          ) s ON 0 = 1
+          LEFT JOIN ${sttCompat} stt
             ON 0 = 1
-          LEFT JOIN statuses_timeline_types stt
+          LEFT JOIN posts_belonging_tags sbt
             ON 0 = 1
-          LEFT JOIN statuses_belonging_tags sbt
+          LEFT JOIN posts_mentions sm
             ON 0 = 1
-          LEFT JOIN statuses_mentions sm
+          LEFT JOIN posts_backends pb
             ON 0 = 1
-          LEFT JOIN statuses_backends sb
+          LEFT JOIN posts_reblogs sr
             ON 0 = 1
-          LEFT JOIN statuses_reblogs sr
-            ON 0 = 1
-          WHERE (${sanitized})
+          WHERE (${rewritten})
         )
         LIMIT 1;
       `
     } else if (isNotifQuery) {
-      // notifications テーブル対象のクエリ
       sql = `
         EXPLAIN
-        SELECT DISTINCT n.compositeKey
-        FROM notifications n
-        WHERE (${sanitized})
+        SELECT DISTINCT n.notification_id
+        FROM (
+          SELECT n2.*,
+            COALESCE((SELECT sv2.base_url FROM servers sv2 WHERE sv2.server_id = n2.server_id), '') AS backend_url,
+            COALESCE((SELECT nt2.code FROM notification_types nt2 WHERE nt2.notification_type_id = n2.notification_type_id), '') AS notification_type,
+            COALESCE((SELECT pr3.acct FROM profiles pr3 WHERE pr3.profile_id = n2.actor_profile_id), '') AS account_acct
+          FROM notifications n2
+        ) n
+        WHERE (${rewritten})
         LIMIT 1;
       `
     } else {
-      // statuses テーブル対象のクエリ（v3: statuses_backends, v5: statuses_reblogs も LEFT JOIN）
       sql = `
         EXPLAIN
-        SELECT DISTINCT s.compositeKey
-        FROM statuses s
-        LEFT JOIN statuses_timeline_types stt
-          ON s.compositeKey = stt.compositeKey
-        LEFT JOIN statuses_belonging_tags sbt
-          ON s.compositeKey = sbt.compositeKey
-        LEFT JOIN statuses_mentions sm
-          ON s.compositeKey = sm.compositeKey
-        LEFT JOIN statuses_backends sb
-          ON s.compositeKey = sb.compositeKey
-        LEFT JOIN statuses_reblogs sr
-          ON s.compositeKey = sr.compositeKey
-        WHERE (${sanitized})
+        SELECT DISTINCT s.post_id
+        FROM (
+          SELECT p.*,
+            COALESCE((SELECT sv.base_url FROM servers sv WHERE sv.server_id = p.origin_server_id), '') AS origin_backend_url,
+            COALESCE((SELECT pr2.acct FROM profiles pr2 WHERE pr2.profile_id = p.author_profile_id), '') AS account_acct,
+            COALESCE((SELECT vt2.code FROM visibility_types vt2 WHERE vt2.visibility_id = p.visibility_id), 'public') AS visibility,
+            COALESCE((SELECT ps2.favourites_count FROM post_stats ps2 WHERE ps2.post_id = p.post_id), 0) AS favourites_count,
+            COALESCE((SELECT ps2.reblogs_count FROM post_stats ps2 WHERE ps2.post_id = p.post_id), 0) AS reblogs_count,
+            COALESCE((SELECT ps2.replies_count FROM post_stats ps2 WHERE ps2.post_id = p.post_id), 0) AS replies_count
+          FROM posts p
+        ) s
+        LEFT JOIN ${sttCompat} stt
+          ON s.post_id = stt.post_id
+        LEFT JOIN posts_belonging_tags sbt
+          ON s.post_id = sbt.post_id
+        LEFT JOIN posts_mentions sm
+          ON s.post_id = sm.post_id
+        LEFT JOIN posts_backends pb
+          ON s.post_id = pb.post_id
+        LEFT JOIN posts_reblogs sr
+          ON s.post_id = sr.post_id
+        WHERE (${rewritten})
         LIMIT 1;
       `
     }
@@ -796,7 +1147,7 @@ export async function getDistinctTags(): Promise<string[]> {
   try {
     const handle = await getSqliteDb()
     const rows = (await handle.execAsync(
-      'SELECT DISTINCT tag FROM statuses_belonging_tags ORDER BY tag;',
+      'SELECT DISTINCT tag FROM posts_belonging_tags ORDER BY tag;',
       { returnValue: 'resultRows' },
     )) as string[][]
     return rows.map((r) => r[0])
@@ -812,109 +1163,8 @@ export async function getDistinctTimelineTypes(): Promise<string[]> {
   try {
     const handle = await getSqliteDb()
     const rows = (await handle.execAsync(
-      'SELECT DISTINCT timelineType FROM statuses_timeline_types ORDER BY timelineType;',
+      'SELECT DISTINCT ck.code FROM timelines t INNER JOIN channel_kinds ck ON ck.channel_kind_id = t.channel_kind_id ORDER BY ck.code;',
       { returnValue: 'resultRows' },
-    )) as string[][]
-    return rows.map((r) => r[0])
-  } catch {
-    return []
-  }
-}
-
-/**
- * サンプル Status の JSON から全キーパスを再帰的に抽出する（補完用）
- *
- * 最新 N 件の Status JSON をパースし、存在するすべてのキーパスを
- * `$.key.subkey` 形式で返す。
- */
-export async function getJsonKeysFromSample(
-  sampleSize = 10,
-): Promise<string[]> {
-  try {
-    const handle = await getSqliteDb()
-    const rows = (await handle.execAsync(
-      `SELECT json FROM statuses ORDER BY created_at_ms DESC LIMIT ?;`,
-      { bind: [sampleSize], returnValue: 'resultRows' },
-    )) as string[][]
-
-    const paths = new Set<string>()
-
-    for (const row of rows) {
-      try {
-        const obj = JSON.parse(row[0]) as Record<string, unknown>
-        collectJsonPaths(obj, '$', paths)
-      } catch {
-        // skip malformed JSON
-      }
-    }
-
-    return Array.from(paths).sort()
-  } catch {
-    return []
-  }
-}
-
-/** JSON オブジェクトからキーパスを再帰収集するヘルパー（最大深度 4） */
-function collectJsonPaths(
-  obj: unknown,
-  prefix: string,
-  paths: Set<string>,
-  depth = 0,
-): void {
-  if (depth > 4 || obj == null) return
-
-  if (Array.isArray(obj)) {
-    paths.add(prefix)
-    // 配列の最初の要素だけ探索（構造サンプリング）
-    if (obj.length > 0 && typeof obj[0] === 'object' && obj[0] !== null) {
-      collectJsonPaths(obj[0], `${prefix}[0]`, paths, depth + 1)
-    }
-    return
-  }
-
-  if (typeof obj === 'object') {
-    for (const key of Object.keys(obj as Record<string, unknown>)) {
-      const childPath = `${prefix}.${key}`
-      const child = (obj as Record<string, unknown>)[key]
-      paths.add(childPath)
-      if (typeof child === 'object' && child !== null) {
-        collectJsonPaths(child, childPath, paths, depth + 1)
-      }
-    }
-    return
-  }
-
-  // プリミティブ値は末端パスとして追加済み
-}
-
-/**
- * 指定した JSON パスの値を DB からサンプル取得する（補完用）
- *
- * json_extract で値を抽出し、DISTINCT で重複排除。
- * 文字列値のみ返す（数値・null・配列/オブジェクトは除外）。
- */
-export async function getDistinctJsonValues(
-  jsonPath: string,
-  maxResults = 20,
-): Promise<string[]> {
-  try {
-    const handle = await getSqliteDb()
-
-    // パスのバリデーション: $. で始まり、正しいJSONパス構文のみ許可
-    // [N] (配列アクセス)、.key (オブジェクトキー) のみ許可。連続ドットや不正ブラケットを拒否
-    if (!/^\$(\.[a-zA-Z_]\w*|\[\d+\])*$/.test(jsonPath)) return []
-
-    const rows = (await handle.execAsync(
-      `WITH vals AS (
-         SELECT json_extract(json, ?) AS val
-         FROM statuses
-       )
-       SELECT DISTINCT val
-       FROM vals
-       WHERE val IS NOT NULL AND typeof(val) = 'text' AND val != '' AND val != '[]'
-       ORDER BY val
-       LIMIT ?;`,
-      { bind: [jsonPath, maxResults], returnValue: 'resultRows' },
     )) as string[][]
     return rows.map((r) => r[0])
   } catch {
@@ -929,25 +1179,16 @@ export async function getDistinctJsonValues(
  */
 /** 許可リスト（安全なテーブル＋カラムの組み合わせ） */
 const ALLOWED_COLUMN_VALUES: Record<string, string[]> = {
-  notifications: [
-    'backendUrl',
-    'notification_type',
-    'status_id',
-    'account_acct',
-  ],
-  statuses: [
-    'backendUrl',
-    'uri',
-    'account_acct',
-    'account_id',
-    'visibility',
-    'language',
-  ],
-  statuses_backends: ['backendUrl', 'local_id'],
-  statuses_belonging_tags: ['tag'],
-  statuses_mentions: ['acct'],
-  statuses_reblogs: ['original_uri', 'reblogger_acct'],
-  statuses_timeline_types: ['timelineType'],
+  channel_kinds: ['code'],
+  notification_types: ['code'],
+  posts: ['object_uri', 'language'],
+  posts_backends: ['backendUrl', 'local_id'],
+  posts_belonging_tags: ['tag'],
+  posts_mentions: ['acct'],
+  posts_reblogs: ['original_uri', 'reblogger_acct'],
+  profiles: ['acct'],
+  servers: ['base_url'],
+  visibility_types: ['code'],
 }
 
 /** エイリアスからテーブル名・カラム名へのマッピング */
@@ -956,56 +1197,76 @@ export const ALIAS_TO_TABLE: Record<
   { table: string; columns: Record<string, string> }
 > = {
   n: {
-    columns: {
-      account_acct: 'account_acct',
-      backendUrl: 'backendUrl',
-      notification_type: 'notification_type',
-      status_id: 'status_id',
-    },
+    columns: {},
     table: 'notifications',
+  },
+  pe: {
+    columns: {
+      engagement_type_id: 'engagement_type_id',
+    },
+    table: 'post_engagements',
   },
   s: {
     columns: {
-      account_acct: 'account_acct',
-      account_id: 'account_id',
-      backendUrl: 'backendUrl',
       language: 'language',
-      uri: 'uri',
-      visibility: 'visibility',
+      object_uri: 'object_uri',
     },
-    table: 'statuses',
+    table: 'posts',
   },
   sb: {
     columns: {
+      backend_url: 'backendUrl',
       backendUrl: 'backendUrl',
       local_id: 'local_id',
     },
-    table: 'statuses_backends',
+    table: 'posts_backends',
   },
   sbt: {
     columns: {
       tag: 'tag',
     },
-    table: 'statuses_belonging_tags',
+    table: 'posts_belonging_tags',
   },
   sm: {
     columns: {
       acct: 'acct',
     },
-    table: 'statuses_mentions',
+    table: 'posts_mentions',
   },
   sr: {
     columns: {
       original_uri: 'original_uri',
       reblogger_acct: 'reblogger_acct',
     },
-    table: 'statuses_reblogs',
+    table: 'posts_reblogs',
   },
   stt: {
     columns: {
-      timelineType: 'timelineType',
+      timelineType: 'code',
     },
-    table: 'statuses_timeline_types',
+    table: 'channel_kinds',
+  },
+}
+
+/**
+ * 互換カラム用のテーブル・カラムオーバーライド
+ *
+ * v13 で別テーブルに移動したカラムの値補完を実現するために、
+ * エイリアス＋カラム名から実際のテーブル・カラムを解決する。
+ */
+const COLUMN_TABLE_OVERRIDE: Record<
+  string,
+  Record<string, { table: string; column: string }>
+> = {
+  n: {
+    account_acct: { column: 'acct', table: 'profiles' },
+    backend_url: { column: 'base_url', table: 'servers' },
+    notification_type: { column: 'code', table: 'notification_types' },
+  },
+  s: {
+    account_acct: { column: 'acct', table: 'profiles' },
+    origin_backend_url: { column: 'backendUrl', table: 'posts_backends' },
+    visibility: { column: 'code', table: 'visibility_types' },
   },
 }
 
@@ -1040,11 +1301,23 @@ export async function searchDistinctColumnValues(
   prefix: string,
   maxResults = 20,
 ): Promise<string[]> {
-  const mapping = ALIAS_TO_TABLE[alias]
-  if (!mapping) return []
-  const realColumn = mapping.columns[column]
-  if (!realColumn) return []
-  const { table } = mapping
+  // 互換カラムのオーバーライドを優先
+  const override = COLUMN_TABLE_OVERRIDE[alias]?.[column]
+  let table: string
+  let realColumn: string
+
+  if (override) {
+    table = override.table
+    realColumn = override.column
+  } else {
+    const mapping = ALIAS_TO_TABLE[alias]
+    if (!mapping) return []
+    const col = mapping.columns[column]
+    if (!col) return []
+    table = mapping.table
+    realColumn = col
+  }
+
   if (!ALLOWED_COLUMN_VALUES[table]?.includes(realColumn)) return []
 
   try {

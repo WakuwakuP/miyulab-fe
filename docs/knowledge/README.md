@@ -132,6 +132,22 @@
 - パフォーマンステスト
 - ビジュアルリグレッションテスト
 
+### SQLite WASM関連
+
+#### [16. SQLite WASM × Next.js トラブルシューティングガイド](./16-sqlite-wasm-nextjs.md)
+
+- WASM バイナリの配信と読み込み（`public/` 配置 + `wasmBinary` 直接渡し）
+- Turbopack による `import.meta.url` 書き換え問題と回避策
+- Web Worker の初期化プロトコルとタイムアウト
+- OPFS (Origin Private File System) の VFS 優先順位とフォールバック
+- セキュリティヘッダ（COOP / COEP）の設定判断
+- webpack / Turbopack のバンドル設定（Node.js モジュールの fallback）
+- Server Component / SSR との衝突回避
+- フォールバック戦略と `DbHandle` による抽象化
+- 型定義の不整合への対処
+- デバッグ手法（スローログ、Worker デバッグ、OPFS 確認）
+- トラブルシューティング早見表
+
 ## 🎯 実装時の基本方針
 
 ### 1. コンポーネント設計

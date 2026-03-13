@@ -17,7 +17,6 @@ export type { SqliteStoredNotification } from './notificationStore'
 export {
   addNotification,
   bulkAddNotifications,
-  extractNotificationColumns,
   getNotifications,
   updateNotificationStatusAction,
 } from './notificationStore'

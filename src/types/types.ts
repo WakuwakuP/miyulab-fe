@@ -74,7 +74,7 @@ export type AccountFilter = {
 export type TimelineType = 'home' | 'local' | 'public' | 'notification' | 'tag'
 
 /**
- * 取得するタイムラインの種類（statuses_timeline_types テーブルの値）
+ * 取得するタイムラインの種類（timelines + channel_kinds テーブルの値）
  *
  * TimelineType から 'notification' と 'tag' を除いたサブセット。
  * 通常UIでどのタイムラインを取得するか選択するために使用する。
@@ -156,12 +156,12 @@ export type TimelineConfigV2 = {
   /**
    * カスタム SQL WHERE 句（advanced option）
    *
-   * statuses (s), statuses_timeline_types (stt),
-   * statuses_belonging_tags (sbt), statuses_mentions (sm),
-   * statuses_backends (sb), notifications (n) テーブルを参照可能。
+   * posts (s), timeline_items/timelines/channel_kinds (stt),
+   * posts_belonging_tags (sbt), posts_mentions (sm),
+   * posts_backends (sb), notifications (n) テーブルを参照可能。
    * LIMIT / OFFSET は自動設定されるため指定不要。
    *
-   * statuses 関連テーブル (s, stt, sbt, sm, sb) と notifications テーブル (n) を
+   * posts 関連テーブル (s, stt, sbt, sm, sb) と notifications テーブル (n) を
    * OR 条件で結合する混合クエリにも対応。例:
    * `stt.timelineType = 'home' OR n.notification_type IN ('favourite','reblog')`
    */
@@ -309,6 +309,16 @@ export type TimelineConfigV2 = {
    * @example ['home', 'local'] // ホームとローカルの投稿を表示
    */
   timelineTypes?: StatusTimelineType[]
+
+  /**
+   * フォロー中のアカウントの投稿のみ表示するか
+   *
+   * true にすると、follows テーブルに登録されたアカウントの投稿のみを表示する。
+   * バックエンドURLに紐づくローカルアカウントのフォロー情報を使用する。
+   *
+   * @default false
+   */
+  followsOnly?: boolean
 }
 
 export type TimelineSettingsV2 = {

@@ -13,6 +13,11 @@
 
 import type { App, TimelineConfigV2 } from 'types/types'
 import { getSqliteDb } from 'util/db/sqlite/connection'
+import {
+  NOTIFICATION_BASE_JOINS,
+  NOTIFICATION_SELECT,
+} from 'util/db/sqlite/notificationStore'
+import { STATUS_BASE_JOINS, STATUS_SELECT } from 'util/db/sqlite/statusStore'
 import { TIMELINE_QUERY_LIMIT } from 'util/environment'
 import { buildFilterConditions } from 'util/hooks/timelineFilterBuilder'
 import {
@@ -26,36 +31,73 @@ import {
 } from 'util/timelineConfigValidator'
 
 // ================================================================
+// 互換サブクエリ: 旧カラム名をカスタム WHERE 句で使えるようにする
+// ================================================================
+
+// ================================================================
+// 互換サブクエリ: 旧カラム名をカスタム WHERE 句で使えるようにする
+// ================================================================
+
+const STATUS_COMPAT_FROM = `(
+      SELECT p.*,
+        COALESCE(sv_c.base_url, '') AS origin_backend_url,
+        COALESCE(pr_c.acct, '') AS account_acct,
+        '' AS account_id,
+        COALESCE(vt_c.code, 'public') AS visibility,
+        NULL AS reblog_of_id,
+        COALESCE(ps_c.favourites_count, 0) AS favourites_count,
+        COALESCE(ps_c.reblogs_count, 0) AS reblogs_count,
+        COALESCE(ps_c.replies_count, 0) AS replies_count
+      FROM posts p
+      LEFT JOIN servers sv_c ON sv_c.server_id = p.origin_server_id
+      LEFT JOIN profiles pr_c ON pr_c.profile_id = p.author_profile_id
+      LEFT JOIN visibility_types vt_c ON vt_c.visibility_id = p.visibility_id
+      LEFT JOIN post_stats ps_c ON ps_c.post_id = p.post_id
+    ) s`
+
+const NOTIF_COMPAT_FROM = `(
+      SELECT n2.*,
+        COALESCE(sv_nc.base_url, '') AS backend_url,
+        COALESCE(nt_nc.code, '') AS notification_type,
+        COALESCE(pr_nc.acct, '') AS account_acct
+      FROM notifications n2
+      LEFT JOIN servers sv_nc ON sv_nc.server_id = n2.server_id
+      LEFT JOIN notification_types nt_nc ON nt_nc.notification_type_id = n2.notification_type_id
+      LEFT JOIN profiles pr_nc ON pr_nc.profile_id = n2.actor_profile_id
+    ) n`
+
+// ================================================================
 // 混合クエリ用の空サブクエリ定数（useCustomQueryTimeline と同一）
 // ================================================================
 
 const EMPTY_N = `(SELECT
-      NULL AS compositeKey, NULL AS backendUrl,
-      NULL AS notification_type, NULL AS status_id,
-      NULL AS account_acct, NULL AS created_at_ms,
-      NULL AS storedAt, NULL AS json
+      NULL AS notification_id, NULL AS server_id, NULL AS local_id,
+      NULL AS notification_type_id, NULL AS actor_profile_id,
+      NULL AS related_post_id, NULL AS created_at_ms,
+      NULL AS stored_at, NULL AS is_read,
+      NULL AS backend_url, NULL AS notification_type, NULL AS account_acct
     LIMIT 0)`
 
 const EMPTY_S = `(SELECT
-      NULL AS compositeKey, NULL AS backendUrl,
-      NULL AS created_at_ms, NULL AS storedAt,
-      NULL AS uri, NULL AS account_acct, NULL AS account_id,
-      NULL AS visibility, NULL AS language,
-      NULL AS has_media, NULL AS media_count,
-      NULL AS is_reblog, NULL AS reblog_of_id, NULL AS reblog_of_uri,
-      NULL AS is_sensitive, NULL AS has_spoiler,
-      NULL AS in_reply_to_id,
-      NULL AS favourites_count, NULL AS reblogs_count,
-      NULL AS replies_count, NULL AS json
+      NULL AS post_id, NULL AS object_uri, NULL AS origin_server_id,
+      NULL AS author_profile_id, NULL AS created_at_ms, NULL AS stored_at,
+      NULL AS visibility_id, NULL AS language, NULL AS content_html,
+      NULL AS spoiler_text, NULL AS canonical_url, NULL AS has_media,
+      NULL AS media_count, NULL AS is_reblog, NULL AS reblog_of_uri,
+      NULL AS is_sensitive, NULL AS has_spoiler, NULL AS in_reply_to_id,
+      NULL AS is_local_only, NULL AS edited_at,
+      NULL AS origin_backend_url, NULL AS account_acct, NULL AS account_id,
+      NULL AS visibility, NULL AS reblog_of_id,
+      NULL AS favourites_count, NULL AS reblogs_count, NULL AS replies_count
     LIMIT 0)`
 
-const EMPTY_STT = '(SELECT NULL AS compositeKey, NULL AS timelineType LIMIT 0)'
-const EMPTY_SBT = '(SELECT NULL AS compositeKey, NULL AS tag LIMIT 0)'
-const EMPTY_SM = '(SELECT NULL AS compositeKey, NULL AS acct LIMIT 0)'
+const EMPTY_STT = '(SELECT NULL AS post_id, NULL AS timelineType LIMIT 0)'
+const EMPTY_SBT = '(SELECT NULL AS post_id, NULL AS tag LIMIT 0)'
+const EMPTY_SM = '(SELECT NULL AS post_id, NULL AS acct LIMIT 0)'
 const EMPTY_SB =
-  '(SELECT NULL AS compositeKey, NULL AS backendUrl, NULL AS local_id LIMIT 0)'
+  '(SELECT NULL AS post_id, NULL AS backendUrl, NULL AS local_id LIMIT 0)'
 const EMPTY_SR =
-  '(SELECT NULL AS compositeKey, NULL AS original_uri, NULL AS reblogger_acct, NULL AS reblogged_at_ms LIMIT 0)'
+  '(SELECT NULL AS post_id, NULL AS original_uri, NULL AS reblogger_acct, NULL AS reblogged_at_ms LIMIT 0)'
 
 /**
  * タイムライン設定に対する EXPLAIN QUERY PLAN を実行し、結果を文字列で返す
@@ -178,21 +220,23 @@ function buildFilteredTimelineQuery(
   const backendPlaceholders = targetBackendUrls.map(() => '?').join(',')
 
   const whereConditions = [
-    'stt.timelineType = ?',
-    `sb.backendUrl IN (${backendPlaceholders})`,
+    'ck.code = ?',
+    `pb.backendUrl IN (${backendPlaceholders})`,
     ...filterConditions,
   ]
 
   const sql = `
-    SELECT s.compositeKey, MIN(sb.backendUrl) AS backendUrl,
-           s.created_at_ms, s.storedAt, s.json
-    FROM statuses s
-    INNER JOIN statuses_timeline_types stt
-      ON s.compositeKey = stt.compositeKey
-    INNER JOIN statuses_backends sb
-      ON s.compositeKey = sb.compositeKey
+    SELECT ${STATUS_SELECT}
+    FROM posts s
+    ${STATUS_BASE_JOINS}
+    INNER JOIN timeline_items ti
+      ON s.post_id = ti.post_id
+    INNER JOIN timelines t
+      ON t.timeline_id = ti.timeline_id
+    INNER JOIN channel_kinds ck
+      ON ck.channel_kind_id = t.channel_kind_id
     WHERE ${whereConditions.join('\n      AND ')}
-    GROUP BY s.compositeKey
+    GROUP BY s.post_id
     ORDER BY s.created_at_ms DESC
     LIMIT ?;
   `
@@ -232,21 +276,19 @@ function buildTagTimelineQuery(
 
   if (tagMode === 'or') {
     const whereConditions = [
-      `sbt.tag IN (${tagPlaceholders})`,
-      `sb.backendUrl IN (${backendPlaceholders})`,
+      `pbt.tag IN (${tagPlaceholders})`,
+      `pb.backendUrl IN (${backendPlaceholders})`,
       ...filterConditions,
     ]
 
     const sql = `
-      SELECT s.compositeKey, MIN(sb.backendUrl) AS backendUrl,
-             s.created_at_ms, s.storedAt, s.json
-      FROM statuses s
-      INNER JOIN statuses_belonging_tags sbt
-        ON s.compositeKey = sbt.compositeKey
-      INNER JOIN statuses_backends sb
-        ON s.compositeKey = sb.compositeKey
+      SELECT ${STATUS_SELECT}
+      FROM posts s
+      ${STATUS_BASE_JOINS}
+      INNER JOIN posts_belonging_tags pbt
+        ON s.post_id = pbt.post_id
       WHERE ${whereConditions.join('\n        AND ')}
-      GROUP BY s.compositeKey
+      GROUP BY s.post_id
       ORDER BY s.created_at_ms DESC
       LIMIT ?;
     `
@@ -261,22 +303,20 @@ function buildTagTimelineQuery(
 
   // AND mode
   const whereConditions = [
-    `sbt.tag IN (${tagPlaceholders})`,
-    `sb.backendUrl IN (${backendPlaceholders})`,
+    `pbt.tag IN (${tagPlaceholders})`,
+    `pb.backendUrl IN (${backendPlaceholders})`,
     ...filterConditions,
   ]
 
   const sql = `
-    SELECT s.compositeKey, MIN(sb.backendUrl) AS backendUrl,
-           s.created_at_ms, s.storedAt, s.json
-    FROM statuses s
-    INNER JOIN statuses_belonging_tags sbt
-      ON s.compositeKey = sbt.compositeKey
-    INNER JOIN statuses_backends sb
-      ON s.compositeKey = sb.compositeKey
+    SELECT ${STATUS_SELECT}
+    FROM posts s
+    ${STATUS_BASE_JOINS}
+    INNER JOIN posts_belonging_tags pbt
+      ON s.post_id = pbt.post_id
     WHERE ${whereConditions.join('\n        AND ')}
-    GROUP BY s.compositeKey
-    HAVING COUNT(DISTINCT sbt.tag) = ?
+    GROUP BY s.post_id
+    HAVING COUNT(DISTINCT pbt.tag) = ?
     ORDER BY s.created_at_ms DESC
     LIMIT ?;
   `
@@ -308,22 +348,23 @@ function buildNotificationQuery(
   const binds: (string | number)[] = []
 
   const placeholders = targetBackendUrls.map(() => '?').join(',')
-  conditions.push(`backendUrl IN (${placeholders})`)
+  conditions.push(`sv.base_url IN (${placeholders})`)
   binds.push(...targetBackendUrls)
 
   const notificationFilter = config.notificationFilter
   if (notificationFilter != null && notificationFilter.length > 0) {
     const typePlaceholders = notificationFilter.map(() => '?').join(',')
-    conditions.push(`notification_type IN (${typePlaceholders})`)
+    conditions.push(`nt.code IN (${typePlaceholders})`)
     binds.push(...notificationFilter)
   }
 
   const whereClause = conditions.join(' AND ')
   const sql = `
-    SELECT compositeKey, backendUrl, created_at_ms, storedAt, json
-    FROM notifications
+    SELECT ${NOTIFICATION_SELECT}
+    FROM notifications n
+    ${NOTIFICATION_BASE_JOINS}
     WHERE ${whereClause}
-    ORDER BY created_at_ms DESC
+    ORDER BY n.created_at_ms DESC
     LIMIT ?;
   `
   binds.push(TIMELINE_QUERY_LIMIT)
@@ -408,40 +449,37 @@ function buildCustomMixedQuery(
   minMediaCount: number | undefined,
 ): { sql: string; binds: (string | number)[] } {
   const refs = detectReferencedAliases(sanitized)
+  const rewrittenWhere = sanitized
+    .replace(/\bsb\./g, 'pb.')
+    .replace(/\bpb\.backend_url\b/g, 'pb.backendUrl')
 
   const statusJoinLines: string[] = []
   if (refs.stt)
     statusJoinLines.push(
-      'LEFT JOIN statuses_timeline_types stt\n              ON s.compositeKey = stt.compositeKey',
+      `LEFT JOIN (SELECT ti2.post_id, ck2.code AS timelineType FROM timeline_items ti2 INNER JOIN timelines t2 ON t2.timeline_id = ti2.timeline_id INNER JOIN channel_kinds ck2 ON ck2.channel_kind_id = t2.channel_kind_id WHERE ti2.post_id IS NOT NULL) stt\n              ON s.post_id = stt.post_id`,
     )
   if (refs.sbt)
     statusJoinLines.push(
-      'LEFT JOIN statuses_belonging_tags sbt\n              ON s.compositeKey = sbt.compositeKey',
+      'LEFT JOIN posts_belonging_tags sbt\n              ON s.post_id = sbt.post_id',
     )
   if (refs.sm)
     statusJoinLines.push(
-      'LEFT JOIN statuses_mentions sm\n              ON s.compositeKey = sm.compositeKey',
-    )
-  if (refs.sb)
-    statusJoinLines.push(
-      'LEFT JOIN statuses_backends sb\n              ON s.compositeKey = sb.compositeKey',
+      'LEFT JOIN posts_mentions sm\n              ON s.post_id = sm.post_id',
     )
   if (refs.sr)
     statusJoinLines.push(
-      'LEFT JOIN statuses_reblogs sr\n              ON s.compositeKey = sr.compositeKey',
+      'LEFT JOIN posts_reblogs sr\n              ON s.post_id = sr.post_id',
+    )
+  if (refs.pe)
+    statusJoinLines.push(
+      'LEFT JOIN post_engagements pe\n              ON s.post_id = pe.post_id',
     )
   statusJoinLines.push(`LEFT JOIN ${EMPTY_N} n ON 1 = 1`)
 
-  const statusJoinsClause =
+  const statusExtraJoins =
     statusJoinLines.length > 0
       ? `\n            ${statusJoinLines.join('\n            ')}`
       : ''
-
-  const hasMultiRowJoin = refs.stt || refs.sbt || refs.sm || refs.sb
-  const backendSelect = refs.sb ? 'MIN(sb.backendUrl)' : 's.backendUrl'
-  const groupByClause = hasMultiRowJoin
-    ? '\n            GROUP BY s.compositeKey'
-    : ''
 
   const notifDummyJoins = [
     `LEFT JOIN ${EMPTY_S} s ON 1 = 1`,
@@ -463,21 +501,23 @@ function buildCustomMixedQuery(
 
   const binds: (string | number)[] = [...statusMediaBinds, TIMELINE_QUERY_LIMIT]
 
+  const rewrittenNotifWhere = sanitized
+
+  // EXPLAIN 用に status + notification の両クエリを UNION ALL で結合
   const sql = `
-    SELECT compositeKey, backendUrl, created_at_ms, storedAt, json, _type
+    SELECT post_id, created_at_ms
     FROM (
-      SELECT s.compositeKey, ${backendSelect} AS backendUrl,
-             s.created_at_ms, s.storedAt, s.json,
-             'status' AS _type
-      FROM statuses s${statusJoinsClause}
-      WHERE (${sanitized})${statusMediaConditions}${groupByClause}
+      SELECT s.post_id, s.created_at_ms
+      FROM ${STATUS_COMPAT_FROM}
+      ${STATUS_BASE_JOINS}${statusExtraJoins}
+      WHERE (${rewrittenWhere})${statusMediaConditions}
+      GROUP BY s.post_id
       UNION ALL
-      SELECT n.compositeKey, n.backendUrl,
-             n.created_at_ms, n.storedAt, n.json,
-             'notification' AS _type
-      FROM notifications n
-      ${notifDummyJoins}
-      WHERE (${sanitized})
+      SELECT n.notification_id, n.created_at_ms
+      FROM ${NOTIF_COMPAT_FROM}
+      ${NOTIFICATION_BASE_JOINS}
+            ${notifDummyJoins}
+      WHERE (${rewrittenNotifWhere})
     )
     ORDER BY created_at_ms DESC
     LIMIT ?;
@@ -492,9 +532,9 @@ function buildCustomNotificationQuery(sanitized: string): {
 } {
   const binds: (string | number)[] = [TIMELINE_QUERY_LIMIT]
   const sql = `
-    SELECT n.compositeKey, n.backendUrl,
-           n.created_at_ms, n.storedAt, n.json
-    FROM notifications n
+    SELECT ${NOTIFICATION_SELECT}
+    FROM ${NOTIF_COMPAT_FROM}
+    ${NOTIFICATION_BASE_JOINS}
     WHERE (${sanitized})
     ORDER BY n.created_at_ms DESC
     LIMIT ?;
@@ -508,33 +548,32 @@ function buildCustomStatusQuery(
   minMediaCount: number | undefined,
 ): { sql: string; binds: (string | number)[] } {
   const refs = detectReferencedAliases(sanitized)
+  const rewrittenWhere = sanitized
+    .replace(/\bsb\./g, 'pb.')
+    .replace(/\bpb\.backend_url\b/g, 'pb.backendUrl')
 
   const joinLines: string[] = []
   if (refs.stt)
     joinLines.push(
-      'LEFT JOIN statuses_timeline_types stt\n          ON s.compositeKey = stt.compositeKey',
+      `LEFT JOIN (SELECT ti2.post_id, ck2.code AS timelineType FROM timeline_items ti2 INNER JOIN timelines t2 ON t2.timeline_id = ti2.timeline_id INNER JOIN channel_kinds ck2 ON ck2.channel_kind_id = t2.channel_kind_id WHERE ti2.post_id IS NOT NULL) stt\n          ON s.post_id = stt.post_id`,
     )
   if (refs.sbt)
     joinLines.push(
-      'LEFT JOIN statuses_belonging_tags sbt\n          ON s.compositeKey = sbt.compositeKey',
+      'LEFT JOIN posts_belonging_tags sbt\n          ON s.post_id = sbt.post_id',
     )
   if (refs.sm)
     joinLines.push(
-      'LEFT JOIN statuses_mentions sm\n          ON s.compositeKey = sm.compositeKey',
-    )
-  if (refs.sb)
-    joinLines.push(
-      'LEFT JOIN statuses_backends sb\n          ON s.compositeKey = sb.compositeKey',
+      'LEFT JOIN posts_mentions sm\n          ON s.post_id = sm.post_id',
     )
   if (refs.sr)
     joinLines.push(
-      'LEFT JOIN statuses_reblogs sr\n          ON s.compositeKey = sr.compositeKey',
+      'LEFT JOIN posts_reblogs sr\n          ON s.post_id = sr.post_id',
+    )
+  if (refs.pe)
+    joinLines.push(
+      'LEFT JOIN post_engagements pe\n          ON s.post_id = pe.post_id',
     )
 
-  const hasMultiRowJoin = refs.stt || refs.sbt || refs.sm || refs.sb
-  const backendSelect = refs.sb
-    ? 'MIN(sb.backendUrl) AS backendUrl'
-    : 's.backendUrl'
   const joinsClause =
     joinLines.length > 0 ? `\n      ${joinLines.join('\n      ')}` : ''
 
@@ -551,10 +590,11 @@ function buildCustomStatusQuery(
   const binds: (string | number)[] = [...additionalBinds, TIMELINE_QUERY_LIMIT]
 
   const sql = `
-    SELECT s.compositeKey, ${backendSelect},
-           s.created_at_ms, s.storedAt, s.json
-    FROM statuses s${joinsClause}
-    WHERE (${sanitized})${additionalConditions}${hasMultiRowJoin ? '\n      GROUP BY s.compositeKey' : ''}
+    SELECT ${STATUS_SELECT}
+    FROM ${STATUS_COMPAT_FROM}
+    ${STATUS_BASE_JOINS}${joinsClause}
+    WHERE (${rewrittenWhere})${additionalConditions}
+    GROUP BY s.post_id
     ORDER BY s.created_at_ms DESC
     LIMIT ?;
   `
