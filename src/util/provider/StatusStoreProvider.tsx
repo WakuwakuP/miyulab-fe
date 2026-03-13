@@ -12,6 +12,7 @@ import {
 } from 'react'
 import type { App } from 'types/types'
 import { startPeriodicCleanup } from 'util/db/sqlite/cleanup'
+import { startPeriodicExport } from 'util/db/sqlite/dbExport'
 import { syncFollows } from 'util/db/sqlite/followStore'
 import { migrateFromIndexedDb } from 'util/db/sqlite/migration'
 import {
@@ -228,11 +229,13 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
     }
     if (apps.length <= 0) return
 
-    // IndexedDB → SQLite マイグレーション完了後に定期クリーンアップを開始
+    // IndexedDB → SQLite マイグレーション完了後に定期クリーンアップと定期エクスポートを開始
     let stopCleanup: (() => void) | undefined
+    let stopExport: (() => void) | undefined
     migrateFromIndexedDb()
       .then(() => {
         stopCleanup = startPeriodicCleanup()
+        stopExport = startPeriodicExport()
       })
       .catch((error) => {
         console.error('Migration failed:', error)
@@ -330,6 +333,7 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
     // クリーンアップ
     return () => {
       stopCleanup?.()
+      stopExport?.()
       for (const stream of streamsRef.current.values()) {
         stopStream(stream)
       }

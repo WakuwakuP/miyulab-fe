@@ -155,6 +155,12 @@ export type SyncFollowsRequest = {
   accountsJson: string[]
 }
 
+/** データベースを単一 sqlite3 ファイルとして OPFS にエクスポート */
+export type ExportDatabaseRequest = {
+  type: 'exportDatabase'
+  id: number
+}
+
 // ================================================================
 // マイグレーション用データ型
 // ================================================================
@@ -197,6 +203,7 @@ export type WorkerRequest =
   | EnforceMaxLengthRequest
   | MigrationWriteRequest
   | SyncFollowsRequest
+  | ExportDatabaseRequest
 
 // ================================================================
 // Worker → Main Thread (レスポンス)

@@ -1,21 +1,43 @@
 'use client'
 
-import { useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import type { NotificationAddAppIndex, TimelineConfigV2 } from 'types/types'
 import { getSqliteDb, subscribe } from 'util/db/sqlite/connection'
 import {
+  addNotification,
   NOTIFICATION_BASE_JOINS,
   NOTIFICATION_SELECT,
   rowToStoredNotification,
   type SqliteStoredNotification,
 } from 'util/db/sqlite/notificationStore'
 import { TIMELINE_QUERY_LIMIT } from 'util/environment'
+import { GetClient } from 'util/GetClient'
 import { useQueryDuration } from 'util/hooks/useQueryDuration'
 import { AppsContext } from 'util/provider/AppsProvider'
 import {
   normalizeBackendFilter,
   resolveBackendUrls,
 } from 'util/timelineConfigValidator'
+
+/** status を持つべき通知タイプ */
+const TYPES_WITH_STATUS = new Set([
+  'mention',
+  'favourite',
+  'reblog',
+  'reaction',
+  'poll_expired',
+  'status',
+  'emoji_reaction',
+  'poll',
+  'update',
+])
 
 /**
  * backendUrl から appIndex を算出するヘルパー
@@ -133,6 +155,34 @@ export function useNotifications(config?: TimelineConfigV2): {
     fetchData()
     return subscribe('notifications', fetchData)
   }, [fetchData])
+
+  // status が欠けている通知を検出して API から再取得
+  const fetchedIdsRef = useRef(new Set<string>())
+  useEffect(() => {
+    const missing = notifications.filter(
+      (n) =>
+        n.status === undefined &&
+        TYPES_WITH_STATUS.has(n.type) &&
+        !fetchedIdsRef.current.has(`${n.backendUrl}:${n.id}`),
+    )
+    if (missing.length === 0) return
+
+    for (const n of missing) {
+      const key = `${n.backendUrl}:${n.id}`
+      fetchedIdsRef.current.add(key)
+
+      const app = apps.find((a) => a.backendUrl === n.backendUrl)
+      if (!app) continue
+
+      const client = GetClient(app)
+      client
+        .getNotification(n.id)
+        .then((res) => addNotification(res.data, n.backendUrl))
+        .catch((err) =>
+          console.warn('Failed to fetch notification status:', err),
+        )
+    }
+  }, [notifications, apps])
 
   // appIndex を都度算出して付与し、解決できなかったレコードは除外する
   const data = useMemo(

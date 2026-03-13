@@ -139,7 +139,7 @@ CREATE TABLE post_custom_emojis (
 - [x] `shared.ts` — `syncPostCustomEmojis(db, postId, serverId, statusEmojis, accountEmojis)` ヘルパー追加
 - [x] `workerStatusStore.ts` — `handleUpsertStatus()` / `handleBulkUpsertStatuses()` に `syncPostCustomEmojis` 呼び出しを追加
 
-#### Step 3: 保存処理 — 表示名のカスタム絵文字
+#### Step 3: 保存処理 — 
 
 - [x] `workerStatusStore.ts` — `syncPostCustomEmojis` が `status.account.emojis` も `usage_context = 'account'` で保存
 - [ ] `workerNotificationStore.ts` — 通知の actor にも同様の処理を追加（未実装・通知投稿の絵文字は読み取り側で対応済み）
@@ -273,3 +273,4 @@ CREATE TABLE post_custom_emojis (
 | ~~低~~            | A-4: QueryEditor デッドコード | コード衛生                            | ✅ 完了     |
 | 低                | 9f: タグ履歴                  | 将来機能                              | 未着手      |
 | 低                | 9g: 取り込み管理              | 将来機能                              | 未着手      |
+表示名のカスタム絵文字
