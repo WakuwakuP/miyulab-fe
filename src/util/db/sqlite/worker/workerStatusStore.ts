@@ -930,11 +930,24 @@ export function handleUpdateStatus(
   backendUrl: string,
 ): HandlerResult {
   const status = JSON.parse(statusJson) as Entity.Status
-  const created_at_ms = new Date(status.created_at).getTime()
   const now = Date.now()
   const cols = extractStatusColumns(status)
 
-  const postId = resolvePostIdInternal(db, backendUrl, status.id)
+  // handleUpsertStatus と同様に URI → posts_backends の順で検索
+  let postId: number | null = null
+  const normalizedUri = status.uri?.trim() || ''
+  if (normalizedUri) {
+    const existingRows = db.exec(
+      'SELECT post_id FROM posts WHERE object_uri = ?;',
+      { bind: [normalizedUri], returnValue: 'resultRows' },
+    ) as number[][]
+    if (existingRows.length > 0) {
+      postId = existingRows[0][0]
+    }
+  }
+  if (postId === null) {
+    postId = resolvePostIdInternal(db, backendUrl, status.id)
+  }
   if (postId === null) return { changedTables: [] }
 
   const existing = db.exec('SELECT post_id FROM posts WHERE post_id = ?;', {
@@ -954,11 +967,11 @@ export function handleUpdateStatus(
       syncProfileCustomEmojis(db, profileId, serverId, status.account.emojis)
     }
 
+    // object_uri と created_at_ms は編集で変わらないため更新しない
+    // （handleUpsertStatus の UPDATE 分岐と同じ方針）
     db.exec(
       `UPDATE posts SET
-         created_at_ms      = ?,
          stored_at          = ?,
-         object_uri         = ?,
          visibility_id      = ?,
          language           = ?,
          content_html       = ?,
@@ -976,9 +989,7 @@ export function handleUpdateStatus(
        WHERE post_id = ?;`,
       {
         bind: [
-          created_at_ms,
           now,
-          cols.uri,
           visibilityId,
           cols.language,
           cols.content_html,
@@ -1012,7 +1023,19 @@ export function handleUpdateStatus(
     upsertMentionsInternal(db, postId, status.mentions)
     syncPostMedia(db, postId, status.media_attachments, status.sensitive)
     syncPostStats(db, postId, status)
+    syncPostCustomEmojis(
+      db,
+      postId,
+      serverId,
+      status.emojis ?? [],
+      status.account?.emojis ?? [],
+    )
     syncPollData(db, postId, status.poll)
+
+    // リブログの場合、元投稿も更新する
+    if (cols.is_reblog === 1 && status.reblog) {
+      ensureReblogOriginalPost(db, status.reblog, backendUrl, serverId, now)
+    }
 
     db.exec('COMMIT;')
   } catch (e) {

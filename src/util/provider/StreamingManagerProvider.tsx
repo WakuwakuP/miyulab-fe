@@ -12,7 +12,11 @@ import {
 } from 'react'
 import type { App, TimelineConfigV2 } from 'types/types'
 import type { TimelineType as DbTimelineType } from 'util/db/database'
-import { handleDeleteEvent, upsertStatus } from 'util/db/sqlite/statusStore'
+import {
+  handleDeleteEvent,
+  updateStatus,
+  upsertStatus,
+} from 'util/db/sqlite/statusStore'
 import { GetClient } from 'util/GetClient'
 import {
   getRetryDelay,
@@ -142,6 +146,10 @@ export const StreamingManagerProvider = ({
 
       stream.on('update', async (status: Entity.Status) => {
         await upsertStatus(status, backendUrl, timelineType, tag)
+      })
+
+      stream.on('status_update', async (status: Entity.Status) => {
+        await updateStatus(status, backendUrl)
       })
 
       stream.on('delete', async (id: string) => {
