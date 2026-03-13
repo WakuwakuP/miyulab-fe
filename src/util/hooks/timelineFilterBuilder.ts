@@ -122,5 +122,14 @@ export function buildFilterConditions(
     conditions.push(buildInstanceBlockCondition(tableAlias))
   }
 
+  // フォロー中のアカウントのみ表示
+  if (config.followsOnly) {
+    const placeholders = targetBackendUrls.map(() => '?').join(',')
+    conditions.push(
+      `${prefix}author_profile_id IN (SELECT f.target_profile_id FROM follows f INNER JOIN local_accounts la ON f.local_account_id = la.local_account_id INNER JOIN servers sv ON la.server_id = sv.server_id WHERE sv.base_url IN (${placeholders}))`,
+    )
+    binds.push(...targetBackendUrls)
+  }
+
   return { binds, conditions }
 }

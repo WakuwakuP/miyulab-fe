@@ -56,6 +56,7 @@ export interface SqliteStoredStatus extends Entity.Status {
  *   [27] engagements_csv [28] media_json       [29] mentions_json
  *   [30] timelineTypes   [31] belongingTags
  *   [32] status_emojis_json [33] account_emojis_json
+ *   [34] poll_json
  */
 export function rowToStoredStatus(
   row: (string | number | null)[],
@@ -68,6 +69,7 @@ export function rowToStoredStatus(
   const belongingTagsJson = row[31] as string | null
   const statusEmojisJson = row[32] as string | null
   const accountEmojisJson = row[33] as string | null
+  const pollJson = row[34] as string | null
 
   const belongingTags: string[] = belongingTagsJson
     ? (JSON.parse(belongingTagsJson) as (string | null)[]).filter(
@@ -93,6 +95,35 @@ export function rowToStoredStatus(
         url: e.url,
         visible_in_picker: e.visible_in_picker === 1,
       }))
+  }
+
+  const parsePoll = (json: string): Entity.Poll => {
+    const p = JSON.parse(json) as {
+      id: number
+      expires_at: string | null
+      multiple: number
+      votes_count: number
+      options: string | { title: string; votes_count: number | null }[]
+    }
+    const options =
+      typeof p.options === 'string'
+        ? (JSON.parse(p.options) as {
+            title: string
+            votes_count: number | null
+          }[])
+        : p.options
+    return {
+      expired: p.expires_at ? new Date(p.expires_at) < new Date() : false,
+      expires_at: p.expires_at,
+      id: String(p.id),
+      multiple: p.multiple === 1,
+      options: options.map((o) => ({
+        title: o.title,
+        votes_count: o.votes_count,
+      })),
+      voted: false,
+      votes_count: p.votes_count,
+    }
   }
 
   return {
@@ -156,7 +187,7 @@ export function rowToStoredStatus(
     muted: null,
     pinned: null,
     plain_content: null,
-    poll: null,
+    poll: pollJson ? parsePoll(pollJson) : null,
     // SqliteStoredStatus extra fields
     post_id: row[0] as number,
     quote: null,
@@ -218,7 +249,8 @@ export const STATUS_SELECT = `
   (SELECT json_group_array(ck.code) FROM timeline_items ti INNER JOIN timelines t ON t.timeline_id = ti.timeline_id INNER JOIN channel_kinds ck ON ck.channel_kind_id = t.channel_kind_id WHERE ti.post_id = s.post_id) AS timelineTypes,
   (SELECT json_group_array(tag) FROM posts_belonging_tags WHERE post_id = s.post_id) AS belongingTags,
   (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.image_url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM post_custom_emojis pce INNER JOIN custom_emojis ce ON pce.emoji_id = ce.emoji_id WHERE pce.post_id = s.post_id AND pce.usage_context = 'status') AS status_emojis_json,
-  (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.image_url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM post_custom_emojis pce INNER JOIN custom_emojis ce ON pce.emoji_id = ce.emoji_id WHERE pce.post_id = s.post_id AND pce.usage_context = 'account') AS account_emojis_json`
+  (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.image_url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM post_custom_emojis pce INNER JOIN custom_emojis ce ON pce.emoji_id = ce.emoji_id WHERE pce.post_id = s.post_id AND pce.usage_context = 'account') AS account_emojis_json,
+  (SELECT json_object('id', pl.poll_id, 'expires_at', pl.expires_at, 'multiple', pl.multiple, 'votes_count', pl.votes_count, 'options', (SELECT json_group_array(json_object('title', po.title, 'votes_count', po.votes_count)) FROM poll_options po WHERE po.poll_id = pl.poll_id ORDER BY po.option_index)) FROM polls pl WHERE pl.post_id = s.post_id) AS poll_json`
 
 /**
  * 正規化テーブルの基本 JOIN 句（profiles, visibility_types, posts_backends）

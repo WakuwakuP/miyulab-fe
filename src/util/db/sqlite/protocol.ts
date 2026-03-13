@@ -147,6 +147,14 @@ export type MigrationWriteRequest = {
   notificationBatches: MigrationNotificationBatch[]
 }
 
+/** フォロー関係の同期 */
+export type SyncFollowsRequest = {
+  type: 'syncFollows'
+  id: number
+  backendUrl: string
+  accountsJson: string[]
+}
+
 // ================================================================
 // マイグレーション用データ型
 // ================================================================
@@ -188,6 +196,7 @@ export type WorkerRequest =
   | UpdateNotificationStatusActionRequest
   | EnforceMaxLengthRequest
   | MigrationWriteRequest
+  | SyncFollowsRequest
 
 // ================================================================
 // Worker → Main Thread (レスポンス)

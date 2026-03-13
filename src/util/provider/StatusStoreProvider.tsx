@@ -12,6 +12,7 @@ import {
 } from 'react'
 import type { App } from 'types/types'
 import { startPeriodicCleanup } from 'util/db/sqlite/cleanup'
+import { syncFollows } from 'util/db/sqlite/followStore'
 import { migrateFromIndexedDb } from 'util/db/sqlite/migration'
 import {
   addNotification,
@@ -307,6 +308,20 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
               self.findIndex((e) => e.acct === element.acct) === idx,
           ),
         )
+
+        // フォロー一覧を同期（バックグラウンド）
+        client
+          .verifyAccountCredentials()
+          .then((res) =>
+            client.getAccountFollowing(res.data.id, {
+              get_all: true,
+              sleep_ms: 200,
+            }),
+          )
+          .then((res) => syncFollows(res.data, backendUrl))
+          .catch((error) => {
+            console.warn(`Failed to sync follows for ${backendUrl}:`, error)
+          })
       } catch (error) {
         console.error(`Failed to initialize for ${backendUrl}:`, error)
       }

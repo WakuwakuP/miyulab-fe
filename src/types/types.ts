@@ -309,6 +309,16 @@ export type TimelineConfigV2 = {
    * @example ['home', 'local'] // ホームとローカルの投稿を表示
    */
   timelineTypes?: StatusTimelineType[]
+
+  /**
+   * フォロー中のアカウントの投稿のみ表示するか
+   *
+   * true にすると、follows テーブルに登録されたアカウントの投稿のみを表示する。
+   * バックエンドURLに紐づくローカルアカウントのフォロー情報を使用する。
+   *
+   * @default false
+   */
+  followsOnly?: boolean
 }
 
 export type TimelineSettingsV2 = {

@@ -20,6 +20,7 @@ import {
   handleBulkUpsertStatuses,
   handleDeleteEvent,
   handleRemoveFromTimeline,
+  handleSyncFollows,
   handleUpdateStatus,
   handleUpdateStatusAction,
   handleUpsertStatus,
@@ -352,6 +353,13 @@ self.onmessage = (
           msg.statusBatches,
           msg.notificationBatches,
         )
+        sendResponse(msg.id, { ok: true }, r.changedTables)
+        break
+      }
+
+      // ---- Follows ----
+      case 'syncFollows': {
+        const r = handleSyncFollows(db, msg.backendUrl, msg.accountsJson)
         sendResponse(msg.id, { ok: true }, r.changedTables)
         break
       }

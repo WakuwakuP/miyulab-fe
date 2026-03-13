@@ -55,7 +55,8 @@ export const NOTIFICATION_SELECT = `
   rp.in_reply_to_id AS rp_in_reply_to_id,
   rp.edited_at AS rp_edited_at,
   (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.image_url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM post_custom_emojis pce INNER JOIN custom_emojis ce ON pce.emoji_id = ce.emoji_id WHERE pce.post_id = rp.post_id AND pce.usage_context = 'status') AS rp_status_emojis_json,
-  (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.image_url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM post_custom_emojis pce INNER JOIN custom_emojis ce ON pce.emoji_id = ce.emoji_id WHERE pce.post_id = rp.post_id AND pce.usage_context = 'account') AS rp_account_emojis_json`
+  (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.image_url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM post_custom_emojis pce INNER JOIN custom_emojis ce ON pce.emoji_id = ce.emoji_id WHERE pce.post_id = rp.post_id AND pce.usage_context = 'account') AS rp_account_emojis_json,
+  (SELECT json_object('id', pl.poll_id, 'expires_at', pl.expires_at, 'multiple', pl.multiple, 'votes_count', pl.votes_count, 'options', (SELECT json_group_array(json_object('title', po.title, 'votes_count', po.votes_count)) FROM poll_options po WHERE po.poll_id = pl.poll_id ORDER BY po.option_index)) FROM polls pl WHERE pl.post_id = rp.post_id) AS rp_poll_json`
 
 export const NOTIFICATION_BASE_JOINS = `
   LEFT JOIN servers sv ON n.server_id = sv.server_id
@@ -79,6 +80,7 @@ export const NOTIFICATION_BASE_JOINS = `
  *   [27] rp_author_avatar [28] rp_author_url  [29] rp_local_id
  *   [30] rp_in_reply_to_id [31] rp_edited_at
  *   [32] rp_status_emojis_json [33] rp_account_emojis_json
+ *   [34] rp_poll_json
  */
 export function rowToStoredNotification(
   row: (string | number | null)[],
@@ -106,10 +108,40 @@ export function rowToStoredNotification(
       }))
   }
 
+  const parsePoll = (json: string): Entity.Poll => {
+    const p = JSON.parse(json) as {
+      id: number
+      expires_at: string | null
+      multiple: number
+      votes_count: number
+      options: string | { title: string; votes_count: number | null }[]
+    }
+    const options =
+      typeof p.options === 'string'
+        ? (JSON.parse(p.options) as {
+            title: string
+            votes_count: number | null
+          }[])
+        : p.options
+    return {
+      expired: p.expires_at ? new Date(p.expires_at) < new Date() : false,
+      expires_at: p.expires_at,
+      id: String(p.id),
+      multiple: p.multiple === 1,
+      options: options.map((o) => ({
+        title: o.title,
+        votes_count: o.votes_count,
+      })),
+      voted: false,
+      votes_count: p.votes_count,
+    }
+  }
+
   if (rpPostId !== null) {
     const rpCreatedAtMs = row[20] as number | null
     const rpStatusEmojisJson = row[32] as string | null
     const rpAccountEmojisJson = row[33] as string | null
+    const rpPollJson = row[34] as string | null
     status = {
       account: {
         acct: (row[24] as string) ?? '',
@@ -155,7 +187,7 @@ export function rowToStoredNotification(
       muted: null,
       pinned: null,
       plain_content: null,
-      poll: null,
+      poll: rpPollJson ? parsePoll(rpPollJson) : null,
       quote: null,
       quote_approval: { automatic: [], current_user: '', manual: [] },
       reblog: null,

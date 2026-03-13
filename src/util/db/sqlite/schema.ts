@@ -32,7 +32,7 @@
 import type { SchemaDbHandle as DbHandle } from './worker/workerSchema'
 
 /** 現在のスキーマバージョン */
-const SCHEMA_VERSION = 16
+const SCHEMA_VERSION = 17
 
 /**
  * スキーマの初期化・マイグレーション
@@ -51,8 +51,8 @@ export function ensureSchema(handle: DbHandle): void {
   db.exec('BEGIN;')
   try {
     if (currentVersion < 1) {
-      // フレッシュインストール: v16 スキーマを直接作成
-      createSchemaV16(handle)
+      // フレッシュインストール: v17 スキーマを直接作成
+      createSchemaV17(handle)
     } else if (currentVersion < 2) {
       migrateV1toV2(handle)
       migrateV2toV3(handle)
@@ -68,6 +68,7 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV12toV13(handle)
       migrateV13toV14(handle)
       migrateV15toV16(handle)
+      migrateV16toV17(handle)
     } else if (currentVersion < 3) {
       migrateV2toV3(handle)
       migrateV3toV4(handle)
@@ -82,6 +83,7 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV12toV13(handle)
       migrateV13toV14(handle)
       migrateV15toV16(handle)
+      migrateV16toV17(handle)
     } else if (currentVersion < 4) {
       migrateV3toV4(handle)
       migrateV4toV5(handle)
@@ -95,6 +97,7 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV12toV13(handle)
       migrateV13toV14(handle)
       migrateV15toV16(handle)
+      migrateV16toV17(handle)
     } else if (currentVersion < 5) {
       migrateV4toV5(handle)
       migrateV5toV6(handle)
@@ -107,6 +110,7 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV12toV13(handle)
       migrateV13toV14(handle)
       migrateV15toV16(handle)
+      migrateV16toV17(handle)
     } else if (currentVersion < 6) {
       migrateV5toV6(handle)
       migrateV6toV7(handle)
@@ -118,6 +122,7 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV12toV13(handle)
       migrateV13toV14(handle)
       migrateV15toV16(handle)
+      migrateV16toV17(handle)
     } else if (currentVersion < 7) {
       migrateV6toV7(handle)
       migrateV7toV8(handle)
@@ -128,6 +133,7 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV12toV13(handle)
       migrateV13toV14(handle)
       migrateV15toV16(handle)
+      migrateV16toV17(handle)
     } else if (currentVersion < 8) {
       migrateV7toV8(handle)
       migrateV8toV9(handle)
@@ -137,6 +143,7 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV12toV13(handle)
       migrateV13toV14(handle)
       migrateV15toV16(handle)
+      migrateV16toV17(handle)
     } else if (currentVersion < 9) {
       migrateV8toV9(handle)
       migrateV9toV10(handle)
@@ -145,6 +152,7 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV12toV13(handle)
       migrateV13toV14(handle)
       migrateV15toV16(handle)
+      migrateV16toV17(handle)
     } else if (currentVersion < 10) {
       migrateV9toV10(handle)
       migrateV10toV11(handle)
@@ -152,26 +160,34 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV12toV13(handle)
       migrateV13toV14(handle)
       migrateV15toV16(handle)
+      migrateV16toV17(handle)
     } else if (currentVersion < 11) {
       migrateV10toV11(handle)
       migrateV11toV12(handle)
       migrateV12toV13(handle)
       migrateV13toV14(handle)
       migrateV15toV16(handle)
+      migrateV16toV17(handle)
     } else if (currentVersion < 12) {
       migrateV11toV12(handle)
       migrateV12toV13(handle)
       migrateV13toV14(handle)
       migrateV15toV16(handle)
+      migrateV16toV17(handle)
     } else if (currentVersion < 13) {
       migrateV12toV13(handle)
       migrateV13toV14(handle)
       migrateV15toV16(handle)
+      migrateV16toV17(handle)
     } else if (currentVersion < 14) {
       migrateV13toV14(handle)
       migrateV15toV16(handle)
+      migrateV16toV17(handle)
     } else if (currentVersion < 16) {
       migrateV15toV16(handle)
+      migrateV16toV17(handle)
+    } else if (currentVersion < 17) {
+      migrateV16toV17(handle)
     }
 
     db.exec(`PRAGMA user_version = ${SCHEMA_VERSION};`)
@@ -192,10 +208,11 @@ export function ensureSchema(handle: DbHandle): void {
  * v13 スキーマから posts_timeline_types を廃止し、
  * timelines + timeline_items + feed_events テーブルを導入。
  */
-function createSchemaV16(handle: DbHandle): void {
+function createSchemaV17(handle: DbHandle): void {
   createSchemaV13(handle)
   migrateV13toV14(handle)
   migrateV15toV16(handle)
+  migrateV16toV17(handle)
 }
 
 // ================================================================
@@ -2360,6 +2377,33 @@ function migrateV15toV16(handle: DbHandle): void {
   )
   db.exec(
     'CREATE INDEX IF NOT EXISTS idx_pce_emoji ON post_custom_emojis(emoji_id);',
+  )
+}
+
+/**
+ * v16 → v17 マイグレーション
+ *
+ * follows テーブルを作成し、フォロー関係を管理する。
+ */
+function migrateV16toV17(handle: DbHandle): void {
+  const { db } = handle
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS follows (
+      follow_id          INTEGER PRIMARY KEY,
+      local_account_id   INTEGER NOT NULL,
+      target_profile_id  INTEGER NOT NULL,
+      created_at         TEXT,
+      UNIQUE (local_account_id, target_profile_id),
+      FOREIGN KEY (local_account_id) REFERENCES local_accounts(local_account_id) ON DELETE CASCADE,
+      FOREIGN KEY (target_profile_id) REFERENCES profiles(profile_id) ON DELETE CASCADE
+    );
+  `)
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_follows_identity ON follows(local_account_id, target_profile_id);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_follows_target ON follows(target_profile_id);',
   )
 }
 

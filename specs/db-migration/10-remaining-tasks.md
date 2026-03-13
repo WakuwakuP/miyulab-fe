@@ -50,31 +50,33 @@
 
 ## B. Phase 9: 将来拡張 — 詳細ステップ
 
-### 9a: フォロー関係 (`follows`) — 優先度: 高
+### 9a: フォロー関係 (`follows`) — 優先度: 高 ✅
 
 #### Step 1: スキーマ
 
-- [ ] `schema.ts` — `follows` テーブル作成を `migrateV14toV15()` に追加
-- [ ] インデックス: `idx_follows_identity(local_account_id, target_profile_id)`, `idx_follows_target(target_profile_id)`
+- [x] `schema.ts` — `follows` テーブル作成を `migrateV16toV17()` に追加
+- [x] インデックス: `idx_follows_identity(local_account_id, target_profile_id)`, `idx_follows_target(target_profile_id)`
 
 #### Step 2: データ取得
 
-- [ ] `workerStatusStore.ts` — `handleSyncFollows` コマンドハンドラ追加
-- [ ] megalodon の `/api/v1/accounts/:id/following` エンドポイント呼び出し
-- [ ] ページネーション対応（Link ヘッダ or max_id）
+- [x] `workerStatusStore.ts` — `handleSyncFollows` コマンドハンドラ追加
+- [x] megalodon の `/api/v1/accounts/:id/following` エンドポイント呼び出し
+- [x] ページネーション対応（`get_all: true`）
 
 #### Step 3: ストリーミング連携
 
-- [ ] `StreamingManager` — フォロー/アンフォローイベントで差分更新
+- [x] `StatusStoreProvider` — 初期化時にフォロー一覧を取得・同期
+- [ ] `StreamingManager` — フォロー/アンフォローイベントで差分更新（未実装・初期化時の全同期で対応）
 
 #### Step 4: アプリケーション層
 
-- [ ] ホームタイムラインのフィルタ条件に `follows` JOIN を追加可能にする
+- [x] `TimelineConfigV2` に `followsOnly` フィルタオプションを追加
+- [x] `timelineFilterBuilder.ts` に follows JOIN 条件を追加
 
 #### Step 5: 検証
 
-- [ ] `yarn build` / `yarn check` 成功
-- [ ] フォロー同期の動作確認
+- [x] `yarn build` / `yarn check` 成功
+- [ ] フォロー同期の動作確認（要動作確認）
 
 ---
 
@@ -168,29 +170,32 @@ CREATE TABLE post_custom_emojis (
 
 ---
 
-### 9d: 投票 (`polls`, `poll_options`) — 優先度: 中
+### 9d: 投票 (`polls`, `poll_options`) — 優先度: 中 ✅
 
-> Phase 4 (v10) でテーブル定義とバックフィルが実装済みだが、読み取りクエリでの復元状況を確認する必要がある。
+> Phase 4 (v10) でテーブル定義とバックフィルが実装済み。読み取りクエリと書き込み処理を追加。
 
 #### Step 1: 現状確認
 
-- [ ] `rowToStoredStatus()` で `poll` オブジェクトが正しく復元されているか確認
-- [ ] `workerStatusStore.ts` で投票データが `polls` / `poll_options` に INSERT されているか確認
+- [x] `rowToStoredStatus()` で `poll` オブジェクトが正しく復元されているか確認 → 未実装だったため実装
+- [x] `workerStatusStore.ts` で投票データが `polls` / `poll_options` に INSERT されているか確認 → 未実装だったため実装
 
-#### Step 2: 読み取りクエリ（必要な場合）
+#### Step 2: 書き込み処理
 
-- [ ] `STATUS_SELECT` に `polls` + `poll_options` サブクエリを追加
-- [ ] `rowToStoredStatus()` で `Entity.Poll` を構築
+- [x] `shared.ts` — `syncPollData()` ヘルパー追加
+- [x] `workerStatusStore.ts` — `handleUpsertStatus()` / `handleBulkUpsertStatuses()` / `handleUpdateStatus()` に `syncPollData` 呼び出しを追加
 
-#### Step 3: 投票アクション
+#### Step 3: 読み取りクエリ
 
-- [ ] 投票送信後の `poll_options.votes_count` 更新処理
+- [x] `STATUS_SELECT` に `polls` + `poll_options` サブクエリを追加
+- [x] `rowToStoredStatus()` で `Entity.Poll` を構築
+- [x] `NOTIFICATION_SELECT` に関連投稿の poll サブクエリを追加
+- [x] `rowToStoredNotification()` で `status.poll` を `parsePoll()` で構築
 
 #### Step 4: 検証
 
-- [ ] `yarn build` / `yarn check` 成功
-- [ ] 投票付き投稿が正しく表示される
-- [ ] 投票の送信・更新が反映される
+- [x] `yarn build` / `yarn check` 成功
+- [ ] 投票付き投稿が正しく表示される（要動作確認）
+- [ ] 投票の送信・更新が反映される（要動作確認）
 
 ---
 
@@ -255,16 +260,16 @@ CREATE TABLE post_custom_emojis (
 
 ## 優先順位まとめ
 
-| 優先度        | タスク                        | 理由                             | 状態       |
-| ------------- | ----------------------------- | -------------------------------- | ---------- |
-| ~~**🔴 最優先**~~ | 9c: カスタム絵文字            | ~~現在壊れている機能の復旧~~ 修正済み | ✅ 完了    |
-| ~~高~~        | A-1: profiles JOIN            | 表示名の正規化取得、9c と連動    | ✅ 既存実装 |
-| 高            | 9a: フォロー関係              | ホームTL再構成の基盤             | 未着手     |
-| 高            | 9b: 投稿エイリアス            | 重複排除の改善                   | 未着手     |
-| 中            | 9d: 投票                      | Phase 4 で部分実装済み、復元確認 | 未着手     |
-| 中            | 9e: DM 会話                   | 新機能                           | 未着手     |
-| ~~低~~        | A-2: ブックマーク一覧         | 将来機能                         | ✅ 完了    |
-| ~~低~~        | A-3: pe エイリアス            | カスタムクエリ用                 | ✅ 完了    |
-| ~~低~~        | A-4: QueryEditor デッドコード | コード衛生                       | ✅ 完了    |
-| 低            | 9f: タグ履歴                  | 将来機能                         | 未着手     |
-| 低            | 9g: 取り込み管理              | 将来機能                         | 未着手     |
+| 優先度            | タスク                        | 理由                                  | 状態        |
+| ----------------- | ----------------------------- | ------------------------------------- | ----------- |
+| ~~**🔴 最優先**~~ | 9c: カスタム絵文字            | ~~現在壊れている機能の復旧~~ 修正済み | ✅ 完了     |
+| ~~高~~            | A-1: profiles JOIN            | 表示名の正規化取得、9c と連動         | ✅ 既存実装 |
+| 高                | 9a: フォロー関係              | ホームTL再構成の基盤                  | ✅ 完了     |
+| 高                | 9b: 投稿エイリアス            | 重複排除の改善                        | 未着手      |
+| 中                | 9d: 投票                      | Phase 4 で部分実装済み、復元確認      | ✅ 完了     |
+| 中                | 9e: DM 会話                   | 新機能                                | 未着手      |
+| ~~低~~            | A-2: ブックマーク一覧         | 将来機能                              | ✅ 完了     |
+| ~~低~~            | A-3: pe エイリアス            | カスタムクエリ用                      | ✅ 完了     |
+| ~~低~~            | A-4: QueryEditor デッドコード | コード衛生                            | ✅ 完了     |
+| 低                | 9f: タグ履歴                  | 将来機能                              | 未着手      |
+| 低                | 9g: 取り込み管理              | 将来機能                              | 未着手      |

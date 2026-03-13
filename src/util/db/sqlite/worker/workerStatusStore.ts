@@ -16,6 +16,7 @@ import {
   resolveLocalAccountId,
   resolvePostId,
   resolvePostItemKindId,
+  syncPollData,
   syncPostCustomEmojis,
   toggleEngagement,
 } from '../shared'
@@ -317,6 +318,7 @@ export function handleUpsertStatus(
       status.emojis ?? [],
       status.account?.emojis ?? [],
     )
+    syncPollData(db, postId, status.poll)
 
     if (cols.is_reblog === 1 && cols.reblog_of_uri) {
       db.exec(
@@ -515,6 +517,7 @@ export function handleBulkUpsertStatuses(
         status.emojis ?? [],
         status.account?.emojis ?? [],
       )
+      syncPollData(db, postId, status.poll)
 
       // リブログ関係を posts_reblogs に記録（元投稿の URI が存在する場合のみ）
       if (cols.is_reblog === 1 && cols.reblog_of_uri) {
@@ -838,6 +841,7 @@ export function handleUpdateStatus(
     upsertMentionsInternal(db, postId, status.mentions)
     syncPostMedia(db, postId, status.media_attachments, status.sensitive)
     syncPostStats(db, postId, status)
+    syncPollData(db, postId, status.poll)
 
     db.exec('COMMIT;')
   } catch (e) {
@@ -846,4 +850,42 @@ export function handleUpdateStatus(
   }
 
   return { changedTables: ['posts'] }
+}
+
+// ================================================================
+// フォロー関係同期
+// ================================================================
+
+export function handleSyncFollows(
+  db: DbExec,
+  backendUrl: string,
+  accountsJson: string[],
+): HandlerResult {
+  const localAccountId = resolveLocalAccountId(db, backendUrl)
+  if (localAccountId === null) return { changedTables: [] }
+
+  db.exec('BEGIN;')
+  try {
+    // 現在のフォローを全削除して再構築
+    db.exec('DELETE FROM follows WHERE local_account_id = ?;', {
+      bind: [localAccountId],
+    })
+
+    for (const json of accountsJson) {
+      const account = JSON.parse(json) as Entity.Account
+      const profileId = ensureProfile(db, account)
+      db.exec(
+        `INSERT OR IGNORE INTO follows (local_account_id, target_profile_id, created_at)
+         VALUES (?, ?, datetime('now'));`,
+        { bind: [localAccountId, profileId] },
+      )
+    }
+
+    db.exec('COMMIT;')
+  } catch (e) {
+    db.exec('ROLLBACK;')
+    throw e
+  }
+
+  return { changedTables: [] }
 }
