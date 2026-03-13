@@ -26,47 +26,49 @@ export function handleEnforceMaxLength(
   db: DbExec,
   maxLength = 100000,
 ): HandlerResult {
-  const timelineTypes = ['home', 'local', 'public', 'tag']
   const changedTables: TableName[] = []
 
   db.exec('BEGIN;')
   try {
-    for (const type of timelineTypes) {
+    // 全 timeline を取得してそれぞれ上限チェック
+    const timelines = db.exec('SELECT timeline_id FROM timelines;', {
+      returnValue: 'resultRows',
+    }) as number[][]
+
+    let postsDeleted = false
+    for (const [timelineId] of timelines) {
       const countRows = db.exec(
-        'SELECT COUNT(*) FROM statuses_timeline_types WHERE timelineType = ?;',
-        { bind: [type], returnValue: 'resultRows' },
+        'SELECT COUNT(*) FROM timeline_items WHERE timeline_id = ?;',
+        { bind: [timelineId], returnValue: 'resultRows' },
       ) as number[][]
       const count = countRows[0][0]
 
       if (count > maxLength) {
-        // 1. まず statuses_timeline_types から最古のエントリを除去
-        //    （CASCADE 依存を避けるため、先にリレーションテーブルから削除）
+        // 1. timeline_items から最古のエントリを除去 (sort_key ASC)
         db.exec(
-          `DELETE FROM statuses_timeline_types
-           WHERE timelineType = ?
-             AND compositeKey IN (
-               SELECT stt2.compositeKey
-               FROM statuses_timeline_types stt2
-               INNER JOIN statuses s ON s.compositeKey = stt2.compositeKey
-               WHERE stt2.timelineType = ?
-               ORDER BY s.created_at_ms ASC
-               LIMIT ?
-             );`,
-          { bind: [type, type, count - maxLength] },
-        )
-
-        // 2. どのタイムラインにも属さなくなった孤立 statuses を削除
-        db.exec(
-          `DELETE FROM statuses
-           WHERE compositeKey NOT IN (
-             SELECT DISTINCT compositeKey FROM statuses_timeline_types
+          `DELETE FROM timeline_items
+           WHERE timeline_item_id IN (
+             SELECT timeline_item_id
+             FROM timeline_items
+             WHERE timeline_id = ?
+             ORDER BY sort_key ASC
+             LIMIT ?
            );`,
+          { bind: [timelineId, count - maxLength] },
         )
-
-        if (!changedTables.includes('statuses')) {
-          changedTables.push('statuses')
-        }
+        postsDeleted = true
       }
+    }
+
+    // どのタイムラインにも属さなくなった孤立 posts を削除
+    if (postsDeleted) {
+      db.exec(
+        `DELETE FROM posts
+         WHERE post_id NOT IN (
+           SELECT DISTINCT post_id FROM timeline_items WHERE post_id IS NOT NULL
+         );`,
+      )
+      changedTables.push('posts')
     }
 
     const notifCount = (
@@ -77,8 +79,8 @@ export function handleEnforceMaxLength(
 
     if (notifCount > maxLength) {
       db.exec(
-        `DELETE FROM notifications WHERE compositeKey IN (
-          SELECT compositeKey FROM notifications
+        `DELETE FROM notifications WHERE notification_id IN (
+          SELECT notification_id FROM notifications
           ORDER BY created_at_ms ASC
           LIMIT ?
         );`,

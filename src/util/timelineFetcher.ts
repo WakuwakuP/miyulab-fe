@@ -62,13 +62,16 @@ export async function fetchInitialData(
  * max_id で oldest の id を指定してページネーションする。
  * 複数 backendUrl の場合、各 backend の最古の id を個別に追跡する必要がある。
  */
+/** API 1回あたりの取得件数 */
+export const FETCH_LIMIT = 40
+
 export async function fetchMoreData(
   client: MegalodonInterface,
   config: TimelineConfigV2,
   backendUrl: string,
   maxId: string,
 ): Promise<number> {
-  const limit = 40
+  const limit = FETCH_LIMIT
 
   switch (config.type) {
     case 'home': {
@@ -106,9 +109,9 @@ export async function fetchMoreData(
         const { getSqliteDb } = await import('util/db/sqlite/connection')
         const handle = await getSqliteDb()
         const rows = (await handle.execAsync(
-          `SELECT s.json FROM statuses s
-           INNER JOIN statuses_belonging_tags sbt ON s.compositeKey = sbt.compositeKey
-           WHERE sbt.tag = ? AND s.backendUrl = ?
+          `SELECT s.json FROM posts s
+           INNER JOIN posts_belonging_tags sbt ON s.post_id = sbt.post_id
+           WHERE sbt.tag = ? AND s.origin_backend_url = ?
            ORDER BY s.created_at_ms ASC
            LIMIT 1;`,
           { bind: [tag, backendUrl], returnValue: 'resultRows' },

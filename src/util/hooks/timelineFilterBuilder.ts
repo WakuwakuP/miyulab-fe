@@ -30,8 +30,7 @@ import {
  * この関数では生成しない。
  *
  * @param tableAlias カラム参照に付けるテーブルエイリアス。
- *   デフォルトは 's'（statuses テーブル直接参照時）。
- *   マテリアライズド・ビューのサブクエリ内で使用する場合は '' を指定する。
+ *   デフォルトは 's'。JOIN クエリで posts テーブルを参照する場合は 'p' を指定する。
  */
 export function buildFilterConditions(
   config: TimelineConfigV2,
@@ -50,14 +49,16 @@ export function buildFilterConditions(
     conditions.push(`${prefix}has_media = 1`)
   }
 
-  // 公開範囲フィルタ
+  // 公開範囲フィルタ（v13: visibility → visibility_id + visibility_types）
   if (
     config.visibilityFilter != null &&
     config.visibilityFilter.length > 0 &&
     config.visibilityFilter.length < 4
   ) {
     const placeholders = config.visibilityFilter.map(() => '?').join(',')
-    conditions.push(`${prefix}visibility IN (${placeholders})`)
+    conditions.push(
+      `(SELECT code FROM visibility_types WHERE visibility_id = ${prefix}visibility_id) IN (${placeholders})`,
+    )
     binds.push(...config.visibilityFilter)
   }
 
@@ -90,13 +91,17 @@ export function buildFilterConditions(
     conditions.push(`${prefix}is_sensitive = 0`)
   }
 
-  // アカウントフィルタ
+  // アカウントフィルタ（v13: account_acct → author_profile_id + profiles）
   if (config.accountFilter != null && config.accountFilter.accts.length > 0) {
     const placeholders = config.accountFilter.accts.map(() => '?').join(',')
     if (config.accountFilter.mode === 'include') {
-      conditions.push(`${prefix}account_acct IN (${placeholders})`)
+      conditions.push(
+        `(SELECT acct FROM profiles WHERE profile_id = ${prefix}author_profile_id) IN (${placeholders})`,
+      )
     } else {
-      conditions.push(`${prefix}account_acct NOT IN (${placeholders})`)
+      conditions.push(
+        `(SELECT acct FROM profiles WHERE profile_id = ${prefix}author_profile_id) NOT IN (${placeholders})`,
+      )
     }
     binds.push(...config.accountFilter.accts)
   }
@@ -115,6 +120,15 @@ export function buildFilterConditions(
   const applyBlock = config.applyInstanceBlock ?? true
   if (applyBlock) {
     conditions.push(buildInstanceBlockCondition(tableAlias))
+  }
+
+  // フォロー中のアカウントのみ表示
+  if (config.followsOnly) {
+    const placeholders = targetBackendUrls.map(() => '?').join(',')
+    conditions.push(
+      `${prefix}author_profile_id IN (SELECT f.target_profile_id FROM follows f INNER JOIN local_accounts la ON f.local_account_id = la.local_account_id INNER JOIN servers sv ON la.server_id = sv.server_id WHERE sv.base_url IN (${placeholders}))`,
+    )
+    binds.push(...targetBackendUrls)
   }
 
   return { binds, conditions }

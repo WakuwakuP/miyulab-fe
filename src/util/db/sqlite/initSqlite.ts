@@ -267,6 +267,10 @@ async function initMainThreadFallback(
             command.notificationBatches,
           )
           break
+        case 'exportDatabase':
+          // インメモリモードではエクスポート不要
+          result = { ok: true }
+          break
         default:
           throw new Error(
             `Unknown command type: ${(command as { type: string }).type}`,

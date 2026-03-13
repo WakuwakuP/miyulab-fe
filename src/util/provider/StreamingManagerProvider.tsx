@@ -12,7 +12,11 @@ import {
 } from 'react'
 import type { App, TimelineConfigV2 } from 'types/types'
 import type { TimelineType as DbTimelineType } from 'util/db/database'
-import { handleDeleteEvent, upsertStatus } from 'util/db/sqlite/statusStore'
+import {
+  handleDeleteEvent,
+  updateStatus,
+  upsertStatus,
+} from 'util/db/sqlite/statusStore'
 import { GetClient } from 'util/GetClient'
 import {
   getRetryDelay,
@@ -20,6 +24,7 @@ import {
   MAX_STREAM_COUNT_WARNING,
 } from 'util/streaming/constants'
 import { deriveRequiredStreams } from 'util/streaming/deriveRequiredStreams'
+import { restartStream, stopStream } from 'util/streaming/stopStream'
 import { parseStreamKey, type StreamType } from 'util/streaming/streamKey'
 import type { StreamEntry, StreamRegistry } from 'util/streaming/streamRegistry'
 import {
@@ -95,7 +100,8 @@ export const StreamingManagerProvider = ({
       const entry = registryRef.current.get(key)
       if (!entry) return // syncStreamsEvent により既に削除済み
 
-      stream.stop()
+      // megalodon のゴースト再接続を防止しつつ停止
+      stopStream(stream)
 
       entry.retryCount += 1
 
@@ -112,7 +118,8 @@ export const StreamingManagerProvider = ({
       entry.retryTimer = setTimeout(() => {
         // レジストリにまだ存在するか確認（syncStreamsEvent で削除されている可能性）
         if (registryRef.current.has(key)) {
-          stream.start()
+          // 再接続能力を復元してから start()
+          restartStream(stream)
           updateStreamStatus(key, 'connecting')
           console.info(
             `reconnecting ${key} (retry ${entry.retryCount}/${MAX_RETRY_COUNT}, delay ${delay}ms)`,
@@ -139,6 +146,10 @@ export const StreamingManagerProvider = ({
 
       stream.on('update', async (status: Entity.Status) => {
         await upsertStatus(status, backendUrl, timelineType, tag)
+      })
+
+      stream.on('status_update', async (status: Entity.Status) => {
+        await updateStatus(status, backendUrl)
       })
 
       stream.on('delete', async (id: string) => {
@@ -204,7 +215,7 @@ export const StreamingManagerProvider = ({
         // レジストリにまだ必要か確認（非同期処理中に syncStreamsEvent が発火している可能性）
         const entry = registryRef.current.get(key)
         if (!entry || (initId !== undefined && entry.initId !== initId)) {
-          stream.stop()
+          stopStream(stream)
           return
         }
 
@@ -350,7 +361,7 @@ export const StreamingManagerProvider = ({
     for (const [key, entry] of registry) {
       if (!requiredKeys.has(key)) {
         if (entry.stream) {
-          entry.stream.stop()
+          stopStream(entry.stream)
         }
         if (entry.retryTimer != null) {
           clearTimeout(entry.retryTimer)
@@ -401,7 +412,7 @@ export const StreamingManagerProvider = ({
     return () => {
       for (const [, entry] of registryRef.current) {
         if (entry.stream) {
-          entry.stream.stop()
+          stopStream(entry.stream)
         }
         if (entry.retryTimer != null) {
           clearTimeout(entry.retryTimer)

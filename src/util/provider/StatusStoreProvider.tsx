@@ -12,6 +12,8 @@ import {
 } from 'react'
 import type { App } from 'types/types'
 import { startPeriodicCleanup } from 'util/db/sqlite/cleanup'
+import { startPeriodicExport } from 'util/db/sqlite/dbExport'
+import { syncFollows } from 'util/db/sqlite/followStore'
 import { migrateFromIndexedDb } from 'util/db/sqlite/migration'
 import {
   addNotification,
@@ -27,6 +29,7 @@ import {
 } from 'util/db/sqlite/statusStore'
 import { GetClient } from 'util/GetClient'
 import { getRetryDelay, MAX_RETRY_COUNT } from 'util/streaming/constants'
+import { restartStream, stopStream } from 'util/streaming/stopStream'
 import { AppsContext } from './AppsProvider'
 import { SetTagsContext, SetUsersContext } from './ResourceProvider'
 
@@ -179,7 +182,8 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
     const onError = (stream: WebSocketInterface) => {
       return (err: Error | undefined) => {
         console.warn('userStreaming error:', err?.message ?? 'unknown error')
-        stream.stop()
+        // megalodon のゴースト再接続を防止しつつ停止
+        stopStream(stream)
 
         retryState.count += 1
 
@@ -192,7 +196,8 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
 
         const delay = getRetryDelay(retryState.count - 1)
         const timeout = setTimeout(() => {
-          stream.start()
+          // 再接続能力を復元してから start()
+          restartStream(stream)
           console.info(
             `reconnecting userStreaming (retry ${retryState.count}/${MAX_RETRY_COUNT}, delay ${delay}ms)`,
           )
@@ -224,11 +229,13 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
     }
     if (apps.length <= 0) return
 
-    // IndexedDB → SQLite マイグレーション完了後に定期クリーンアップを開始
+    // IndexedDB → SQLite マイグレーション完了後に定期クリーンアップと定期エクスポートを開始
     let stopCleanup: (() => void) | undefined
+    let stopExport: (() => void) | undefined
     migrateFromIndexedDb()
       .then(() => {
         stopCleanup = startPeriodicCleanup()
+        stopExport = startPeriodicExport()
       })
       .catch((error) => {
         console.error('Migration failed:', error)
@@ -304,6 +311,20 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
               self.findIndex((e) => e.acct === element.acct) === idx,
           ),
         )
+
+        // フォロー一覧を同期（バックグラウンド）
+        client
+          .verifyAccountCredentials()
+          .then((res) =>
+            client.getAccountFollowing(res.data.id, {
+              get_all: true,
+              sleep_ms: 200,
+            }),
+          )
+          .then((res) => syncFollows(res.data, backendUrl))
+          .catch((error) => {
+            console.warn(`Failed to sync follows for ${backendUrl}:`, error)
+          })
       } catch (error) {
         console.error(`Failed to initialize for ${backendUrl}:`, error)
       }
@@ -312,8 +333,9 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
     // クリーンアップ
     return () => {
       stopCleanup?.()
+      stopExport?.()
       for (const stream of streamsRef.current.values()) {
-        stream.stop()
+        stopStream(stream)
       }
       streamsRef.current.clear()
     }

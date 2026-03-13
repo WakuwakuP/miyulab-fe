@@ -1,10 +1,22 @@
 'use client'
 
-import { useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import type { StatusAddAppIndex, TimelineConfigV2 } from 'types/types'
 import type { TimelineType as DbTimelineType } from 'util/db/database'
 import { getSqliteDb, subscribe } from 'util/db/sqlite/connection'
-import type { SqliteStoredStatus } from 'util/db/sqlite/statusStore'
+import {
+  rowToStoredStatus,
+  type SqliteStoredStatus,
+  STATUS_BASE_JOINS,
+  STATUS_SELECT,
+} from 'util/db/sqlite/statusStore'
 import { TIMELINE_QUERY_LIMIT } from 'util/environment'
 import { buildFilterConditions } from 'util/hooks/timelineFilterBuilder'
 import { useQueryDuration } from 'util/hooks/useQueryDuration'
@@ -13,6 +25,7 @@ import {
   normalizeBackendFilter,
   resolveBackendUrls,
 } from 'util/timelineConfigValidator'
+import { useConfigRefresh } from 'util/timelineRefresh'
 
 /**
  * backendUrl から appIndex を算出するヘルパー
@@ -40,7 +53,7 @@ function resolveAppIndex(
  * ## クエリ戦略
  *
  * backendFilter.mode に応じてクエリ対象の backendUrl を決定し、
- * statuses_timeline_types テーブルとの JOIN で
+ * timeline_items + timelines + channel_kinds テーブルとの JOIN で
  * DB 側でソート・フィルタを行う。
  *
  * ## v2 スキーマ対応
@@ -58,6 +71,14 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
   const [statuses, setStatuses] = useState<SqliteStoredStatus[]>([])
   const [queryLimit, setQueryLimit] = useState(TIMELINE_QUERY_LIMIT)
   const { queryDuration, recordDuration } = useQueryDuration()
+
+  // 非同期クエリの競合状態を防止するためのバージョンカウンター
+  // fetchData が再生成されるたびにインクリメントし、
+  // 古いクエリの結果が新しいクエリの結果を上書きしないようにする
+  const fetchVersionRef = useRef(0)
+
+  // 設定保存時に確実に再取得をトリガーするためのリフレッシュトークン
+  const refreshToken = useConfigRefresh(config.id)
 
   const loadMore = useCallback(() => {
     setQueryLimit((prev) => prev + TIMELINE_QUERY_LIMIT)
@@ -109,7 +130,7 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
           visibilityFilter,
         } as TimelineConfigV2,
         targetBackendUrls,
-        '', // マテリアライズド・ビューのサブクエリ内ではテーブルエイリアス不要
+        's', // posts テーブルのエイリアス
       ),
     [
       onlyMedia,
@@ -134,6 +155,7 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
 
   // 3. SQLite からデータ取得
   const fetchData = useCallback(async () => {
+    void refreshToken
     // tag / notification はそれぞれ専用 Hook で処理するためスキップ
     // customQuery が設定されている場合も useCustomQueryTimeline に委譲するためスキップ
     if (
@@ -149,32 +171,32 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
       return
     }
 
+    const version = ++fetchVersionRef.current
+
     try {
       const handle = await getSqliteDb()
 
       const backendPlaceholders = targetBackendUrls.map(() => '?').join(',')
 
-      // WHERE 条件を組み立て（timeline_entries のカラムを直接参照）
+      // WHERE 条件を組み立て（posts + JOIN テーブルのカラムを参照）
       const whereConditions = [
-        'timelineType = ?',
-        `backendUrl IN (${backendPlaceholders})`,
+        'ck.code = ?',
+        `pb.backendUrl IN (${backendPlaceholders})`,
         ...filterConditions,
       ]
 
-      // timeline_entries サブクエリで高速に絞り込み＆ソートし、
-      // 最後に statuses を結合して json を取得する
+      // posts を各テーブルと JOIN し、フィルタ・ソート・LIMIT を適用する
       const sql = `
-        SELECT s.compositeKey, te.backendUrl,
-               s.created_at_ms, s.storedAt, s.json
-        FROM (
-          SELECT compositeKey, MIN(backendUrl) AS backendUrl
-          FROM timeline_entries
-          WHERE ${whereConditions.join('\n            AND ')}
-          GROUP BY compositeKey
-          ORDER BY created_at_ms DESC
-          LIMIT ?
-        ) te
-        INNER JOIN statuses s ON s.compositeKey = te.compositeKey;
+        SELECT ${STATUS_SELECT}
+        FROM posts s
+        ${STATUS_BASE_JOINS}
+        INNER JOIN timeline_items ti ON s.post_id = ti.post_id
+        INNER JOIN timelines t ON t.timeline_id = ti.timeline_id
+        INNER JOIN channel_kinds ck ON ck.channel_kind_id = t.channel_kind_id
+        WHERE ${whereConditions.join('\n          AND ')}
+        GROUP BY s.post_id
+        ORDER BY s.created_at_ms DESC
+        LIMIT ?;
       `
       const binds: (string | number)[] = [
         configType as DbTimelineType,
@@ -190,19 +212,12 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
       })) as (string | number)[][]
       recordDuration(performance.now() - start)
 
-      const results: SqliteStoredStatus[] = rows.map((row) => {
-        const status = JSON.parse(row[4] as string)
-        return {
-          ...status,
-          backendUrl: row[1] as string,
-          belongingTags: [],
-          compositeKey: row[0] as string,
-          created_at_ms: row[2] as number,
-          storedAt: row[3] as number,
-          timelineTypes: [],
-        }
-      })
+      const results: SqliteStoredStatus[] = rows.map((row) =>
+        rowToStoredStatus(row),
+      )
 
+      // 古い非同期クエリの結果が新しいクエリの結果を上書きしないようにする
+      if (fetchVersionRef.current !== version) return
       setStatuses(results)
     } catch (e) {
       console.error('useFilteredTimeline query error:', e)
@@ -215,12 +230,13 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
     filterBinds,
     queryLimit,
     recordDuration,
+    refreshToken,
   ])
 
   // 初回取得 + 変更通知で再取得
   useEffect(() => {
     fetchData()
-    return subscribe('statuses', fetchData)
+    return subscribe('posts', fetchData)
   }, [fetchData])
 
   // 4. appIndex を付与

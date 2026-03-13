@@ -23,7 +23,11 @@ import {
   resolveBackendUrls,
 } from 'util/timelineConfigValidator'
 import { getDefaultTimelineName } from 'util/timelineDisplayName'
-import { fetchInitialData, fetchMoreData } from 'util/timelineFetcher'
+import {
+  FETCH_LIMIT,
+  fetchInitialData,
+  fetchMoreData,
+} from 'util/timelineFetcher'
 
 /**
  * 統合タイムラインコンポーネント
@@ -70,6 +74,13 @@ export const UnifiedTimeline = ({
     loadMore: () => void
   }
 
+  // moreLoad の同時実行防止フラグ
+  const isFetchingMoreRef = useRef(false)
+
+  // 各 backendUrl ごとに「これ以上古いデータがない」状態を追跡
+  // fetchMoreData が FETCH_LIMIT 未満を返したら exhausted とみなす
+  const exhaustedBackendsRef = useRef(new Set<string>())
+
   const [enableScrollToTop, setEnableScrollToTop] = useState(true)
   const [isScrolling, setIsScrolling] = useState(false)
 
@@ -79,11 +90,12 @@ export const UnifiedTimeline = ({
   const bottomExpansionRef = useRef(0)
   const prevLengthRef = useRef(timeline.length)
 
-  // config 変更時に bottomExpansion をリセット
+  // config 変更時に bottomExpansion と exhausted 状態をリセット
   const configId = config.id
   useEffect(() => {
     void configId
     bottomExpansionRef.current = 0
+    exhaustedBackendsRef.current = new Set()
   }, [configId])
 
   const currentLength = timeline.length
@@ -114,31 +126,36 @@ export const UnifiedTimeline = ({
   // API フェッチは DB にない古い投稿を補充するために常に実行される。
   // 両者は独立して動作し、DB への upsert は subscribe 経由で自動的に反映される。
   const moreLoad = useCallback(async () => {
-    if (apps.length <= 0 || timeline.length === 0) return
+    // 同時実行防止: 前回のフェッチが完了するまで新しいリクエストを抑制
+    if (isFetchingMoreRef.current) return
+    isFetchingMoreRef.current = true
 
-    // SQLite クエリの表示件数を拡張
-    loadMore()
+    try {
+      if (apps.length <= 0) return
 
-    const targetUrls = resolveBackendUrls(
-      normalizeBackendFilter(config.backendFilter, apps),
-      apps,
-    )
+      // SQLite クエリの表示件数を拡張
+      loadMore()
 
-    // 各 backendUrl ごとに最古の投稿 ID を算出して追加データをフェッチ
-    await Promise.all(
-      targetUrls.map(async (url) => {
-        const app = apps.find((a) => a.backendUrl === url)
-        if (!app) return 0
+      const targetUrls = resolveBackendUrls(
+        normalizeBackendFilter(config.backendFilter, apps),
+        apps,
+      )
 
-        // 該当 backend の最古投稿を取得
-        // まず現在のタイムライン表示から探す
-        let oldestStatus = timeline
-          .filter((s) => apps[s.appIndex]?.backendUrl === url)
-          .at(-1)
+      // 全バックエンドが exhausted なら何もしない
+      const activeUrls = targetUrls.filter(
+        (url) => !exhaustedBackendsRef.current.has(url),
+      )
+      if (activeUrls.length === 0) return
 
-        // 表示上に該当バックエンドの投稿がない場合は DB から直接取得
-        // （フィルタリングにより表示されていないが、実際には存在する可能性）
-        if (!oldestStatus) {
+      // 各 backendUrl ごとに DB 内の最古 status_id を算出して追加データをフェッチ
+      // フィルタ済みタイムラインの最古IDではなく、DB 上のタイムラインタイプに
+      // 紐づく最古IDを使うことで、フィルタで除外された投稿の先にある
+      // 古い投稿も確実に取得できる
+      await Promise.all(
+        activeUrls.map(async (url) => {
+          const app = apps.find((a) => a.backendUrl === url)
+          if (!app) return 0
+
           const { getSqliteDb } = await import('util/db/sqlite/connection')
           const handle = await getSqliteDb()
           const timelineType = config.type as
@@ -147,80 +164,72 @@ export const UnifiedTimeline = ({
             | 'public'
             | 'tag'
 
+          // DB からタイムラインタイプに紐づく最古の status_id を取得
+          let oldestId: string | undefined
+
           if (config.type === 'tag') {
-            // タグタイムラインの場合は該当タグの最古投稿を取得
             const tags = config.tagConfig?.tags ?? []
             for (const tag of tags) {
               const rows = (await handle.execAsync(
-                `SELECT s.compositeKey, s.backendUrl, s.created_at_ms, s.storedAt, s.json
-                 FROM statuses s
-                 INNER JOIN statuses_belonging_tags sbt ON s.compositeKey = sbt.compositeKey
-                 WHERE sbt.tag = ? AND s.backendUrl = ?
+                `SELECT pb2.local_id
+                 FROM posts s
+                 INNER JOIN posts_backends pb2 ON pb2.post_id = s.post_id
+                 INNER JOIN posts_belonging_tags sbt ON s.post_id = sbt.post_id
+                 WHERE sbt.tag = ? AND pb2.backendUrl = ?
                  ORDER BY s.created_at_ms ASC
                  LIMIT 1;`,
                 { bind: [tag, url], returnValue: 'resultRows' },
-              )) as (string | number)[][]
+              )) as string[][]
               if (rows.length > 0) {
-                const status = JSON.parse(rows[0][4] as string)
-                oldestStatus = {
-                  ...status,
-                  appIndex: apps.findIndex((a) => a.backendUrl === url),
-                  backendUrl: rows[0][1] as string,
-                  compositeKey: rows[0][0] as string,
-                  created_at_ms: rows[0][2] as number,
-                  storedAt: rows[0][3] as number,
-                }
+                oldestId = rows[0][0]
                 break
               }
             }
           } else {
-            // 通常のタイムラインの場合
             const rows = (await handle.execAsync(
-              `SELECT s.compositeKey, s.backendUrl, s.created_at_ms, s.storedAt, s.json
-               FROM statuses s
-               INNER JOIN statuses_timeline_types stt ON s.compositeKey = stt.compositeKey
-               WHERE s.backendUrl = ? AND stt.timelineType = ?
+              `SELECT pb2.local_id
+               FROM posts s
+               INNER JOIN posts_backends pb2 ON pb2.post_id = s.post_id
+               INNER JOIN timeline_items ti ON s.post_id = ti.post_id
+               INNER JOIN timelines t ON t.timeline_id = ti.timeline_id
+               INNER JOIN channel_kinds ck ON ck.channel_kind_id = t.channel_kind_id
+               WHERE pb2.backendUrl = ? AND ck.code = ?
                ORDER BY s.created_at_ms ASC
                LIMIT 1;`,
               { bind: [url, timelineType], returnValue: 'resultRows' },
-            )) as (string | number)[][]
+            )) as string[][]
             if (rows.length > 0) {
-              const status = JSON.parse(rows[0][4] as string)
-              oldestStatus = {
-                ...status,
-                appIndex: apps.findIndex((a) => a.backendUrl === url),
-                backendUrl: rows[0][1] as string,
-                compositeKey: rows[0][0] as string,
-                created_at_ms: rows[0][2] as number,
-                storedAt: rows[0][3] as number,
-              }
+              oldestId = rows[0][0]
             }
           }
-        }
 
-        // それでも見つからない場合は初期データを取得
-        if (!oldestStatus) {
           const client = GetClient(app)
+          if (!oldestId) {
+            try {
+              await fetchInitialData(client, config, url)
+              return 0
+            } catch (error) {
+              console.error(`Failed to fetch initial data for ${url}:`, error)
+              return 0
+            }
+          }
+
           try {
-            await fetchInitialData(client, config, url)
-            return 0 // 初期データ取得のため追加カウントは0
+            const count = await fetchMoreData(client, config, url, oldestId)
+            if (count < FETCH_LIMIT) {
+              exhaustedBackendsRef.current.add(url)
+            }
+            return count
           } catch (error) {
-            console.error(`Failed to fetch initial data for ${url}:`, error)
+            console.error(`Failed to fetch more data for ${url}:`, error)
             return 0
           }
-        }
-
-        // 追加データを取得
-        const client = GetClient(app)
-        try {
-          return await fetchMoreData(client, config, url, oldestStatus.id)
-        } catch (error) {
-          console.error(`Failed to fetch more data for ${url}:`, error)
-          return 0
-        }
-      }),
-    )
-  }, [apps, timeline, config, loadMore])
+        }),
+      )
+    } finally {
+      isFetchingMoreRef.current = false
+    }
+  }, [apps, config, loadMore])
 
   // UIロジック
   const onWheel = useCallback<WheelEventHandler<HTMLDivElement>>((e) => {

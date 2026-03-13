@@ -4,7 +4,19 @@
 
 import type { Entity } from 'megalodon'
 import type { TableName } from '../protocol'
-import { createCompositeKey, extractNotificationColumns } from '../shared'
+import {
+  ACTION_TO_ENGAGEMENT,
+  ensureProfile,
+  ensureProfileAlias,
+  ensureServer,
+  extractStatusColumns,
+  resolveLocalAccountId,
+  resolvePostId,
+  syncPollData,
+  syncPostCustomEmojis,
+  syncProfileCustomEmojis,
+  toggleEngagement,
+} from '../shared'
 
 type DbExec = {
   exec: (
@@ -18,44 +30,223 @@ type DbExec = {
 
 type HandlerResult = { changedTables: TableName[] }
 
+function resolveNotificationTypeId(
+  db: DbExec,
+  notificationType: string,
+): number | null {
+  const rows = db.exec(
+    'SELECT notification_type_id FROM notification_types WHERE code = ?;',
+    { bind: [notificationType], returnValue: 'resultRows' },
+  ) as number[][]
+  return rows.length > 0 ? rows[0][0] : null
+}
+
+function resolveVisibilityId(db: DbExec, visibility: string): number | null {
+  const rows = db.exec(
+    'SELECT visibility_id FROM visibility_types WHERE code = ?;',
+    { bind: [visibility], returnValue: 'resultRows' },
+  ) as number[][]
+  return rows.length > 0 ? rows[0][0] : null
+}
+
+/**
+ * 通知の関連投稿が DB に存在しない場合、Entity.Status から投稿を挿入して post_id を返す。
+ * 既に存在する場合はそのまま post_id を返す。
+ */
+function ensurePostForNotification(
+  db: DbExec,
+  status: Entity.Status,
+  backendUrl: string,
+  serverId: number,
+): number {
+  // posts_backends で既存チェック
+  const existing = resolvePostId(db, backendUrl, status.id)
+  if (existing !== null) return existing
+
+  // URI で既存チェック
+  const normalizedUri = status.uri?.trim() || ''
+  if (normalizedUri) {
+    const uriRows = db.exec('SELECT post_id FROM posts WHERE object_uri = ?;', {
+      bind: [normalizedUri],
+      returnValue: 'resultRows',
+    }) as number[][]
+    if (uriRows.length > 0) {
+      // posts_backends マッピングを追加
+      db.exec(
+        `INSERT OR IGNORE INTO posts_backends (post_id, backendUrl, local_id, server_id)
+         VALUES (?, ?, ?, ?);`,
+        { bind: [uriRows[0][0], backendUrl, status.id, serverId] },
+      )
+      return uriRows[0][0]
+    }
+  }
+
+  // 新規投稿を挿入
+  const cols = extractStatusColumns(status)
+  const profileId = ensureProfile(db, status.account)
+  ensureProfileAlias(db, profileId, serverId, status.account.id)
+  const visibilityId = resolveVisibilityId(db, cols.visibility)
+  const now = Date.now()
+  const created_at_ms = new Date(status.created_at).getTime()
+
+  db.exec(
+    `INSERT INTO posts (
+      object_uri, origin_server_id, created_at_ms, stored_at,
+      author_profile_id, visibility_id, language,
+      content_html, spoiler_text, canonical_url,
+      has_media, media_count, is_reblog, reblog_of_uri,
+      is_sensitive, has_spoiler, in_reply_to_id,
+      is_local_only, edited_at
+    ) VALUES (?,?,?,?, ?,?,?, ?,?,?, ?,?,?,?, ?,?,?, ?,?);`,
+    {
+      bind: [
+        cols.uri,
+        serverId,
+        created_at_ms,
+        now,
+        profileId,
+        visibilityId,
+        cols.language,
+        cols.content_html,
+        cols.spoiler_text,
+        cols.canonical_url,
+        cols.has_media,
+        cols.media_count,
+        cols.is_reblog,
+        cols.reblog_of_uri,
+        cols.is_sensitive,
+        cols.has_spoiler,
+        cols.in_reply_to_id,
+        0,
+        cols.edited_at,
+      ],
+    },
+  )
+
+  const postId = (
+    db.exec('SELECT last_insert_rowid();', {
+      returnValue: 'resultRows',
+    }) as number[][]
+  )[0][0]
+
+  // posts_backends マッピング
+  db.exec(
+    `INSERT OR IGNORE INTO posts_backends (post_id, backendUrl, local_id, server_id)
+     VALUES (?, ?, ?, ?);`,
+    { bind: [postId, backendUrl, status.id, serverId] },
+  )
+
+  // カスタム絵文字を同期
+  if (status.emojis.length > 0 || status.account.emojis.length > 0) {
+    syncPostCustomEmojis(
+      db,
+      postId,
+      serverId,
+      status.emojis,
+      status.account.emojis,
+    )
+  }
+
+  // 投票データを同期
+  if (status.poll) {
+    syncPollData(db, postId, status.poll)
+  }
+
+  return postId
+}
+
+/**
+ * 単一通知を解決して notifications テーブルに upsert する。
+ * handleAddNotification と handleBulkAddNotifications の共通処理を集約。
+ */
+function upsertNotification(
+  db: DbExec,
+  notification: Entity.Notification,
+  serverId: number,
+  backendUrl: string,
+  now: number,
+): void {
+  const created_at_ms = new Date(notification.created_at).getTime()
+  const notificationTypeId = resolveNotificationTypeId(db, notification.type)
+  const actorProfileId = notification.account
+    ? ensureProfile(db, notification.account)
+    : null
+  if (actorProfileId !== null && notification.account) {
+    ensureProfileAlias(db, actorProfileId, serverId, notification.account.id)
+  }
+  if (
+    actorProfileId !== null &&
+    notification.account &&
+    notification.account.emojis.length > 0
+  ) {
+    syncProfileCustomEmojis(
+      db,
+      actorProfileId,
+      serverId,
+      notification.account.emojis,
+    )
+  }
+  const relatedPostId = notification.status
+    ? ensurePostForNotification(db, notification.status, backendUrl, serverId)
+    : null
+
+  // (server_id, local_id) で既存チェック
+  const existing = db.exec(
+    'SELECT notification_id FROM notifications WHERE server_id = ? AND local_id = ?;',
+    { bind: [serverId, notification.id], returnValue: 'resultRows' },
+  ) as number[][]
+
+  if (existing.length > 0) {
+    const notificationId = existing[0][0]
+    db.exec(
+      `UPDATE notifications SET
+        notification_type_id = ?,
+        actor_profile_id     = ?,
+        related_post_id      = ?,
+        created_at_ms        = ?,
+        stored_at            = ?
+      WHERE notification_id = ?;`,
+      {
+        bind: [
+          notificationTypeId,
+          actorProfileId,
+          relatedPostId,
+          created_at_ms,
+          now,
+          notificationId,
+        ],
+      },
+    )
+  } else {
+    db.exec(
+      `INSERT INTO notifications (
+        server_id, local_id, notification_type_id, actor_profile_id,
+        related_post_id, created_at_ms, stored_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?);`,
+      {
+        bind: [
+          serverId,
+          notification.id,
+          notificationTypeId,
+          actorProfileId,
+          relatedPostId,
+          created_at_ms,
+          now,
+        ],
+      },
+    )
+  }
+}
+
 export function handleAddNotification(
   db: DbExec,
   notificationJson: string,
   backendUrl: string,
 ): HandlerResult {
   const notification = JSON.parse(notificationJson) as Entity.Notification
-  const compositeKey = createCompositeKey(backendUrl, notification.id)
-  const created_at_ms = new Date(notification.created_at).getTime()
   const now = Date.now()
-  const cols = extractNotificationColumns(notification)
-
-  db.exec(
-    `INSERT INTO notifications (
-      compositeKey, backendUrl, created_at_ms, storedAt,
-      notification_type, status_id, account_acct,
-      json
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(compositeKey) DO UPDATE SET
-      created_at_ms     = excluded.created_at_ms,
-      storedAt          = excluded.storedAt,
-      notification_type = excluded.notification_type,
-      status_id         = excluded.status_id,
-      account_acct      = excluded.account_acct,
-      json              = excluded.json;`,
-    {
-      bind: [
-        compositeKey,
-        backendUrl,
-        created_at_ms,
-        now,
-        cols.notification_type,
-        cols.status_id,
-        cols.account_acct,
-        JSON.stringify(notification),
-      ],
-    },
-  )
-
+  const serverId = ensureServer(db, backendUrl)
+  upsertNotification(db, notification, serverId, backendUrl, now)
   return { changedTables: ['notifications'] }
 }
 
@@ -70,38 +261,10 @@ export function handleBulkAddNotifications(
 
   db.exec('BEGIN;')
   try {
+    const serverId = ensureServer(db, backendUrl)
     for (const nJson of notificationsJson) {
       const notification = JSON.parse(nJson) as Entity.Notification
-      const compositeKey = createCompositeKey(backendUrl, notification.id)
-      const created_at_ms = new Date(notification.created_at).getTime()
-      const cols = extractNotificationColumns(notification)
-
-      db.exec(
-        `INSERT INTO notifications (
-          compositeKey, backendUrl, created_at_ms, storedAt,
-          notification_type, status_id, account_acct,
-          json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(compositeKey) DO UPDATE SET
-          created_at_ms     = excluded.created_at_ms,
-          storedAt          = excluded.storedAt,
-          notification_type = excluded.notification_type,
-          status_id         = excluded.status_id,
-          account_acct      = excluded.account_acct,
-          json              = excluded.json;`,
-        {
-          bind: [
-            compositeKey,
-            backendUrl,
-            created_at_ms,
-            now,
-            cols.notification_type,
-            cols.status_id,
-            cols.account_acct,
-            JSON.stringify(notification),
-          ],
-        },
-      )
+      upsertNotification(db, notification, serverId, backendUrl, now)
     }
     db.exec('COMMIT;')
   } catch (e) {
@@ -119,60 +282,17 @@ export function handleUpdateNotificationStatusAction(
   action: 'reblogged' | 'favourited' | 'bookmarked',
   value: boolean,
 ): HandlerResult {
-  // statuses_backends 経由で compositeKey を解決
-  const sbRows = db.exec(
-    'SELECT compositeKey FROM statuses_backends WHERE backendUrl = ? AND local_id = ?;',
-    { bind: [backendUrl, statusId], returnValue: 'resultRows' },
-  ) as string[][]
-  const statusCompositeKey = sbRows.length > 0 ? sbRows[0][0] : null
+  // 通知関連のステータスの engagement 更新は post_engagements で処理
+  const postId = resolvePostId(db, backendUrl, statusId)
+  if (postId === null) return { changedTables: [] }
 
-  const statusIds: string[] = [statusId]
+  const localAccountId = resolveLocalAccountId(db, backendUrl)
+  if (localAccountId === null) return { changedTables: [] }
 
-  if (statusCompositeKey) {
-    const localIdRows = db.exec(
-      'SELECT local_id FROM statuses_backends WHERE compositeKey = ?;',
-      { bind: [statusCompositeKey], returnValue: 'resultRows' },
-    ) as string[][]
-    for (const r of localIdRows) {
-      if (!statusIds.includes(r[0])) {
-        statusIds.push(r[0])
-      }
-    }
-  }
+  const engagementCode = ACTION_TO_ENGAGEMENT[action]
+  if (!engagementCode) return { changedTables: [] }
 
-  const placeholders = statusIds.map(() => '?').join(',')
-  const rows = db.exec(
-    `SELECT compositeKey, json FROM notifications
-     WHERE status_id IN (${placeholders});`,
-    { bind: statusIds, returnValue: 'resultRows' },
-  ) as (string | number)[][]
+  toggleEngagement(db, localAccountId, postId, engagementCode, value)
 
-  const updates: { key: string; json: string }[] = []
-  for (const row of rows) {
-    const notification = JSON.parse(row[1] as string) as Entity.Notification
-    if (notification.status) {
-      ;(notification.status as Record<string, unknown>)[action] = value
-      updates.push({
-        json: JSON.stringify(notification),
-        key: row[0] as string,
-      })
-    }
-  }
-
-  if (updates.length > 0) {
-    db.exec('BEGIN;')
-    try {
-      for (const u of updates) {
-        db.exec('UPDATE notifications SET json = ? WHERE compositeKey = ?;', {
-          bind: [u.json, u.key],
-        })
-      }
-      db.exec('COMMIT;')
-    } catch (e) {
-      db.exec('ROLLBACK;')
-      throw e
-    }
-  }
-
-  return { changedTables: updates.length > 0 ? ['notifications'] : [] }
+  return { changedTables: ['notifications'] }
 }
