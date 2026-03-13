@@ -13,6 +13,7 @@ import {
   resolvePostId,
   syncPollData,
   syncPostCustomEmojis,
+  syncProfileCustomEmojis,
   toggleEngagement,
 } from '../shared'
 
@@ -165,6 +166,18 @@ export function handleAddNotification(
   const actorProfileId = notification.account
     ? ensureProfile(db, notification.account)
     : null
+  if (
+    actorProfileId !== null &&
+    notification.account &&
+    notification.account.emojis.length > 0
+  ) {
+    syncProfileCustomEmojis(
+      db,
+      actorProfileId,
+      serverId,
+      notification.account.emojis,
+    )
+  }
   const relatedPostId = notification.status
     ? ensurePostForNotification(db, notification.status, backendUrl, serverId)
     : null
@@ -242,6 +255,18 @@ export function handleBulkAddNotifications(
       const actorProfileId = notification.account
         ? ensureProfile(db, notification.account)
         : null
+      if (
+        actorProfileId !== null &&
+        notification.account &&
+        notification.account.emojis.length > 0
+      ) {
+        syncProfileCustomEmojis(
+          db,
+          actorProfileId,
+          serverId,
+          notification.account.emojis,
+        )
+      }
       const relatedPostId = notification.status
         ? ensurePostForNotification(
             db,

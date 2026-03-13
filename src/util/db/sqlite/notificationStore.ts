@@ -56,7 +56,8 @@ export const NOTIFICATION_SELECT = `
   rp.edited_at AS rp_edited_at,
   (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.image_url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM post_custom_emojis pce INNER JOIN custom_emojis ce ON pce.emoji_id = ce.emoji_id WHERE pce.post_id = rp.post_id AND pce.usage_context = 'status') AS rp_status_emojis_json,
   (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.image_url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM post_custom_emojis pce INNER JOIN custom_emojis ce ON pce.emoji_id = ce.emoji_id WHERE pce.post_id = rp.post_id AND pce.usage_context = 'account') AS rp_account_emojis_json,
-  (SELECT json_object('id', pl.poll_id, 'expires_at', pl.expires_at, 'multiple', pl.multiple, 'votes_count', pl.votes_count, 'options', (SELECT json_group_array(json_object('title', po.title, 'votes_count', po.votes_count)) FROM poll_options po WHERE po.poll_id = pl.poll_id ORDER BY po.option_index)) FROM polls pl WHERE pl.post_id = rp.post_id) AS rp_poll_json`
+  (SELECT json_object('id', pl.poll_id, 'expires_at', pl.expires_at, 'multiple', pl.multiple, 'votes_count', pl.votes_count, 'options', (SELECT json_group_array(json_object('title', po.title, 'votes_count', po.votes_count)) FROM poll_options po WHERE po.poll_id = pl.poll_id ORDER BY po.option_index)) FROM polls pl WHERE pl.post_id = rp.post_id) AS rp_poll_json,
+  (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.image_url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM profile_custom_emojis pce2 INNER JOIN custom_emojis ce ON pce2.emoji_id = ce.emoji_id WHERE pce2.profile_id = ap.profile_id) AS actor_emojis_json`
 
 export const NOTIFICATION_BASE_JOINS = `
   LEFT JOIN servers sv ON n.server_id = sv.server_id
@@ -81,6 +82,7 @@ export const NOTIFICATION_BASE_JOINS = `
  *   [30] rp_in_reply_to_id [31] rp_edited_at
  *   [32] rp_status_emojis_json [33] rp_account_emojis_json
  *   [34] rp_poll_json
+ *   [35] actor_emojis_json
  */
 export function rowToStoredNotification(
   row: (string | number | null)[],
@@ -211,7 +213,7 @@ export function rowToStoredNotification(
       bot: (row[13] as number) === 1,
       created_at: '',
       display_name: (row[9] as string) ?? '',
-      emojis: [],
+      emojis: parseEmojis(row[35] as string | null),
       fields: [],
       followers_count: 0,
       following_count: 0,

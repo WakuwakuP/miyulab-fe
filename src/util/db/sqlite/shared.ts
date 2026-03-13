@@ -383,6 +383,42 @@ export function syncPostCustomEmojis(
 }
 
 /**
+ * プロフィールのカスタム絵文字を profile_custom_emojis に同期する。
+ */
+export function syncProfileCustomEmojis(
+  db: {
+    exec: (
+      sql: string,
+      opts?: {
+        bind?: (string | number | null)[]
+        returnValue?: 'resultRows'
+      },
+    ) => unknown
+  },
+  profileId: number,
+  serverId: number,
+  emojis: {
+    shortcode: string
+    url: string
+    static_url?: string | null
+    visible_in_picker?: boolean
+  }[],
+): void {
+  db.exec('DELETE FROM profile_custom_emojis WHERE profile_id = ?;', {
+    bind: [profileId],
+  })
+
+  for (const emoji of emojis) {
+    const emojiId = ensureCustomEmoji(db, serverId, emoji)
+    db.exec(
+      `INSERT OR IGNORE INTO profile_custom_emojis (profile_id, emoji_id)
+       VALUES (?, ?);`,
+      { bind: [profileId, emojiId] },
+    )
+  }
+}
+
+/**
  * 投稿の投票データを polls / poll_options に同期する。
  */
 export function syncPollData(

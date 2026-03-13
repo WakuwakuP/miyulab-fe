@@ -18,6 +18,7 @@ import {
   resolvePostItemKindId,
   syncPollData,
   syncPostCustomEmojis,
+  syncProfileCustomEmojis,
   toggleEngagement,
 } from '../shared'
 
@@ -175,6 +176,9 @@ export function handleUpsertStatus(
     const serverId = ensureServer(db, backendUrl)
     const visibilityId = resolveVisibilityId(db, cols.visibility)
     const profileId = ensureProfile(db, status.account)
+    if (status.account.emojis.length > 0) {
+      syncProfileCustomEmojis(db, profileId, serverId, status.account.emojis)
+    }
 
     let postId: number | undefined
     let existingIsOriginal = false
@@ -367,6 +371,9 @@ export function handleBulkUpsertStatuses(
       const cols = extractStatusColumns(status)
       const visibilityId = resolveVisibilityId(db, cols.visibility)
       const profileId = ensureProfile(db, status.account)
+      if (status.account.emojis.length > 0) {
+        syncProfileCustomEmojis(db, profileId, serverId, status.account.emojis)
+      }
 
       let postId: number | undefined = normalizedUri
         ? uriCache.get(normalizedUri)
@@ -782,6 +789,10 @@ export function handleUpdateStatus(
   try {
     const visibilityId = resolveVisibilityId(db, cols.visibility)
     const profileId = ensureProfile(db, status.account)
+    const serverId = ensureServer(db, backendUrl)
+    if (status.account.emojis.length > 0) {
+      syncProfileCustomEmojis(db, profileId, serverId, status.account.emojis)
+    }
 
     db.exec(
       `UPDATE posts SET
@@ -866,6 +877,7 @@ export function handleSyncFollows(
 
   db.exec('BEGIN;')
   try {
+    const serverId = ensureServer(db, backendUrl)
     // 現在のフォローを全削除して再構築
     db.exec('DELETE FROM follows WHERE local_account_id = ?;', {
       bind: [localAccountId],
@@ -874,6 +886,9 @@ export function handleSyncFollows(
     for (const json of accountsJson) {
       const account = JSON.parse(json) as Entity.Account
       const profileId = ensureProfile(db, account)
+      if (account.emojis.length > 0) {
+        syncProfileCustomEmojis(db, profileId, serverId, account.emojis)
+      }
       db.exec(
         `INSERT OR IGNORE INTO follows (local_account_id, target_profile_id, created_at)
          VALUES (?, ?, datetime('now'));`,
