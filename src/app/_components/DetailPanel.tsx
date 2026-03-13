@@ -4,6 +4,7 @@ import { AccountDetail } from 'app/_parts/AccountDetail'
 import { HashtagDetail } from 'app/_parts/HashtagDetail'
 import { Panel } from 'app/_parts/Panel'
 import { Status } from 'app/_parts/Status'
+import type { Entity } from 'megalodon'
 import { useContext, useEffect, useState } from 'react'
 import { RiArrowLeftSLine } from 'react-icons/ri'
 import { Virtuoso } from 'react-virtuoso'
@@ -49,23 +50,54 @@ export const DetailPanel = () => {
         })
     }
 
-    if (detail.type === 'SearchUser') {
+    if (detail.type === 'SearchUser' && detail.content) {
       const client = GetClient(apps[detail.appIndex])
 
-      client
-        .getAccount(detail.content)
-        .then((res) => {
-          setDetail({
-            content: {
-              ...res.data,
-              appIndex: detail.appIndex,
-            },
-            type: 'Account',
+      const resolveAsAccount = (account: Entity.Account) => {
+        setDetail({
+          content: {
+            ...account,
+            appIndex: detail.appIndex,
+          },
+          type: 'Account',
+        })
+      }
+
+      // URL 形式の場合、acct を抽出する (https://domain/@user → user@domain)
+      let searchQuery = detail.content
+      if (/^https?:\/\//.test(searchQuery)) {
+        try {
+          const url = new URL(searchQuery)
+          const pathMatch = url.pathname.match(/^\/(?:@|users\/)([^/@]+)\/?$/)
+          if (pathMatch?.[1]) {
+            searchQuery = `${pathMatch[1]}@${url.host}`
+          }
+        } catch {
+          // URL パース失敗時はそのまま使用
+        }
+      }
+
+      // 数値的な ID の場合は getAccount、そうでなければ searchAccount で解決
+      const isNumericId = /^\d+$/.test(searchQuery)
+      if (isNumericId) {
+        client
+          .getAccount(searchQuery)
+          .then((res) => resolveAsAccount(res.data))
+          .catch((error) => {
+            console.error('Failed to fetch account:', error)
           })
-        })
-        .catch((error) => {
-          console.error('Failed to fetch account:', error)
-        })
+      } else {
+        client
+          .searchAccount(searchQuery, { limit: 5, resolve: true })
+          .then((res) => {
+            const found =
+              res.data.find((a) => a.acct === searchQuery) ?? res.data[0]
+            if (found) resolveAsAccount(found)
+          })
+          .catch((error) => {
+            console.error('Failed to search account:', error)
+          })
+      }
     }
   }, [apps, detail, detail.content, detail.type, setDetail])
 

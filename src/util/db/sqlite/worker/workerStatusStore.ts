@@ -10,6 +10,7 @@ import type { TableName } from '../protocol'
 import {
   ACTION_TO_ENGAGEMENT,
   ensureProfile,
+  ensureProfileAlias,
   ensureServer,
   ensureTimeline,
   extractStatusColumns,
@@ -176,6 +177,7 @@ function ensureReblogOriginalPost(
   const created_at_ms = new Date(originalStatus.created_at).getTime()
   const visibilityId = resolveVisibilityId(db, cols.visibility)
   const profileId = ensureProfile(db, originalStatus.account)
+  ensureProfileAlias(db, profileId, serverId, originalStatus.account.id)
   if (originalStatus.account.emojis.length > 0) {
     syncProfileCustomEmojis(
       db,
@@ -321,6 +323,7 @@ export function handleUpsertStatus(
     const serverId = ensureServer(db, backendUrl)
     const visibilityId = resolveVisibilityId(db, cols.visibility)
     const profileId = ensureProfile(db, status.account)
+    ensureProfileAlias(db, profileId, serverId, status.account.id)
     if (status.account.emojis.length > 0) {
       syncProfileCustomEmojis(db, profileId, serverId, status.account.emojis)
     }
@@ -521,6 +524,7 @@ export function handleBulkUpsertStatuses(
       const cols = extractStatusColumns(status)
       const visibilityId = resolveVisibilityId(db, cols.visibility)
       const profileId = ensureProfile(db, status.account)
+      ensureProfileAlias(db, profileId, serverId, status.account.id)
       if (status.account.emojis.length > 0) {
         syncProfileCustomEmojis(db, profileId, serverId, status.account.emojis)
       }
@@ -945,6 +949,7 @@ export function handleUpdateStatus(
     const visibilityId = resolveVisibilityId(db, cols.visibility)
     const profileId = ensureProfile(db, status.account)
     const serverId = ensureServer(db, backendUrl)
+    ensureProfileAlias(db, profileId, serverId, status.account.id)
     if (status.account.emojis.length > 0) {
       syncProfileCustomEmojis(db, profileId, serverId, status.account.emojis)
     }
@@ -1041,6 +1046,7 @@ export function handleSyncFollows(
     for (const json of accountsJson) {
       const account = JSON.parse(json) as Entity.Account
       const profileId = ensureProfile(db, account)
+      ensureProfileAlias(db, profileId, serverId, account.id)
       if (account.emojis.length > 0) {
         syncProfileCustomEmojis(db, profileId, serverId, account.emojis)
       }

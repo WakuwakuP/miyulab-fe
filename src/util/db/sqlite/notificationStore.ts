@@ -57,14 +57,18 @@ export const NOTIFICATION_SELECT = `
   (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.image_url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM post_custom_emojis pce INNER JOIN custom_emojis ce ON pce.emoji_id = ce.emoji_id WHERE pce.post_id = rp.post_id AND pce.usage_context = 'status') AS rp_status_emojis_json,
   (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.image_url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM post_custom_emojis pce INNER JOIN custom_emojis ce ON pce.emoji_id = ce.emoji_id WHERE pce.post_id = rp.post_id AND pce.usage_context = 'account') AS rp_account_emojis_json,
   (SELECT json_object('id', pl.poll_id, 'expires_at', pl.expires_at, 'multiple', pl.multiple, 'votes_count', pl.votes_count, 'options', (SELECT json_group_array(json_object('title', po.title, 'votes_count', po.votes_count)) FROM poll_options po WHERE po.poll_id = pl.poll_id ORDER BY po.option_index)) FROM polls pl WHERE pl.post_id = rp.post_id) AS rp_poll_json,
-  (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.image_url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM profile_custom_emojis pce2 INNER JOIN custom_emojis ce ON pce2.emoji_id = ce.emoji_id WHERE pce2.profile_id = ap.profile_id) AS actor_emojis_json`
+  (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.image_url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM profile_custom_emojis pce2 INNER JOIN custom_emojis ce ON pce2.emoji_id = ce.emoji_id WHERE pce2.profile_id = ap.profile_id) AS actor_emojis_json,
+  COALESCE(apa.remote_account_id, '') AS actor_account_id,
+  COALESCE(rppa.remote_account_id, '') AS rp_author_account_id`
 
 export const NOTIFICATION_BASE_JOINS = `
   LEFT JOIN servers sv ON n.server_id = sv.server_id
   LEFT JOIN notification_types nt ON n.notification_type_id = nt.notification_type_id
   LEFT JOIN profiles ap ON n.actor_profile_id = ap.profile_id
   LEFT JOIN posts rp ON n.related_post_id = rp.post_id
-  LEFT JOIN profiles rppr ON rp.author_profile_id = rppr.profile_id`
+  LEFT JOIN profiles rppr ON rp.author_profile_id = rppr.profile_id
+  LEFT JOIN profile_aliases apa ON apa.profile_id = ap.profile_id AND apa.server_id = n.server_id
+  LEFT JOIN profile_aliases rppa ON rppa.profile_id = rppr.profile_id AND rppa.server_id = n.server_id`
 
 /**
  * row layout:
@@ -83,6 +87,7 @@ export const NOTIFICATION_BASE_JOINS = `
  *   [32] rp_status_emojis_json [33] rp_account_emojis_json
  *   [34] rp_poll_json
  *   [35] actor_emojis_json
+ *   [36] actor_account_id [37] rp_author_account_id
  */
 export function rowToStoredNotification(
   row: (string | number | null)[],
@@ -159,7 +164,7 @@ export function rowToStoredNotification(
         group: null,
         header: '',
         header_static: '',
-        id: '',
+        id: (row[37] as string) || '',
         limited: null,
         locked: false,
         moved: null,
@@ -220,7 +225,7 @@ export function rowToStoredNotification(
       group: null,
       header: (row[11] as string) ?? '',
       header_static: (row[11] as string) ?? '',
-      id: '',
+      id: (row[36] as string) || '',
       limited: null,
       locked: (row[12] as number) === 1,
       moved: null,

@@ -1,6 +1,13 @@
 'use client'
 
-import { useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import type { StatusAddAppIndex, TimelineConfigV2 } from 'types/types'
 import type { TimelineType as DbTimelineType } from 'util/db/database'
 import { getSqliteDb, subscribe } from 'util/db/sqlite/connection'
@@ -18,6 +25,7 @@ import {
   normalizeBackendFilter,
   resolveBackendUrls,
 } from 'util/timelineConfigValidator'
+import { useConfigRefresh } from 'util/timelineRefresh'
 
 /**
  * backendUrl から appIndex を算出するヘルパー
@@ -63,6 +71,14 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
   const [statuses, setStatuses] = useState<SqliteStoredStatus[]>([])
   const [queryLimit, setQueryLimit] = useState(TIMELINE_QUERY_LIMIT)
   const { queryDuration, recordDuration } = useQueryDuration()
+
+  // 非同期クエリの競合状態を防止するためのバージョンカウンター
+  // fetchData が再生成されるたびにインクリメントし、
+  // 古いクエリの結果が新しいクエリの結果を上書きしないようにする
+  const fetchVersionRef = useRef(0)
+
+  // 設定保存時に確実に再取得をトリガーするためのリフレッシュトークン
+  const refreshToken = useConfigRefresh(config.id)
 
   const loadMore = useCallback(() => {
     setQueryLimit((prev) => prev + TIMELINE_QUERY_LIMIT)
@@ -139,6 +155,7 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
 
   // 3. SQLite からデータ取得
   const fetchData = useCallback(async () => {
+    void refreshToken
     // tag / notification はそれぞれ専用 Hook で処理するためスキップ
     // customQuery が設定されている場合も useCustomQueryTimeline に委譲するためスキップ
     if (
@@ -153,6 +170,8 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
       setStatuses([])
       return
     }
+
+    const version = ++fetchVersionRef.current
 
     try {
       const handle = await getSqliteDb()
@@ -197,6 +216,8 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
         rowToStoredStatus(row),
       )
 
+      // 古い非同期クエリの結果が新しいクエリの結果を上書きしないようにする
+      if (fetchVersionRef.current !== version) return
       setStatuses(results)
     } catch (e) {
       console.error('useFilteredTimeline query error:', e)
@@ -209,6 +230,7 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
     filterBinds,
     queryLimit,
     recordDuration,
+    refreshToken,
   ])
 
   // 初回取得 + 変更通知で再取得

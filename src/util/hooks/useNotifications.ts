@@ -25,6 +25,7 @@ import {
   normalizeBackendFilter,
   resolveBackendUrls,
 } from 'util/timelineConfigValidator'
+import { useConfigRefresh } from 'util/timelineRefresh'
 
 /** status を持つべき通知タイプ */
 const TYPES_WITH_STATUS = new Set([
@@ -90,12 +91,21 @@ export function useNotifications(config?: TimelineConfigV2): {
     return resolveBackendUrls(filter, apps)
   }, [config, apps])
 
+  // 非同期クエリの競合状態を防止するためのバージョンカウンター
+  const fetchVersionRef = useRef(0)
+
+  // 設定保存時に確実に再取得をトリガーするためのリフレッシュトークン
+  const refreshToken = useConfigRefresh(config?.id ?? '')
+
   const fetchData = useCallback(async () => {
+    void refreshToken
     // customQuery が設定されている場合は useCustomQueryTimeline に委譲するためスキップ
     if (targetBackendUrls.length === 0 || config?.customQuery?.trim()) {
       setNotifications([])
       return
     }
+
+    const version = ++fetchVersionRef.current
 
     try {
       const handle = await getSqliteDb()
@@ -138,6 +148,8 @@ export function useNotifications(config?: TimelineConfigV2): {
         rowToStoredNotification(row),
       )
 
+      // 古い非同期クエリの結果が新しいクエリの結果を上書きしないようにする
+      if (fetchVersionRef.current !== version) return
       setNotifications(results)
     } catch (e) {
       console.error('useNotifications query error:', e)
@@ -148,6 +160,7 @@ export function useNotifications(config?: TimelineConfigV2): {
     config?.notificationFilter,
     queryLimit,
     recordDuration,
+    refreshToken,
   ])
 
   // 初回取得 + 変更通知で再取得

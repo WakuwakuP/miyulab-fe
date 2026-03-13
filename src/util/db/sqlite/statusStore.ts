@@ -186,7 +186,7 @@ export function rowToStoredStatus(
         group: null,
         header: (row[50] as string) ?? '',
         header_static: (row[50] as string) ?? '',
-        id: '',
+        id: (row[65] as string) || '',
         limited: null,
         locked: (row[51] as number) === 1,
         moved: null,
@@ -247,7 +247,7 @@ export function rowToStoredStatus(
       group: null,
       header: (row[20] as string) ?? '',
       header_static: (row[20] as string) ?? '',
-      id: '',
+      id: (row[64] as string) || '',
       limited: null,
       locked: (row[21] as number) === 1,
       moved: null,
@@ -372,7 +372,9 @@ export const STATUS_SELECT = `
   (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.image_url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM post_custom_emojis pce INNER JOIN custom_emojis ce ON pce.emoji_id = ce.emoji_id WHERE pce.post_id = rs.post_id AND pce.usage_context = 'status') AS rb_status_emojis_json,
   (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.image_url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM post_custom_emojis pce INNER JOIN custom_emojis ce ON pce.emoji_id = ce.emoji_id WHERE pce.post_id = rs.post_id AND pce.usage_context = 'account') AS rb_account_emojis_json,
   (SELECT json_object('id', pl.poll_id, 'expires_at', pl.expires_at, 'multiple', pl.multiple, 'votes_count', pl.votes_count, 'options', (SELECT json_group_array(json_object('title', po.title, 'votes_count', po.votes_count)) FROM poll_options po WHERE po.poll_id = pl.poll_id ORDER BY po.option_index)) FROM polls pl WHERE pl.post_id = rs.post_id) AS rb_poll_json,
-  (SELECT MIN(rpb.local_id) FROM posts_backends rpb WHERE rpb.post_id = rs.post_id) AS rb_local_id`
+  (SELECT MIN(rpb.local_id) FROM posts_backends rpb WHERE rpb.post_id = rs.post_id) AS rb_local_id,
+  COALESCE(pra.remote_account_id, '') AS author_account_id,
+  COALESCE(rpra.remote_account_id, '') AS rb_author_account_id`
 
 /**
  * 正規化テーブルの基本 JOIN 句（profiles, visibility_types, posts_backends）
@@ -383,7 +385,9 @@ export const STATUS_BASE_JOINS = `
   LEFT JOIN posts_backends pb ON s.post_id = pb.post_id
   LEFT JOIN posts rs ON s.is_reblog = 1 AND s.reblog_of_uri != '' AND s.reblog_of_uri = rs.object_uri
   LEFT JOIN profiles rpr ON rs.author_profile_id = rpr.profile_id
-  LEFT JOIN visibility_types rvt ON rs.visibility_id = rvt.visibility_id`
+  LEFT JOIN visibility_types rvt ON rs.visibility_id = rvt.visibility_id
+  LEFT JOIN profile_aliases pra ON pra.profile_id = pr.profile_id AND pra.server_id = pb.server_id
+  LEFT JOIN profile_aliases rpra ON rpra.profile_id = rpr.profile_id AND rpra.server_id = pb.server_id`
 
 // ================================================================
 // Public API

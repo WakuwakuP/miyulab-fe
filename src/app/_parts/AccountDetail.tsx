@@ -10,7 +10,15 @@ import parse, {
   domToReact,
 } from 'html-react-parser'
 import type { Entity } from 'megalodon'
-import { useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
+
 import innerText from 'react-innertext'
 import type { AccountAddAppIndex } from 'types/types'
 import { GetClient } from 'util/GetClient'
@@ -28,6 +36,9 @@ export const AccountDetail = ({ account }: { account: AccountAddAppIndex }) => {
     Entity.Relationship | undefined
   >(undefined)
   const [isLoading, setIsLoading] = useState(false)
+
+  // API で完全プロフィールを取得済みかを追跡
+  const resolvedAccountIdRef = useRef<string | null>(null)
 
   const [tab, setTab] = useState<'toots' | 'media' | 'favourite'>('toots')
 
@@ -95,8 +106,53 @@ export const AccountDetail = ({ account }: { account: AccountAddAppIndex }) => {
     setMedia([])
   }, [account.id])
 
+  // account の詳細データ（note, fields 等）が不足している場合、API で完全なデータを取得する
+  useEffect(() => {
+    if (!account.acct || apps.length <= 0) return
+    // 既にこの account.id で解決済みならスキップ
+    if (resolvedAccountIdRef.current === (account.id || account.acct)) return
+
+    const client = GetClient(apps[account.appIndex])
+
+    if (account.id) {
+      // id がある場合は getAccount で完全なプロフィールを取得
+      resolvedAccountIdRef.current = account.id
+      client
+        .getAccount(account.id)
+        .then((res) => {
+          setDetail({
+            content: { ...res.data, appIndex: account.appIndex },
+            type: 'Account',
+          })
+        })
+        .catch((error) => {
+          console.error('Failed to fetch account:', error)
+        })
+    } else {
+      // id が空（SQLite キャッシュ由来）の場合は searchAccount でアカウントを解決する
+      resolvedAccountIdRef.current = account.acct
+      client
+        .searchAccount(account.acct, { limit: 1, resolve: true })
+        .then((res) => {
+          const found = res.data.find(
+            (a) => a.acct === account.acct || a.url === account.url,
+          )
+          if (found) {
+            setDetail({
+              content: { ...found, appIndex: account.appIndex },
+              type: 'Account',
+            })
+          }
+        })
+        .catch((error) => {
+          console.error('Failed to resolve account:', error)
+        })
+    }
+  }, [account.acct, account.appIndex, account.id, account.url, apps, setDetail])
+
   useEffect(() => {
     if (apps.length <= 0) return
+    if (!account.id) return
     setIsLoading(true)
 
     const client = GetClient(apps[account.appIndex])

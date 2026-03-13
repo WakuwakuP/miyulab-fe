@@ -167,11 +167,22 @@ export const Status = ({
             onClick={(e) => {
               e.stopPropagation()
               e.preventDefault()
+              const href = node.attribs.href ?? ''
+              const mention = status.mentions.find((m) => m.url === href)
+              // id が取得できた場合は getAccount で解決、なければ acct でフォールバック
+              const mentionByPattern = status.mentions.find(
+                (m) =>
+                  href.includes(`/@${m.acct}`) ||
+                  href.includes(`/users/${m.acct}`) ||
+                  // リモートユーザー: acct が user@domain の場合、href に /@user が含まれるか
+                  (m.acct.includes('@') &&
+                    href.includes(`/@${m.acct.split('@')[0]}`)),
+              )
+              const content =
+                mention?.id || mention?.acct || mentionByPattern?.acct || href
               setDetail({
                 appIndex: status.appIndex,
-                content: status.mentions.find(
-                  (mention) => mention.url === node.attribs.href,
-                )?.id as string,
+                content,
                 type: 'SearchUser',
               })
             }}

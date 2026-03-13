@@ -7,6 +7,7 @@ import type { TableName } from '../protocol'
 import {
   ACTION_TO_ENGAGEMENT,
   ensureProfile,
+  ensureProfileAlias,
   ensureServer,
   extractStatusColumns,
   resolveLocalAccountId,
@@ -83,6 +84,7 @@ function ensurePostForNotification(
   // 新規投稿を挿入
   const cols = extractStatusColumns(status)
   const profileId = ensureProfile(db, status.account)
+  ensureProfileAlias(db, profileId, serverId, status.account.id)
   const visibilityId = resolveVisibilityId(db, cols.visibility)
   const now = Date.now()
   const created_at_ms = new Date(status.created_at).getTime()
@@ -166,6 +168,9 @@ export function handleAddNotification(
   const actorProfileId = notification.account
     ? ensureProfile(db, notification.account)
     : null
+  if (actorProfileId !== null && notification.account) {
+    ensureProfileAlias(db, actorProfileId, serverId, notification.account.id)
+  }
   if (
     actorProfileId !== null &&
     notification.account &&
@@ -255,6 +260,14 @@ export function handleBulkAddNotifications(
       const actorProfileId = notification.account
         ? ensureProfile(db, notification.account)
         : null
+      if (actorProfileId !== null && notification.account) {
+        ensureProfileAlias(
+          db,
+          actorProfileId,
+          serverId,
+          notification.account.id,
+        )
+      }
       if (
         actorProfileId !== null &&
         notification.account &&

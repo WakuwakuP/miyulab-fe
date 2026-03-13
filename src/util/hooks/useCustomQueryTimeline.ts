@@ -1,6 +1,13 @@
 'use client'
 
-import { useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import type {
   NotificationAddAppIndex,
   StatusAddAppIndex,
@@ -27,6 +34,7 @@ import {
   isMixedQuery,
   isNotificationQuery,
 } from 'util/queryBuilder'
+import { useConfigRefresh } from 'util/timelineRefresh'
 
 /**
  * backendUrl から appIndex を算出するヘルパー
@@ -65,27 +73,39 @@ function hasUnquotedQuestionMark(query: string): boolean {
 // 互換サブクエリ: 旧カラム名をカスタム WHERE 句で使えるようにする
 // ================================================================
 
-/** posts 互換サブクエリ FROM 句（旧カラム名を後方互換で提供） */
+/**
+ * posts 互換サブクエリ FROM 句（旧カラム名を後方互換で提供、JOIN ベース）
+ *
+ * 旧 STATUS_COMPAT_FROM の相関サブクエリを LEFT JOIN に置き換えたもの。
+ * インデックスベースの JOIN によりパフォーマンスが大幅に改善される。
+ */
 const STATUS_COMPAT_FROM = `(
       SELECT p.*,
-        COALESCE((SELECT sv.base_url FROM servers sv WHERE sv.server_id = p.origin_server_id), '') AS origin_backend_url,
-        COALESCE((SELECT pr2.acct FROM profiles pr2 WHERE pr2.profile_id = p.author_profile_id), '') AS account_acct,
+        COALESCE(sv_c.base_url, '') AS origin_backend_url,
+        COALESCE(pr_c.acct, '') AS account_acct,
         '' AS account_id,
-        COALESCE((SELECT vt2.code FROM visibility_types vt2 WHERE vt2.visibility_id = p.visibility_id), 'public') AS visibility,
+        COALESCE(vt_c.code, 'public') AS visibility,
         NULL AS reblog_of_id,
-        COALESCE((SELECT ps2.favourites_count FROM post_stats ps2 WHERE ps2.post_id = p.post_id), 0) AS favourites_count,
-        COALESCE((SELECT ps2.reblogs_count FROM post_stats ps2 WHERE ps2.post_id = p.post_id), 0) AS reblogs_count,
-        COALESCE((SELECT ps2.replies_count FROM post_stats ps2 WHERE ps2.post_id = p.post_id), 0) AS replies_count
+        COALESCE(ps_c.favourites_count, 0) AS favourites_count,
+        COALESCE(ps_c.reblogs_count, 0) AS reblogs_count,
+        COALESCE(ps_c.replies_count, 0) AS replies_count
       FROM posts p
+      LEFT JOIN servers sv_c ON sv_c.server_id = p.origin_server_id
+      LEFT JOIN profiles pr_c ON pr_c.profile_id = p.author_profile_id
+      LEFT JOIN visibility_types vt_c ON vt_c.visibility_id = p.visibility_id
+      LEFT JOIN post_stats ps_c ON ps_c.post_id = p.post_id
     ) s`
 
-/** notifications 互換サブクエリ FROM 句（旧カラム名を後方互換で提供） */
+/** notifications 互換サブクエリ FROM 句（旧カラム名を後方互換で提供、JOIN ベース） */
 const NOTIF_COMPAT_FROM = `(
       SELECT n2.*,
-        COALESCE((SELECT sv2.base_url FROM servers sv2 WHERE sv2.server_id = n2.server_id), '') AS backend_url,
-        COALESCE((SELECT nt2.code FROM notification_types nt2 WHERE nt2.notification_type_id = n2.notification_type_id), '') AS notification_type,
-        COALESCE((SELECT pr3.acct FROM profiles pr3 WHERE pr3.profile_id = n2.actor_profile_id), '') AS account_acct
+        COALESCE(sv_nc.base_url, '') AS backend_url,
+        COALESCE(nt_nc.code, '') AS notification_type,
+        COALESCE(pr_nc.acct, '') AS account_acct
       FROM notifications n2
+      LEFT JOIN servers sv_nc ON sv_nc.server_id = n2.server_id
+      LEFT JOIN notification_types nt_nc ON nt_nc.notification_type_id = n2.notification_type_id
+      LEFT JOIN profiles pr_nc ON pr_nc.profile_id = n2.actor_profile_id
     ) n`
 
 // ================================================================
@@ -162,6 +182,12 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
   const [queryLimit, setQueryLimit] = useState(TIMELINE_QUERY_LIMIT)
   const { queryDuration, recordDuration } = useQueryDuration()
 
+  // 非同期クエリの競合状態を防止するためのバージョンカウンター
+  const fetchVersionRef = useRef(0)
+
+  // 設定保存時に確実に再取得をトリガーするためのリフレッシュトークン
+  const refreshToken = useConfigRefresh(config.id)
+
   const loadMore = useCallback(() => {
     setQueryLimit((prev) => prev + TIMELINE_QUERY_LIMIT)
   }, [])
@@ -185,10 +211,13 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
   }, [customQuery])
 
   const fetchData = useCallback(async () => {
+    void refreshToken
     if (!customQuery.trim()) {
       setResults([])
       return
     }
+
+    const version = ++fetchVersionRef.current
 
     try {
       const handle = await getSqliteDb()
@@ -294,12 +323,14 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           `LEFT JOIN ${EMPTY_SR} sr ON 1 = 1`,
         ].join('\n            ')
 
+        const rewrittenNotifWhere = sanitized
+
         const notifSql = `
           SELECT ${NOTIFICATION_SELECT}
           FROM ${NOTIF_COMPAT_FROM}
           ${NOTIFICATION_BASE_JOINS}
             ${notifDummyJoins}
-          WHERE (${sanitized})
+          WHERE (${rewrittenNotifWhere})
           ORDER BY n.created_at_ms DESC
           LIMIT ?;
         `
@@ -328,6 +359,8 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           .sort((a, b) => b.created_at_ms - a.created_at_ms)
           .slice(0, queryLimit)
 
+        // 古い非同期クエリの結果が新しいクエリの結果を上書きしないようにする
+        if (fetchVersionRef.current !== version) return
         setResults(mixed)
       } else if (queryMode === 'notification') {
         // ============================
@@ -335,11 +368,13 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         // ============================
         const binds: (string | number)[] = [queryLimit]
 
+        const rewrittenNotifWhere = sanitized
+
         const sql = `
           SELECT ${NOTIFICATION_SELECT}
           FROM ${NOTIF_COMPAT_FROM}
           ${NOTIFICATION_BASE_JOINS}
-          WHERE (${sanitized})
+          WHERE (${rewrittenNotifWhere})
           ORDER BY n.created_at_ms DESC
           LIMIT ?;
         `
@@ -356,6 +391,8 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           _type: 'notification' as const,
         }))
 
+        // 古い非同期クエリの結果が新しいクエリの結果を上書きしないようにする
+        if (fetchVersionRef.current !== version) return
         setResults(notifResults)
       } else {
         // ============================
@@ -431,6 +468,8 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           _type: 'status' as const,
         }))
 
+        // 古い非同期クエリの結果が新しいクエリの結果を上書きしないようにする
+        if (fetchVersionRef.current !== version) return
         setResults(statusResults)
       }
     } catch (e) {
@@ -443,6 +482,7 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
     queryMode,
     queryLimit,
     recordDuration,
+    refreshToken,
   ])
 
   useEffect(() => {

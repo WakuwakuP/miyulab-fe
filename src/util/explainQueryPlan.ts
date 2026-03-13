@@ -34,25 +34,36 @@ import {
 // 互換サブクエリ: 旧カラム名をカスタム WHERE 句で使えるようにする
 // ================================================================
 
+// ================================================================
+// 互換サブクエリ: 旧カラム名をカスタム WHERE 句で使えるようにする
+// ================================================================
+
 const STATUS_COMPAT_FROM = `(
       SELECT p.*,
-        COALESCE((SELECT sv.base_url FROM servers sv WHERE sv.server_id = p.origin_server_id), '') AS origin_backend_url,
-        COALESCE((SELECT pr2.acct FROM profiles pr2 WHERE pr2.profile_id = p.author_profile_id), '') AS account_acct,
+        COALESCE(sv_c.base_url, '') AS origin_backend_url,
+        COALESCE(pr_c.acct, '') AS account_acct,
         '' AS account_id,
-        COALESCE((SELECT vt2.code FROM visibility_types vt2 WHERE vt2.visibility_id = p.visibility_id), 'public') AS visibility,
+        COALESCE(vt_c.code, 'public') AS visibility,
         NULL AS reblog_of_id,
-        COALESCE((SELECT ps2.favourites_count FROM post_stats ps2 WHERE ps2.post_id = p.post_id), 0) AS favourites_count,
-        COALESCE((SELECT ps2.reblogs_count FROM post_stats ps2 WHERE ps2.post_id = p.post_id), 0) AS reblogs_count,
-        COALESCE((SELECT ps2.replies_count FROM post_stats ps2 WHERE ps2.post_id = p.post_id), 0) AS replies_count
+        COALESCE(ps_c.favourites_count, 0) AS favourites_count,
+        COALESCE(ps_c.reblogs_count, 0) AS reblogs_count,
+        COALESCE(ps_c.replies_count, 0) AS replies_count
       FROM posts p
+      LEFT JOIN servers sv_c ON sv_c.server_id = p.origin_server_id
+      LEFT JOIN profiles pr_c ON pr_c.profile_id = p.author_profile_id
+      LEFT JOIN visibility_types vt_c ON vt_c.visibility_id = p.visibility_id
+      LEFT JOIN post_stats ps_c ON ps_c.post_id = p.post_id
     ) s`
 
 const NOTIF_COMPAT_FROM = `(
       SELECT n2.*,
-        COALESCE((SELECT sv2.base_url FROM servers sv2 WHERE sv2.server_id = n2.server_id), '') AS backend_url,
-        COALESCE((SELECT nt2.code FROM notification_types nt2 WHERE nt2.notification_type_id = n2.notification_type_id), '') AS notification_type,
-        COALESCE((SELECT pr3.acct FROM profiles pr3 WHERE pr3.profile_id = n2.actor_profile_id), '') AS account_acct
+        COALESCE(sv_nc.base_url, '') AS backend_url,
+        COALESCE(nt_nc.code, '') AS notification_type,
+        COALESCE(pr_nc.acct, '') AS account_acct
       FROM notifications n2
+      LEFT JOIN servers sv_nc ON sv_nc.server_id = n2.server_id
+      LEFT JOIN notification_types nt_nc ON nt_nc.notification_type_id = n2.notification_type_id
+      LEFT JOIN profiles pr_nc ON pr_nc.profile_id = n2.actor_profile_id
     ) n`
 
 // ================================================================
@@ -490,6 +501,8 @@ function buildCustomMixedQuery(
 
   const binds: (string | number)[] = [...statusMediaBinds, TIMELINE_QUERY_LIMIT]
 
+  const rewrittenNotifWhere = sanitized
+
   // EXPLAIN 用に status + notification の両クエリを UNION ALL で結合
   const sql = `
     SELECT post_id, created_at_ms
@@ -504,7 +517,7 @@ function buildCustomMixedQuery(
       FROM ${NOTIF_COMPAT_FROM}
       ${NOTIFICATION_BASE_JOINS}
             ${notifDummyJoins}
-      WHERE (${sanitized})
+      WHERE (${rewrittenNotifWhere})
     )
     ORDER BY created_at_ms DESC
     LIMIT ?;

@@ -286,6 +286,38 @@ export function ensureProfile(
 }
 
 /**
+ * profile_aliases テーブルにリモートアカウント ID のマッピングを UPSERT する。
+ *
+ * Mastodon / Pleroma 等の API では、アカウント ID はサーバーごとに異なる。
+ * この関数で (server_id, remote_account_id) → profile_id のマッピングを記録し、
+ * 読み取りクエリ時にバックエンド固有のアカウント ID を復元できるようにする。
+ */
+export function ensureProfileAlias(
+  db: {
+    exec: (
+      sql: string,
+      opts?: {
+        bind?: (string | number | null)[]
+        returnValue?: 'resultRows'
+      },
+    ) => unknown
+  },
+  profileId: number,
+  serverId: number,
+  remoteAccountId: string,
+): void {
+  if (!remoteAccountId) return
+  db.exec(
+    `INSERT INTO profile_aliases (server_id, remote_account_id, profile_id, fetched_at)
+     VALUES (?, ?, ?, datetime('now'))
+     ON CONFLICT(server_id, remote_account_id) DO UPDATE SET
+       profile_id = excluded.profile_id,
+       fetched_at = excluded.fetched_at;`,
+    { bind: [serverId, remoteAccountId, profileId] },
+  )
+}
+
+/**
  * カスタム絵文字を custom_emojis に UPSERT し、emoji_id を返す。
  */
 export function ensureCustomEmoji(
