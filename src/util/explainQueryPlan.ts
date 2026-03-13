@@ -459,6 +459,10 @@ function buildCustomMixedQuery(
     statusJoinLines.push(
       'LEFT JOIN posts_reblogs sr\n              ON s.post_id = sr.post_id',
     )
+  if (refs.pe)
+    statusJoinLines.push(
+      'LEFT JOIN post_engagements pe\n              ON s.post_id = pe.post_id',
+    )
   statusJoinLines.push(`LEFT JOIN ${EMPTY_N} n ON 1 = 1`)
 
   const statusExtraJoins =
@@ -551,6 +555,10 @@ function buildCustomStatusQuery(
   if (refs.sr)
     joinLines.push(
       'LEFT JOIN posts_reblogs sr\n          ON s.post_id = sr.post_id',
+    )
+  if (refs.pe)
+    joinLines.push(
+      'LEFT JOIN post_engagements pe\n          ON s.post_id = pe.post_id',
     )
 
   const joinsClause =

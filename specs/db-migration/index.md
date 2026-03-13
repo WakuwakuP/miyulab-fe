@@ -166,7 +166,7 @@
   - [x] `workerMigration.ts` — v13 スキーマに合わせた INSERT/UPDATE 書き換え (ensureServer/ensureProfile/resolveVisibilityId 使用)
   - [x] `shared.ts` — `extractNotificationColumns` 削除（未使用化）
   - [x] `queryBuilder.ts` — `upgradeQueryToV2` で `sb.backendUrl` 正規化、`parseQueryToConfig` で `backend_url|backendUrl` 両方マッチ
-  - [x] `QueryEditor.tsx` — JSON パス補完 / `json_extract` 値補完を全削除
+  - [x] `QueryEditor.tsx` — JSON パス補完 / `json_extract` 値補完を削除（※ JSON パスマッチング正規表現のデッドコードが微量残存）
   - [x] `useTimeline.ts`, `useFilteredTimeline.ts`, `useFilteredTagTimeline.ts` — `STATUS_SELECT` / `STATUS_BASE_JOINS` ベースに書き換え
   - [x] `useNotifications.ts` — `NOTIFICATION_SELECT` / `NOTIFICATION_BASE_JOINS` ベースに書き換え
   - [x] `useCustomQueryTimeline.ts` — `STATUS_COMPAT_FROM` / `NOTIF_COMPAT_FROM` サブクエリ + カラム名リライトチェーン
@@ -240,8 +240,10 @@ Phase 9 (future) ← requires Phase 1〜3
 
 ## 更新履歴
 
-| 日付       | 内容                          |
-| ---------- | ----------------------------- |
-| 2026-03-12 | 進捗管理ドキュメント作成      |
-| 2026-03-12 | Phase 1 完了を反映（現行 v7） |
-| 2026-03-12 | Phase 2 完了を反映（現行 v8） |
+| 日付       | 内容                                                 |
+| ---------- | ---------------------------------------------------- |
+| 2026-03-12 | 進捗管理ドキュメント作成                             |
+| 2026-03-12 | Phase 1 完了を反映（現行 v7）                        |
+| 2026-03-12 | Phase 2 完了を反映（現行 v8）                        |
+| 2026-03-12 | Phase 3〜8 完了を反映（現行 v14）                    |
+| 2026-03-12 | 全 Phase 実装状況を検証・更新（SCHEMA_VERSION = 15） |

@@ -66,10 +66,12 @@ export function detectReferencedAliases(whereClause: string): {
   sm: boolean
   sb: boolean
   sr: boolean
+  pe: boolean
   n: boolean
 } {
   return {
     n: /\bn\.\w+/.test(whereClause),
+    pe: /\bpe\.\w+/.test(whereClause),
     sb: /\bsb\.\w+/.test(whereClause),
     sbt: /\bsbt\.\w+/.test(whereClause),
     sm: /\bsm\.\w+/.test(whereClause),

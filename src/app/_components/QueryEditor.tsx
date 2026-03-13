@@ -28,7 +28,6 @@ type QueryEditorProps = {
  *
  * テーブルエイリアス (s., stt., sbt.) を入力すると
  * カラム名の補完候補を表示する。
- * `$.` を入力すると json_extract パスの補完候補を表示する。
  * `sbt.tag = '` や `stt.timelineType = '` の後に
  * DB 内の実データ値の補完候補を表示する。
  * SQL キーワード・関数の補完も提供する。
@@ -263,23 +262,6 @@ export const QueryEditor = ({
       const text = value
       const beforeCursor = text.slice(0, cursorPos)
       const afterCursor = text.slice(cursorPos)
-
-      // `$.` パス補完の場合
-      const jsonPathMatch = beforeCursor.match(/'\$\.[\w.[\]]*$/)
-      if (jsonPathMatch) {
-        const matchStart = beforeCursor.length - jsonPathMatch[0].length + 1 // `'` の次
-        const newBeforeCursor = beforeCursor.slice(0, matchStart)
-        const newValue = `${newBeforeCursor}${suggestion}${afterCursor}`
-        onChange(newValue)
-        setShowSuggestions(false)
-
-        const newPos = newBeforeCursor.length + suggestion.length
-        requestAnimationFrame(() => {
-          textarea.setSelectionRange(newPos, newPos)
-          textarea.focus()
-        })
-        return
-      }
 
       // 汎用カラム値補完の場合
       const genericColumnValueMatch = beforeCursor.match(

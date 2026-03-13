@@ -62,13 +62,16 @@ export async function fetchInitialData(
  * max_id で oldest の id を指定してページネーションする。
  * 複数 backendUrl の場合、各 backend の最古の id を個別に追跡する必要がある。
  */
+/** API 1回あたりの取得件数 */
+export const FETCH_LIMIT = 40
+
 export async function fetchMoreData(
   client: MegalodonInterface,
   config: TimelineConfigV2,
   backendUrl: string,
   maxId: string,
 ): Promise<number> {
-  const limit = 40
+  const limit = FETCH_LIMIT
 
   switch (config.type) {
     case 'home': {

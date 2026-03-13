@@ -55,6 +55,7 @@ export interface SqliteStoredStatus extends Entity.Status {
  *   [24] replies_count   [25] reblogs_count    [26] favourites_count
  *   [27] engagements_csv [28] media_json       [29] mentions_json
  *   [30] timelineTypes   [31] belongingTags
+ *   [32] status_emojis_json [33] account_emojis_json
  */
 export function rowToStoredStatus(
   row: (string | number | null)[],
@@ -65,12 +66,34 @@ export function rowToStoredStatus(
   const mentionsJson = row[29] as string | null
   const timelineTypesJson = row[30] as string | null
   const belongingTagsJson = row[31] as string | null
+  const statusEmojisJson = row[32] as string | null
+  const accountEmojisJson = row[33] as string | null
 
   const belongingTags: string[] = belongingTagsJson
     ? (JSON.parse(belongingTagsJson) as (string | null)[]).filter(
         (t): t is string => t !== null,
       )
     : []
+
+  const parseEmojis = (json: string | null): Entity.Emoji[] => {
+    if (!json) return []
+    const parsed = JSON.parse(json) as ({
+      shortcode: string
+      url: string
+      static_url: string | null
+      visible_in_picker: number
+    } | null)[]
+    return parsed
+      .filter(
+        (e): e is NonNullable<typeof e> => e !== null && e.shortcode !== null,
+      )
+      .map((e) => ({
+        shortcode: e.shortcode,
+        static_url: e.static_url ?? e.url,
+        url: e.url,
+        visible_in_picker: e.visible_in_picker === 1,
+      }))
+  }
 
   return {
     account: {
@@ -80,7 +103,7 @@ export function rowToStoredStatus(
       bot: (row[22] as number) === 1,
       created_at: '',
       display_name: (row[18] as string) ?? '',
-      emojis: [],
+      emojis: parseEmojis(accountEmojisJson),
       fields: [],
       followers_count: 0,
       following_count: 0,
@@ -108,7 +131,7 @@ export function rowToStoredStatus(
     created_at_ms: row[3] as number,
     edited_at: row[15] as string | null,
     emoji_reactions: [],
-    emojis: [],
+    emojis: parseEmojis(statusEmojisJson),
     favourited: engagements.includes('favourite'),
     favourites_count: (row[26] as number) ?? 0,
     id: (row[2] as string) ?? '',
@@ -193,7 +216,9 @@ export const STATUS_SELECT = `
   CASE WHEN s.has_media = 1 THEN (SELECT json_group_array(json_object('id', pm.remote_media_id, 'type', COALESCE((SELECT mt.code FROM media_types mt WHERE mt.media_type_id = pm.media_type_id), 'unknown'), 'url', pm.url, 'preview_url', pm.preview_url, 'description', pm.description, 'blurhash', pm.blurhash, 'remote_url', pm.url)) FROM post_media pm WHERE pm.post_id = s.post_id ORDER BY pm.sort_order) ELSE NULL END AS media_json,
   (SELECT json_group_array(json_object('acct', pme.acct)) FROM posts_mentions pme WHERE pme.post_id = s.post_id) AS mentions_json,
   (SELECT json_group_array(ck.code) FROM timeline_items ti INNER JOIN timelines t ON t.timeline_id = ti.timeline_id INNER JOIN channel_kinds ck ON ck.channel_kind_id = t.channel_kind_id WHERE ti.post_id = s.post_id) AS timelineTypes,
-  (SELECT json_group_array(tag) FROM posts_belonging_tags WHERE post_id = s.post_id) AS belongingTags`
+  (SELECT json_group_array(tag) FROM posts_belonging_tags WHERE post_id = s.post_id) AS belongingTags,
+  (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.image_url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM post_custom_emojis pce INNER JOIN custom_emojis ce ON pce.emoji_id = ce.emoji_id WHERE pce.post_id = s.post_id AND pce.usage_context = 'status') AS status_emojis_json,
+  (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.image_url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM post_custom_emojis pce INNER JOIN custom_emojis ce ON pce.emoji_id = ce.emoji_id WHERE pce.post_id = s.post_id AND pce.usage_context = 'account') AS account_emojis_json`
 
 /**
  * 正規化テーブルの基本 JOIN 句（profiles, visibility_types, posts_backends）
@@ -421,6 +446,45 @@ export async function getStatusesByTag(
 }
 
 /**
+ * ブックマークした Status を取得
+ */
+export async function getBookmarkedStatuses(
+  backendUrls?: string[],
+  limit?: number,
+): Promise<SqliteStoredStatus[]> {
+  const handle = await getSqliteDb()
+
+  const binds: (string | number)[] = []
+  let backendFilter = ''
+  if (backendUrls && backendUrls.length > 0) {
+    const placeholders = backendUrls.map(() => '?').join(',')
+    backendFilter = `AND pb.backendUrl IN (${placeholders})`
+    binds.push(...backendUrls)
+  }
+
+  const sql = `
+    SELECT ${STATUS_SELECT}
+    FROM posts s
+    ${STATUS_BASE_JOINS}
+    INNER JOIN post_engagements pe ON s.post_id = pe.post_id
+    INNER JOIN engagement_types et ON pe.engagement_type_id = et.engagement_type_id
+    WHERE et.code = 'bookmark'
+      ${backendFilter}
+    GROUP BY s.post_id
+    ORDER BY s.created_at_ms DESC
+    LIMIT ?;
+  `
+  binds.push(limit ?? MAX_QUERY_LIMIT)
+
+  const rows = (await handle.execAsync(sql, {
+    bind: binds,
+    returnValue: 'resultRows',
+  })) as (string | number | null)[][]
+
+  return rows.map(rowToStoredStatus)
+}
+
+/**
  * ユーザー入力の WHERE 句をサニタイズする
  *
  * - LIMIT / OFFSET を除去（自動設定のため）
@@ -506,6 +570,10 @@ export async function getStatusesByCustomQuery(
     joinLines.push(
       'LEFT JOIN posts_reblogs sr\n      ON s.post_id = sr.post_id',
     )
+  if (refs.pe)
+    joinLines.push(
+      'LEFT JOIN post_engagements pe\n      ON s.post_id = pe.post_id',
+    )
 
   let backendFilter = ''
   const binds: (string | number)[] = []
@@ -556,7 +624,7 @@ export async function getStatusesByCustomQuery(
  * テーブルカラム / エイリアス一覧（補完用）
  */
 export const QUERY_COMPLETIONS = {
-  aliases: ['s', 'stt', 'sbt', 'sm', 'sb', 'sr', 'n'],
+  aliases: ['s', 'stt', 'sbt', 'sm', 'sb', 'sr', 'pe', 'n'],
   columns: {
     n: [
       'notification_id',
@@ -573,6 +641,7 @@ export const QUERY_COMPLETIONS = {
       'notification_type',
       'account_acct',
     ],
+    pe: ['post_id', 'local_account_id', 'engagement_type_id', 'emoji_id'],
     s: [
       'post_id',
       'object_uri',
@@ -969,6 +1038,12 @@ export const ALIAS_TO_TABLE: Record<
   n: {
     columns: {},
     table: 'notifications',
+  },
+  pe: {
+    columns: {
+      engagement_type_id: 'engagement_type_id',
+    },
+    table: 'post_engagements',
   },
   s: {
     columns: {

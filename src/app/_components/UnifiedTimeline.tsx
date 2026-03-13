@@ -23,7 +23,11 @@ import {
   resolveBackendUrls,
 } from 'util/timelineConfigValidator'
 import { getDefaultTimelineName } from 'util/timelineDisplayName'
-import { fetchInitialData, fetchMoreData } from 'util/timelineFetcher'
+import {
+  FETCH_LIMIT,
+  fetchInitialData,
+  fetchMoreData,
+} from 'util/timelineFetcher'
 
 /**
  * 統合タイムラインコンポーネント
@@ -70,13 +74,12 @@ export const UnifiedTimeline = ({
     loadMore: () => void
   }
 
-  // moreLoad 内で timeline を参照するための ref
-  // useCallback の依存配列から timeline を外し、無限ループを防止する
-  const timelineRef = useRef(timeline)
-  timelineRef.current = timeline
-
   // moreLoad の同時実行防止フラグ
   const isFetchingMoreRef = useRef(false)
+
+  // 各 backendUrl ごとに「これ以上古いデータがない」状態を追跡
+  // fetchMoreData が FETCH_LIMIT 未満を返したら exhausted とみなす
+  const exhaustedBackendsRef = useRef(new Set<string>())
 
   const [enableScrollToTop, setEnableScrollToTop] = useState(true)
   const [isScrolling, setIsScrolling] = useState(false)
@@ -87,11 +90,12 @@ export const UnifiedTimeline = ({
   const bottomExpansionRef = useRef(0)
   const prevLengthRef = useRef(timeline.length)
 
-  // config 変更時に bottomExpansion をリセット
+  // config 変更時に bottomExpansion と exhausted 状態をリセット
   const configId = config.id
   useEffect(() => {
     void configId
     bottomExpansionRef.current = 0
+    exhaustedBackendsRef.current = new Set()
   }, [configId])
 
   const currentLength = timeline.length
@@ -127,8 +131,7 @@ export const UnifiedTimeline = ({
     isFetchingMoreRef.current = true
 
     try {
-      const currentTimeline = timelineRef.current
-      if (apps.length <= 0 || currentTimeline.length === 0) return
+      if (apps.length <= 0) return
 
       // SQLite クエリの表示件数を拡張
       loadMore()
@@ -138,30 +141,21 @@ export const UnifiedTimeline = ({
         apps,
       )
 
-      // 各 backendUrl ごとに最古の投稿 ID を算出して追加データをフェッチ
+      // 全バックエンドが exhausted なら何もしない
+      const activeUrls = targetUrls.filter(
+        (url) => !exhaustedBackendsRef.current.has(url),
+      )
+      if (activeUrls.length === 0) return
+
+      // 各 backendUrl ごとに DB 内の最古 status_id を算出して追加データをフェッチ
+      // フィルタ済みタイムラインの最古IDではなく、DB 上のタイムラインタイプに
+      // 紐づく最古IDを使うことで、フィルタで除外された投稿の先にある
+      // 古い投稿も確実に取得できる
       await Promise.all(
-        targetUrls.map(async (url) => {
+        activeUrls.map(async (url) => {
           const app = apps.find((a) => a.backendUrl === url)
           if (!app) return 0
 
-          // 該当 backend の最古投稿を取得
-          // まず現在のタイムライン表示から探す
-          const oldestStatus = currentTimeline
-            .filter((s) => apps[s.appIndex]?.backendUrl === url)
-            .at(-1)
-
-          if (oldestStatus) {
-            const client = GetClient(app)
-            try {
-              return await fetchMoreData(client, config, url, oldestStatus.id)
-            } catch (error) {
-              console.error(`Failed to fetch more data for ${url}:`, error)
-              return 0
-            }
-          }
-
-          // 表示上に該当バックエンドの投稿がない場合は DB から直接取得
-          // （フィルタリングにより表示されていないが、実際には存在する可能性）
           const { getSqliteDb } = await import('util/db/sqlite/connection')
           const handle = await getSqliteDb()
           const timelineType = config.type as
@@ -170,14 +164,14 @@ export const UnifiedTimeline = ({
             | 'public'
             | 'tag'
 
-          // DB から最古の status_id を取得するだけでよい（fetchMoreData が max_id として使用）
+          // DB からタイムラインタイプに紐づく最古の status_id を取得
           let oldestId: string | undefined
 
           if (config.type === 'tag') {
             const tags = config.tagConfig?.tags ?? []
             for (const tag of tags) {
               const rows = (await handle.execAsync(
-                `SELECT s.status_id
+                `SELECT pb2.local_id
                  FROM posts s
                  INNER JOIN posts_backends pb2 ON pb2.post_id = s.post_id
                  INNER JOIN posts_belonging_tags sbt ON s.post_id = sbt.post_id
@@ -193,7 +187,7 @@ export const UnifiedTimeline = ({
             }
           } else {
             const rows = (await handle.execAsync(
-              `SELECT s.status_id
+              `SELECT pb2.local_id
                FROM posts s
                INNER JOIN posts_backends pb2 ON pb2.post_id = s.post_id
                INNER JOIN timeline_items ti ON s.post_id = ti.post_id
@@ -221,7 +215,11 @@ export const UnifiedTimeline = ({
           }
 
           try {
-            return await fetchMoreData(client, config, url, oldestId)
+            const count = await fetchMoreData(client, config, url, oldestId)
+            if (count < FETCH_LIMIT) {
+              exhaustedBackendsRef.current.add(url)
+            }
+            return count
           } catch (error) {
             console.error(`Failed to fetch more data for ${url}:`, error)
             return 0

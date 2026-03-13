@@ -16,6 +16,7 @@ import {
   resolveLocalAccountId,
   resolvePostId,
   resolvePostItemKindId,
+  syncPostCustomEmojis,
   toggleEngagement,
 } from '../shared'
 
@@ -309,6 +310,13 @@ export function handleUpsertStatus(
     upsertMentionsInternal(db, postId, status.mentions)
     syncPostMedia(db, postId, status.media_attachments, status.sensitive)
     syncPostStats(db, postId, status)
+    syncPostCustomEmojis(
+      db,
+      postId,
+      serverId,
+      status.emojis ?? [],
+      status.account?.emojis ?? [],
+    )
 
     if (cols.is_reblog === 1 && cols.reblog_of_uri) {
       db.exec(
@@ -500,6 +508,13 @@ export function handleBulkUpsertStatuses(
       upsertMentionsInternal(db, postId, status.mentions)
       syncPostMedia(db, postId, status.media_attachments, status.sensitive)
       syncPostStats(db, postId, status)
+      syncPostCustomEmojis(
+        db,
+        postId,
+        serverId,
+        status.emojis ?? [],
+        status.account?.emojis ?? [],
+      )
 
       // リブログ関係を posts_reblogs に記録（元投稿の URI が存在する場合のみ）
       if (cols.is_reblog === 1 && cols.reblog_of_uri) {

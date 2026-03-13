@@ -253,6 +253,10 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           statusJoinLines.push(
             'LEFT JOIN posts_reblogs sr\n              ON s.post_id = sr.post_id',
           )
+        if (refs.pe)
+          statusJoinLines.push(
+            'LEFT JOIN post_engagements pe\n              ON s.post_id = pe.post_id',
+          )
         // n.* は空サブクエリでダミー提供（実テーブルスキャンを回避）
         statusJoinLines.push(`LEFT JOIN ${EMPTY_N} n ON 1 = 1`)
 
@@ -380,6 +384,10 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         if (refs.sr)
           joinLines.push(
             'LEFT JOIN posts_reblogs sr\n            ON s.post_id = sr.post_id',
+          )
+        if (refs.pe)
+          joinLines.push(
+            'LEFT JOIN post_engagements pe\n            ON s.post_id = pe.post_id',
           )
 
         const joinsClause =

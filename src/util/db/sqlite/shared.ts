@@ -284,3 +284,100 @@ export function ensureProfile(
 
   return rows[0][0]
 }
+
+/**
+ * カスタム絵文字を custom_emojis に UPSERT し、emoji_id を返す。
+ */
+export function ensureCustomEmoji(
+  db: {
+    exec: (
+      sql: string,
+      opts?: {
+        bind?: (string | number | null)[]
+        returnValue?: 'resultRows'
+      },
+    ) => unknown
+  },
+  serverId: number,
+  emoji: {
+    shortcode: string
+    url: string
+    static_url?: string | null
+    visible_in_picker?: boolean
+  },
+): number {
+  db.exec(
+    `INSERT INTO custom_emojis (server_id, shortcode, image_url, static_url, visible_in_picker)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(server_id, shortcode) DO UPDATE SET
+       image_url  = excluded.image_url,
+       static_url = excluded.static_url;`,
+    {
+      bind: [
+        serverId,
+        emoji.shortcode,
+        emoji.url,
+        emoji.static_url ?? null,
+        emoji.visible_in_picker === false ? 0 : 1,
+      ],
+    },
+  )
+
+  const emojiRows = db.exec(
+    'SELECT emoji_id FROM custom_emojis WHERE server_id = ? AND shortcode = ?;',
+    { bind: [serverId, emoji.shortcode], returnValue: 'resultRows' },
+  ) as number[][]
+
+  return emojiRows[0][0]
+}
+
+/**
+ * 投稿のカスタム絵文字を post_custom_emojis に同期する。
+ */
+export function syncPostCustomEmojis(
+  db: {
+    exec: (
+      sql: string,
+      opts?: {
+        bind?: (string | number | null)[]
+        returnValue?: 'resultRows'
+      },
+    ) => unknown
+  },
+  postId: number,
+  serverId: number,
+  statusEmojis: {
+    shortcode: string
+    url: string
+    static_url?: string | null
+    visible_in_picker?: boolean
+  }[],
+  accountEmojis: {
+    shortcode: string
+    url: string
+    static_url?: string | null
+    visible_in_picker?: boolean
+  }[],
+): void {
+  db.exec('DELETE FROM post_custom_emojis WHERE post_id = ?;', {
+    bind: [postId],
+  })
+
+  for (const emoji of statusEmojis) {
+    const emojiId = ensureCustomEmoji(db, serverId, emoji)
+    db.exec(
+      `INSERT OR IGNORE INTO post_custom_emojis (post_id, emoji_id, usage_context)
+       VALUES (?, ?, 'status');`,
+      { bind: [postId, emojiId] },
+    )
+  }
+
+  for (const emoji of accountEmojis) {
+    const emojiId = ensureCustomEmoji(db, serverId, emoji)
+    db.exec(
+      `INSERT OR IGNORE INTO post_custom_emojis (post_id, emoji_id, usage_context)
+       VALUES (?, ?, 'account');`,
+      { bind: [postId, emojiId] },
+    )
+  }
+}

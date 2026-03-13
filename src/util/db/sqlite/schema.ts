@@ -32,7 +32,7 @@
 import type { SchemaDbHandle as DbHandle } from './worker/workerSchema'
 
 /** 現在のスキーマバージョン */
-const SCHEMA_VERSION = 15
+const SCHEMA_VERSION = 16
 
 /**
  * スキーマの初期化・マイグレーション
@@ -51,8 +51,8 @@ export function ensureSchema(handle: DbHandle): void {
   db.exec('BEGIN;')
   try {
     if (currentVersion < 1) {
-      // フレッシュインストール: v14 スキーマを直接作成
-      createSchemaV14(handle)
+      // フレッシュインストール: v16 スキーマを直接作成
+      createSchemaV16(handle)
     } else if (currentVersion < 2) {
       migrateV1toV2(handle)
       migrateV2toV3(handle)
@@ -67,6 +67,7 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV11toV12(handle)
       migrateV12toV13(handle)
       migrateV13toV14(handle)
+      migrateV15toV16(handle)
     } else if (currentVersion < 3) {
       migrateV2toV3(handle)
       migrateV3toV4(handle)
@@ -80,6 +81,7 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV11toV12(handle)
       migrateV12toV13(handle)
       migrateV13toV14(handle)
+      migrateV15toV16(handle)
     } else if (currentVersion < 4) {
       migrateV3toV4(handle)
       migrateV4toV5(handle)
@@ -92,6 +94,7 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV11toV12(handle)
       migrateV12toV13(handle)
       migrateV13toV14(handle)
+      migrateV15toV16(handle)
     } else if (currentVersion < 5) {
       migrateV4toV5(handle)
       migrateV5toV6(handle)
@@ -103,6 +106,7 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV11toV12(handle)
       migrateV12toV13(handle)
       migrateV13toV14(handle)
+      migrateV15toV16(handle)
     } else if (currentVersion < 6) {
       migrateV5toV6(handle)
       migrateV6toV7(handle)
@@ -113,6 +117,7 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV11toV12(handle)
       migrateV12toV13(handle)
       migrateV13toV14(handle)
+      migrateV15toV16(handle)
     } else if (currentVersion < 7) {
       migrateV6toV7(handle)
       migrateV7toV8(handle)
@@ -122,6 +127,7 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV11toV12(handle)
       migrateV12toV13(handle)
       migrateV13toV14(handle)
+      migrateV15toV16(handle)
     } else if (currentVersion < 8) {
       migrateV7toV8(handle)
       migrateV8toV9(handle)
@@ -130,6 +136,7 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV11toV12(handle)
       migrateV12toV13(handle)
       migrateV13toV14(handle)
+      migrateV15toV16(handle)
     } else if (currentVersion < 9) {
       migrateV8toV9(handle)
       migrateV9toV10(handle)
@@ -137,26 +144,34 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV11toV12(handle)
       migrateV12toV13(handle)
       migrateV13toV14(handle)
+      migrateV15toV16(handle)
     } else if (currentVersion < 10) {
       migrateV9toV10(handle)
       migrateV10toV11(handle)
       migrateV11toV12(handle)
       migrateV12toV13(handle)
       migrateV13toV14(handle)
+      migrateV15toV16(handle)
     } else if (currentVersion < 11) {
       migrateV10toV11(handle)
       migrateV11toV12(handle)
       migrateV12toV13(handle)
       migrateV13toV14(handle)
+      migrateV15toV16(handle)
     } else if (currentVersion < 12) {
       migrateV11toV12(handle)
       migrateV12toV13(handle)
       migrateV13toV14(handle)
+      migrateV15toV16(handle)
     } else if (currentVersion < 13) {
       migrateV12toV13(handle)
       migrateV13toV14(handle)
+      migrateV15toV16(handle)
     } else if (currentVersion < 14) {
       migrateV13toV14(handle)
+      migrateV15toV16(handle)
+    } else if (currentVersion < 16) {
+      migrateV15toV16(handle)
     }
 
     db.exec(`PRAGMA user_version = ${SCHEMA_VERSION};`)
@@ -177,9 +192,10 @@ export function ensureSchema(handle: DbHandle): void {
  * v13 スキーマから posts_timeline_types を廃止し、
  * timelines + timeline_items + feed_events テーブルを導入。
  */
-function createSchemaV14(handle: DbHandle): void {
+function createSchemaV16(handle: DbHandle): void {
   createSchemaV13(handle)
   migrateV13toV14(handle)
+  migrateV15toV16(handle)
 }
 
 // ================================================================
@@ -2316,6 +2332,35 @@ function migrateV13toV14(handle: DbHandle): void {
 
   // Step 6: 旧テーブルを削除
   db.exec('DROP TABLE IF EXISTS posts_timeline_types;')
+}
+
+// ================================================================
+// v15 → v16 マイグレーション（カスタム絵文字中間テーブル）
+// ================================================================
+
+/**
+ * v15 → v16 マイグレーション
+ *
+ * post_custom_emojis テーブルを作成し、投稿とカスタム絵文字の関連を管理する。
+ * usage_context で投稿本文の絵文字と表示名の絵文字を区別する。
+ */
+function migrateV15toV16(handle: DbHandle): void {
+  const { db } = handle
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS post_custom_emojis (
+      post_id        INTEGER NOT NULL REFERENCES posts(post_id) ON DELETE CASCADE,
+      emoji_id       INTEGER NOT NULL REFERENCES custom_emojis(emoji_id),
+      usage_context  TEXT NOT NULL,
+      PRIMARY KEY (post_id, emoji_id, usage_context)
+    );
+  `)
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_pce_post ON post_custom_emojis(post_id);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_pce_emoji ON post_custom_emojis(emoji_id);',
+  )
 }
 
 /**

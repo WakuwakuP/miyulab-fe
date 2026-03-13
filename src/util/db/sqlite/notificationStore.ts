@@ -53,7 +53,9 @@ export const NOTIFICATION_SELECT = `
   COALESCE(rppr.actor_uri, '') AS rp_author_url,
   (SELECT MIN(rpb.local_id) FROM posts_backends rpb WHERE rpb.post_id = rp.post_id) AS rp_local_id,
   rp.in_reply_to_id AS rp_in_reply_to_id,
-  rp.edited_at AS rp_edited_at`
+  rp.edited_at AS rp_edited_at,
+  (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.image_url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM post_custom_emojis pce INNER JOIN custom_emojis ce ON pce.emoji_id = ce.emoji_id WHERE pce.post_id = rp.post_id AND pce.usage_context = 'status') AS rp_status_emojis_json,
+  (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.image_url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM post_custom_emojis pce INNER JOIN custom_emojis ce ON pce.emoji_id = ce.emoji_id WHERE pce.post_id = rp.post_id AND pce.usage_context = 'account') AS rp_account_emojis_json`
 
 export const NOTIFICATION_BASE_JOINS = `
   LEFT JOIN servers sv ON n.server_id = sv.server_id
@@ -76,6 +78,7 @@ export const NOTIFICATION_BASE_JOINS = `
  *   [24] rp_author_acct  [25] rp_author_username [26] rp_author_display_name
  *   [27] rp_author_avatar [28] rp_author_url  [29] rp_local_id
  *   [30] rp_in_reply_to_id [31] rp_edited_at
+ *   [32] rp_status_emojis_json [33] rp_account_emojis_json
  */
 export function rowToStoredNotification(
   row: (string | number | null)[],
@@ -83,8 +86,30 @@ export function rowToStoredNotification(
   const rpPostId = row[15] as number | null
   let status: Entity.Status | undefined
 
+  const parseEmojis = (json: string | null): Entity.Emoji[] => {
+    if (!json) return []
+    const parsed = JSON.parse(json) as ({
+      shortcode: string
+      url: string
+      static_url: string | null
+      visible_in_picker: number
+    } | null)[]
+    return parsed
+      .filter(
+        (e): e is NonNullable<typeof e> => e !== null && e.shortcode !== null,
+      )
+      .map((e) => ({
+        shortcode: e.shortcode,
+        static_url: e.static_url ?? e.url,
+        url: e.url,
+        visible_in_picker: e.visible_in_picker === 1,
+      }))
+  }
+
   if (rpPostId !== null) {
     const rpCreatedAtMs = row[20] as number | null
+    const rpStatusEmojisJson = row[32] as string | null
+    const rpAccountEmojisJson = row[33] as string | null
     status = {
       account: {
         acct: (row[24] as string) ?? '',
@@ -93,7 +118,7 @@ export function rowToStoredNotification(
         bot: false,
         created_at: '',
         display_name: (row[26] as string) ?? '',
-        emojis: [],
+        emojis: parseEmojis(rpAccountEmojisJson),
         fields: [],
         followers_count: 0,
         following_count: 0,
@@ -118,7 +143,7 @@ export function rowToStoredNotification(
       created_at: rpCreatedAtMs ? new Date(rpCreatedAtMs).toISOString() : '',
       edited_at: row[31] as string | null,
       emoji_reactions: [],
-      emojis: [],
+      emojis: parseEmojis(rpStatusEmojisJson),
       favourited: null,
       favourites_count: 0,
       id: (row[29] as string) ?? '',
