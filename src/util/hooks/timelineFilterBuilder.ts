@@ -36,6 +36,10 @@ export function buildFilterConditions(
   config: TimelineConfigV2,
   targetBackendUrls: string[],
   tableAlias = 's',
+  options?: {
+    /** profiles テーブルが pr として JOIN されている場合 true */
+    profileJoined?: boolean
+  },
 ): { conditions: string[]; binds: (string | number)[] } {
   const conditions: string[] = []
   const binds: (string | number)[] = []
@@ -111,7 +115,9 @@ export function buildFilterConditions(
   // （明示的に指定ユーザーの投稿を見たい場合にミュートで消えるのは不適切）
   const applyMute = config.applyMuteFilter ?? true
   if (applyMute && config.accountFilter?.mode !== 'include') {
-    const mute = buildMuteCondition(targetBackendUrls, tableAlias)
+    const mute = buildMuteCondition(targetBackendUrls, tableAlias, {
+      profileJoined: options?.profileJoined,
+    })
     conditions.push(mute.sql)
     binds.push(...mute.binds)
   }
@@ -119,7 +125,11 @@ export function buildFilterConditions(
   // インスタンスブロック除外
   const applyBlock = config.applyInstanceBlock ?? true
   if (applyBlock) {
-    conditions.push(buildInstanceBlockCondition(tableAlias))
+    conditions.push(
+      buildInstanceBlockCondition(tableAlias, {
+        profileJoined: options?.profileJoined,
+      }),
+    )
   }
 
   // フォロー中のアカウントのみ表示

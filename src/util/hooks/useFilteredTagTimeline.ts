@@ -126,6 +126,7 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
         } as TimelineConfigV2,
         targetBackendUrls,
         's', // posts テーブルのエイリアス
+        { profileJoined: true },
       ),
     [
       onlyMedia,
@@ -169,40 +170,45 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
       const backendPlaceholders = targetBackendUrls.map(() => '?').join(',')
       const tagPlaceholders = tags.map(() => '?').join(',')
 
-      let sql: string
-      const binds: (string | number)[] = []
+      // === 第1段階: post_id の取得（軽量クエリ） ===
+      let phase1Sql: string
+      const phase1Binds: (string | number)[] = []
 
       if (tagMode === 'or') {
-        // OR: いずれかのタグを含む（posts_belonging_tags JOIN で絞り込み）
         const whereConditions = [
           `pbt.tag IN (${tagPlaceholders})`,
           `pb.backendUrl IN (${backendPlaceholders})`,
           ...filterConditions,
         ]
 
-        sql = `
-          SELECT ${STATUS_SELECT}
+        phase1Sql = `
+          SELECT DISTINCT s.post_id
           FROM posts s
-          ${STATUS_BASE_JOINS}
+          INNER JOIN posts_backends pb ON s.post_id = pb.post_id
+          LEFT JOIN profiles pr ON s.author_profile_id = pr.profile_id
           INNER JOIN posts_belonging_tags pbt ON s.post_id = pbt.post_id
           WHERE ${whereConditions.join('\n            AND ')}
-          GROUP BY s.post_id
           ORDER BY s.created_at_ms DESC
           LIMIT ?;
         `
-        binds.push(...tags, ...targetBackendUrls, ...filterBinds, queryLimit)
+        phase1Binds.push(
+          ...tags,
+          ...targetBackendUrls,
+          ...filterBinds,
+          queryLimit,
+        )
       } else {
-        // AND: すべてのタグを含む（HAVING COUNT(DISTINCT tag) で全タグ一致を確認）
         const whereConditions = [
           `pbt.tag IN (${tagPlaceholders})`,
           `pb.backendUrl IN (${backendPlaceholders})`,
           ...filterConditions,
         ]
 
-        sql = `
-          SELECT ${STATUS_SELECT}
+        phase1Sql = `
+          SELECT s.post_id
           FROM posts s
-          ${STATUS_BASE_JOINS}
+          INNER JOIN posts_backends pb ON s.post_id = pb.post_id
+          LEFT JOIN profiles pr ON s.author_profile_id = pr.profile_id
           INNER JOIN posts_belonging_tags pbt ON s.post_id = pbt.post_id
           WHERE ${whereConditions.join('\n            AND ')}
           GROUP BY s.post_id
@@ -210,7 +216,7 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
           ORDER BY s.created_at_ms DESC
           LIMIT ?;
         `
-        binds.push(
+        phase1Binds.push(
           ...tags,
           ...targetBackendUrls,
           ...filterBinds,
@@ -220,8 +226,32 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
       }
 
       const start = performance.now()
-      const rows = (await handle.execAsync(sql, {
-        bind: binds,
+      const idRows = (await handle.execAsync(phase1Sql, {
+        bind: phase1Binds,
+        returnValue: 'resultRows',
+      })) as (number | null)[][]
+
+      const postIds = idRows.map((row) => row[0] as number)
+      if (postIds.length === 0) {
+        recordDuration(performance.now() - start)
+        if (fetchVersionRef.current !== version) return
+        setStatuses([])
+        return
+      }
+
+      // === 第2段階: 詳細情報の取得（サブクエリ付きクエリ） ===
+      const placeholders = postIds.map(() => '?').join(',')
+      const phase2Sql = `
+        SELECT ${STATUS_SELECT}
+        FROM posts s
+        ${STATUS_BASE_JOINS}
+        WHERE s.post_id IN (${placeholders})
+        GROUP BY s.post_id
+        ORDER BY s.created_at_ms DESC;
+      `
+
+      const rows = (await handle.execAsync(phase2Sql, {
+        bind: postIds,
         returnValue: 'resultRows',
       })) as (string | number)[][]
       recordDuration(performance.now() - start)

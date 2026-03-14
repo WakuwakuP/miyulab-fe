@@ -527,16 +527,21 @@ function nullTolerant(condition: string): string {
  *
  * @param tableAlias カラム参照に付けるテーブルエイリアス（デフォルト: 's'）。
  *   JOIN クエリで posts テーブルを参照する場合は 'p' を指定する。
+ * @param options.profileJoined profiles テーブルが pr として JOIN されている場合 true。
+ *   true の場合は pr.acct を直接参照し、サブクエリを省略する。
  * @returns SQL 条件文字列とバインド変数の配列
  *
  * @example
  * const { sql, binds } = buildMuteCondition(['https://mastodon.social'])
- * // sql:   "s.account_acct NOT IN (SELECT account_acct FROM muted_accounts WHERE backendUrl IN (?))"
- * // binds: ['https://mastodon.social']
+ * // sql:   "(SELECT acct FROM profiles WHERE profile_id = s.author_profile_id) NOT IN (...)"
+ *
+ * const { sql, binds } = buildMuteCondition(['https://mastodon.social'], 's', { profileJoined: true })
+ * // sql:   "pr.acct NOT IN (...)"
  */
 export function buildMuteCondition(
   backendUrls: string[],
   tableAlias = 's',
+  options?: { profileJoined?: boolean },
 ): {
   sql: string
   binds: string[]
@@ -547,9 +552,13 @@ export function buildMuteCondition(
 
   const prefix = tableAlias ? `${tableAlias}.` : ''
   const placeholders = backendUrls.map(() => '?').join(',')
+  const acctExpr = options?.profileJoined
+    ? 'pr.acct'
+    : `(SELECT acct FROM profiles WHERE profile_id = ${prefix}author_profile_id)`
   return {
     binds: [...backendUrls],
-    sql: `(SELECT acct FROM profiles WHERE profile_id = ${prefix}author_profile_id) NOT IN (
+    sql: `${acctExpr}
+  NOT IN (
       SELECT account_acct FROM muted_accounts WHERE backendUrl IN (${placeholders})
     )`,
   }
@@ -562,14 +571,26 @@ export function buildMuteCondition(
  *
  * @param tableAlias カラム参照に付けるテーブルエイリアス（デフォルト: 's'）。
  *   JOIN クエリで posts テーブルを参照する場合は 'p' を指定する。
+ * @param options.profileJoined profiles テーブルが pr として JOIN されている場合 true。
+ *   true の場合は substr/instr でドメインを抽出し、blocked_instances の PRIMARY KEY で
+ *   インデックス検索する最適化パスを使用する。
  * @returns SQL 条件文字列（バインド変数なし、静的サブクエリ）
  *
  * @example
- * const sql = buildInstanceBlockCondition()
- * // → "NOT EXISTS (SELECT 1 FROM blocked_instances bi WHERE s.account_acct LIKE '%@' || bi.instance_domain)"
+ * const sql = buildInstanceBlockCondition('s', { profileJoined: true })
+ * // → "NOT EXISTS (SELECT 1 FROM blocked_instances bi WHERE bi.instance_domain = substr(pr.acct, instr(pr.acct, '@') + 1))"
  */
-export function buildInstanceBlockCondition(tableAlias = 's'): string {
+export function buildInstanceBlockCondition(
+  tableAlias = 's',
+  options?: { profileJoined?: boolean },
+): string {
   const prefix = tableAlias ? `${tableAlias}.` : ''
+  if (options?.profileJoined) {
+    return `NOT EXISTS (
+    SELECT 1 FROM blocked_instances bi
+    WHERE bi.instance_domain = substr(pr.acct, instr(pr.acct, '@') + 1)
+  )`
+  }
   return `NOT EXISTS (
     SELECT 1 FROM blocked_instances bi
     WHERE (SELECT acct FROM profiles WHERE profile_id = ${prefix}author_profile_id) LIKE '%@' || REPLACE(REPLACE(bi.instance_domain, '%', '\\%'), '_', '\\_') ESCAPE '\\'

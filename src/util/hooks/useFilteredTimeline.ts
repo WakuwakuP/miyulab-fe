@@ -131,6 +131,7 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
         } as TimelineConfigV2,
         targetBackendUrls,
         's', // posts テーブルのエイリアス
+        { profileJoined: true },
       ),
     [
       onlyMedia,
@@ -178,36 +179,66 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
 
       const backendPlaceholders = targetBackendUrls.map(() => '?').join(',')
 
-      // WHERE 条件を組み立て（posts + JOIN テーブルのカラムを参照）
+      // === 第1段階: post_id + timelineTypes の取得（軽量クエリ） ===
       const whereConditions = [
-        'ck.code = ?',
         `pb.backendUrl IN (${backendPlaceholders})`,
         ...filterConditions,
       ]
 
-      // posts を各テーブルと JOIN し、フィルタ・ソート・LIMIT を適用する
-      const sql = `
-        SELECT ${STATUS_SELECT}
-        FROM posts s
-        ${STATUS_BASE_JOINS}
-        INNER JOIN timeline_items ti ON s.post_id = ti.post_id
-        INNER JOIN timelines t ON t.timeline_id = ti.timeline_id
-        INNER JOIN channel_kinds ck ON ck.channel_kind_id = t.channel_kind_id
+      const phase1Sql = `
+        SELECT s.post_id, json_group_array(DISTINCT ck.code) AS timelineTypes
+        FROM channel_kinds ck
+        INNER JOIN timelines t ON t.channel_kind_id = ck.channel_kind_id
+        INNER JOIN timeline_items ti ON ti.timeline_id = t.timeline_id
+        INNER JOIN posts s ON s.post_id = ti.post_id
+        INNER JOIN posts_backends pb ON s.post_id = pb.post_id
+        LEFT JOIN profiles pr ON s.author_profile_id = pr.profile_id
         WHERE ${whereConditions.join('\n          AND ')}
         GROUP BY s.post_id
+        HAVING MAX(ck.code = ?) = 1
         ORDER BY s.created_at_ms DESC
         LIMIT ?;
       `
-      const binds: (string | number)[] = [
-        configType as DbTimelineType,
+      const phase1Binds: (string | number)[] = [
         ...targetBackendUrls,
         ...filterBinds,
+        configType as DbTimelineType,
         queryLimit,
       ]
 
       const start = performance.now()
-      const rows = (await handle.execAsync(sql, {
-        bind: binds,
+      const idRows = (await handle.execAsync(phase1Sql, {
+        bind: phase1Binds,
+        returnValue: 'resultRows',
+      })) as (string | number | null)[][]
+
+      const postIds = idRows.map((row) => row[0] as number)
+      const timelineTypesMap = new Map<number, string>()
+      for (const row of idRows) {
+        if (row[1] != null) {
+          timelineTypesMap.set(row[0] as number, row[1] as string)
+        }
+      }
+      if (postIds.length === 0) {
+        recordDuration(performance.now() - start)
+        if (fetchVersionRef.current !== version) return
+        setStatuses([])
+        return
+      }
+
+      // === 第2段階: 詳細情報の取得（サブクエリ付きクエリ） ===
+      const placeholders = postIds.map(() => '?').join(',')
+      const phase2Sql = `
+        SELECT ${STATUS_SELECT}
+        FROM posts s
+        ${STATUS_BASE_JOINS}
+        WHERE s.post_id IN (${placeholders})
+        GROUP BY s.post_id
+        ORDER BY s.created_at_ms DESC;
+      `
+
+      const rows = (await handle.execAsync(phase2Sql, {
+        bind: postIds,
         returnValue: 'resultRows',
       })) as (string | number)[][]
       recordDuration(performance.now() - start)
@@ -215,6 +246,16 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
       const results: SqliteStoredStatus[] = rows.map((row) =>
         rowToStoredStatus(row),
       )
+
+      // 第1段階で取得した timelineTypes で上書き（STATUS_SELECT のサブクエリ結果より効率的）
+      for (const status of results) {
+        const types = timelineTypesMap.get(status.post_id)
+        if (types) {
+          status.timelineTypes = (
+            JSON.parse(types) as (DbTimelineType | null)[]
+          ).filter((t): t is DbTimelineType => t !== null)
+        }
+      }
 
       // 古い非同期クエリの結果が新しいクエリの結果を上書きしないようにする
       if (fetchVersionRef.current !== version) return
