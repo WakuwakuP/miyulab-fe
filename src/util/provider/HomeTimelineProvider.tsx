@@ -1,9 +1,13 @@
 'use client'
 
-import { createContext, type ReactNode, useContext } from 'react'
-import type { NotificationAddAppIndex, StatusAddAppIndex } from 'types/types'
+import { createContext, type ReactNode, useContext, useMemo } from 'react'
+import type {
+  NotificationAddAppIndex,
+  StatusAddAppIndex,
+  TimelineConfigV2,
+} from 'types/types'
+import { useFilteredTimeline } from 'util/hooks/useFilteredTimeline'
 import { useNotifications } from 'util/hooks/useNotifications'
-import { useTimeline } from 'util/hooks/useTimeline'
 import { AppsContext } from './AppsProvider'
 import { StatusStoreActionsContext } from './StatusStoreProvider'
 
@@ -44,9 +48,14 @@ export const HomeTimelineProvider = ({ children }: { children: ReactNode }) => {
   const apps = useContext(AppsContext)
   const storeActions = useContext(StatusStoreActionsContext)
 
-  // IndexedDBからリアクティブにデータ取得
-  // appIndex は useTimeline / useNotifications 内で backendUrl から都度算出される
-  const homeTimeline = useTimeline('home')
+  // useFilteredTimeline用の安定した設定オブジェクト
+  const homeConfig = useMemo<TimelineConfigV2>(
+    () => ({ id: '__legacy_home', order: 0, type: 'home', visible: true }),
+    [],
+  )
+
+  // IndexedDBからリアクティブにデータ取得（2-phase query）
+  const { data: homeTimeline } = useFilteredTimeline(homeConfig)
   const { data: notifications } = useNotifications()
 
   // 既存APIとの互換性を保つためのラッパー

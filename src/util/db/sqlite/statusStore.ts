@@ -363,16 +363,43 @@ export const STATUS_SELECT = `
   COALESCE(rpr.locked, 0) AS rb_author_locked,
   COALESCE(rpr.bot, 0) AS rb_author_bot,
   COALESCE(rpr.actor_uri, '') AS rb_author_url,
-  COALESCE((SELECT ps.replies_count FROM post_stats ps WHERE ps.post_id = rs.post_id), 0) AS rb_replies_count,
-  COALESCE((SELECT ps.reblogs_count FROM post_stats ps WHERE ps.post_id = rs.post_id), 0) AS rb_reblogs_count,
-  COALESCE((SELECT ps.favourites_count FROM post_stats ps WHERE ps.post_id = rs.post_id), 0) AS rb_favourites_count,
-  (SELECT group_concat(et.code, ',') FROM post_engagements pe INNER JOIN engagement_types et ON pe.engagement_type_id = et.engagement_type_id WHERE pe.post_id = rs.post_id) AS rb_engagements_csv,
+  CASE WHEN rs.post_id IS NOT NULL
+    THEN COALESCE((SELECT ps.replies_count FROM post_stats ps WHERE ps.post_id = rs.post_id), 0)
+    ELSE 0
+  END AS rb_replies_count,
+  CASE WHEN rs.post_id IS NOT NULL
+    THEN COALESCE((SELECT ps.reblogs_count FROM post_stats ps WHERE ps.post_id = rs.post_id), 0)
+    ELSE 0
+  END AS rb_reblogs_count,
+  CASE WHEN rs.post_id IS NOT NULL
+    THEN COALESCE((SELECT ps.favourites_count FROM post_stats ps WHERE ps.post_id = rs.post_id), 0)
+    ELSE 0
+  END AS rb_favourites_count,
+  CASE WHEN rs.post_id IS NOT NULL
+    THEN (SELECT group_concat(et.code, ',') FROM post_engagements pe INNER JOIN engagement_types et ON pe.engagement_type_id = et.engagement_type_id WHERE pe.post_id = rs.post_id)
+    ELSE NULL
+  END AS rb_engagements_csv,
   CASE WHEN rs.has_media = 1 THEN (SELECT json_group_array(json_object('id', pm.remote_media_id, 'type', COALESCE((SELECT mt.code FROM media_types mt WHERE mt.media_type_id = pm.media_type_id), 'unknown'), 'url', pm.url, 'preview_url', pm.preview_url, 'description', pm.description, 'blurhash', pm.blurhash, 'remote_url', pm.url)) FROM post_media pm WHERE pm.post_id = rs.post_id ORDER BY pm.sort_order) ELSE NULL END AS rb_media_json,
-  (SELECT json_group_array(json_object('acct', pme.acct)) FROM posts_mentions pme WHERE pme.post_id = rs.post_id) AS rb_mentions_json,
-  (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.image_url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM post_custom_emojis pce INNER JOIN custom_emojis ce ON pce.emoji_id = ce.emoji_id WHERE pce.post_id = rs.post_id AND pce.usage_context = 'status') AS rb_status_emojis_json,
-  (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.image_url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM post_custom_emojis pce INNER JOIN custom_emojis ce ON pce.emoji_id = ce.emoji_id WHERE pce.post_id = rs.post_id AND pce.usage_context = 'account') AS rb_account_emojis_json,
-  (SELECT json_object('id', pl.poll_id, 'expires_at', pl.expires_at, 'multiple', pl.multiple, 'votes_count', pl.votes_count, 'options', (SELECT json_group_array(json_object('title', po.title, 'votes_count', po.votes_count)) FROM poll_options po WHERE po.poll_id = pl.poll_id ORDER BY po.option_index)) FROM polls pl WHERE pl.post_id = rs.post_id) AS rb_poll_json,
-  (SELECT MIN(rpb.local_id) FROM posts_backends rpb WHERE rpb.post_id = rs.post_id) AS rb_local_id,
+  CASE WHEN rs.post_id IS NOT NULL
+    THEN (SELECT json_group_array(json_object('acct', pme.acct)) FROM posts_mentions pme WHERE pme.post_id = rs.post_id)
+    ELSE NULL
+  END AS rb_mentions_json,
+  CASE WHEN rs.post_id IS NOT NULL
+    THEN (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.image_url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM post_custom_emojis pce INNER JOIN custom_emojis ce ON pce.emoji_id = ce.emoji_id WHERE pce.post_id = rs.post_id AND pce.usage_context = 'status')
+    ELSE NULL
+  END AS rb_status_emojis_json,
+  CASE WHEN rs.post_id IS NOT NULL
+    THEN (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.image_url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM post_custom_emojis pce INNER JOIN custom_emojis ce ON pce.emoji_id = ce.emoji_id WHERE pce.post_id = rs.post_id AND pce.usage_context = 'account')
+    ELSE NULL
+  END AS rb_account_emojis_json,
+  CASE WHEN rs.post_id IS NOT NULL
+    THEN (SELECT json_object('id', pl.poll_id, 'expires_at', pl.expires_at, 'multiple', pl.multiple, 'votes_count', pl.votes_count, 'options', (SELECT json_group_array(json_object('title', po.title, 'votes_count', po.votes_count)) FROM poll_options po WHERE po.poll_id = pl.poll_id ORDER BY po.option_index)) FROM polls pl WHERE pl.post_id = rs.post_id)
+    ELSE NULL
+  END AS rb_poll_json,
+  CASE WHEN rs.post_id IS NOT NULL
+    THEN (SELECT MIN(rpb.local_id) FROM posts_backends rpb WHERE rpb.post_id = rs.post_id)
+    ELSE NULL
+  END AS rb_local_id,
   COALESCE(pra.remote_account_id, '') AS author_account_id,
   COALESCE(rpra.remote_account_id, '') AS rb_author_account_id`
 
@@ -383,11 +410,56 @@ export const STATUS_BASE_JOINS = `
   LEFT JOIN profiles pr ON s.author_profile_id = pr.profile_id
   LEFT JOIN visibility_types vt ON s.visibility_id = vt.visibility_id
   LEFT JOIN posts_backends pb ON s.post_id = pb.post_id
-  LEFT JOIN posts rs ON s.is_reblog = 1 AND s.reblog_of_uri != '' AND s.reblog_of_uri = rs.object_uri
+  LEFT JOIN posts rs ON s.reblog_of_uri = rs.object_uri AND rs.object_uri != ''
   LEFT JOIN profiles rpr ON rs.author_profile_id = rpr.profile_id
   LEFT JOIN visibility_types rvt ON rs.visibility_id = rvt.visibility_id
   LEFT JOIN profile_aliases pra ON pra.profile_id = pr.profile_id AND pra.server_id = pb.server_id
   LEFT JOIN profile_aliases rpra ON rpra.profile_id = rpr.profile_id AND rpra.server_id = pb.server_id`
+
+// ================================================================
+// 2段階クエリ: post_id リストから詳細情報を取得する共通ヘルパー
+// ================================================================
+
+type SqliteHandle = Awaited<ReturnType<typeof getSqliteDb>>
+
+/**
+ * post_id のリストから STATUS_SELECT + STATUS_BASE_JOINS で完全な投稿データを取得する
+ *
+ * 2段階クエリ戦略の第2段階で使用する共通ヘルパー。
+ * 第1段階でフィルタ済みの post_id を受け取り、詳細情報を返す。
+ */
+async function fetchStatusesByIds(
+  handle: SqliteHandle,
+  postIds: number[],
+  timelineTypesMap?: Map<number, string>,
+): Promise<SqliteStoredStatus[]> {
+  if (postIds.length === 0) return []
+  const placeholders = postIds.map(() => '?').join(',')
+  const sql = `
+    SELECT ${STATUS_SELECT}
+    FROM posts s
+      ${STATUS_BASE_JOINS}
+    WHERE s.post_id IN (${placeholders})
+    GROUP BY s.post_id
+    ORDER BY s.created_at_ms DESC;
+  `
+  const rows = (await handle.execAsync(sql, {
+    bind: postIds,
+    returnValue: 'resultRows',
+  })) as (string | number | null)[][]
+  const statuses = rows.map(rowToStoredStatus)
+  if (timelineTypesMap) {
+    for (const status of statuses) {
+      const types = timelineTypesMap.get(status.post_id)
+      if (types) {
+        status.timelineTypes = (
+          JSON.parse(types) as (TimelineType | null)[]
+        ).filter((t): t is TimelineType => t !== null)
+      }
+    }
+  }
+  return statuses
+}
 
 // ================================================================
 // Public API
@@ -538,33 +610,46 @@ export async function getStatusesByTimelineType(
 ): Promise<SqliteStoredStatus[]> {
   const handle = await getSqliteDb()
 
-  const binds: (string | number)[] = []
+  const phase1Binds: (string | number)[] = []
   let backendFilter = ''
   if (backendUrls && backendUrls.length > 0) {
     const placeholders = backendUrls.map(() => '?').join(',')
     backendFilter = `AND pb.backendUrl IN (${placeholders})`
-    binds.push(...backendUrls)
+    phase1Binds.push(...backendUrls)
   }
 
-  const sql = `
-    SELECT ${STATUS_SELECT}
+  // 第1段階: post_id + timelineTypes の取得
+  const phase1Sql = `
+    SELECT s.post_id, json_group_array(DISTINCT ck.code) AS timelineTypes
     FROM posts s
-    ${STATUS_BASE_JOINS}
+    INNER JOIN posts_backends pb ON s.post_id = pb.post_id
     INNER JOIN posts_timeline_types stt ON s.post_id = stt.post_id
+    LEFT JOIN timeline_items ti ON s.post_id = ti.post_id
+    LEFT JOIN timelines t ON t.timeline_id = ti.timeline_id
+    LEFT JOIN channel_kinds ck ON t.channel_kind_id = ck.channel_kind_id
     WHERE stt.timelineType = ?
       ${backendFilter}
     GROUP BY s.post_id
     ORDER BY s.created_at_ms DESC
     LIMIT ?;
   `
-  binds.push(timelineType, limit ?? MAX_QUERY_LIMIT)
+  phase1Binds.push(timelineType, limit ?? MAX_QUERY_LIMIT)
 
-  const rows = (await handle.execAsync(sql, {
-    bind: binds,
+  const idRows = (await handle.execAsync(phase1Sql, {
+    bind: phase1Binds,
     returnValue: 'resultRows',
   })) as (string | number | null)[][]
 
-  return rows.map(rowToStoredStatus)
+  const postIds = idRows.map((row) => row[0] as number)
+  const timelineTypesMap = new Map<number, string>()
+  for (const row of idRows) {
+    if (row[1] != null) {
+      timelineTypesMap.set(row[0] as number, row[1] as string)
+    }
+  }
+
+  // 第2段階: 詳細情報の取得
+  return fetchStatusesByIds(handle, postIds, timelineTypesMap)
 }
 
 /**
@@ -577,33 +662,36 @@ export async function getStatusesByTag(
 ): Promise<SqliteStoredStatus[]> {
   const handle = await getSqliteDb()
 
-  const binds: (string | number)[] = []
+  const phase1Binds: (string | number)[] = []
   let backendFilter = ''
   if (backendUrls && backendUrls.length > 0) {
     const placeholders = backendUrls.map(() => '?').join(',')
     backendFilter = `AND pb.backendUrl IN (${placeholders})`
-    binds.push(...backendUrls)
+    phase1Binds.push(...backendUrls)
   }
 
-  const sql = `
-    SELECT ${STATUS_SELECT}
+  // 第1段階: post_id の取得
+  const phase1Sql = `
+    SELECT DISTINCT s.post_id
     FROM posts s
-    ${STATUS_BASE_JOINS}
+    INNER JOIN posts_backends pb ON s.post_id = pb.post_id
     INNER JOIN posts_belonging_tags sbt ON s.post_id = sbt.post_id
     WHERE sbt.tag = ?
       ${backendFilter}
-    GROUP BY s.post_id
     ORDER BY s.created_at_ms DESC
     LIMIT ?;
   `
-  binds.push(tag, limit ?? MAX_QUERY_LIMIT)
+  phase1Binds.push(tag, limit ?? MAX_QUERY_LIMIT)
 
-  const rows = (await handle.execAsync(sql, {
-    bind: binds,
+  const idRows = (await handle.execAsync(phase1Sql, {
+    bind: phase1Binds,
     returnValue: 'resultRows',
-  })) as (string | number | null)[][]
+  })) as (number | null)[][]
 
-  return rows.map(rowToStoredStatus)
+  const postIds = idRows.map((row) => row[0] as number)
+
+  // 第2段階: 詳細情報の取得
+  return fetchStatusesByIds(handle, postIds)
 }
 
 /**
@@ -615,34 +703,37 @@ export async function getBookmarkedStatuses(
 ): Promise<SqliteStoredStatus[]> {
   const handle = await getSqliteDb()
 
-  const binds: (string | number)[] = []
+  const phase1Binds: (string | number)[] = []
   let backendFilter = ''
   if (backendUrls && backendUrls.length > 0) {
     const placeholders = backendUrls.map(() => '?').join(',')
     backendFilter = `AND pb.backendUrl IN (${placeholders})`
-    binds.push(...backendUrls)
+    phase1Binds.push(...backendUrls)
   }
 
-  const sql = `
-    SELECT ${STATUS_SELECT}
+  // 第1段階: post_id の取得
+  const phase1Sql = `
+    SELECT DISTINCT s.post_id
     FROM posts s
-    ${STATUS_BASE_JOINS}
+    INNER JOIN posts_backends pb ON s.post_id = pb.post_id
     INNER JOIN post_engagements pe ON s.post_id = pe.post_id
     INNER JOIN engagement_types et ON pe.engagement_type_id = et.engagement_type_id
     WHERE et.code = 'bookmark'
       ${backendFilter}
-    GROUP BY s.post_id
     ORDER BY s.created_at_ms DESC
     LIMIT ?;
   `
-  binds.push(limit ?? MAX_QUERY_LIMIT)
+  phase1Binds.push(limit ?? MAX_QUERY_LIMIT)
 
-  const rows = (await handle.execAsync(sql, {
-    bind: binds,
+  const idRows = (await handle.execAsync(phase1Sql, {
+    bind: phase1Binds,
     returnValue: 'resultRows',
-  })) as (string | number | null)[][]
+  })) as (number | null)[][]
 
-  return rows.map(rowToStoredStatus)
+  const postIds = idRows.map((row) => row[0] as number)
+
+  // 第2段階: 詳細情報の取得
+  return fetchStatusesByIds(handle, postIds)
 }
 
 /**
@@ -737,20 +828,20 @@ export async function getStatusesByCustomQuery(
     )
 
   let backendFilter = ''
-  const binds: (string | number)[] = []
+  const phase1Binds: (string | number)[] = []
 
   if (backendUrls && backendUrls.length > 0) {
     const placeholders = backendUrls.map(() => '?').join(',')
     backendFilter = `AND pb.backendUrl IN (${placeholders})`
-    binds.push(...backendUrls)
+    phase1Binds.push(...backendUrls)
   }
 
   const joinsClause =
     joinLines.length > 0 ? `\n    ${joinLines.join('\n    ')}` : ''
 
-  // 旧カラム名の後方互換性のため posts をサブクエリでラップ
-  const sql = `
-    SELECT ${STATUS_SELECT}
+  // 第1段階: post_id の取得（旧カラム名の後方互換性のため posts をサブクエリでラップ）
+  const phase1Sql = `
+    SELECT DISTINCT s.post_id
     FROM (
       SELECT p.*,
         COALESCE((SELECT sv.base_url FROM servers sv WHERE sv.server_id = p.origin_server_id), '') AS origin_backend_url,
@@ -763,22 +854,24 @@ export async function getStatusesByCustomQuery(
         COALESCE((SELECT ps2.replies_count FROM post_stats ps2 WHERE ps2.post_id = p.post_id), 0) AS replies_count
       FROM posts p
     ) s
-    ${STATUS_BASE_JOINS}${joinsClause}
+    LEFT JOIN posts_backends pb ON s.post_id = pb.post_id${joinsClause}
     WHERE (${rewrittenWhere || '1=1'})
       ${backendFilter}
-    GROUP BY s.post_id
     ORDER BY s.created_at_ms DESC
     LIMIT ?
     OFFSET ?;
   `
-  binds.push(limit ?? MAX_QUERY_LIMIT, offset ?? 0)
+  phase1Binds.push(limit ?? MAX_QUERY_LIMIT, offset ?? 0)
 
-  const rows = (await handle.execAsync(sql, {
-    bind: binds,
+  const idRows = (await handle.execAsync(phase1Sql, {
+    bind: phase1Binds,
     returnValue: 'resultRows',
-  })) as (string | number | null)[][]
+  })) as (number | null)[][]
 
-  return rows.map(rowToStoredStatus)
+  const postIds = idRows.map((row) => row[0] as number)
+
+  // 第2段階: 詳細情報の取得
+  return fetchStatusesByIds(handle, postIds)
 }
 
 /**

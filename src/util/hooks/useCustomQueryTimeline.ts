@@ -256,43 +256,44 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
 
       if (queryMode === 'mixed') {
         // ============================
-        // 混合クエリ: statuses + notifications を別々に取得して JS で統合
+        // 混合クエリ: 2段階クエリ戦略
+        // Phase1: 軽量な ID + created_at_ms のみ取得
+        // Phase2: 取得した ID から詳細情報をフェッチ
         // ============================
         const refs = detectReferencedAliases(sanitized)
-        // sb. 参照を pb. に書き換え（STATUS_BASE_JOINS が pb を提供）
         const rewrittenWhere = sanitized
           .replace(/\bsb\./g, 'pb.')
           .replace(/\bpb\.backend_url\b/g, 'pb.backendUrl')
 
-        // --- Status sub-query ---
-        const statusJoinLines: string[] = []
+        // --- Phase1: Status ID 取得（STATUS_BASE_JOINS を除外して軽量化） ---
+        const statusPhase1JoinLines: string[] = []
+        // pb は sb.* → pb.* 書き換えやカスタムクエリの backendUrl 参照用に保持
+        statusPhase1JoinLines.push(
+          'LEFT JOIN posts_backends pb ON s.post_id = pb.post_id',
+        )
         if (refs.stt)
-          statusJoinLines.push(
+          statusPhase1JoinLines.push(
             `LEFT JOIN ${STT_COMPAT} stt\n              ON s.post_id = stt.post_id`,
           )
         if (refs.sbt)
-          statusJoinLines.push(
+          statusPhase1JoinLines.push(
             'LEFT JOIN posts_belonging_tags sbt\n              ON s.post_id = sbt.post_id',
           )
         if (refs.sm)
-          statusJoinLines.push(
+          statusPhase1JoinLines.push(
             'LEFT JOIN posts_mentions sm\n              ON s.post_id = sm.post_id',
           )
         if (refs.sr)
-          statusJoinLines.push(
+          statusPhase1JoinLines.push(
             'LEFT JOIN posts_reblogs sr\n              ON s.post_id = sr.post_id',
           )
         if (refs.pe)
-          statusJoinLines.push(
+          statusPhase1JoinLines.push(
             'LEFT JOIN post_engagements pe\n              ON s.post_id = pe.post_id',
           )
-        // n.* は空サブクエリでダミー提供（実テーブルスキャンを回避）
-        statusJoinLines.push(`LEFT JOIN ${EMPTY_N} n ON 1 = 1`)
+        statusPhase1JoinLines.push(`LEFT JOIN ${EMPTY_N} n ON 1 = 1`)
 
-        const statusExtraJoins =
-          statusJoinLines.length > 0
-            ? `\n            ${statusJoinLines.join('\n            ')}`
-            : ''
+        const statusPhase1Joins = `\n            ${statusPhase1JoinLines.join('\n            ')}`
 
         let statusMediaConditions = ''
         const statusMediaBinds: (string | number)[] = []
@@ -303,17 +304,16 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           statusMediaConditions += '\n              AND s.has_media = 1'
         }
 
-        const statusSql = `
-          SELECT ${STATUS_SELECT}
-          FROM ${STATUS_COMPAT_FROM}
-          ${STATUS_BASE_JOINS}${statusExtraJoins}
+        const statusPhase1Sql = `
+          SELECT s.post_id, s.created_at_ms
+          FROM ${STATUS_COMPAT_FROM}${statusPhase1Joins}
           WHERE (${rewrittenWhere})${statusMediaConditions}
           GROUP BY s.post_id
           ORDER BY s.created_at_ms DESC
           LIMIT ?;
         `
 
-        // --- Notification sub-query ---
+        // --- Phase1: Notification ID 取得 ---
         const notifDummyJoins = [
           `LEFT JOIN ${EMPTY_S} s ON 1 = 1`,
           `LEFT JOIN ${EMPTY_STT} stt ON 1 = 1`,
@@ -325,8 +325,8 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
 
         const rewrittenNotifWhere = sanitized
 
-        const notifSql = `
-          SELECT ${NOTIFICATION_SELECT}
+        const notifPhase1Sql = `
+          SELECT n.notification_id, n.created_at_ms
           FROM ${NOTIF_COMPAT_FROM}
           ${NOTIFICATION_BASE_JOINS}
             ${notifDummyJoins}
@@ -336,24 +336,84 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         `
 
         const start = performance.now()
-        const statusRows = (await handle.execAsync(statusSql, {
+
+        // Phase1 実行
+        const statusIdRows = (await handle.execAsync(statusPhase1Sql, {
           bind: [...statusMediaBinds, queryLimit],
           returnValue: 'resultRows',
         })) as (string | number | null)[][]
-        const notifRows = (await handle.execAsync(notifSql, {
+        const notifIdRows = (await handle.execAsync(notifPhase1Sql, {
           bind: [queryLimit],
           returnValue: 'resultRows',
         })) as (string | number | null)[][]
-        recordDuration(performance.now() - start)
 
-        const statusResults = statusRows.map((row) => ({
-          ...rowToStoredStatus(row),
-          _type: 'status' as const,
+        // Phase1 結果を統合・ソートして上位 queryLimit 件を選定
+        const statusIds = statusIdRows.map((row) => ({
+          created_at_ms: row[1] as number,
+          id: row[0] as number,
+          type: 'status' as const,
         }))
-        const notifResults = notifRows.map((row) => ({
-          ...rowToStoredNotification(row),
-          _type: 'notification' as const,
+        const notifIds = notifIdRows.map((row) => ({
+          created_at_ms: row[1] as number,
+          id: row[0] as number,
+          type: 'notification' as const,
         }))
+        const merged = [...statusIds, ...notifIds]
+          .sort((a, b) => b.created_at_ms - a.created_at_ms)
+          .slice(0, queryLimit)
+
+        const postIdsToFetch = merged
+          .filter((m) => m.type === 'status')
+          .map((m) => m.id)
+        const notifIdsToFetch = merged
+          .filter((m) => m.type === 'notification')
+          .map((m) => m.id)
+
+        // --- Phase2: 詳細情報取得 ---
+        let statusResults: (SqliteStoredStatus & { _type: 'status' })[] = []
+        if (postIdsToFetch.length > 0) {
+          const placeholders = postIdsToFetch.map(() => '?').join(',')
+          const statusDetailSql = `
+            SELECT ${STATUS_SELECT}
+            FROM posts s
+            ${STATUS_BASE_JOINS}
+            WHERE s.post_id IN (${placeholders})
+            GROUP BY s.post_id
+            ORDER BY s.created_at_ms DESC;
+          `
+          const statusDetailRows = (await handle.execAsync(statusDetailSql, {
+            bind: postIdsToFetch,
+            returnValue: 'resultRows',
+          })) as (string | number | null)[][]
+          statusResults = statusDetailRows.map((row) => ({
+            ...rowToStoredStatus(row),
+            _type: 'status' as const,
+          }))
+        }
+
+        let notifResults: (SqliteStoredNotification & {
+          _type: 'notification'
+        })[] = []
+        if (notifIdsToFetch.length > 0) {
+          const placeholders = notifIdsToFetch.map(() => '?').join(',')
+          const notifDetailSql = `
+            SELECT ${NOTIFICATION_SELECT}
+            FROM ${NOTIF_COMPAT_FROM}
+            ${NOTIFICATION_BASE_JOINS}
+            WHERE n.notification_id IN (${placeholders})
+            ORDER BY n.created_at_ms DESC;
+          `
+          const notifDetailRows = (await handle.execAsync(notifDetailSql, {
+            bind: notifIdsToFetch,
+            returnValue: 'resultRows',
+          })) as (string | number | null)[][]
+          notifResults = notifDetailRows.map((row) => ({
+            ...rowToStoredNotification(row),
+            _type: 'notification' as const,
+          }))
+        }
+
+        recordDuration(performance.now() - start)
 
         const mixed = [...statusResults, ...notifResults]
           .sort((a, b) => b.created_at_ms - a.created_at_ms)
@@ -396,16 +456,16 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         setResults(notifResults)
       } else {
         // ============================
-        // Statuses クエリ
+        // Statuses クエリ: 2段階クエリ戦略
         // ============================
-        // 参照されているテーブルのみ JOIN する（不要な JOIN を除外）
         const refs = detectReferencedAliases(sanitized)
-        // sb. 参照を pb. に書き換え（STATUS_BASE_JOINS が pb を提供）
         const rewrittenWhere = sanitized
           .replace(/\bsb\./g, 'pb.')
           .replace(/\bpb\.backend_url\b/g, 'pb.backendUrl')
 
         const joinLines: string[] = []
+        // pb は sb.* → pb.* 書き換え用に常に提供
+        joinLines.push('LEFT JOIN posts_backends pb ON s.post_id = pb.post_id')
         if (refs.stt)
           joinLines.push(
             `LEFT JOIN ${STT_COMPAT} stt\n            ON s.post_id = stt.post_id`,
@@ -427,12 +487,8 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
             'LEFT JOIN post_engagements pe\n            ON s.post_id = pe.post_id',
           )
 
-        const joinsClause =
-          joinLines.length > 0
-            ? `\n          ${joinLines.join('\n          ')}`
-            : ''
+        const joinsClause = `\n          ${joinLines.join('\n          ')}`
 
-        // onlyMedia フィルタを SQL 条件として追加
         let additionalConditions = ''
         const additionalBinds: (string | number)[] = []
 
@@ -443,22 +499,47 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           additionalConditions += '\n          AND s.has_media = 1'
         }
 
-        const binds: (string | number)[] = [...additionalBinds, queryLimit]
-
-        // backendUrl フィルタはクエリ自体に含まれるため自動付与しない
-        const sql = `
-          SELECT ${STATUS_SELECT}
-          FROM ${STATUS_COMPAT_FROM}
-          ${STATUS_BASE_JOINS}${joinsClause}
+        // Phase1: 軽量な post_id のみ取得
+        const phase1Sql = `
+          SELECT DISTINCT s.post_id
+          FROM ${STATUS_COMPAT_FROM}${joinsClause}
           WHERE (${rewrittenWhere})${additionalConditions}
-          GROUP BY s.post_id
           ORDER BY s.created_at_ms DESC
           LIMIT ?;
         `
+        const phase1Binds: (string | number)[] = [
+          ...additionalBinds,
+          queryLimit,
+        ]
 
         const start = performance.now()
-        const rows = (await handle.execAsync(sql, {
-          bind: binds,
+        const idRows = (await handle.execAsync(phase1Sql, {
+          bind: phase1Binds,
+          returnValue: 'resultRows',
+        })) as (number | null)[][]
+
+        const postIds = idRows.map((row) => row[0] as number)
+
+        if (postIds.length === 0) {
+          recordDuration(performance.now() - start)
+          if (fetchVersionRef.current !== version) return
+          setResults([])
+          return
+        }
+
+        // Phase2: 詳細情報取得
+        const placeholders = postIds.map(() => '?').join(',')
+        const phase2Sql = `
+          SELECT ${STATUS_SELECT}
+          FROM posts s
+          ${STATUS_BASE_JOINS}
+          WHERE s.post_id IN (${placeholders})
+          GROUP BY s.post_id
+          ORDER BY s.created_at_ms DESC;
+        `
+
+        const rows = (await handle.execAsync(phase2Sql, {
+          bind: postIds,
           returnValue: 'resultRows',
         })) as (string | number | null)[][]
         recordDuration(performance.now() - start)
