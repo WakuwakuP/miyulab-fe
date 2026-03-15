@@ -52,14 +52,14 @@ async function initDb(onNotify: (table: TableName) => void): Promise<DbHandle> {
 async function initWorkerMode(
   onNotify: (table: TableName) => void,
 ): Promise<DbHandle> {
-  const { initWorker, execAsync, execBatch, sendCommand } = await import(
-    './workerClient'
-  )
+  const { initWorker, execAsync, execAsyncTimed, execBatch, sendCommand } =
+    await import('./workerClient')
 
   const persistence = await initWorker(onNotify)
 
   return {
     execAsync,
+    execAsyncTimed,
     execBatch,
     persistence,
     sendCommand,
@@ -138,6 +138,23 @@ async function initMainThreadFallback(
       const durationMs = performance.now() - start
       logSlowQueryExplain(db, sql, opts?.bind, durationMs)
       return result
+    },
+
+    execAsyncTimed: async (sql, opts) => {
+      const start = performance.now()
+      let result: unknown
+      if (opts?.returnValue === 'resultRows') {
+        result = db.exec(sql, {
+          bind: opts.bind ?? undefined,
+          returnValue: 'resultRows',
+        })
+      } else {
+        db.exec(sql, { bind: opts?.bind ?? undefined })
+        result = undefined
+      }
+      const durationMs = performance.now() - start
+      logSlowQueryExplain(db, sql, opts?.bind, durationMs)
+      return { durationMs, result }
     },
 
     execBatch: async (statements, opts) => {

@@ -137,12 +137,12 @@ export function useNotifications(config?: TimelineConfigV2): {
       `
       binds.push(queryLimit)
 
-      const start = performance.now()
-      const rows = (await handle.execAsync(sql, {
+      const { result: rowsRaw, durationMs } = await handle.execAsyncTimed(sql, {
         bind: binds,
         returnValue: 'resultRows',
-      })) as (string | number)[][]
-      recordDuration(performance.now() - start)
+      })
+      const rows = rowsRaw as (string | number)[][]
+      recordDuration(durationMs)
 
       const results: SqliteStoredNotification[] = rows.map((row) =>
         rowToStoredNotification(row),

@@ -215,6 +215,7 @@ export type SuccessResponse = {
   id: number
   result: unknown
   changedTables?: TableName[]
+  durationMs?: number
 }
 
 /** エラーレスポンス */

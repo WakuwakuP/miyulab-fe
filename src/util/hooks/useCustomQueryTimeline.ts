@@ -335,17 +335,19 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           LIMIT ?;
         `
 
-        const start = performance.now()
-
         // Phase1 実行
-        const statusIdRows = (await handle.execAsync(statusPhase1Sql, {
-          bind: [...statusMediaBinds, queryLimit],
-          returnValue: 'resultRows',
-        })) as (string | number | null)[][]
-        const notifIdRows = (await handle.execAsync(notifPhase1Sql, {
-          bind: [queryLimit],
-          returnValue: 'resultRows',
-        })) as (string | number | null)[][]
+        const { result: statusIdRowsRaw, durationMs: statusPhase1Dur } =
+          await handle.execAsyncTimed(statusPhase1Sql, {
+            bind: [...statusMediaBinds, queryLimit],
+            returnValue: 'resultRows',
+          })
+        const statusIdRows = statusIdRowsRaw as (string | number | null)[][]
+        const { result: notifIdRowsRaw, durationMs: notifPhase1Dur } =
+          await handle.execAsyncTimed(notifPhase1Sql, {
+            bind: [queryLimit],
+            returnValue: 'resultRows',
+          })
+        const notifIdRows = notifIdRowsRaw as (string | number | null)[][]
 
         // Phase1 結果を統合・ソートして上位 queryLimit 件を選定
         const statusIds = statusIdRows.map((row) => ({
@@ -371,6 +373,7 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
 
         // --- Phase2: 詳細情報取得 ---
         let statusResults: (SqliteStoredStatus & { _type: 'status' })[] = []
+        let statusPhase2Dur = 0
         if (postIdsToFetch.length > 0) {
           const placeholders = postIdsToFetch.map(() => '?').join(',')
           const statusDetailSql = `
@@ -381,10 +384,17 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
             GROUP BY s.post_id
             ORDER BY s.created_at_ms DESC;
           `
-          const statusDetailRows = (await handle.execAsync(statusDetailSql, {
-            bind: postIdsToFetch,
-            returnValue: 'resultRows',
-          })) as (string | number | null)[][]
+          const { result: statusDetailRowsRaw, durationMs: dur } =
+            await handle.execAsyncTimed(statusDetailSql, {
+              bind: postIdsToFetch,
+              returnValue: 'resultRows',
+            })
+          statusPhase2Dur = dur
+          const statusDetailRows = statusDetailRowsRaw as (
+            | string
+            | number
+            | null
+          )[][]
           statusResults = statusDetailRows.map((row) => ({
             ...rowToStoredStatus(row),
             _type: 'status' as const,
@@ -394,6 +404,7 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         let notifResults: (SqliteStoredNotification & {
           _type: 'notification'
         })[] = []
+        let notifPhase2Dur = 0
         if (notifIdsToFetch.length > 0) {
           const placeholders = notifIdsToFetch.map(() => '?').join(',')
           const notifDetailSql = `
@@ -403,17 +414,26 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
             WHERE n.notification_id IN (${placeholders})
             ORDER BY n.created_at_ms DESC;
           `
-          const notifDetailRows = (await handle.execAsync(notifDetailSql, {
-            bind: notifIdsToFetch,
-            returnValue: 'resultRows',
-          })) as (string | number | null)[][]
+          const { result: notifDetailRowsRaw, durationMs: dur } =
+            await handle.execAsyncTimed(notifDetailSql, {
+              bind: notifIdsToFetch,
+              returnValue: 'resultRows',
+            })
+          notifPhase2Dur = dur
+          const notifDetailRows = notifDetailRowsRaw as (
+            | string
+            | number
+            | null
+          )[][]
           notifResults = notifDetailRows.map((row) => ({
             ...rowToStoredNotification(row),
             _type: 'notification' as const,
           }))
         }
 
-        recordDuration(performance.now() - start)
+        recordDuration(
+          statusPhase1Dur + notifPhase1Dur + statusPhase2Dur + notifPhase2Dur,
+        )
 
         const mixed = [...statusResults, ...notifResults]
           .sort((a, b) => b.created_at_ms - a.created_at_ms)
@@ -439,12 +459,15 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           LIMIT ?;
         `
 
-        const start = performance.now()
-        const rows = (await handle.execAsync(sql, {
-          bind: binds,
-          returnValue: 'resultRows',
-        })) as (string | number | null)[][]
-        recordDuration(performance.now() - start)
+        const { result: rowsRaw, durationMs } = await handle.execAsyncTimed(
+          sql,
+          {
+            bind: binds,
+            returnValue: 'resultRows',
+          },
+        )
+        const rows = rowsRaw as (string | number | null)[][]
+        recordDuration(durationMs)
 
         const notifResults = rows.map((row) => ({
           ...rowToStoredNotification(row),
@@ -512,16 +535,17 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           queryLimit,
         ]
 
-        const start = performance.now()
-        const idRows = (await handle.execAsync(phase1Sql, {
-          bind: phase1Binds,
-          returnValue: 'resultRows',
-        })) as (number | null)[][]
+        const { result: idRowsRaw, durationMs: phase1Duration } =
+          await handle.execAsyncTimed(phase1Sql, {
+            bind: phase1Binds,
+            returnValue: 'resultRows',
+          })
+        const idRows = idRowsRaw as (number | null)[][]
 
         const postIds = idRows.map((row) => row[0] as number)
 
         if (postIds.length === 0) {
-          recordDuration(performance.now() - start)
+          recordDuration(phase1Duration)
           if (fetchVersionRef.current !== version) return
           setResults([])
           return
@@ -538,11 +562,13 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           ORDER BY s.created_at_ms DESC;
         `
 
-        const rows = (await handle.execAsync(phase2Sql, {
-          bind: postIds,
-          returnValue: 'resultRows',
-        })) as (string | number | null)[][]
-        recordDuration(performance.now() - start)
+        const { result: rowsRaw, durationMs: phase2Duration } =
+          await handle.execAsyncTimed(phase2Sql, {
+            bind: postIds,
+            returnValue: 'resultRows',
+          })
+        const rows = rowsRaw as (string | number | null)[][]
+        recordDuration(phase1Duration + phase2Duration)
 
         const statusResults = rows.map((row) => ({
           ...rowToStoredStatus(row),
@@ -575,6 +601,7 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
       queryMode !== 'status' ? subscribe('notifications', fetchData) : undefined
     return () => {
       unsubStatuses?.()
+
       unsubNotifications?.()
     }
   }, [fetchData, queryMode])
