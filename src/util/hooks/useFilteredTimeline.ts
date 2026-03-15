@@ -206,11 +206,12 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
         queryLimit,
       ]
 
-      const start = performance.now()
-      const idRows = (await handle.execAsync(phase1Sql, {
-        bind: phase1Binds,
-        returnValue: 'resultRows',
-      })) as (string | number | null)[][]
+      const { result: idRowsRaw, durationMs: phase1Duration } =
+        await handle.execAsyncTimed(phase1Sql, {
+          bind: phase1Binds,
+          returnValue: 'resultRows',
+        })
+      const idRows = idRowsRaw as (string | number | null)[][]
 
       const postIds = idRows.map((row) => row[0] as number)
       const timelineTypesMap = new Map<number, string>()
@@ -220,7 +221,7 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
         }
       }
       if (postIds.length === 0) {
-        recordDuration(performance.now() - start)
+        recordDuration(phase1Duration)
         if (fetchVersionRef.current !== version) return
         setStatuses([])
         return
@@ -237,11 +238,13 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
         ORDER BY s.created_at_ms DESC;
       `
 
-      const rows = (await handle.execAsync(phase2Sql, {
-        bind: postIds,
-        returnValue: 'resultRows',
-      })) as (string | number)[][]
-      recordDuration(performance.now() - start)
+      const { result: rowsRaw, durationMs: phase2Duration } =
+        await handle.execAsyncTimed(phase2Sql, {
+          bind: postIds,
+          returnValue: 'resultRows',
+        })
+      const rows = rowsRaw as (string | number)[][]
+      recordDuration(phase1Duration + phase2Duration)
 
       const results: SqliteStoredStatus[] = rows.map((row) =>
         rowToStoredStatus(row),

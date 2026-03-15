@@ -38,6 +38,7 @@ let initResolve: ((persistence: 'opfs' | 'memory') => void) | null = null
 let initReject: ((reason: Error) => void) | null = null
 let initPromise: Promise<'opfs' | 'memory'> | null = null
 let initTimer: ReturnType<typeof setTimeout> | null = null
+const durationForId = new Map<number, number>()
 
 const TIMEOUT_MS = 30_000
 const INIT_TIMEOUT_MS = 15_000
@@ -136,6 +137,9 @@ function handleMessage(event: MessageEvent<WorkerMessage>): void {
           for (const table of msg.changedTables) {
             notifyChangeCallback?.(table)
           }
+        }
+        if (msg.durationMs != null) {
+          durationForId.set(msg.id, msg.durationMs)
         }
         req.resolve(msg.result)
       }
@@ -250,6 +254,30 @@ export function execAsync(
     type: 'exec',
   }
   return sendRequest(request)
+}
+
+/**
+ * 汎用 READ 用 — Worker 内の実際の SQL 実行時間も返す。
+ */
+export async function execAsyncTimed(
+  sql: string,
+  opts?: {
+    bind?: (string | number | null)[]
+    returnValue?: 'resultRows'
+  },
+): Promise<{ result: unknown; durationMs: number }> {
+  const id = nextId++
+  const request: ExecRequest = {
+    bind: opts?.bind,
+    id,
+    returnValue: opts?.returnValue,
+    sql,
+    type: 'exec',
+  }
+  const result = await sendRequest(request)
+  const durationMs = durationForId.get(id) ?? 0
+  durationForId.delete(id)
+  return { durationMs, result }
 }
 
 /**

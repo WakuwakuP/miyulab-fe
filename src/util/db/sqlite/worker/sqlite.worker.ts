@@ -100,7 +100,7 @@ function handleExec(
   sql: string,
   bind?: (string | number | null)[],
   returnValue?: string,
-): unknown {
+): { result: unknown; durationMs: number } {
   const start = performance.now()
   let result: unknown
   if (returnValue === 'resultRows') {
@@ -114,7 +114,7 @@ function handleExec(
   }
   const durationMs = performance.now() - start
   logSlowQueryExplain(db, sql, bind, durationMs)
-  return result
+  return { durationMs, result }
 }
 
 function handleExecBatch(
@@ -136,7 +136,7 @@ function handleExecBatch(
   try {
     for (let i = 0; i < statements.length; i++) {
       const stmt = statements[i]
-      const result = handleExec(stmt.sql, stmt.bind, stmt.returnValue)
+      const { result } = handleExec(stmt.sql, stmt.bind, stmt.returnValue)
       if (shouldReturn.has(i) || !returnIndices) {
         results.set(i, result)
       }
@@ -202,9 +202,11 @@ function sendResponse(
   id: number,
   result: unknown,
   changedTables?: TableName[],
+  durationMs?: number,
 ): void {
   const response: WorkerMessage = {
     changedTables,
+    durationMs,
     id,
     result,
     type: 'response',
@@ -258,8 +260,12 @@ self.onmessage = (
     switch (msg.type) {
       // ---- 汎用 ----
       case 'exec': {
-        const result = handleExec(msg.sql, msg.bind, msg.returnValue)
-        sendResponse(msg.id, result)
+        const { result, durationMs } = handleExec(
+          msg.sql,
+          msg.bind,
+          msg.returnValue,
+        )
+        sendResponse(msg.id, result, undefined, durationMs)
         break
       }
 

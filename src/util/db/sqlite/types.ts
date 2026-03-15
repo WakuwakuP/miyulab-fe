@@ -32,6 +32,12 @@ export type DbHandle = {
   /** 汎用 READ 用 SQL 実行 */
   execAsync: (sql: string, opts?: ExecOpts) => Promise<unknown>
 
+  /** 汎用 READ 用 SQL 実行（実際の SQL 実行時間付き） */
+  execAsyncTimed: (
+    sql: string,
+    opts?: ExecOpts,
+  ) => Promise<{ result: unknown; durationMs: number }>
+
   /** 汎用 WRITE 用バッチ SQL 実行 */
   execBatch: (
     statements: BatchStatement[],
