@@ -2764,7 +2764,7 @@ function migrateV1toV2(handle: DbHandle): void {
     'replies_count INTEGER NOT NULL DEFAULT 0',
   ]
   for (const col of statusColumns) {
-    db.exec(`ALTER TABLE statuses ADD COLUMN $col;`)
+    db.exec(`ALTER TABLE statuses ADD COLUMN ${col};`)
   }
 
   // ============================================
@@ -2776,7 +2776,7 @@ function migrateV1toV2(handle: DbHandle): void {
     "account_acct TEXT NOT NULL DEFAULT ''",
   ]
   for (const col of notifColumns) {
-    db.exec(`ALTER TABLE notifications ADD COLUMN $col;`)
+    db.exec(`ALTER TABLE notifications ADD COLUMN ${col};`)
   }
 
   // ============================================
