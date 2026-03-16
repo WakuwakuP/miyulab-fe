@@ -25,7 +25,7 @@ safe-outputs:
     title-prefix: "📦 "
     labels: [dependencies, maintenance, automated]
     draft: false
-    expires: 7
+    expires: 7d
 ---
 
 # 📦 Weekly Package Upgrade Agent
