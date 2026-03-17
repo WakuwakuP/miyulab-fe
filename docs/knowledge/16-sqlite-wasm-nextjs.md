@@ -254,29 +254,37 @@ try {
 
 ### miyulab-fe の判断
 
-**COOP のみ設定し、COEP は設定しない。**
+**COOP は全ルートに設定。COEP: credentialless は `/embed/*` 以外のルートに設定。**
 
-```javascript
-// next.config.mjs
-async headers() {
-  return [
-    {
-      headers: [
-        {
-          key: 'Cross-Origin-Opener-Policy',
-          value: 'same-origin',
-        },
-      ],
-      source: '/:path*',
-    },
-  ]
+ヘッダの設定は `src/proxy.ts`（Next.js 16 の Proxy）で動的に制御する。
+
+```typescript
+// src/proxy.ts
+export function proxy(request: NextRequest) {
+  const response = NextResponse.next()
+  response.headers.set('Cross-Origin-Opener-Policy', 'same-origin')
+  if (!request.nextUrl.pathname.startsWith('/embed/')) {
+    response.headers.set('Cross-Origin-Embedder-Policy', 'credentialless')
+  }
+  return response
 }
 ```
 
-### なぜ COEP を設定しないのか
+### なぜ COEP をルート別に制御するのか
 
-1. **OPFS SAH Pool VFS は `SharedArrayBuffer` を使わない**: COEP は `SharedArrayBuffer` を有効にするために必要だが、OPFS SAH Pool VFS は同期的な OPFS アクセスハンドルを使用しており、`SharedArrayBuffer` に依存しない。
-2. **クロスオリジン iframe への影響**: COEP（`require-corp` / `credentialless`）を設定すると、YouTube 埋め込みなどのクロスオリジン iframe がブロックされる。Fediverse クライアントではユーザー投稿内の埋め込みコンテンツを表示する必要があるため、COEP は除去した。
+1. **COEP が必要な理由**: COEP を設定しないと `SharedArrayBuffer` が無効になり、SQLite WASM ライブラリが警告を出す。`credentialless` モードで設定することで Cross-Origin Isolation を有効にする。
+2. **YouTube 埋め込みとの衝突**: COEP（`require-corp` / `credentialless`）を設定すると、YouTube 等のクロスオリジン iframe がブロックされる。YouTube は COEP/CORP ヘッダを送信しないため、直接埋め込みができない。
+3. **解決策 — 埋め込みプロキシ**: `/embed/video` ルートを COEP なしで提供し、YouTube iframe をそこに配置する。メインページからは同一オリジンの iframe としてこのルートを読み込むことで、COEP の制限を回避する。
+
+### アーキテクチャ
+
+```
+メインページ (COEP: credentialless)
+  └─ <iframe src="/embed/video?url=https://youtube.com/...">
+       └─ /embed/video ルート (COEP なし)
+            └─ <iframe src="https://www.youtube.com/embed/VIDEO_ID">
+                 └─ YouTube が正常に動作
+```
 
 ### COOP だけで十分なケース
 

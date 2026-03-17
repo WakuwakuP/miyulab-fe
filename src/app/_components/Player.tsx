@@ -25,6 +25,7 @@ import {
   SetPlayerSettingContext,
 } from 'util/provider/PlayerProvider'
 import { SettingContext } from 'util/provider/SettingProvider'
+import { getEmbedProxyUrl, isExternalVideo } from 'util/videoEmbed'
 
 const playableTypes = ['audio', 'video', 'gifv'] as Readonly<
   Entity.Attachment['type'][]
@@ -164,21 +165,33 @@ const PlayerController = () => {
       ].join(' ')}
     >
       <div className=" bg-black" onClick={onClickPlay}>
-        {playableTypes.includes(attachment[index].type) && (
-          <ReactPlayer
-            className="aspect-video"
-            height={
-              attachment[index].type === 'audio' ? 0 : classNamePlayerSize.h
-            }
-            loop
-            onTimeUpdate={handleProgress}
-            playing={playing}
-            ref={player}
-            src={attachment[index].url}
-            volume={volume}
-            width={'100%'}
-          />
-        )}
+        {playableTypes.includes(attachment[index].type) &&
+          isExternalVideo(attachment[index].url) && (
+            <iframe
+              className={['aspect-video w-full', classNamePlayerSize.h].join(
+                ' ',
+              )}
+              src={getEmbedProxyUrl(attachment[index].url)}
+              style={{ border: 'none' }}
+              title="Video player"
+            />
+          )}
+        {playableTypes.includes(attachment[index].type) &&
+          !isExternalVideo(attachment[index].url) && (
+            <ReactPlayer
+              className="aspect-video"
+              height={
+                attachment[index].type === 'audio' ? 0 : classNamePlayerSize.h
+              }
+              loop
+              onTimeUpdate={handleProgress}
+              playing={playing}
+              ref={player}
+              src={attachment[index].url}
+              volume={volume}
+              width={'100%'}
+            />
+          )}
         {'image' === attachment[index].type && (
           <img
             alt={attachment[index].description ?? ''}
