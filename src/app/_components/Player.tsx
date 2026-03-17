@@ -53,6 +53,17 @@ const PlayerController = () => {
     }
   }, [playerSize])
 
+  // YouTube player configuration to fix iframe origin issues
+  const playerConfig = useMemo(
+    () => ({
+      youtube: {
+        enablejsapi: 1 as const,
+        origin: typeof window !== 'undefined' ? window.location.origin : '',
+      },
+    }),
+    [],
+  )
+
   const onClickPlay = () => {
     setPlaying((prev) => !prev)
   }
@@ -167,6 +178,7 @@ const PlayerController = () => {
         {playableTypes.includes(attachment[index].type) && (
           <ReactPlayer
             className="aspect-video"
+            config={playerConfig}
             height={
               attachment[index].type === 'audio' ? 0 : classNamePlayerSize.h
             }
