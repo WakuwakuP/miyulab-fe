@@ -1,17 +1,24 @@
 import type { NextRequest } from 'next/server'
 
-const YOUTUBE_PATTERNS = [
-  /(?:youtube\.com\/watch\?.*v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([\w-]+)/,
-]
+import { YOUTUBE_PATTERNS } from 'util/videoEmbed'
+
+function escapeHtmlAttr(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
 
 const ALLOWED_PLATFORMS: {
   name: string
   match: (url: string) => string | null
-  embedUrl: (id: string) => string
+  embedUrl: (id: string, origin: string) => string
 }[] = [
   {
-    embedUrl: (id) =>
-      `https://www.youtube.com/embed/${id}?autoplay=1&origin=${encodeURIComponent('about:blank')}`,
+    embedUrl: (id, origin) =>
+      `https://www.youtube.com/embed/${id}?autoplay=1&origin=${encodeURIComponent(origin)}`,
     match: (url) => {
       for (const pattern of YOUTUBE_PATTERNS) {
         const m = url.match(pattern)
@@ -25,11 +32,15 @@ const ALLOWED_PLATFORMS: {
 
 function getEmbedInfo(
   url: string,
+  origin: string,
 ): { embedUrl: string; platform: string } | null {
   for (const platform of ALLOWED_PLATFORMS) {
     const id = platform.match(url)
     if (id != null) {
-      return { embedUrl: platform.embedUrl(id), platform: platform.name }
+      return {
+        embedUrl: platform.embedUrl(id, origin),
+        platform: platform.name,
+      }
     }
   }
   return null
@@ -41,10 +52,13 @@ export function GET(request: NextRequest) {
     return new Response('Missing url parameter', { status: 400 })
   }
 
-  const info = getEmbedInfo(url)
+  const origin = request.nextUrl.origin
+  const info = getEmbedInfo(url, origin)
   if (info == null) {
     return new Response('Unsupported video platform', { status: 400 })
   }
+
+  const escapedEmbedUrl = escapeHtmlAttr(info.embedUrl)
 
   const html = `<!DOCTYPE html>
 <html>
@@ -55,7 +69,7 @@ export function GET(request: NextRequest) {
 </head>
 <body>
 <iframe
-  src="${info.embedUrl}"
+  src="${escapedEmbedUrl}"
   allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
   allowfullscreen
 ></iframe>

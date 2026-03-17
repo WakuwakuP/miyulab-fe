@@ -166,7 +166,7 @@ const PlayerController = () => {
     >
       <div className=" bg-black" onClick={onClickPlay}>
         {playableTypes.includes(attachment[index].type) &&
-          isExternalVideo(attachment[index].url) && (
+          (isExternalVideo(attachment[index].url) ? (
             <iframe
               className={['aspect-video w-full', classNamePlayerSize.h].join(
                 ' ',
@@ -175,9 +175,7 @@ const PlayerController = () => {
               style={{ border: 'none' }}
               title="Video player"
             />
-          )}
-        {playableTypes.includes(attachment[index].type) &&
-          !isExternalVideo(attachment[index].url) && (
+          ) : (
             <ReactPlayer
               className="aspect-video"
               height={
@@ -191,7 +189,7 @@ const PlayerController = () => {
               volume={volume}
               width={'100%'}
             />
-          )}
+          ))}
         {'image' === attachment[index].type && (
           <img
             alt={attachment[index].description ?? ''}

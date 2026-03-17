@@ -1,4 +1,8 @@
-const EXTERNAL_VIDEO_PATTERNS = [
+/**
+ * YouTube URL regex patterns used for detection and ID extraction.
+ * Shared between client-side detection (videoEmbed.ts) and server-side embed route.
+ */
+export const YOUTUBE_PATTERNS = [
   /(?:youtube\.com\/watch\?.*v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([\w-]+)/,
 ]
 
@@ -7,7 +11,7 @@ const EXTERNAL_VIDEO_PATTERNS = [
  * to work under Cross-Origin-Embedder-Policy.
  */
 export const isExternalVideo = (url: string): boolean => {
-  return EXTERNAL_VIDEO_PATTERNS.some((pattern) => pattern.test(url))
+  return YOUTUBE_PATTERNS.some((pattern) => pattern.test(url))
 }
 
 /**
