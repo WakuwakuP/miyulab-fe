@@ -254,37 +254,48 @@ try {
 
 ### miyulab-fe の判断
 
-**COOP は全ルートに設定。COEP: credentialless は `/embed/*` 以外のルートに設定。**
+**COOP: same-origin と COEP: credentialless を全ルートに設定。**
 
-ヘッダの設定は `src/proxy.ts`（Next.js 16 の Proxy）で動的に制御する。
+ヘッダの設定は `src/proxy.ts`（Next.js 16 の Proxy）で全ルートに適用する。
 
 ```typescript
 // src/proxy.ts
-export function proxy(request: NextRequest) {
+export function proxy() {
   const response = NextResponse.next()
   response.headers.set('Cross-Origin-Opener-Policy', 'same-origin')
-  if (!request.nextUrl.pathname.startsWith('/embed/')) {
-    response.headers.set('Cross-Origin-Embedder-Policy', 'credentialless')
-  }
+  response.headers.set('Cross-Origin-Embedder-Policy', 'credentialless')
   return response
 }
 ```
 
-### なぜ COEP をルート別に制御するのか
+### COEP: credentialless の効果
 
-1. **COEP が必要な理由**: COEP を設定しないと `SharedArrayBuffer` が無効になり、SQLite WASM ライブラリが警告を出す。`credentialless` モードで設定することで Cross-Origin Isolation を有効にする。
-2. **YouTube 埋め込みとの衝突**: COEP（`require-corp` / `credentialless`）を設定すると、YouTube 等のクロスオリジン iframe がブロックされる。YouTube は COEP/CORP ヘッダを送信しないため、直接埋め込みができない。
-3. **解決策 — 埋め込みプロキシ**: `/embed/video` ルートを COEP なしで提供し、YouTube iframe をそこに配置する。メインページからは同一オリジンの iframe としてこのルートを読み込むことで、COEP の制限を回避する。
+1. **リモート画像の読み込み**: `credentialless` モードでは、クロスオリジンの no-CORS リクエストが資格情報なしで送信される。これにより、リモート Fediverse サーバーの投稿画像が正常に表示される。
+2. **Cross-Origin Isolation**: `SharedArrayBuffer` が有効になり、SQLite WASM ライブラリの警告が出なくなる。
 
-### アーキテクチャ
+### YouTube 等の外部 iframe への対処
 
+COEP: credentialless を設定すると、YouTube 等のクロスオリジン iframe がブロックされる（YouTube は COEP/CORP ヘッダを送信しないため）。
+
+**解決策 — `credentialless` iframe 属性**:
+
+HTML の `credentialless` 属性を iframe に付与することで、その iframe を COEP の制限から除外する。
+
+```tsx
+<iframe
+  credentialless=""
+  src="https://www.youtube.com/embed/VIDEO_ID"
+  allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
+  allowFullScreen
+/>
 ```
-メインページ (COEP: credentialless)
-  └─ <iframe src="/embed/video?url=https://youtube.com/...">
-       └─ /embed/video ルート (COEP なし)
-            └─ <iframe src="https://www.youtube.com/embed/VIDEO_ID">
-                 └─ YouTube が正常に動作
-```
+
+この属性により：
+- iframe が資格情報なしの新しいコンテキストで読み込まれる
+- 親ページの COEP ポリシーから除外される
+- YouTube 等の外部動画が正常に再生できる
+
+**注意**: `credentialless` iframe 属性は Chromium 系ブラウザ（Chrome 110+）でサポートされている。
 
 ### COOP だけで十分なケース
 

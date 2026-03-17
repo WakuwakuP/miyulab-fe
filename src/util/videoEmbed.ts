@@ -1,23 +1,26 @@
-/**
- * YouTube URL regex patterns used for detection and ID extraction.
- * Shared between client-side detection (videoEmbed.ts) and server-side embed route.
- */
-export const YOUTUBE_PATTERNS = [
+const YOUTUBE_PATTERNS = [
   /(?:youtube\.com\/watch\?.*v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([\w-]+)/,
 ]
 
 /**
- * Check if a URL is an external video platform that needs the embed proxy
- * to work under Cross-Origin-Embedder-Policy.
+ * Check if a URL is an external video platform (e.g. YouTube) that should be
+ * embedded via an iframe with the `credentialless` attribute to bypass COEP.
  */
 export const isExternalVideo = (url: string): boolean => {
   return YOUTUBE_PATTERNS.some((pattern) => pattern.test(url))
 }
 
 /**
- * Get the embed proxy URL for an external video URL.
- * Returns the /embed/video route URL that serves the video without COEP restrictions.
+ * Extract the direct embed URL for an external video platform.
+ * Returns the platform's embed URL (e.g. https://www.youtube.com/embed/VIDEO_ID)
+ * or null if the URL is not recognized.
  */
-export const getEmbedProxyUrl = (url: string): string => {
-  return `/embed/video?url=${encodeURIComponent(url)}`
+export const getDirectEmbedUrl = (url: string): string | null => {
+  for (const pattern of YOUTUBE_PATTERNS) {
+    const m = url.match(pattern)
+    if (m?.[1]) {
+      return `https://www.youtube.com/embed/${m[1]}`
+    }
+  }
+  return null
 }

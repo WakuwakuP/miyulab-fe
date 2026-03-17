@@ -1,13 +1,10 @@
-import { type NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 
-export function proxy(request: NextRequest) {
+export function proxy() {
   const response = NextResponse.next()
 
   response.headers.set('Cross-Origin-Opener-Policy', 'same-origin')
-
-  if (!request.nextUrl.pathname.startsWith('/embed/')) {
-    response.headers.set('Cross-Origin-Embedder-Policy', 'credentialless')
-  }
+  response.headers.set('Cross-Origin-Embedder-Policy', 'credentialless')
 
   return response
 }

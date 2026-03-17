@@ -25,7 +25,7 @@ import {
   SetPlayerSettingContext,
 } from 'util/provider/PlayerProvider'
 import { SettingContext } from 'util/provider/SettingProvider'
-import { getEmbedProxyUrl, isExternalVideo } from 'util/videoEmbed'
+import { getDirectEmbedUrl, isExternalVideo } from 'util/videoEmbed'
 
 const playableTypes = ['audio', 'video', 'gifv'] as Readonly<
   Entity.Attachment['type'][]
@@ -168,10 +168,17 @@ const PlayerController = () => {
         {playableTypes.includes(attachment[index].type) &&
           (isExternalVideo(attachment[index].url) ? (
             <iframe
+              allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
+              allowFullScreen
               className={['aspect-video w-full', classNamePlayerSize.h].join(
                 ' ',
               )}
-              src={getEmbedProxyUrl(attachment[index].url)}
+              // @ts-expect-error -- credentialless is a valid HTML attribute but not yet in React's type definitions
+              credentialless=""
+              src={
+                getDirectEmbedUrl(attachment[index].url) ??
+                attachment[index].url
+              }
               style={{ border: 'none' }}
               title="Video player"
             />
