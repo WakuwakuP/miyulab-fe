@@ -19,6 +19,8 @@ import {
   resolvePostItemKindId,
   syncPollData,
   syncPostCustomEmojis,
+  syncPostHashtags,
+  syncPostLinkCard,
   syncProfileCustomEmojis,
   toggleEngagement,
 } from '../shared'
@@ -298,7 +300,9 @@ function ensureReblogOriginalPost(
     originalStatus.emojis ?? [],
     originalStatus.account?.emojis ?? [],
   )
+  syncPostHashtags(db, postId, originalStatus.tags)
   syncPollData(db, postId, originalStatus.poll)
+  syncPostLinkCard(db, postId, originalStatus.card)
 }
 
 // ================================================================
@@ -470,7 +474,9 @@ export function handleUpsertStatus(
       status.emojis ?? [],
       status.account?.emojis ?? [],
     )
+    syncPostHashtags(db, postId, status.tags)
     syncPollData(db, postId, status.poll)
+    syncPostLinkCard(db, postId, status.card)
 
     if (cols.is_reblog === 1 && cols.reblog_of_uri) {
       db.exec(
@@ -678,7 +684,9 @@ export function handleBulkUpsertStatuses(
         status.emojis ?? [],
         status.account?.emojis ?? [],
       )
+      syncPostHashtags(db, postId, status.tags)
       syncPollData(db, postId, status.poll)
+      syncPostLinkCard(db, postId, status.card)
 
       // リブログ関係を posts_reblogs に記録（元投稿の URI が存在する場合のみ）
       if (cols.is_reblog === 1 && cols.reblog_of_uri) {
@@ -1030,7 +1038,9 @@ export function handleUpdateStatus(
       status.emojis ?? [],
       status.account?.emojis ?? [],
     )
+    syncPostHashtags(db, postId, status.tags)
     syncPollData(db, postId, status.poll)
+    syncPostLinkCard(db, postId, status.card)
 
     // リブログの場合、元投稿も更新する
     if (cols.is_reblog === 1 && status.reblog) {
