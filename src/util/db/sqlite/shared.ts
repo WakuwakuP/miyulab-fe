@@ -451,6 +451,127 @@ export function syncProfileCustomEmojis(
 }
 
 /**
+ * 投稿のハッシュタグを hashtags / post_hashtags に同期する。
+ *
+ * hashtags テーブルに正規化名（小文字）で UPSERT し、
+ * post_hashtags テーブルを洗い替え（DELETE → INSERT）する。
+ */
+export function syncPostHashtags(
+  db: {
+    exec: (
+      sql: string,
+      opts?: {
+        bind?: (string | number | null)[]
+        returnValue?: 'resultRows'
+      },
+    ) => unknown
+  },
+  postId: number,
+  tags: { name: string; url?: string }[],
+): void {
+  db.exec('DELETE FROM post_hashtags WHERE post_id = ?;', {
+    bind: [postId],
+  })
+
+  for (let i = 0; i < tags.length; i++) {
+    const tag = tags[i]
+    const normalizedName = tag.name.toLowerCase()
+    const displayName = tag.name
+
+    // hashtags テーブルに UPSERT（display_name は最新の表記で更新）
+    db.exec(
+      `INSERT INTO hashtags (normalized_name, display_name)
+       VALUES (?, ?)
+       ON CONFLICT(normalized_name) DO UPDATE SET
+         display_name = excluded.display_name;`,
+      { bind: [normalizedName, displayName] },
+    )
+
+    // hashtag_id を取得
+    const rows = db.exec(
+      'SELECT hashtag_id FROM hashtags WHERE normalized_name = ?;',
+      { bind: [normalizedName], returnValue: 'resultRows' },
+    ) as number[][]
+    const hashtagId = rows[0][0]
+
+    // post_hashtags に INSERT
+    db.exec(
+      `INSERT OR IGNORE INTO post_hashtags (post_id, hashtag_id, sort_order)
+       VALUES (?, ?, ?);`,
+      { bind: [postId, hashtagId, i] },
+    )
+  }
+}
+
+/**
+ * 投稿のリンクカードを link_cards / post_links に同期する。
+ *
+ * link_cards テーブルに canonical_url で UPSERT し、
+ * post_links テーブルを洗い替え（DELETE → INSERT）する。
+ * card が null の場合は post_links のみ削除する。
+ */
+export function syncPostLinkCard(
+  db: {
+    exec: (
+      sql: string,
+      opts?: {
+        bind?: (string | number | null)[]
+        returnValue?: 'resultRows'
+      },
+    ) => unknown
+  },
+  postId: number,
+  card: {
+    url: string
+    title: string
+    description: string
+    image: string | null
+    provider_name: string | null
+  } | null,
+): void {
+  db.exec('DELETE FROM post_links WHERE post_id = ?;', {
+    bind: [postId],
+  })
+
+  if (!card || !card.url) return
+
+  // link_cards テーブルに UPSERT（title / description / image は最新で更新）
+  db.exec(
+    `INSERT INTO link_cards (canonical_url, title, description, image_url, provider_name, fetched_at)
+     VALUES (?, ?, ?, ?, ?, datetime('now'))
+     ON CONFLICT(canonical_url) DO UPDATE SET
+       title         = excluded.title,
+       description   = excluded.description,
+       image_url     = excluded.image_url,
+       provider_name = excluded.provider_name,
+       fetched_at    = excluded.fetched_at;`,
+    {
+      bind: [
+        card.url,
+        card.title ?? null,
+        card.description ?? null,
+        card.image ?? null,
+        card.provider_name ?? null,
+      ],
+    },
+  )
+
+  // link_card_id を取得
+  const rows = db.exec(
+    'SELECT link_card_id FROM link_cards WHERE canonical_url = ?;',
+    { bind: [card.url], returnValue: 'resultRows' },
+  ) as number[][]
+  const linkCardId = rows[0][0]
+
+  // post_links に INSERT
+  db.exec(
+    `INSERT OR IGNORE INTO post_links (post_id, link_card_id, url_in_post, sort_order)
+     VALUES (?, ?, ?, 0);`,
+    { bind: [postId, linkCardId, card.url] },
+  )
+}
+
+/**
  * 投稿の投票データを polls / poll_options に同期する。
  */
 export function syncPollData(
