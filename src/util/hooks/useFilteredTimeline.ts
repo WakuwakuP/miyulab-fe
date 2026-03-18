@@ -9,8 +9,8 @@ import {
   useState,
 } from 'react'
 import type { StatusAddAppIndex, TimelineConfigV2 } from 'types/types'
-import type { TimelineType as DbTimelineType } from 'util/db/database'
 import { getSqliteDb, subscribe } from 'util/db/sqlite/connection'
+import type { TimelineType as DbTimelineType } from 'util/db/sqlite/statusStore'
 import {
   rowToStoredStatus,
   type SqliteStoredStatus,

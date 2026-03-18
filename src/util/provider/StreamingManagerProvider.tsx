@@ -11,7 +11,7 @@ import {
   useRef,
 } from 'react'
 import type { App, TimelineConfigV2 } from 'types/types'
-import type { TimelineType as DbTimelineType } from 'util/db/database'
+import type { TimelineType as DbTimelineType } from 'util/db/sqlite/statusStore'
 import {
   handleDeleteEvent,
   updateStatus,

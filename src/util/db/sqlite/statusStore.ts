@@ -14,7 +14,9 @@ import {
   isMixedQuery,
   isNotificationQuery,
 } from 'util/queryBuilder'
-import type { TimelineType } from '../database'
+/** タイムラインの種類（DB層用。notification は notifications テーブルで管理するため含めない） */
+export type TimelineType = 'home' | 'local' | 'public' | 'tag'
+
 import { getSqliteDb } from './connection'
 
 // ================================================================

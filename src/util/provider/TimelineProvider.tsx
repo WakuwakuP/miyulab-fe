@@ -10,11 +10,7 @@ import {
 } from 'react'
 
 import type { TimelineSettings } from 'types/types'
-import {
-  isV1Settings,
-  isV2Settings,
-  migrateV1toV2,
-} from 'util/migration/migrateTimeline'
+import { isV2Settings } from 'util/migration/migrateTimeline'
 
 const initialTimelineSettings: TimelineSettings = {
   timelines: [
@@ -105,13 +101,8 @@ export const TimelineProvider = ({
         if (isV2Settings(parsed)) {
           // V2 形式: 非 Advanced Query の customQuery をクリーンアップして使用
           setTimelineSettings(cleanupNonAdvancedCustomQuery(parsed))
-        } else if (isV1Settings(parsed)) {
-          // V1 形式: V2 にマイグレーション
-          const migrated = migrateV1toV2(parsed)
-          console.info('Migrated timeline settings from V1 to V2:', migrated)
-          setTimelineSettings(cleanupNonAdvancedCustomQuery(migrated))
         } else {
-          // 不明な形式: デフォルト設定を使用
+          // V2 以外の形式: デフォルト設定を使用
           console.warn(
             'Unknown timeline settings format, using defaults:',
             parsed,

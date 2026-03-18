@@ -2,8 +2,8 @@
 
 import { useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { StatusAddAppIndex } from 'types/types'
-import type { TimelineType } from 'util/db/database'
 import { getSqliteDb, subscribe } from 'util/db/sqlite/connection'
+import type { TimelineType } from 'util/db/sqlite/statusStore'
 import {
   rowToStoredStatus,
   type SqliteStoredStatus,

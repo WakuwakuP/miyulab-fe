@@ -139,14 +139,6 @@ export type EnforceMaxLengthRequest = {
   id: number
 }
 
-/** IndexedDB マイグレーションデータの書き込み */
-export type MigrationWriteRequest = {
-  type: 'migrationWrite'
-  id: number
-  statusBatches: MigrationStatusBatch[]
-  notificationBatches: MigrationNotificationBatch[]
-}
-
 /** フォロー関係の同期 */
 export type SyncFollowsRequest = {
   type: 'syncFollows'
@@ -159,28 +151,6 @@ export type SyncFollowsRequest = {
 export type ExportDatabaseRequest = {
   type: 'exportDatabase'
   id: number
-}
-
-// ================================================================
-// マイグレーション用データ型
-// ================================================================
-
-export type MigrationStatusBatch = {
-  compositeKey: string
-  backendUrl: string
-  created_at_ms: number
-  storedAt: number
-  timelineTypes: string[]
-  belongingTags: string[]
-  entityJson: string
-}
-
-export type MigrationNotificationBatch = {
-  compositeKey: string
-  backendUrl: string
-  created_at_ms: number
-  storedAt: number
-  entityJson: string
 }
 
 // ================================================================
@@ -201,7 +171,6 @@ export type WorkerRequest =
   | BulkAddNotificationsRequest
   | UpdateNotificationStatusActionRequest
   | EnforceMaxLengthRequest
-  | MigrationWriteRequest
   | SyncFollowsRequest
   | ExportDatabaseRequest
 

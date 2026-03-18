@@ -120,8 +120,6 @@ async function initMainThreadFallback(
     handleUpdateNotificationStatusAction,
   } = await import('./worker/workerNotificationStore')
   const { handleEnforceMaxLength } = await import('./worker/workerCleanup')
-  const { handleMigrationWrite } = await import('./worker/workerMigration')
-
   const handle: DbHandle = {
     execAsync: async (sql, opts) => {
       const start = performance.now()
@@ -277,13 +275,7 @@ async function initMainThreadFallback(
         case 'enforceMaxLength':
           result = handleEnforceMaxLength(db)
           break
-        case 'migrationWrite':
-          result = handleMigrationWrite(
-            db,
-            command.statusBatches,
-            command.notificationBatches,
-          )
-          break
+
         case 'exportDatabase':
           // インメモリモードではエクスポート不要
           result = { ok: true }
