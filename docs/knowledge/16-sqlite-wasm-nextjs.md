@@ -254,29 +254,48 @@ try {
 
 ### miyulab-fe の判断
 
-**COOP のみ設定し、COEP は設定しない。**
+**COOP: same-origin と COEP: credentialless を全ルートに設定。**
 
-```javascript
-// next.config.mjs
-async headers() {
-  return [
-    {
-      headers: [
-        {
-          key: 'Cross-Origin-Opener-Policy',
-          value: 'same-origin',
-        },
-      ],
-      source: '/:path*',
-    },
-  ]
+ヘッダの設定は `src/proxy.ts`（Next.js 16 の Proxy）で全ルートに適用する。
+
+```typescript
+// src/proxy.ts
+export function proxy() {
+  const response = NextResponse.next()
+  response.headers.set('Cross-Origin-Opener-Policy', 'same-origin')
+  response.headers.set('Cross-Origin-Embedder-Policy', 'credentialless')
+  return response
 }
 ```
 
-### なぜ COEP を設定しないのか
+### COEP: credentialless の効果
 
-1. **OPFS SAH Pool VFS は `SharedArrayBuffer` を使わない**: COEP は `SharedArrayBuffer` を有効にするために必要だが、OPFS SAH Pool VFS は同期的な OPFS アクセスハンドルを使用しており、`SharedArrayBuffer` に依存しない。
-2. **クロスオリジン iframe への影響**: COEP（`require-corp` / `credentialless`）を設定すると、YouTube 埋め込みなどのクロスオリジン iframe がブロックされる。Fediverse クライアントではユーザー投稿内の埋め込みコンテンツを表示する必要があるため、COEP は除去した。
+1. **リモート画像の読み込み**: `credentialless` モードでは、クロスオリジンの no-CORS リクエストが資格情報なしで送信される。これにより、リモート Fediverse サーバーの投稿画像が正常に表示される。
+2. **Cross-Origin Isolation**: `SharedArrayBuffer` が有効になり、SQLite WASM ライブラリの警告が出なくなる。
+
+### YouTube 等の外部 iframe への対処
+
+COEP: credentialless を設定すると、YouTube 等のクロスオリジン iframe がブロックされる（YouTube は COEP/CORP ヘッダを送信しないため）。
+
+**解決策 — `credentialless` iframe 属性**:
+
+HTML の `credentialless` 属性を iframe に付与することで、その iframe を COEP の制限から除外する。
+
+```tsx
+<iframe
+  credentialless=""
+  src="https://www.youtube.com/embed/VIDEO_ID"
+  allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
+  allowFullScreen
+/>
+```
+
+この属性により：
+- iframe が資格情報なしの新しいコンテキストで読み込まれる
+- 親ページの COEP ポリシーから除外される
+- YouTube 等の外部動画が正常に再生できる
+
+**注意**: `credentialless` iframe 属性は Chromium 系ブラウザ（Chrome 110+）でサポートされている。
 
 ### COOP だけで十分なケース
 
