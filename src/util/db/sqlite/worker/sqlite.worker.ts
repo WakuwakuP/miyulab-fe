@@ -18,8 +18,10 @@ import {
 import {
   handleBulkUpsertStatuses,
   handleDeleteEvent,
+  handleEnsureLocalAccount,
   handleRemoveFromTimeline,
   handleSyncFollows,
+  handleToggleReaction,
   handleUpdateStatus,
   handleUpdateStatusAction,
   handleUpsertStatus,
@@ -396,6 +398,26 @@ self.onmessage = (
       // ---- Follows ----
       case 'syncFollows': {
         const r = handleSyncFollows(db, msg.backendUrl, msg.accountsJson)
+        sendResponse(msg.id, { ok: true }, r.changedTables)
+        break
+      }
+
+      // ---- Local Account ----
+      case 'ensureLocalAccount': {
+        const r = handleEnsureLocalAccount(db, msg.backendUrl, msg.accountJson)
+        sendResponse(msg.id, { ok: true }, r.changedTables)
+        break
+      }
+
+      // ---- Reaction ----
+      case 'toggleReaction': {
+        const r = handleToggleReaction(
+          db,
+          msg.backendUrl,
+          msg.statusId,
+          msg.value,
+          msg.emoji,
+        )
         sendResponse(msg.id, { ok: true }, r.changedTables)
         break
       }

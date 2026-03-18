@@ -1184,6 +1184,42 @@ export async function updateStatus(
   })
 }
 
+/**
+ * ローカルアカウントを登録または更新
+ *
+ * verifyAccountCredentials で取得した自アカウント情報を local_accounts テーブルに反映する。
+ */
+export async function ensureLocalAccount(
+  account: Entity.Account,
+  backendUrl: string,
+): Promise<void> {
+  const handle = await getSqliteDb()
+  await handle.sendCommand({
+    accountJson: JSON.stringify(account),
+    backendUrl,
+    type: 'ensureLocalAccount',
+  })
+}
+
+/**
+ * リアクションの追加/削除を DB に反映する
+ */
+export async function toggleReactionInDb(
+  backendUrl: string,
+  statusId: string,
+  value: boolean,
+  emoji: string,
+): Promise<void> {
+  const handle = await getSqliteDb()
+  await handle.sendCommand({
+    backendUrl,
+    emoji,
+    statusId,
+    type: 'toggleReaction',
+    value,
+  })
+}
+
 // ================================================================
 // クエリ API
 // ================================================================

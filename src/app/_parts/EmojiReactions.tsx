@@ -5,6 +5,7 @@ import type { Entity } from 'megalodon'
 import { useContext } from 'react'
 import type { StatusAddAppIndex } from 'types/types'
 import { REACTION_BACKENDS } from 'util/constants'
+import { toggleReactionInDb } from 'util/db/sqlite/statusStore'
 import { GetClient } from 'util/GetClient'
 import { AppsContext } from 'util/provider/AppsProvider'
 import { SelectedAppIndexContext } from 'util/provider/PostAccountProvider'
@@ -39,10 +40,14 @@ export const EmojiReactions = ({
       client.deleteEmojiReaction(statusId, reaction.name).catch((error) => {
         console.error('Failed to remove reaction:', error)
       })
+      // DB からリアクションを削除
+      toggleReactionInDb(selectedApp.backendUrl, statusId, false, reaction.name)
     } else {
       client.createEmojiReaction(statusId, reaction.name).catch((error) => {
         console.error('Failed to add reaction:', error)
       })
+      // DB にリアクションを保存
+      toggleReactionInDb(selectedApp.backendUrl, statusId, true, reaction.name)
     }
   }
 
