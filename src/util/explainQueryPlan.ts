@@ -53,7 +53,7 @@ const STATUS_COMPAT_FROM = `(
       LEFT JOIN profiles pr_c ON pr_c.profile_id = p.author_profile_id
       LEFT JOIN visibility_types vt_c ON vt_c.visibility_id = p.visibility_id
       LEFT JOIN post_stats ps_c ON ps_c.post_id = p.post_id
-    ) s`
+    ) p`
 
 const NOTIF_COMPAT_FROM = `(
       SELECT n2.*,
@@ -91,12 +91,12 @@ const EMPTY_S = `(SELECT
       NULL AS favourites_count, NULL AS reblogs_count, NULL AS replies_count
     LIMIT 0)`
 
-const EMPTY_STT = '(SELECT NULL AS post_id, NULL AS timelineType LIMIT 0)'
-const EMPTY_SBT = '(SELECT NULL AS post_id, NULL AS tag LIMIT 0)'
-const EMPTY_SM = '(SELECT NULL AS post_id, NULL AS acct LIMIT 0)'
-const EMPTY_SB =
+const EMPTY_PTT = '(SELECT NULL AS post_id, NULL AS timelineType LIMIT 0)'
+const EMPTY_PBT = '(SELECT NULL AS post_id, NULL AS tag LIMIT 0)'
+const EMPTY_PME = '(SELECT NULL AS post_id, NULL AS acct LIMIT 0)'
+const EMPTY_PB =
   '(SELECT NULL AS post_id, NULL AS backendUrl, NULL AS local_id LIMIT 0)'
-const EMPTY_SR =
+const EMPTY_PRB =
   '(SELECT NULL AS post_id, NULL AS original_uri, NULL AS reblogger_acct, NULL AS reblogged_at_ms LIMIT 0)'
 
 /**
@@ -227,17 +227,17 @@ function buildFilteredTimelineQuery(
 
   const sql = `
     SELECT ${STATUS_SELECT}
-    FROM posts s
+    FROM posts p
     ${STATUS_BASE_JOINS}
     INNER JOIN timeline_items ti
-      ON s.post_id = ti.post_id
+      ON p.post_id = ti.post_id
     INNER JOIN timelines t
       ON t.timeline_id = ti.timeline_id
     INNER JOIN channel_kinds ck
       ON ck.channel_kind_id = t.channel_kind_id
     WHERE ${whereConditions.join('\n      AND ')}
-    GROUP BY s.post_id
-    ORDER BY s.created_at_ms DESC
+    GROUP BY p.post_id
+    ORDER BY p.created_at_ms DESC
     LIMIT ?;
   `
   const binds: (string | number)[] = [
@@ -283,13 +283,13 @@ function buildTagTimelineQuery(
 
     const sql = `
       SELECT ${STATUS_SELECT}
-      FROM posts s
+      FROM posts p
       ${STATUS_BASE_JOINS}
       INNER JOIN posts_belonging_tags pbt
-        ON s.post_id = pbt.post_id
+        ON p.post_id = pbt.post_id
       WHERE ${whereConditions.join('\n        AND ')}
-      GROUP BY s.post_id
-      ORDER BY s.created_at_ms DESC
+      GROUP BY p.post_id
+      ORDER BY p.created_at_ms DESC
       LIMIT ?;
     `
     binds.push(
@@ -310,14 +310,14 @@ function buildTagTimelineQuery(
 
   const sql = `
     SELECT ${STATUS_SELECT}
-    FROM posts s
+    FROM posts p
     ${STATUS_BASE_JOINS}
     INNER JOIN posts_belonging_tags pbt
-      ON s.post_id = pbt.post_id
+      ON p.post_id = pbt.post_id
     WHERE ${whereConditions.join('\n        AND ')}
-    GROUP BY s.post_id
+    GROUP BY p.post_id
     HAVING COUNT(DISTINCT pbt.tag) = ?
-    ORDER BY s.created_at_ms DESC
+    ORDER BY p.created_at_ms DESC
     LIMIT ?;
   `
   binds.push(
@@ -449,30 +449,31 @@ function buildCustomMixedQuery(
   minMediaCount: number | undefined,
 ): { sql: string; binds: (string | number)[] } {
   const refs = detectReferencedAliases(sanitized)
-  const rewrittenWhere = sanitized
-    .replace(/\bsb\./g, 'pb.')
-    .replace(/\bpb\.backend_url\b/g, 'pb.backendUrl')
+  const rewrittenWhere = sanitized.replace(
+    /\bpb\.backend_url\b/g,
+    'pb.backendUrl',
+  )
 
   const statusJoinLines: string[] = []
-  if (refs.stt)
+  if (refs.ptt)
     statusJoinLines.push(
-      `LEFT JOIN (SELECT ti2.post_id, ck2.code AS timelineType FROM timeline_items ti2 INNER JOIN timelines t2 ON t2.timeline_id = ti2.timeline_id INNER JOIN channel_kinds ck2 ON ck2.channel_kind_id = t2.channel_kind_id WHERE ti2.post_id IS NOT NULL) stt\n              ON s.post_id = stt.post_id`,
+      `LEFT JOIN (SELECT ti2.post_id, ck2.code AS timelineType FROM timeline_items ti2 INNER JOIN timelines t2 ON t2.timeline_id = ti2.timeline_id INNER JOIN channel_kinds ck2 ON ck2.channel_kind_id = t2.channel_kind_id WHERE ti2.post_id IS NOT NULL) ptt\n              ON p.post_id = ptt.post_id`,
     )
-  if (refs.sbt)
+  if (refs.pbt)
     statusJoinLines.push(
-      'LEFT JOIN posts_belonging_tags sbt\n              ON s.post_id = sbt.post_id',
+      'LEFT JOIN posts_belonging_tags pbt\n              ON p.post_id = pbt.post_id',
     )
-  if (refs.sm)
+  if (refs.pme)
     statusJoinLines.push(
-      'LEFT JOIN posts_mentions sm\n              ON s.post_id = sm.post_id',
+      'LEFT JOIN posts_mentions pme\n              ON p.post_id = pme.post_id',
     )
-  if (refs.sr)
+  if (refs.prb)
     statusJoinLines.push(
-      'LEFT JOIN posts_reblogs sr\n              ON s.post_id = sr.post_id',
+      'LEFT JOIN posts_reblogs prb\n              ON p.post_id = prb.post_id',
     )
   if (refs.pe)
     statusJoinLines.push(
-      'LEFT JOIN post_engagements pe\n              ON s.post_id = pe.post_id',
+      'LEFT JOIN post_engagements pe\n              ON p.post_id = pe.post_id',
     )
   statusJoinLines.push(`LEFT JOIN ${EMPTY_N} n ON 1 = 1`)
 
@@ -482,21 +483,21 @@ function buildCustomMixedQuery(
       : ''
 
   const notifDummyJoins = [
-    `LEFT JOIN ${EMPTY_S} s ON 1 = 1`,
-    `LEFT JOIN ${EMPTY_STT} stt ON 1 = 1`,
-    `LEFT JOIN ${EMPTY_SBT} sbt ON 1 = 1`,
-    `LEFT JOIN ${EMPTY_SM} sm ON 1 = 1`,
-    `LEFT JOIN ${EMPTY_SB} sb ON 1 = 1`,
-    `LEFT JOIN ${EMPTY_SR} sr ON 1 = 1`,
+    `LEFT JOIN ${EMPTY_S} p ON 1 = 1`,
+    `LEFT JOIN ${EMPTY_PTT} ptt ON 1 = 1`,
+    `LEFT JOIN ${EMPTY_PBT} pbt ON 1 = 1`,
+    `LEFT JOIN ${EMPTY_PME} pme ON 1 = 1`,
+    `LEFT JOIN ${EMPTY_PB} pb ON 1 = 1`,
+    `LEFT JOIN ${EMPTY_PRB} prb ON 1 = 1`,
   ].join('\n            ')
 
   let statusMediaConditions = ''
   const statusMediaBinds: (string | number)[] = []
   if (minMediaCount != null && minMediaCount > 0) {
-    statusMediaConditions += '\n              AND s.media_count >= ?'
+    statusMediaConditions += '\n              AND p.media_count >= ?'
     statusMediaBinds.push(minMediaCount)
   } else if (onlyMedia) {
-    statusMediaConditions += '\n              AND s.has_media = 1'
+    statusMediaConditions += '\n              AND p.has_media = 1'
   }
 
   const binds: (string | number)[] = [...statusMediaBinds, TIMELINE_QUERY_LIMIT]
@@ -507,11 +508,11 @@ function buildCustomMixedQuery(
   const sql = `
     SELECT post_id, created_at_ms
     FROM (
-      SELECT s.post_id, s.created_at_ms
+      SELECT p.post_id, p.created_at_ms
       FROM ${STATUS_COMPAT_FROM}
       ${STATUS_BASE_JOINS}${statusExtraJoins}
       WHERE (${rewrittenWhere})${statusMediaConditions}
-      GROUP BY s.post_id
+      GROUP BY p.post_id
       UNION ALL
       SELECT n.notification_id, n.created_at_ms
       FROM ${NOTIF_COMPAT_FROM}
@@ -548,30 +549,31 @@ function buildCustomStatusQuery(
   minMediaCount: number | undefined,
 ): { sql: string; binds: (string | number)[] } {
   const refs = detectReferencedAliases(sanitized)
-  const rewrittenWhere = sanitized
-    .replace(/\bsb\./g, 'pb.')
-    .replace(/\bpb\.backend_url\b/g, 'pb.backendUrl')
+  const rewrittenWhere = sanitized.replace(
+    /\bpb\.backend_url\b/g,
+    'pb.backendUrl',
+  )
 
   const joinLines: string[] = []
-  if (refs.stt)
+  if (refs.ptt)
     joinLines.push(
-      `LEFT JOIN (SELECT ti2.post_id, ck2.code AS timelineType FROM timeline_items ti2 INNER JOIN timelines t2 ON t2.timeline_id = ti2.timeline_id INNER JOIN channel_kinds ck2 ON ck2.channel_kind_id = t2.channel_kind_id WHERE ti2.post_id IS NOT NULL) stt\n          ON s.post_id = stt.post_id`,
+      `LEFT JOIN (SELECT ti2.post_id, ck2.code AS timelineType FROM timeline_items ti2 INNER JOIN timelines t2 ON t2.timeline_id = ti2.timeline_id INNER JOIN channel_kinds ck2 ON ck2.channel_kind_id = t2.channel_kind_id WHERE ti2.post_id IS NOT NULL) ptt\n          ON p.post_id = ptt.post_id`,
     )
-  if (refs.sbt)
+  if (refs.pbt)
     joinLines.push(
-      'LEFT JOIN posts_belonging_tags sbt\n          ON s.post_id = sbt.post_id',
+      'LEFT JOIN posts_belonging_tags pbt\n          ON p.post_id = pbt.post_id',
     )
-  if (refs.sm)
+  if (refs.pme)
     joinLines.push(
-      'LEFT JOIN posts_mentions sm\n          ON s.post_id = sm.post_id',
+      'LEFT JOIN posts_mentions pme\n          ON p.post_id = pme.post_id',
     )
-  if (refs.sr)
+  if (refs.prb)
     joinLines.push(
-      'LEFT JOIN posts_reblogs sr\n          ON s.post_id = sr.post_id',
+      'LEFT JOIN posts_reblogs prb\n          ON p.post_id = prb.post_id',
     )
   if (refs.pe)
     joinLines.push(
-      'LEFT JOIN post_engagements pe\n          ON s.post_id = pe.post_id',
+      'LEFT JOIN post_engagements pe\n          ON p.post_id = pe.post_id',
     )
 
   const joinsClause =
@@ -581,10 +583,10 @@ function buildCustomStatusQuery(
   const additionalBinds: (string | number)[] = []
 
   if (minMediaCount != null && minMediaCount > 0) {
-    additionalConditions += '\n      AND s.media_count >= ?'
+    additionalConditions += '\n      AND p.media_count >= ?'
     additionalBinds.push(minMediaCount)
   } else if (onlyMedia) {
-    additionalConditions += '\n      AND s.has_media = 1'
+    additionalConditions += '\n      AND p.has_media = 1'
   }
 
   const binds: (string | number)[] = [...additionalBinds, TIMELINE_QUERY_LIMIT]
@@ -594,8 +596,8 @@ function buildCustomStatusQuery(
     FROM ${STATUS_COMPAT_FROM}
     ${STATUS_BASE_JOINS}${joinsClause}
     WHERE (${rewrittenWhere})${additionalConditions}
-    GROUP BY s.post_id
-    ORDER BY s.created_at_ms DESC
+    GROUP BY p.post_id
+    ORDER BY p.created_at_ms DESC
     LIMIT ?;
   `
 

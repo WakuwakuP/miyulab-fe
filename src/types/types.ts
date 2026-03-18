@@ -156,14 +156,14 @@ export type TimelineConfigV2 = {
   /**
    * カスタム SQL WHERE 句（advanced option）
    *
-   * posts (s), timeline_items/timelines/channel_kinds (stt),
-   * posts_belonging_tags (sbt), posts_mentions (sm),
-   * posts_backends (sb), notifications (n) テーブルを参照可能。
+   * posts (p), timeline_items/timelines/channel_kinds (ptt),
+   * posts_belonging_tags (pbt), posts_mentions (pme),
+   * posts_backends (pb), notifications (n) テーブルを参照可能。
    * LIMIT / OFFSET は自動設定されるため指定不要。
    *
-   * posts 関連テーブル (s, stt, sbt, sm, sb) と notifications テーブル (n) を
+   * posts 関連テーブル (p, ptt, pbt, pme, pb) と notifications テーブル (n) を
    * OR 条件で結合する混合クエリにも対応。例:
-   * `stt.timelineType = 'home' OR n.notification_type IN ('favourite','reblog')`
+   * `ptt.timelineType = 'home' OR n.notification_type IN ('favourite','reblog')`
    */
   customQuery?: string
   /** 一意識別子 */

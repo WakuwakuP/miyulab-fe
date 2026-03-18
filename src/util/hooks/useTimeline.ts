@@ -53,15 +53,15 @@ export function useTimeline(timelineType: TimelineType): StatusAddAppIndex[] {
       const placeholders = backendUrls.map(() => '?').join(',')
       const sql = `
         SELECT ${STATUS_SELECT}
-        FROM posts s
+        FROM posts p
         ${STATUS_BASE_JOINS}
-        INNER JOIN timeline_items ti ON s.post_id = ti.post_id
+        INNER JOIN timeline_items ti ON p.post_id = ti.post_id
         INNER JOIN timelines t ON t.timeline_id = ti.timeline_id
         INNER JOIN channel_kinds ck ON ck.channel_kind_id = t.channel_kind_id
         WHERE ck.code = ?
           AND pb.backendUrl IN (${placeholders})
-        GROUP BY s.post_id
-        ORDER BY s.created_at_ms DESC
+        GROUP BY p.post_id
+        ORDER BY p.created_at_ms DESC
         LIMIT ?;
       `
       const binds: (string | number)[] = [
@@ -128,14 +128,14 @@ export function useTagTimeline(
       const placeholders = backendUrls.map(() => '?').join(',')
       const sql = `
         SELECT ${STATUS_SELECT}
-        FROM posts s
+        FROM posts p
         ${STATUS_BASE_JOINS}
-        INNER JOIN posts_belonging_tags sbt
-          ON s.post_id = sbt.post_id
-        WHERE sbt.tag = ?
+        INNER JOIN posts_belonging_tags pbt
+          ON p.post_id = pbt.post_id
+        WHERE pbt.tag = ?
           AND pb.backendUrl IN (${placeholders})
-        GROUP BY s.post_id
-        ORDER BY s.created_at_ms DESC
+        GROUP BY p.post_id
+        ORDER BY p.created_at_ms DESC
         LIMIT ?;
       `
       const binds: (string | number)[] = [

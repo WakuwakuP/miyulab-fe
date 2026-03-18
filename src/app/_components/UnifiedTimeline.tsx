@@ -172,11 +172,11 @@ export const UnifiedTimeline = ({
             for (const tag of tags) {
               const rows = (await handle.execAsync(
                 `SELECT pb2.local_id
-                 FROM posts s
-                 INNER JOIN posts_backends pb2 ON pb2.post_id = s.post_id
-                 INNER JOIN posts_belonging_tags sbt ON s.post_id = sbt.post_id
-                 WHERE sbt.tag = ? AND pb2.backendUrl = ?
-                 ORDER BY s.created_at_ms ASC
+                 FROM posts p
+                 INNER JOIN posts_backends pb2 ON pb2.post_id = p.post_id
+                 INNER JOIN posts_belonging_tags pbt ON p.post_id = pbt.post_id
+                 WHERE pbt.tag = ? AND pb2.backendUrl = ?
+                 ORDER BY p.created_at_ms ASC
                  LIMIT 1;`,
                 { bind: [tag, url], returnValue: 'resultRows' },
               )) as string[][]
@@ -188,13 +188,13 @@ export const UnifiedTimeline = ({
           } else {
             const rows = (await handle.execAsync(
               `SELECT pb2.local_id
-               FROM posts s
-               INNER JOIN posts_backends pb2 ON pb2.post_id = s.post_id
-               INNER JOIN timeline_items ti ON s.post_id = ti.post_id
+               FROM posts p
+               INNER JOIN posts_backends pb2 ON pb2.post_id = p.post_id
+               INNER JOIN timeline_items ti ON p.post_id = ti.post_id
                INNER JOIN timelines t ON t.timeline_id = ti.timeline_id
                INNER JOIN channel_kinds ck ON ck.channel_kind_id = t.channel_kind_id
                WHERE pb2.backendUrl = ? AND ck.code = ?
-               ORDER BY s.created_at_ms ASC
+               ORDER BY p.created_at_ms ASC
                LIMIT 1;`,
               { bind: [url, timelineType], returnValue: 'resultRows' },
             )) as string[][]

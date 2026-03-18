@@ -125,7 +125,7 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
           visibilityFilter,
         } as TimelineConfigV2,
         targetBackendUrls,
-        's', // posts テーブルのエイリアス
+        'p', // posts テーブルのエイリアス
         { profileJoined: true },
       ),
     [
@@ -182,13 +182,13 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
         ]
 
         phase1Sql = `
-          SELECT DISTINCT s.post_id
-          FROM posts s
-          INNER JOIN posts_backends pb ON s.post_id = pb.post_id
-          LEFT JOIN profiles pr ON s.author_profile_id = pr.profile_id
-          INNER JOIN posts_belonging_tags pbt ON s.post_id = pbt.post_id
+          SELECT DISTINCT p.post_id
+          FROM posts p
+          INNER JOIN posts_backends pb ON p.post_id = pb.post_id
+          LEFT JOIN profiles pr ON p.author_profile_id = pr.profile_id
+          INNER JOIN posts_belonging_tags pbt ON p.post_id = pbt.post_id
           WHERE ${whereConditions.join('\n            AND ')}
-          ORDER BY s.created_at_ms DESC
+          ORDER BY p.created_at_ms DESC
           LIMIT ?;
         `
         phase1Binds.push(
@@ -205,15 +205,15 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
         ]
 
         phase1Sql = `
-          SELECT s.post_id
-          FROM posts s
-          INNER JOIN posts_backends pb ON s.post_id = pb.post_id
-          LEFT JOIN profiles pr ON s.author_profile_id = pr.profile_id
-          INNER JOIN posts_belonging_tags pbt ON s.post_id = pbt.post_id
+          SELECT p.post_id
+          FROM posts p
+          INNER JOIN posts_backends pb ON p.post_id = pb.post_id
+          LEFT JOIN profiles pr ON p.author_profile_id = pr.profile_id
+          INNER JOIN posts_belonging_tags pbt ON p.post_id = pbt.post_id
           WHERE ${whereConditions.join('\n            AND ')}
-          GROUP BY s.post_id
+          GROUP BY p.post_id
           HAVING COUNT(DISTINCT pbt.tag) = ?
-          ORDER BY s.created_at_ms DESC
+          ORDER BY p.created_at_ms DESC
           LIMIT ?;
         `
         phase1Binds.push(
@@ -244,11 +244,11 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
       const placeholders = postIds.map(() => '?').join(',')
       const phase2Sql = `
         SELECT ${STATUS_SELECT}
-        FROM posts s
+        FROM posts p
         ${STATUS_BASE_JOINS}
-        WHERE s.post_id IN (${placeholders})
-        GROUP BY s.post_id
-        ORDER BY s.created_at_ms DESC;
+        WHERE p.post_id IN (${placeholders})
+        GROUP BY p.post_id
+        ORDER BY p.created_at_ms DESC;
       `
 
       const { result: rowsRaw, durationMs: phase2Duration } =

@@ -26,9 +26,9 @@ type QueryEditorProps = {
 /**
  * SQL WHERE 句入力欄（補完付き）
  *
- * テーブルエイリアス (s., stt., sbt.) を入力すると
+ * テーブルエイリアス (p., ptt., pbt.) を入力すると
  * カラム名の補完候補を表示する。
- * `sbt.tag = '` や `stt.timelineType = '` の後に
+ * `pbt.tag = '` や `ptt.timelineType = '` の後に
  * DB 内の実データ値の補完候補を表示する。
  * SQL キーワード・関数の補完も提供する。
  */
@@ -426,7 +426,7 @@ export const QueryEditor = ({
           }`}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
-          placeholder="e.g. stt.timelineType = 'home' AND sbt.tag = 'photo'"
+          placeholder="e.g. ptt.timelineType = 'home' AND pbt.tag = 'photo'"
           ref={inputRef}
           rows={2}
           value={value}
@@ -485,11 +485,11 @@ export const QueryEditor = ({
       )}
 
       <p className="text-xs text-gray-500">
-        Available tables: <code className="text-gray-400">s</code> (statuses),{' '}
-        <code className="text-gray-400">stt</code> (timeline types),{' '}
-        <code className="text-gray-400">sbt</code> (tags),{' '}
-        <code className="text-gray-400">sm</code> (mentions),{' '}
-        <code className="text-gray-400">sb</code> (backends),{' '}
+        Available tables: <code className="text-gray-400">p</code> (posts),{' '}
+        <code className="text-gray-400">ptt</code> (timeline types),{' '}
+        <code className="text-gray-400">pbt</code> (tags),{' '}
+        <code className="text-gray-400">pme</code> (mentions),{' '}
+        <code className="text-gray-400">pb</code> (backends),{' '}
         <code className="text-gray-400">n</code> (notifications). You can
         combine statuses and notifications using OR. LIMIT/OFFSET are set
         automatically.

@@ -130,7 +130,7 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
           visibilityFilter,
         } as TimelineConfigV2,
         targetBackendUrls,
-        's', // posts テーブルのエイリアス
+        'p', // posts テーブルのエイリアス
         { profileJoined: true },
       ),
     [
@@ -186,17 +186,17 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
       ]
 
       const phase1Sql = `
-        SELECT s.post_id, json_group_array(DISTINCT ck.code) AS timelineTypes
+        SELECT p.post_id, json_group_array(DISTINCT ck.code) AS timelineTypes
         FROM channel_kinds ck
         INNER JOIN timelines t ON t.channel_kind_id = ck.channel_kind_id
         INNER JOIN timeline_items ti ON ti.timeline_id = t.timeline_id
-        INNER JOIN posts s ON s.post_id = ti.post_id
-        INNER JOIN posts_backends pb ON s.post_id = pb.post_id
-        LEFT JOIN profiles pr ON s.author_profile_id = pr.profile_id
+        INNER JOIN posts p ON p.post_id = ti.post_id
+        INNER JOIN posts_backends pb ON p.post_id = pb.post_id
+        LEFT JOIN profiles pr ON p.author_profile_id = pr.profile_id
         WHERE ${whereConditions.join('\n          AND ')}
-        GROUP BY s.post_id
+        GROUP BY p.post_id
         HAVING MAX(ck.code = ?) = 1
-        ORDER BY s.created_at_ms DESC
+        ORDER BY p.created_at_ms DESC
         LIMIT ?;
       `
       const phase1Binds: (string | number)[] = [
@@ -231,11 +231,11 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
       const placeholders = postIds.map(() => '?').join(',')
       const phase2Sql = `
         SELECT ${STATUS_SELECT}
-        FROM posts s
+        FROM posts p
         ${STATUS_BASE_JOINS}
-        WHERE s.post_id IN (${placeholders})
-        GROUP BY s.post_id
-        ORDER BY s.created_at_ms DESC;
+        WHERE p.post_id IN (${placeholders})
+        GROUP BY p.post_id
+        ORDER BY p.created_at_ms DESC;
       `
 
       const { result: rowsRaw, durationMs: phase2Duration } =

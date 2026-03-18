@@ -38,16 +38,16 @@ export function isNotificationQuery(query: string): boolean {
 }
 
 /**
- * クエリが statuses 関連テーブル（エイリアス s, stt, sbt, sm, sb）を参照しているか判定する
+ * クエリが statuses 関連テーブル（エイリアス p, ptt, pbt, pme, pb）を参照しているか判定する
  */
 export function isStatusQuery(query: string): boolean {
-  return /\b(s|stt|sbt|sm|sb|sr)\.[a-zA-Z_]\w*/.test(query)
+  return /\b(p|ptt|pbt|pme|pb|prb)\.[a-zA-Z_]\w*/.test(query)
 }
 
 /**
  * クエリが statuses と notifications の両方のテーブルを参照しているか判定する
  *
- * OR 条件で `stt.timelineType = 'home' OR n.notification_type IN (...)` のような
+ * OR 条件で `ptt.timelineType = 'home' OR n.notification_type IN (...)` のような
  * 混合クエリを検出する。
  */
 export function isMixedQuery(query: string): boolean {
@@ -61,22 +61,22 @@ export function isMixedQuery(query: string): boolean {
  * 不要な JOIN を除外することで GROUP BY / ORDER BY の一時 B-Tree を削減する。
  */
 export function detectReferencedAliases(whereClause: string): {
-  stt: boolean
-  sbt: boolean
-  sm: boolean
-  sb: boolean
-  sr: boolean
+  ptt: boolean
+  pbt: boolean
+  pme: boolean
+  pb: boolean
+  prb: boolean
   pe: boolean
   n: boolean
 } {
   return {
     n: /\bn\.\w+/.test(whereClause),
+    pb: /\bpb\.\w+/.test(whereClause),
+    pbt: /\bpbt\.\w+/.test(whereClause),
     pe: /\bpe\.\w+/.test(whereClause),
-    sb: /\bsb\.\w+/.test(whereClause),
-    sbt: /\bsbt\.\w+/.test(whereClause),
-    sm: /\bsm\.\w+/.test(whereClause),
-    sr: /\bsr\.\w+/.test(whereClause),
-    stt: /\bstt\.\w+/.test(whereClause),
+    pme: /\bpme\.\w+/.test(whereClause),
+    prb: /\bprb\.\w+/.test(whereClause),
+    ptt: /\bptt\.\w+/.test(whereClause),
   }
 }
 
@@ -96,7 +96,7 @@ export function detectReferencedAliases(whereClause: string): {
  * ## v2 スキーマ対応
  *
  * 正規化カラムが利用可能になったことで、以下の変更を行う:
- * - onlyMedia: json_extract → s.has_media = 1
+ * - onlyMedia: json_extract → p.has_media = 1
  * - 新規フィルタ: 正規化カラムを直接参照する SQL 条件を生成
  *
  * backendUrl フィルタは Advanced Query モード時にクエリに含める。
@@ -155,24 +155,24 @@ export function buildQueryFromConfig(config: TimelineConfigV2): string {
 
   // ブースト除外
   if (config.excludeReblogs) {
-    const cond = 's.is_reblog = 0'
+    const cond = 'p.is_reblog = 0'
     filterConditions.push(isMixed ? nullTolerant(cond) : cond)
   }
 
   // リプライ除外（IS NULL は混合クエリでも notifications 行を通すため変更不要）
   if (config.excludeReplies) {
-    filterConditions.push('s.in_reply_to_id IS NULL')
+    filterConditions.push('p.in_reply_to_id IS NULL')
   }
 
   // CW 付き除外
   if (config.excludeSpoiler) {
-    const cond = 's.has_spoiler = 0'
+    const cond = 'p.has_spoiler = 0'
     filterConditions.push(isMixed ? nullTolerant(cond) : cond)
   }
 
   // センシティブ除外
   if (config.excludeSensitive) {
-    const cond = 's.is_sensitive = 0'
+    const cond = 'p.is_sensitive = 0'
     filterConditions.push(isMixed ? nullTolerant(cond) : cond)
   }
 
@@ -228,10 +228,10 @@ export function buildQueryFromConfig(config: TimelineConfigV2): string {
  *
  * @example
  * // timelineTypes: ['home', 'local']
- * // → "stt.timelineType IN ('home','local')"
+ * // → "ptt.timelineType IN ('home','local')"
  *
  * // timelineTypes: ['home']
- * // → "stt.timelineType = 'home'"
+ * // → "ptt.timelineType = 'home'"
  */
 function buildTimelineTypeCondition(config: TimelineConfigV2): string | null {
   // tag タイプはタグ条件で表現
@@ -246,12 +246,12 @@ function buildTimelineTypeCondition(config: TimelineConfigV2): string | null {
   // timelineTypes が明示的に設定されている場合はそれを使用
   if (config.timelineTypes && config.timelineTypes.length > 0) {
     if (config.timelineTypes.length === 1) {
-      return `stt.timelineType = '${escapeSqlString(config.timelineTypes[0])}'`
+      return `ptt.timelineType = '${escapeSqlString(config.timelineTypes[0])}'`
     }
     const escaped = config.timelineTypes
       .map((t) => `'${escapeSqlString(t)}'`)
       .join(',')
-    return `stt.timelineType IN (${escaped})`
+    return `ptt.timelineType IN (${escaped})`
   }
 
   // notification タイプの場合はタイムライン条件なし
@@ -265,7 +265,7 @@ function buildTimelineTypeCondition(config: TimelineConfigV2): string | null {
     config.type === 'local' ||
     config.type === 'public'
   ) {
-    return `stt.timelineType = '${escapeSqlString(config.type)}'`
+    return `ptt.timelineType = '${escapeSqlString(config.type)}'`
   }
 
   return null
@@ -279,15 +279,15 @@ function buildTimelineTypeCondition(config: TimelineConfigV2): string | null {
  *
  * ## v1 → v2 の変更点
  *
- * v1: json_extract(s.json, '$.media_attachments') != '[]'
- * v2: s.has_media = 1 または s.media_count >= N
+ * v1: json_extract(p.json, '$.media_attachments') != '[]'
+ * v2: p.has_media = 1 または p.media_count >= N
  */
 function buildMediaCondition(config: TimelineConfigV2): string | null {
   if (config.minMediaCount != null && config.minMediaCount > 0) {
-    return `s.media_count >= ${Math.floor(config.minMediaCount)}`
+    return `p.media_count >= ${Math.floor(config.minMediaCount)}`
   }
   if (config.onlyMedia) {
-    return 's.has_media = 1'
+    return 'p.has_media = 1'
   }
   return null
 }
@@ -300,7 +300,7 @@ function buildMediaCondition(config: TimelineConfigV2): string | null {
  *
  * @example
  * buildVisibilityCondition(['public', 'unlisted'])
- * // → "s.visibility IN ('public','unlisted')"
+ * // → "p.visibility IN ('public','unlisted')"
  */
 function buildVisibilityCondition(
   filter: VisibilityType[] | undefined,
@@ -311,7 +311,7 @@ function buildVisibilityCondition(
   if (filter.length >= 4) return null
 
   const escaped = filter.map((v) => `'${escapeSqlString(v)}'`).join(',')
-  return `s.visibility IN (${escaped})`
+  return `p.visibility IN (${escaped})`
 }
 
 /**
@@ -326,13 +326,13 @@ function buildVisibilityCondition(
  *
  * @example
  * buildLanguageCondition(['ja', 'en'])
- * // → "(s.language IN ('ja','en') OR s.language IS NULL)"
+ * // → "(p.language IN ('ja','en') OR p.language IS NULL)"
  */
 function buildLanguageCondition(filter: string[] | undefined): string | null {
   if (filter == null || filter.length === 0) return null
 
   const escaped = filter.map((v) => `'${escapeSqlString(v)}'`).join(',')
-  return `(s.language IN (${escaped}) OR s.language IS NULL)`
+  return `(p.language IN (${escaped}) OR p.language IS NULL)`
 }
 
 /**
@@ -345,10 +345,10 @@ function buildLanguageCondition(filter: string[] | undefined): string | null {
  *
  * @example
  * buildAccountCondition({ mode: 'include', accts: ['user@example.com'] })
- * // → "s.account_acct IN ('user@example.com')"
+ * // → "p.account_acct IN ('user@example.com')"
  *
  * buildAccountCondition({ mode: 'exclude', accts: ['spam@example.com'] })
- * // → "s.account_acct NOT IN ('spam@example.com')"
+ * // → "p.account_acct NOT IN ('spam@example.com')"
  */
 function buildAccountCondition(
   filter: AccountFilter | undefined,
@@ -358,9 +358,9 @@ function buildAccountCondition(
   const escaped = filter.accts.map((a) => `'${escapeSqlString(a)}'`).join(',')
 
   if (filter.mode === 'include') {
-    return `s.account_acct IN (${escaped})`
+    return `p.account_acct IN (${escaped})`
   }
-  return `s.account_acct NOT IN (${escaped})`
+  return `p.account_acct NOT IN (${escaped})`
 }
 
 /**
@@ -404,13 +404,13 @@ function buildNotificationTypeCondition(
  * バックエンドフィルタ条件を構築する
  *
  * クエリコンテキストに応じて適切なテーブル別名を使用する:
- * - statuses のみ: sb.backendUrl（posts_backends テーブル）
+ * - statuses のみ: pb.backendUrl（posts_backends テーブル）
  * - notifications のみ: n.backend_url（notifications 互換サブクエリ）
  * - 混合: 両方の条件を OR で結合
  *
  * - mode: 'all' → 条件なし（全バックエンド対象）
- * - mode: 'single' → sb.backendUrl = 'xxx' / n.backend_url = 'xxx'
- * - mode: 'composite' → sb.backendUrl IN ('xxx', 'yyy') / n.backend_url IN (...)
+ * - mode: 'single' → pb.backendUrl = 'xxx' / n.backend_url = 'xxx'
+ * - mode: 'composite' → pb.backendUrl IN ('xxx', 'yyy') / n.backend_url IN (...)
  */
 function buildBackendFilterCondition(
   filter: BackendFilter | undefined,
@@ -422,7 +422,7 @@ function buildBackendFilterCondition(
   // コンテキストに応じたテーブル別名リスト
   const aliases: string[] = []
   if (hasTimeline || (!hasTimeline && !hasNotification)) {
-    aliases.push('sb')
+    aliases.push('pb')
   }
   if (hasNotification) {
     aliases.push('n')
@@ -430,11 +430,11 @@ function buildBackendFilterCondition(
 
   /**
    * エイリアスに応じたバックエンドURLカラム名を返す
-   * - sb: posts_backends の実カラム名 backendUrl
+   * - pb: posts_backends の実カラム名 backendUrl
    * - n: 互換サブクエリの仮想カラム名 backend_url
    */
   const backendCol = (alias: string) =>
-    alias === 'sb' ? 'backendUrl' : 'backend_url'
+    alias === 'pb' ? 'backendUrl' : 'backend_url'
 
   if (filter.mode === 'single') {
     const escaped = escapeSqlString(filter.backendUrl)
@@ -467,23 +467,23 @@ function buildTagCondition(tagConfig: TagConfig): string {
 
   if (tags.length === 0) return ''
   if (tags.length === 1) {
-    return `sbt.tag = '${escapeSqlString(tags[0])}'`
+    return `pbt.tag = '${escapeSqlString(tags[0])}'`
   }
 
   const tagList = tags.map((t) => `'${escapeSqlString(t)}'`).join(', ')
 
   if (mode === 'or') {
-    return `sbt.tag IN (${tagList})`
+    return `pbt.tag IN (${tagList})`
   }
 
   // AND mode: 全タグを含む投稿のみ (GROUP BY + HAVING は WHERE 句内では表現不可)
   // サブクエリで表現する
-  return `s.post_id IN (
-    SELECT sbt_inner.post_id
-    FROM posts_belonging_tags sbt_inner
-    WHERE sbt_inner.tag IN (${tagList})
-    GROUP BY sbt_inner.post_id
-    HAVING COUNT(DISTINCT sbt_inner.tag) = ${tags.length}
+  return `p.post_id IN (
+    SELECT pbt_inner.post_id
+    FROM posts_belonging_tags pbt_inner
+    WHERE pbt_inner.tag IN (${tagList})
+    GROUP BY pbt_inner.post_id
+    HAVING COUNT(DISTINCT pbt_inner.tag) = ${tags.length}
   )`
 }
 
@@ -498,20 +498,20 @@ function escapeSqlString(value: string): string {
  * 混合クエリ（UNION ALL）で statuses 固有の条件が notifications 行を
  * フィルタアウトしないよう、NULL 許容のラッパーを付与する。
  *
- * UNION ALL の notifications サブクエリでは s.* カラムは
+ * UNION ALL の notifications サブクエリでは p.* カラムは
  * LEFT JOIN ... ON 0 = 1 により NULL になるため、
- * `s.has_media = 1` は `NULL = 1` → FALSE となり全件除外される。
- * これを防ぐため `(条件 OR s.post_id IS NULL)` で囲む。
+ * `p.has_media = 1` は `NULL = 1` → FALSE となり全件除外される。
+ * これを防ぐため `(条件 OR p.post_id IS NULL)` で囲む。
  *
- * s.post_id が NULL ＝ notifications 行であるため、
+ * p.post_id が NULL ＝ notifications 行であるため、
  * notifications 行は常に通過する。
  *
  * @example
- * nullTolerant('s.has_media = 1')
- * // → "(s.has_media = 1 OR s.post_id IS NULL)"
+ * nullTolerant('p.has_media = 1')
+ * // → "(p.has_media = 1 OR p.post_id IS NULL)"
  */
 function nullTolerant(condition: string): string {
-  return `(${condition} OR s.post_id IS NULL)`
+  return `(${condition} OR p.post_id IS NULL)`
 }
 
 // ================================================================
@@ -525,22 +525,22 @@ function nullTolerant(condition: string): string {
  * backendUrl ごとにミュートリストが異なるため、
  * backendUrls をパラメータとして受け取る。
  *
- * @param tableAlias カラム参照に付けるテーブルエイリアス（デフォルト: 's'）。
- *   JOIN クエリで posts テーブルを参照する場合は 'p' を指定する。
+ * @param tableAlias カラム参照に付けるテーブルエイリアス（デフォルト: 'p'）。
+ *   posts テーブルのエイリアスを指定する。
  * @param options.profileJoined profiles テーブルが pr として JOIN されている場合 true。
  *   true の場合は pr.acct を直接参照し、サブクエリを省略する。
  * @returns SQL 条件文字列とバインド変数の配列
  *
  * @example
  * const { sql, binds } = buildMuteCondition(['https://mastodon.social'])
- * // sql:   "(SELECT acct FROM profiles WHERE profile_id = s.author_profile_id) NOT IN (...)"
+ * // sql:   "(SELECT acct FROM profiles WHERE profile_id = p.author_profile_id) NOT IN (...)"
  *
- * const { sql, binds } = buildMuteCondition(['https://mastodon.social'], 's', { profileJoined: true })
+ * const { sql, binds } = buildMuteCondition(['https://mastodon.social'], 'p', { profileJoined: true })
  * // sql:   "pr.acct NOT IN (...)"
  */
 export function buildMuteCondition(
   backendUrls: string[],
-  tableAlias = 's',
+  tableAlias = 'p',
   options?: { profileJoined?: boolean },
 ): {
   sql: string
@@ -569,19 +569,19 @@ export function buildMuteCondition(
  *
  * blocked_instances テーブルが空の場合でもクエリは高速に実行される（空テーブルの EXISTS は即座に false）。
  *
- * @param tableAlias カラム参照に付けるテーブルエイリアス（デフォルト: 's'）。
- *   JOIN クエリで posts テーブルを参照する場合は 'p' を指定する。
+ * @param tableAlias カラム参照に付けるテーブルエイリアス（デフォルト: 'p'）。
+ *   posts テーブルのエイリアスを指定する。
  * @param options.profileJoined profiles テーブルが pr として JOIN されている場合 true。
  *   true の場合は substr/instr でドメインを抽出し、blocked_instances の PRIMARY KEY で
  *   インデックス検索する最適化パスを使用する。
  * @returns SQL 条件文字列（バインド変数なし、静的サブクエリ）
  *
  * @example
- * const sql = buildInstanceBlockCondition('s', { profileJoined: true })
+ * const sql = buildInstanceBlockCondition('p', { profileJoined: true })
  * // → "NOT EXISTS (SELECT 1 FROM blocked_instances bi WHERE bi.instance_domain = substr(pr.acct, instr(pr.acct, '@') + 1))"
  */
 export function buildInstanceBlockCondition(
-  tableAlias = 's',
+  tableAlias = 'p',
   options?: { profileJoined?: boolean },
 ): string {
   const prefix = tableAlias ? `${tableAlias}.` : ''
@@ -626,10 +626,10 @@ export function parseQueryToConfig(
   // timelineTypes の検出
   // ========================================
   const timelineTypeInMatch = query.match(
-    /stt\.timelineType\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
+    /ptt\.timelineType\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
   )
   const timelineTypeSingleMatch = query.match(
-    /stt\.timelineType\s*=\s*'([^']+)'/i,
+    /ptt\.timelineType\s*=\s*'([^']+)'/i,
   )
 
   if (timelineTypeInMatch) {
@@ -648,8 +648,8 @@ export function parseQueryToConfig(
   // onlyMedia の検出（v1 + v2 両対応）
   // ========================================
   if (
-    query.includes("json_extract(s.json, '$.media_attachments') != '[]'") ||
-    query.includes('s.has_media = 1')
+    query.includes("json_extract(p.json, '$.media_attachments') != '[]'") ||
+    query.includes('p.has_media = 1')
   ) {
     result.onlyMedia = true
   }
@@ -657,7 +657,7 @@ export function parseQueryToConfig(
   // ========================================
   // minMediaCount の検出
   // ========================================
-  const mediaCountMatch = query.match(/s\.media_count\s*>=\s*(\d+)/i)
+  const mediaCountMatch = query.match(/p\.media_count\s*>=\s*(\d+)/i)
   if (mediaCountMatch) {
     const count = parseInt(mediaCountMatch[1], 10)
     if (count > 1) {
@@ -673,7 +673,7 @@ export function parseQueryToConfig(
   // visibilityFilter の検出
   // ========================================
   const visibilityMatch = query.match(
-    /s\.visibility\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
+    /p\.visibility\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
   )
   if (visibilityMatch) {
     const visibilities = visibilityMatch[1]
@@ -690,7 +690,7 @@ export function parseQueryToConfig(
   // languageFilter の検出
   // ========================================
   const languageMatch = query.match(
-    /s\.language\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
+    /p\.language\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
   )
   if (languageMatch) {
     const languages = languageMatch[1]
@@ -706,8 +706,8 @@ export function parseQueryToConfig(
   // excludeReblogs の検出（v1 + v2 両対応）
   // ========================================
   if (
-    query.includes('s.is_reblog = 0') ||
-    query.includes("json_extract(s.json, '$.reblog') IS NULL")
+    query.includes('p.is_reblog = 0') ||
+    query.includes("json_extract(p.json, '$.reblog') IS NULL")
   ) {
     result.excludeReblogs = true
   }
@@ -715,7 +715,7 @@ export function parseQueryToConfig(
   // ========================================
   // excludeReplies の検出
   // ========================================
-  if (query.includes('s.in_reply_to_id IS NULL')) {
+  if (query.includes('p.in_reply_to_id IS NULL')) {
     result.excludeReplies = true
   }
 
@@ -723,8 +723,8 @@ export function parseQueryToConfig(
   // excludeSpoiler の検出（v1 + v2 両対応）
   // ========================================
   if (
-    query.includes('s.has_spoiler = 0') ||
-    query.includes("json_extract(s.json, '$.spoiler_text') = ''")
+    query.includes('p.has_spoiler = 0') ||
+    query.includes("json_extract(p.json, '$.spoiler_text') = ''")
   ) {
     result.excludeSpoiler = true
   }
@@ -732,7 +732,7 @@ export function parseQueryToConfig(
   // ========================================
   // excludeSensitive の検出
   // ========================================
-  if (query.includes('s.is_sensitive = 0')) {
+  if (query.includes('p.is_sensitive = 0')) {
     result.excludeSensitive = true
   }
 
@@ -740,10 +740,10 @@ export function parseQueryToConfig(
   // accountFilter の検出
   // ========================================
   const accountExcludeMatch = query.match(
-    /s\.account_acct\s+NOT\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
+    /p\.account_acct\s+NOT\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
   )
   const accountIncludeMatch = query.match(
-    /s\.account_acct\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
+    /p\.account_acct\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
   )
 
   if (accountExcludeMatch) {
@@ -769,15 +769,15 @@ export function parseQueryToConfig(
   // backendFilter の検出
   // ========================================
   const backendSingleMatch =
-    query.match(/sb\.(?:backend_url|backendUrl)\s*=\s*'([^']+)'/i) ??
-    query.match(/s\.origin_backend_url\s*=\s*'([^']+)'/i) ??
+    query.match(/pb\.(?:backend_url|backendUrl)\s*=\s*'([^']+)'/i) ??
+    query.match(/p\.origin_backend_url\s*=\s*'([^']+)'/i) ??
     query.match(/n\.backend_url\s*=\s*'([^']+)'/i)
   const backendInMatch =
     query.match(
-      /sb\.(?:backend_url|backendUrl)\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
+      /pb\.(?:backend_url|backendUrl)\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
     ) ??
     query.match(
-      /s\.origin_backend_url\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
+      /p\.origin_backend_url\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
     ) ??
     query.match(
       /n\.backend_url\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
@@ -842,9 +842,9 @@ export function parseQueryToConfig(
   // ========================================
   // タグ条件の検出（既存ロジック、変更なし）
   // ========================================
-  const singleTagMatch = query.match(/sbt\.tag\s*=\s*'([^']+)'/i)
+  const singleTagMatch = query.match(/pbt\.tag\s*=\s*'([^']+)'/i)
   const multiTagMatch = query.match(
-    /sbt\.tag\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
+    /pbt\.tag\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
   )
   const andTagMatch = query.match(
     /HAVING\s+COUNT\s*\(\s*DISTINCT\s+\w+\.tag\s*\)\s*=\s*(\d+)/i,
@@ -913,81 +913,81 @@ export function canParseQuery(
 export function upgradeQueryToV2(query: string): string {
   let result = query
 
-  // v7→v13: s.backendUrl / s.origin_backend_url / sb.backend_url → sb.backendUrl
-  result = result.replace(/\bs\.backendUrl\b/g, 'sb.backendUrl')
-  result = result.replace(/\bs\.origin_backend_url\b/g, 'sb.backendUrl')
-  result = result.replace(/\bsb\.backend_url\b/g, 'sb.backendUrl')
+  // v7→v13: p.backendUrl / p.origin_backend_url / pb.backend_url → pb.backendUrl
+  result = result.replace(/\bp\.backendUrl\b/g, 'pb.backendUrl')
+  result = result.replace(/\bp\.origin_backend_url\b/g, 'pb.backendUrl')
+  result = result.replace(/\bpb\.backend_url\b/g, 'pb.backendUrl')
 
-  // メディア: json_extract(s.json, '$.media_attachments') != '[]'
+  // メディア: json_extract(p.json, '$.media_attachments') != '[]'
   result = result.replace(
-    /json_extract\(s\.json,\s*'\$\.media_attachments'\)\s*!=\s*'\[\]'/gi,
-    's.has_media = 1',
+    /json_extract\(p\.json,\s*'\$\.media_attachments'\)\s*!=\s*'\[\]'/gi,
+    'p.has_media = 1',
   )
 
-  // メディア枚数: json_array_length(json_extract(s.json, '$.media_attachments')) >= N
+  // メディア枚数: json_array_length(json_extract(p.json, '$.media_attachments')) >= N
   result = result.replace(
-    /json_array_length\(json_extract\(s\.json,\s*'\$\.media_attachments'\)\)\s*>=\s*(\d+)/gi,
-    's.media_count >= $1',
+    /json_array_length\(json_extract\(p\.json,\s*'\$\.media_attachments'\)\)\s*>=\s*(\d+)/gi,
+    'p.media_count >= $1',
   )
 
-  // ブースト: json_extract(s.json, '$.reblog') IS NOT NULL
+  // ブースト: json_extract(p.json, '$.reblog') IS NOT NULL
   result = result.replace(
-    /json_extract\(s\.json,\s*'\$\.reblog'\)\s+IS\s+NOT\s+NULL/gi,
-    's.is_reblog = 1',
+    /json_extract\(p\.json,\s*'\$\.reblog'\)\s+IS\s+NOT\s+NULL/gi,
+    'p.is_reblog = 1',
   )
 
-  // ブースト除外: json_extract(s.json, '$.reblog') IS NULL
+  // ブースト除外: json_extract(p.json, '$.reblog') IS NULL
   result = result.replace(
-    /json_extract\(s\.json,\s*'\$\.reblog'\)\s+IS\s+NULL/gi,
-    's.is_reblog = 0',
+    /json_extract\(p\.json,\s*'\$\.reblog'\)\s+IS\s+NULL/gi,
+    'p.is_reblog = 0',
   )
 
-  // CW: json_extract(s.json, '$.spoiler_text') != ''
+  // CW: json_extract(p.json, '$.spoiler_text') != ''
   result = result.replace(
-    /json_extract\(s\.json,\s*'\$\.spoiler_text'\)\s*!=\s*''/gi,
-    's.has_spoiler = 1',
+    /json_extract\(p\.json,\s*'\$\.spoiler_text'\)\s*!=\s*''/gi,
+    'p.has_spoiler = 1',
   )
 
-  // CW除外: json_extract(s.json, '$.spoiler_text') = ''
+  // CW除外: json_extract(p.json, '$.spoiler_text') = ''
   result = result.replace(
-    /json_extract\(s\.json,\s*'\$\.spoiler_text'\)\s*=\s*''/gi,
-    's.has_spoiler = 0',
+    /json_extract\(p\.json,\s*'\$\.spoiler_text'\)\s*=\s*''/gi,
+    'p.has_spoiler = 0',
   )
 
-  // センシティブ: json_extract(s.json, '$.sensitive') = 1|0
+  // センシティブ: json_extract(p.json, '$.sensitive') = 1|0
   result = result.replace(
-    /json_extract\(s\.json,\s*'\$\.sensitive'\)\s*=\s*(\d)/gi,
-    's.is_sensitive = $1',
+    /json_extract\(p\.json,\s*'\$\.sensitive'\)\s*=\s*(\d)/gi,
+    'p.is_sensitive = $1',
   )
 
-  // 公開範囲: json_extract(s.json, '$.visibility') = 'X'
+  // 公開範囲: json_extract(p.json, '$.visibility') = 'X'
   result = result.replace(
-    /json_extract\(s\.json,\s*'\$\.visibility'\)\s*=\s*'([^']+)'/gi,
-    "s.visibility = '$1'",
+    /json_extract\(p\.json,\s*'\$\.visibility'\)\s*=\s*'([^']+)'/gi,
+    "p.visibility = '$1'",
   )
 
-  // 言語: json_extract(s.json, '$.language') = 'X'
+  // 言語: json_extract(p.json, '$.language') = 'X'
   result = result.replace(
-    /json_extract\(s\.json,\s*'\$\.language'\)\s*=\s*'([^']+)'/gi,
-    "s.language = '$1'",
+    /json_extract\(p\.json,\s*'\$\.language'\)\s*=\s*'([^']+)'/gi,
+    "p.language = '$1'",
   )
 
-  // アカウント: json_extract(s.json, '$.account.acct') = 'X'
+  // アカウント: json_extract(p.json, '$.account.acct') = 'X'
   result = result.replace(
-    /json_extract\(s\.json,\s*'\$\.account\.acct'\)\s*=\s*'([^']+)'/gi,
-    "s.account_acct = '$1'",
+    /json_extract\(p\.json,\s*'\$\.account\.acct'\)\s*=\s*'([^']+)'/gi,
+    "p.account_acct = '$1'",
   )
 
-  // リプライ先: json_extract(s.json, '$.in_reply_to_id') IS NOT NULL
+  // リプライ先: json_extract(p.json, '$.in_reply_to_id') IS NOT NULL
   result = result.replace(
-    /json_extract\(s\.json,\s*'\$\.in_reply_to_id'\)\s+IS\s+NOT\s+NULL/gi,
-    's.in_reply_to_id IS NOT NULL',
+    /json_extract\(p\.json,\s*'\$\.in_reply_to_id'\)\s+IS\s+NOT\s+NULL/gi,
+    'p.in_reply_to_id IS NOT NULL',
   )
 
-  // リプライ先: json_extract(s.json, '$.in_reply_to_id') IS NULL
+  // リプライ先: json_extract(p.json, '$.in_reply_to_id') IS NULL
   result = result.replace(
-    /json_extract\(s\.json,\s*'\$\.in_reply_to_id'\)\s+IS\s+NULL/gi,
-    's.in_reply_to_id IS NULL',
+    /json_extract\(p\.json,\s*'\$\.in_reply_to_id'\)\s+IS\s+NULL/gi,
+    'p.in_reply_to_id IS NULL',
   )
 
   return result
