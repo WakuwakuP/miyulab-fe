@@ -14,7 +14,6 @@ import type { App } from 'types/types'
 import { startPeriodicCleanup } from 'util/db/sqlite/cleanup'
 import { startPeriodicExport } from 'util/db/sqlite/dbExport'
 import { syncFollows } from 'util/db/sqlite/followStore'
-import { migrateFromIndexedDb } from 'util/db/sqlite/migration'
 import {
   addNotification,
   bulkAddNotifications,
@@ -229,17 +228,9 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
     }
     if (apps.length <= 0) return
 
-    // IndexedDB → SQLite マイグレーション完了後に定期クリーンアップと定期エクスポートを開始
-    let stopCleanup: (() => void) | undefined
-    let stopExport: (() => void) | undefined
-    migrateFromIndexedDb()
-      .then(() => {
-        stopCleanup = startPeriodicCleanup()
-        stopExport = startPeriodicExport()
-      })
-      .catch((error) => {
-        console.error('Migration failed:', error)
-      })
+    // 定期クリーンアップと定期エクスポートを開始
+    const stopCleanup = startPeriodicCleanup()
+    const stopExport = startPeriodicExport()
 
     // 各アプリのデータを取得してストリーミング接続
     apps.forEach(async (app, index) => {
@@ -332,8 +323,8 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
 
     // クリーンアップ
     return () => {
-      stopCleanup?.()
-      stopExport?.()
+      stopCleanup()
+      stopExport()
       for (const stream of streamsRef.current.values()) {
         stopStream(stream)
       }

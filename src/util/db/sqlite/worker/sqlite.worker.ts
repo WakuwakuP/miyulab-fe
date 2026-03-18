@@ -10,7 +10,6 @@
 import { logSlowQueryExplain } from '../explainLogger'
 import type { TableName, WorkerMessage, WorkerRequest } from '../protocol'
 import { handleEnforceMaxLength } from './workerCleanup'
-import { handleMigrationWrite } from './workerMigration'
 import {
   handleAddNotification,
   handleBulkAddNotifications,
@@ -390,17 +389,6 @@ self.onmessage = (
       // ---- Cleanup ----
       case 'enforceMaxLength': {
         const r = handleEnforceMaxLength(db)
-        sendResponse(msg.id, { ok: true }, r.changedTables)
-        break
-      }
-
-      // ---- Migration ----
-      case 'migrationWrite': {
-        const r = handleMigrationWrite(
-          db,
-          msg.statusBatches,
-          msg.notificationBatches,
-        )
         sendResponse(msg.id, { ok: true }, r.changedTables)
         break
       }

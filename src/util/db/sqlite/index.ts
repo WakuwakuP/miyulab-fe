@@ -10,8 +10,6 @@ export {
 export type { DbHandle, TableName } from './connection'
 // Connection & change notifications
 export { getSqliteDb, notifyChange, subscribe } from './connection'
-// Migration
-export { isMigrated, migrateFromIndexedDb } from './migration'
 export type { SqliteStoredNotification } from './notificationStore'
 // Notification store
 export {
