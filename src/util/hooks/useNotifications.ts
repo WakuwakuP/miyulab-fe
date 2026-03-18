@@ -97,8 +97,17 @@ export function useNotifications(config?: TimelineConfigV2): {
   // 設定保存時に確実に再取得をトリガーするためのリフレッシュトークン
   const refreshToken = useConfigRefresh(config?.id ?? '')
 
+  const configType = config?.type
+
   const fetchData = useCallback(async () => {
     void refreshToken
+
+    // notification タイプ以外ではスキップ（他の Hook が担当する）
+    if (configType !== 'notification') {
+      setNotifications([])
+      return
+    }
+
     // customQuery が設定されている場合は useCustomQueryTimeline に委譲するためスキップ
     if (targetBackendUrls.length === 0 || config?.customQuery?.trim()) {
       setNotifications([])
@@ -155,6 +164,7 @@ export function useNotifications(config?: TimelineConfigV2): {
       console.error('useNotifications query error:', e)
     }
   }, [
+    configType,
     targetBackendUrls,
     config?.customQuery,
     config?.notificationFilter,

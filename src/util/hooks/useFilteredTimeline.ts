@@ -12,10 +12,11 @@ import type { StatusAddAppIndex, TimelineConfigV2 } from 'types/types'
 import { getSqliteDb, subscribe } from 'util/db/sqlite/connection'
 import type { TimelineType as DbTimelineType } from 'util/db/sqlite/statusStore'
 import {
-  rowToStoredStatus,
+  assembleStatusFromBatch,
+  executeBatchQueries,
   type SqliteStoredStatus,
   STATUS_BASE_JOINS,
-  STATUS_SELECT,
+  STATUS_BASE_SELECT,
 } from 'util/db/sqlite/statusStore'
 import { TIMELINE_QUERY_LIMIT } from 'util/environment'
 import { buildFilterConditions } from 'util/hooks/timelineFilterBuilder'
@@ -227,10 +228,10 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
         return
       }
 
-      // === 第2段階: 詳細情報の取得（サブクエリ付きクエリ） ===
+      // === 第2段階: 詳細情報の取得（バッチクエリ版） ===
       const placeholders = postIds.map(() => '?').join(',')
-      const phase2Sql = `
-        SELECT ${STATUS_SELECT}
+      const phase2BaseSql = `
+        SELECT ${STATUS_BASE_SELECT}
         FROM posts p
         ${STATUS_BASE_JOINS}
         WHERE p.post_id IN (${placeholders})
@@ -238,27 +239,34 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
         ORDER BY p.created_at_ms DESC;
       `
 
-      const { result: rowsRaw, durationMs: phase2Duration } =
-        await handle.execAsyncTimed(phase2Sql, {
+      const { result: baseRowsRaw, durationMs: phase2Duration } =
+        await handle.execAsyncTimed(phase2BaseSql, {
           bind: postIds,
           returnValue: 'resultRows',
         })
-      const rows = rowsRaw as (string | number)[][]
+      const baseRows = baseRowsRaw as (string | number | null)[][]
+
+      // リブログ元の post_id を収集
+      const reblogPostIds: number[] = []
+      for (const row of baseRows) {
+        const rbPostId = row[27] as number | null
+        if (rbPostId !== null) reblogPostIds.push(rbPostId)
+      }
+      const allPostIds = [...new Set([...postIds, ...reblogPostIds])]
+
+      // 子テーブルバッチクエリを並列実行
+      const maps = await executeBatchQueries(handle, allPostIds)
+
+      // 第1段階で取得した timelineTypes で上書き
+      for (const [id, types] of timelineTypesMap) {
+        maps.timelineTypesMap.set(id, types)
+      }
+
       recordDuration(phase1Duration + phase2Duration)
 
-      const results: SqliteStoredStatus[] = rows.map((row) =>
-        rowToStoredStatus(row),
+      const results: SqliteStoredStatus[] = baseRows.map((row) =>
+        assembleStatusFromBatch(row, maps),
       )
-
-      // 第1段階で取得した timelineTypes で上書き（STATUS_SELECT のサブクエリ結果より効率的）
-      for (const status of results) {
-        const types = timelineTypesMap.get(status.post_id)
-        if (types) {
-          status.timelineTypes = (
-            JSON.parse(types) as (DbTimelineType | null)[]
-          ).filter((t): t is DbTimelineType => t !== null)
-        }
-      }
 
       // 古い非同期クエリの結果が新しいクエリの結果を上書きしないようにする
       if (fetchVersionRef.current !== version) return
