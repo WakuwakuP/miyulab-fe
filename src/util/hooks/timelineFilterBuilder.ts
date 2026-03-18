@@ -30,12 +30,12 @@ import {
  * この関数では生成しない。
  *
  * @param tableAlias カラム参照に付けるテーブルエイリアス。
- *   デフォルトは 's'。JOIN クエリで posts テーブルを参照する場合は 'p' を指定する。
+ *   デフォルトは 'p'（posts テーブル）。
  */
 export function buildFilterConditions(
   config: TimelineConfigV2,
   targetBackendUrls: string[],
-  tableAlias = 's',
+  tableAlias = 'p',
   options?: {
     /** profiles テーブルが pr として JOIN されている場合 true */
     profileJoined?: boolean

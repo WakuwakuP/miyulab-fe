@@ -94,7 +94,7 @@ const STATUS_COMPAT_FROM = `(
       LEFT JOIN profiles pr_c ON pr_c.profile_id = p.author_profile_id
       LEFT JOIN visibility_types vt_c ON vt_c.visibility_id = p.visibility_id
       LEFT JOIN post_stats ps_c ON ps_c.post_id = p.post_id
-    ) s`
+    ) p`
 
 /** notifications 互換サブクエリ FROM 句（旧カラム名を後方互換で提供、JOIN ベース） */
 const NOTIF_COMPAT_FROM = `(
@@ -140,14 +140,14 @@ const EMPTY_S = `(SELECT
       NULL AS favourites_count, NULL AS reblogs_count, NULL AS replies_count
     LIMIT 0)`
 
-/** stt 互換サブクエリ: timeline_items + timelines + channel_kinds → (post_id, timelineType) */
-const STT_COMPAT = `(SELECT ti2.post_id, ck2.code AS timelineType FROM timeline_items ti2 INNER JOIN timelines t2 ON t2.timeline_id = ti2.timeline_id INNER JOIN channel_kinds ck2 ON ck2.channel_kind_id = t2.channel_kind_id WHERE ti2.post_id IS NOT NULL)`
+/** ptt 互換サブクエリ: timeline_items + timelines + channel_kinds → (post_id, timelineType) */
+const PTT_COMPAT = `(SELECT ti2.post_id, ck2.code AS timelineType FROM timeline_items ti2 INNER JOIN timelines t2 ON t2.timeline_id = ti2.timeline_id INNER JOIN channel_kinds ck2 ON ck2.channel_kind_id = t2.channel_kind_id WHERE ti2.post_id IS NOT NULL)`
 
-const EMPTY_STT = `(SELECT NULL AS post_id, NULL AS timelineType LIMIT 0)`
-const EMPTY_SBT = `(SELECT NULL AS post_id, NULL AS tag LIMIT 0)`
-const EMPTY_SM = `(SELECT NULL AS post_id, NULL AS acct LIMIT 0)`
-const EMPTY_SB = `(SELECT NULL AS post_id, NULL AS backendUrl, NULL AS local_id LIMIT 0)`
-const EMPTY_SR = `(SELECT NULL AS post_id, NULL AS original_uri, NULL AS reblogger_acct, NULL AS reblogged_at_ms LIMIT 0)`
+const EMPTY_PTT = `(SELECT NULL AS post_id, NULL AS timelineType LIMIT 0)`
+const EMPTY_PBT = `(SELECT NULL AS post_id, NULL AS tag LIMIT 0)`
+const EMPTY_PME = `(SELECT NULL AS post_id, NULL AS acct LIMIT 0)`
+const EMPTY_PB = `(SELECT NULL AS post_id, NULL AS backendUrl, NULL AS local_id LIMIT 0)`
+const EMPTY_PRB = `(SELECT NULL AS post_id, NULL AS original_uri, NULL AS reblogger_acct, NULL AS reblogged_at_ms LIMIT 0)`
 
 /**
  * カスタム SQL WHERE 句でフィルタした Status / Notification を返す Hook
@@ -163,7 +163,7 @@ const EMPTY_SR = `(SELECT NULL AS post_id, NULL AS original_uri, NULL AS reblogg
  *
  * ## v2 スキーマ対応
  *
- * - posts_mentions (sm) テーブルを LEFT JOIN に追加
+ * - posts_mentions (pme) テーブルを LEFT JOIN に追加
  * - onlyMedia フィルタは SQL の has_media カラムで処理（JS 側フィルタ不要）
  * - カスタムクエリモードでは applyMuteFilter / applyInstanceBlock は適用しない
  */
@@ -261,35 +261,36 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         // Phase2: 取得した ID から詳細情報をフェッチ
         // ============================
         const refs = detectReferencedAliases(sanitized)
-        const rewrittenWhere = sanitized
-          .replace(/\bsb\./g, 'pb.')
-          .replace(/\bpb\.backend_url\b/g, 'pb.backendUrl')
+        const rewrittenWhere = sanitized.replace(
+          /\bpb\.backend_url\b/g,
+          'pb.backendUrl',
+        )
 
         // --- Phase1: Status ID 取得（STATUS_BASE_JOINS を除外して軽量化） ---
         const statusPhase1JoinLines: string[] = []
-        // pb は sb.* → pb.* 書き換えやカスタムクエリの backendUrl 参照用に保持
+        // pb はカスタムクエリの backendUrl 参照用に常に提供
         statusPhase1JoinLines.push(
-          'LEFT JOIN posts_backends pb ON s.post_id = pb.post_id',
+          'LEFT JOIN posts_backends pb ON p.post_id = pb.post_id',
         )
-        if (refs.stt)
+        if (refs.ptt)
           statusPhase1JoinLines.push(
-            `LEFT JOIN ${STT_COMPAT} stt\n              ON s.post_id = stt.post_id`,
+            `LEFT JOIN ${PTT_COMPAT} ptt\n              ON p.post_id = ptt.post_id`,
           )
-        if (refs.sbt)
+        if (refs.pbt)
           statusPhase1JoinLines.push(
-            'LEFT JOIN posts_belonging_tags sbt\n              ON s.post_id = sbt.post_id',
+            'LEFT JOIN posts_belonging_tags pbt\n              ON p.post_id = pbt.post_id',
           )
-        if (refs.sm)
+        if (refs.pme)
           statusPhase1JoinLines.push(
-            'LEFT JOIN posts_mentions sm\n              ON s.post_id = sm.post_id',
+            'LEFT JOIN posts_mentions pme\n              ON p.post_id = pme.post_id',
           )
-        if (refs.sr)
+        if (refs.prb)
           statusPhase1JoinLines.push(
-            'LEFT JOIN posts_reblogs sr\n              ON s.post_id = sr.post_id',
+            'LEFT JOIN posts_reblogs prb\n              ON p.post_id = prb.post_id',
           )
         if (refs.pe)
           statusPhase1JoinLines.push(
-            'LEFT JOIN post_engagements pe\n              ON s.post_id = pe.post_id',
+            'LEFT JOIN post_engagements pe\n              ON p.post_id = pe.post_id',
           )
         statusPhase1JoinLines.push(`LEFT JOIN ${EMPTY_N} n ON 1 = 1`)
 
@@ -298,29 +299,29 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         let statusMediaConditions = ''
         const statusMediaBinds: (string | number)[] = []
         if (minMediaCount != null && minMediaCount > 0) {
-          statusMediaConditions += '\n              AND s.media_count >= ?'
+          statusMediaConditions += '\n              AND p.media_count >= ?'
           statusMediaBinds.push(minMediaCount)
         } else if (onlyMedia) {
-          statusMediaConditions += '\n              AND s.has_media = 1'
+          statusMediaConditions += '\n              AND p.has_media = 1'
         }
 
         const statusPhase1Sql = `
-          SELECT s.post_id, s.created_at_ms
+          SELECT p.post_id, p.created_at_ms
           FROM ${STATUS_COMPAT_FROM}${statusPhase1Joins}
           WHERE (${rewrittenWhere})${statusMediaConditions}
-          GROUP BY s.post_id
-          ORDER BY s.created_at_ms DESC
+          GROUP BY p.post_id
+          ORDER BY p.created_at_ms DESC
           LIMIT ?;
         `
 
         // --- Phase1: Notification ID 取得 ---
         const notifDummyJoins = [
-          `LEFT JOIN ${EMPTY_S} s ON 1 = 1`,
-          `LEFT JOIN ${EMPTY_STT} stt ON 1 = 1`,
-          `LEFT JOIN ${EMPTY_SBT} sbt ON 1 = 1`,
-          `LEFT JOIN ${EMPTY_SM} sm ON 1 = 1`,
-          `LEFT JOIN ${EMPTY_SB} sb ON 1 = 1`,
-          `LEFT JOIN ${EMPTY_SR} sr ON 1 = 1`,
+          `LEFT JOIN ${EMPTY_S} p ON 1 = 1`,
+          `LEFT JOIN ${EMPTY_PTT} ptt ON 1 = 1`,
+          `LEFT JOIN ${EMPTY_PBT} pbt ON 1 = 1`,
+          `LEFT JOIN ${EMPTY_PME} pme ON 1 = 1`,
+          `LEFT JOIN ${EMPTY_PB} pb ON 1 = 1`,
+          `LEFT JOIN ${EMPTY_PRB} prb ON 1 = 1`,
         ].join('\n            ')
 
         const rewrittenNotifWhere = sanitized
@@ -378,11 +379,11 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           const placeholders = postIdsToFetch.map(() => '?').join(',')
           const statusDetailSql = `
             SELECT ${STATUS_SELECT}
-            FROM posts s
+            FROM posts p
             ${STATUS_BASE_JOINS}
-            WHERE s.post_id IN (${placeholders})
-            GROUP BY s.post_id
-            ORDER BY s.created_at_ms DESC;
+            WHERE p.post_id IN (${placeholders})
+            GROUP BY p.post_id
+            ORDER BY p.created_at_ms DESC;
           `
           const { result: statusDetailRowsRaw, durationMs: dur } =
             await handle.execAsyncTimed(statusDetailSql, {
@@ -482,32 +483,33 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         // Statuses クエリ: 2段階クエリ戦略
         // ============================
         const refs = detectReferencedAliases(sanitized)
-        const rewrittenWhere = sanitized
-          .replace(/\bsb\./g, 'pb.')
-          .replace(/\bpb\.backend_url\b/g, 'pb.backendUrl')
+        const rewrittenWhere = sanitized.replace(
+          /\bpb\.backend_url\b/g,
+          'pb.backendUrl',
+        )
 
         const joinLines: string[] = []
-        // pb は sb.* → pb.* 書き換え用に常に提供
-        joinLines.push('LEFT JOIN posts_backends pb ON s.post_id = pb.post_id')
-        if (refs.stt)
+        // pb はカスタムクエリの backendUrl 参照用に常に提供
+        joinLines.push('LEFT JOIN posts_backends pb ON p.post_id = pb.post_id')
+        if (refs.ptt)
           joinLines.push(
-            `LEFT JOIN ${STT_COMPAT} stt\n            ON s.post_id = stt.post_id`,
+            `LEFT JOIN ${PTT_COMPAT} ptt\n            ON p.post_id = ptt.post_id`,
           )
-        if (refs.sbt)
+        if (refs.pbt)
           joinLines.push(
-            'LEFT JOIN posts_belonging_tags sbt\n            ON s.post_id = sbt.post_id',
+            'LEFT JOIN posts_belonging_tags pbt\n            ON p.post_id = pbt.post_id',
           )
-        if (refs.sm)
+        if (refs.pme)
           joinLines.push(
-            'LEFT JOIN posts_mentions sm\n            ON s.post_id = sm.post_id',
+            'LEFT JOIN posts_mentions pme\n            ON p.post_id = pme.post_id',
           )
-        if (refs.sr)
+        if (refs.prb)
           joinLines.push(
-            'LEFT JOIN posts_reblogs sr\n            ON s.post_id = sr.post_id',
+            'LEFT JOIN posts_reblogs prb\n            ON p.post_id = prb.post_id',
           )
         if (refs.pe)
           joinLines.push(
-            'LEFT JOIN post_engagements pe\n            ON s.post_id = pe.post_id',
+            'LEFT JOIN post_engagements pe\n            ON p.post_id = pe.post_id',
           )
 
         const joinsClause = `\n          ${joinLines.join('\n          ')}`
@@ -516,18 +518,18 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         const additionalBinds: (string | number)[] = []
 
         if (minMediaCount != null && minMediaCount > 0) {
-          additionalConditions += '\n          AND s.media_count >= ?'
+          additionalConditions += '\n          AND p.media_count >= ?'
           additionalBinds.push(minMediaCount)
         } else if (onlyMedia) {
-          additionalConditions += '\n          AND s.has_media = 1'
+          additionalConditions += '\n          AND p.has_media = 1'
         }
 
         // Phase1: 軽量な post_id のみ取得
         const phase1Sql = `
-          SELECT DISTINCT s.post_id
+          SELECT DISTINCT p.post_id
           FROM ${STATUS_COMPAT_FROM}${joinsClause}
           WHERE (${rewrittenWhere})${additionalConditions}
-          ORDER BY s.created_at_ms DESC
+          ORDER BY p.created_at_ms DESC
           LIMIT ?;
         `
         const phase1Binds: (string | number)[] = [
@@ -555,11 +557,11 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         const placeholders = postIds.map(() => '?').join(',')
         const phase2Sql = `
           SELECT ${STATUS_SELECT}
-          FROM posts s
+          FROM posts p
           ${STATUS_BASE_JOINS}
-          WHERE s.post_id IN (${placeholders})
-          GROUP BY s.post_id
-          ORDER BY s.created_at_ms DESC;
+          WHERE p.post_id IN (${placeholders})
+          GROUP BY p.post_id
+          ORDER BY p.created_at_ms DESC;
         `
 
         const { result: rowsRaw, durationMs: phase2Duration } =
