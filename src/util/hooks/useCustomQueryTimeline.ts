@@ -21,10 +21,11 @@ import {
   type SqliteStoredNotification,
 } from 'util/db/sqlite/notificationStore'
 import {
-  rowToStoredStatus,
+  assembleStatusFromBatch,
+  executeBatchQueries,
   type SqliteStoredStatus,
   STATUS_BASE_JOINS,
-  STATUS_SELECT,
+  STATUS_BASE_SELECT,
 } from 'util/db/sqlite/statusStore'
 import { TIMELINE_QUERY_LIMIT } from 'util/environment'
 import { useQueryDuration } from 'util/hooks/useQueryDuration'
@@ -372,32 +373,44 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           .filter((m) => m.type === 'notification')
           .map((m) => m.id)
 
-        // --- Phase2: 詳細情報取得 ---
+        // --- Phase2: 詳細情報取得 (バッチクエリ版) ---
         let statusResults: (SqliteStoredStatus & { _type: 'status' })[] = []
         let statusPhase2Dur = 0
         if (postIdsToFetch.length > 0) {
           const placeholders = postIdsToFetch.map(() => '?').join(',')
-          const statusDetailSql = `
-            SELECT ${STATUS_SELECT}
+          const statusBaseSql = `
+            SELECT ${STATUS_BASE_SELECT}
             FROM posts p
             ${STATUS_BASE_JOINS}
             WHERE p.post_id IN (${placeholders})
             GROUP BY p.post_id
             ORDER BY p.created_at_ms DESC;
           `
-          const { result: statusDetailRowsRaw, durationMs: dur } =
-            await handle.execAsyncTimed(statusDetailSql, {
+          const { result: statusBaseRowsRaw, durationMs: dur } =
+            await handle.execAsyncTimed(statusBaseSql, {
               bind: postIdsToFetch,
               returnValue: 'resultRows',
             })
-          statusPhase2Dur = dur
-          const statusDetailRows = statusDetailRowsRaw as (
+          const statusBaseRows = statusBaseRowsRaw as (
             | string
             | number
             | null
           )[][]
-          statusResults = statusDetailRows.map((row) => ({
-            ...rowToStoredStatus(row),
+
+          // リブログ元の post_id を収集
+          const reblogPostIds: number[] = []
+          for (const row of statusBaseRows) {
+            const rbPostId = row[27] as number | null
+            if (rbPostId !== null) reblogPostIds.push(rbPostId)
+          }
+          const allPostIds = [...new Set([...postIdsToFetch, ...reblogPostIds])]
+
+          // 子テーブルバッチクエリを並列実行
+          const maps = await executeBatchQueries(handle, allPostIds)
+
+          statusPhase2Dur = dur
+          statusResults = statusBaseRows.map((row) => ({
+            ...assembleStatusFromBatch(row, maps),
             _type: 'status' as const,
           }))
         }
@@ -553,10 +566,10 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           return
         }
 
-        // Phase2: 詳細情報取得
+        // Phase2: 詳細情報取得 (バッチクエリ版)
         const placeholders = postIds.map(() => '?').join(',')
-        const phase2Sql = `
-          SELECT ${STATUS_SELECT}
+        const phase2BaseSql = `
+          SELECT ${STATUS_BASE_SELECT}
           FROM posts p
           ${STATUS_BASE_JOINS}
           WHERE p.post_id IN (${placeholders})
@@ -564,16 +577,28 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           ORDER BY p.created_at_ms DESC;
         `
 
-        const { result: rowsRaw, durationMs: phase2Duration } =
-          await handle.execAsyncTimed(phase2Sql, {
+        const { result: baseRowsRaw, durationMs: phase2Duration } =
+          await handle.execAsyncTimed(phase2BaseSql, {
             bind: postIds,
             returnValue: 'resultRows',
           })
-        const rows = rowsRaw as (string | number | null)[][]
+        const baseRows = baseRowsRaw as (string | number | null)[][]
+
+        // リブログ元の post_id を収集
+        const reblogPostIds: number[] = []
+        for (const row of baseRows) {
+          const rbPostId = row[27] as number | null
+          if (rbPostId !== null) reblogPostIds.push(rbPostId)
+        }
+        const allPostIds = [...new Set([...postIds, ...reblogPostIds])]
+
+        // 子テーブルバッチクエリを並列実行
+        const maps = await executeBatchQueries(handle, allPostIds)
+
         recordDuration(phase1Duration + phase2Duration)
 
-        const statusResults = rows.map((row) => ({
-          ...rowToStoredStatus(row),
+        const statusResults = baseRows.map((row) => ({
+          ...assembleStatusFromBatch(row, maps),
           _type: 'status' as const,
         }))
 

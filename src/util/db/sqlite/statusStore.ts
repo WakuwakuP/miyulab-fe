@@ -335,9 +335,9 @@ export const STATUS_SELECT = `
   COALESCE(pr.locked, 0) AS author_locked,
   COALESCE(pr.bot, 0) AS author_bot,
   COALESCE(pr.actor_uri, '') AS author_url,
-  COALESCE((SELECT ps.replies_count FROM post_stats ps WHERE ps.post_id = p.post_id), 0) AS replies_count,
-  COALESCE((SELECT ps.reblogs_count FROM post_stats ps WHERE ps.post_id = p.post_id), 0) AS reblogs_count,
-  COALESCE((SELECT ps.favourites_count FROM post_stats ps WHERE ps.post_id = p.post_id), 0) AS favourites_count,
+  COALESCE(ps.replies_count, 0) AS replies_count,
+  COALESCE(ps.reblogs_count, 0) AS reblogs_count,
+  COALESCE(ps.favourites_count, 0) AS favourites_count,
   (SELECT group_concat(et.code, ',') FROM post_engagements pe INNER JOIN engagement_types et ON pe.engagement_type_id = et.engagement_type_id WHERE pe.post_id = p.post_id) AS engagements_csv,
   CASE WHEN p.has_media = 1 THEN (SELECT json_group_array(json_object('id', pm.remote_media_id, 'type', COALESCE((SELECT mt.code FROM media_types mt WHERE mt.media_type_id = pm.media_type_id), 'unknown'), 'url', pm.url, 'preview_url', pm.preview_url, 'description', pm.description, 'blurhash', pm.blurhash, 'remote_url', pm.url)) FROM post_media pm WHERE pm.post_id = p.post_id ORDER BY pm.sort_order) ELSE NULL END AS media_json,
   (SELECT json_group_array(json_object('acct', pme.acct)) FROM posts_mentions pme WHERE pme.post_id = p.post_id) AS mentions_json,
@@ -365,18 +365,9 @@ export const STATUS_SELECT = `
   COALESCE(rpr.locked, 0) AS rb_author_locked,
   COALESCE(rpr.bot, 0) AS rb_author_bot,
   COALESCE(rpr.actor_uri, '') AS rb_author_url,
-  CASE WHEN rs.post_id IS NOT NULL
-    THEN COALESCE((SELECT ps.replies_count FROM post_stats ps WHERE ps.post_id = rs.post_id), 0)
-    ELSE 0
-  END AS rb_replies_count,
-  CASE WHEN rs.post_id IS NOT NULL
-    THEN COALESCE((SELECT ps.reblogs_count FROM post_stats ps WHERE ps.post_id = rs.post_id), 0)
-    ELSE 0
-  END AS rb_reblogs_count,
-  CASE WHEN rs.post_id IS NOT NULL
-    THEN COALESCE((SELECT ps.favourites_count FROM post_stats ps WHERE ps.post_id = rs.post_id), 0)
-    ELSE 0
-  END AS rb_favourites_count,
+  COALESCE(rps.replies_count, 0) AS rb_replies_count,
+  COALESCE(rps.reblogs_count, 0) AS rb_reblogs_count,
+  COALESCE(rps.favourites_count, 0) AS rb_favourites_count,
   CASE WHEN rs.post_id IS NOT NULL
     THEN (SELECT group_concat(et.code, ',') FROM post_engagements pe INNER JOIN engagement_types et ON pe.engagement_type_id = et.engagement_type_id WHERE pe.post_id = rs.post_id)
     ELSE NULL
@@ -405,6 +396,578 @@ export const STATUS_SELECT = `
   COALESCE(pra.remote_account_id, '') AS author_account_id,
   COALESCE(rpra.remote_account_id, '') AS rb_author_account_id`
 
+// ================================================================
+// Phase2 バッチクエリ用の定数・型定義
+// ================================================================
+
+/**
+ * Phase2-A: 相関サブクエリを除いた本体 + 1:1 JOIN の SELECT 句
+ *
+ * useCustomQueryTimeline.ts のインライン Phase2 でも使用するため export する。
+ *
+ * rowToBaseRow のレイアウト:
+ *   [0]  post_id         [1]  backendUrl       [2]  local_id
+ *   [3]  created_at_ms   [4]  stored_at        [5]  object_uri
+ *   [6]  content_html    [7]  spoiler_text     [8]  canonical_url
+ *   [9]  language        [10] visibility_code  [11] is_sensitive
+ *   [12] is_reblog       [13] reblog_of_uri    [14] in_reply_to_id
+ *   [15] edited_at       [16] author_acct      [17] author_username
+ *   [18] author_display  [19] author_avatar    [20] author_header
+ *   [21] author_locked   [22] author_bot       [23] author_url
+ *   [24] replies_count   [25] reblogs_count    [26] favourites_count
+ *   [27] rb_post_id      [28] rb_content_html  [29] rb_spoiler_text
+ *   [30] rb_canonical_url [31] rb_language     [32] rb_visibility_code
+ *   [33] rb_is_sensitive  [34] rb_in_reply_to_id [35] rb_edited_at
+ *   [36] rb_created_at_ms [37] rb_object_uri   [38] rb_author_acct
+ *   [39] rb_author_username [40] rb_author_display [41] rb_author_avatar
+ *   [42] rb_author_header [43] rb_author_locked [44] rb_author_bot
+ *   [45] rb_author_url   [46] rb_replies_count [47] rb_reblogs_count
+ *   [48] rb_favourites_count
+ *   [49] rb_local_id     [50] author_account_id [51] rb_author_account_id
+ */
+export const STATUS_BASE_SELECT = `
+  p.post_id,
+  MIN(pb.backendUrl) AS backendUrl,
+  MIN(pb.local_id) AS local_id,
+  p.created_at_ms,
+  p.stored_at,
+  p.object_uri,
+  COALESCE(p.content_html, '') AS content_html,
+  COALESCE(p.spoiler_text, '') AS spoiler_text,
+  p.canonical_url,
+  p.language,
+  COALESCE(vt.code, 'public') AS visibility_code,
+  p.is_sensitive,
+  p.is_reblog,
+  p.reblog_of_uri,
+  p.in_reply_to_id,
+  p.edited_at,
+  COALESCE(pr.acct, '') AS author_acct,
+  COALESCE(pr.username, '') AS author_username,
+  COALESCE(pr.display_name, '') AS author_display_name,
+  COALESCE(pr.avatar_url, '') AS author_avatar,
+  COALESCE(pr.header_url, '') AS author_header,
+  COALESCE(pr.locked, 0) AS author_locked,
+  COALESCE(pr.bot, 0) AS author_bot,
+  COALESCE(pr.actor_uri, '') AS author_url,
+  COALESCE(ps.replies_count, 0) AS replies_count,
+  COALESCE(ps.reblogs_count, 0) AS reblogs_count,
+  COALESCE(ps.favourites_count, 0) AS favourites_count,
+  rs.post_id AS rb_post_id,
+  COALESCE(rs.content_html, '') AS rb_content_html,
+  COALESCE(rs.spoiler_text, '') AS rb_spoiler_text,
+  rs.canonical_url AS rb_canonical_url,
+  rs.language AS rb_language,
+  COALESCE(rvt.code, 'public') AS rb_visibility_code,
+  rs.is_sensitive AS rb_is_sensitive,
+  rs.in_reply_to_id AS rb_in_reply_to_id,
+  rs.edited_at AS rb_edited_at,
+  rs.created_at_ms AS rb_created_at_ms,
+  rs.object_uri AS rb_object_uri,
+  COALESCE(rpr.acct, '') AS rb_author_acct,
+  COALESCE(rpr.username, '') AS rb_author_username,
+  COALESCE(rpr.display_name, '') AS rb_author_display_name,
+  COALESCE(rpr.avatar_url, '') AS rb_author_avatar,
+  COALESCE(rpr.header_url, '') AS rb_author_header,
+  COALESCE(rpr.locked, 0) AS rb_author_locked,
+  COALESCE(rpr.bot, 0) AS rb_author_bot,
+  COALESCE(rpr.actor_uri, '') AS rb_author_url,
+  COALESCE(rps.replies_count, 0) AS rb_replies_count,
+  COALESCE(rps.reblogs_count, 0) AS rb_reblogs_count,
+  COALESCE(rps.favourites_count, 0) AS rb_favourites_count,
+  CASE WHEN rs.post_id IS NOT NULL
+    THEN (SELECT MIN(rpb.local_id) FROM posts_backends rpb WHERE rpb.post_id = rs.post_id)
+    ELSE NULL
+  END AS rb_local_id,
+  COALESCE(pra.remote_account_id, '') AS author_account_id,
+  COALESCE(rpra.remote_account_id, '') AS rb_author_account_id`
+
+/** post_id → engagements_csv (例: "favourite,bookmark") のバッチクエリ */
+const BATCH_ENGAGEMENTS_SQL = `
+  SELECT pe.post_id, group_concat(et.code, ',') AS engagements_csv
+  FROM post_engagements pe
+  INNER JOIN engagement_types et ON pe.engagement_type_id = et.engagement_type_id
+  WHERE pe.post_id IN (__PH__)
+  GROUP BY pe.post_id`
+
+/** post_id → media_json のバッチクエリ */
+const BATCH_MEDIA_SQL = `
+  SELECT pm.post_id,
+    json_group_array(
+      json_object(
+        'id', pm.remote_media_id,
+        'type', COALESCE((SELECT mt.code FROM media_types mt WHERE mt.media_type_id = pm.media_type_id), 'unknown'),
+        'url', pm.url,
+        'preview_url', pm.preview_url,
+        'description', pm.description,
+        'blurhash', pm.blurhash,
+        'remote_url', pm.url
+      )
+    ) AS media_json
+  FROM post_media pm
+  WHERE pm.post_id IN (__PH__)
+  GROUP BY pm.post_id
+  ORDER BY pm.post_id, pm.sort_order`
+
+/** post_id → mentions_json のバッチクエリ */
+const BATCH_MENTIONS_SQL = `
+  SELECT pme.post_id,
+    json_group_array(json_object('acct', pme.acct)) AS mentions_json
+  FROM posts_mentions pme
+  WHERE pme.post_id IN (__PH__)
+  GROUP BY pme.post_id`
+
+/** post_id → timelineTypes JSON のバッチクエリ */
+const BATCH_TIMELINE_TYPES_SQL = `
+  SELECT ti.post_id,
+    json_group_array(ck.code) AS timelineTypes
+  FROM timeline_items ti
+  INNER JOIN timelines t ON t.timeline_id = ti.timeline_id
+  INNER JOIN channel_kinds ck ON ck.channel_kind_id = t.channel_kind_id
+  WHERE ti.post_id IN (__PH__)
+  GROUP BY ti.post_id`
+
+/** post_id → belongingTags JSON のバッチクエリ */
+const BATCH_BELONGING_TAGS_SQL = `
+  SELECT pbt.post_id,
+    json_group_array(pbt.tag) AS belongingTags
+  FROM posts_belonging_tags pbt
+  WHERE pbt.post_id IN (__PH__)
+  GROUP BY pbt.post_id`
+
+/** post_id → custom_emojis JSON (status / account 両方) のバッチクエリ */
+const BATCH_CUSTOM_EMOJIS_SQL = `
+  SELECT pce.post_id, pce.usage_context,
+    json_group_array(
+      json_object(
+        'shortcode', ce.shortcode,
+        'url', ce.image_url,
+        'static_url', ce.static_url,
+        'visible_in_picker', ce.visible_in_picker
+      )
+    ) AS emojis_json
+  FROM post_custom_emojis pce
+  INNER JOIN custom_emojis ce ON pce.emoji_id = ce.emoji_id
+  WHERE pce.post_id IN (__PH__)
+  GROUP BY pce.post_id, pce.usage_context`
+
+/** post_id → poll_json のバッチクエリ */
+const BATCH_POLLS_SQL = `
+  SELECT pl.post_id,
+    json_object(
+      'id', pl.poll_id,
+      'expires_at', pl.expires_at,
+      'multiple', pl.multiple,
+      'votes_count', pl.votes_count,
+      'options', (
+        SELECT json_group_array(
+          json_object('title', po.title, 'votes_count', po.votes_count)
+        )
+        FROM poll_options po
+        WHERE po.poll_id = pl.poll_id
+        ORDER BY po.option_index
+      )
+    ) AS poll_json
+  FROM polls pl
+  WHERE pl.post_id IN (__PH__)`
+
+// ================================================================
+// バッチクエリ結果の Map 型
+// ================================================================
+
+interface BatchMaps {
+  engagementsMap: Map<number, string>
+  mediaMap: Map<number, string>
+  mentionsMap: Map<number, string>
+  timelineTypesMap: Map<number, string>
+  belongingTagsMap: Map<number, string>
+  statusEmojisMap: Map<number, string>
+  accountEmojisMap: Map<number, string>
+  pollsMap: Map<number, string>
+}
+
+// ================================================================
+// バッチクエリ実行ヘルパー
+// ================================================================
+
+/**
+ * プレースホルダ文字列 __PH__ を実際の (?, ?, ...) に置換する
+ */
+export function replacePlaceholders(sql: string, count: number): string {
+  const ph = Array.from({ length: count }, () => '?').join(',')
+  return sql.replace('__PH__', ph)
+}
+
+/**
+ * allPostIds に対して子テーブルのバッチクエリをまとめて実行し、
+ * post_id をキーとした Map 群を返す。
+ *
+ * 親投稿とリブログ元投稿の post_id を両方含めた allPostIds を渡すことで、
+ * 1 回のバッチクエリで両方のデータを取得できる。
+ */
+export async function executeBatchQueries(
+  handle: SqliteHandle,
+  allPostIds: number[],
+): Promise<BatchMaps> {
+  if (allPostIds.length === 0) {
+    return {
+      accountEmojisMap: new Map(),
+      belongingTagsMap: new Map(),
+      engagementsMap: new Map(),
+      mediaMap: new Map(),
+      mentionsMap: new Map(),
+      pollsMap: new Map(),
+      statusEmojisMap: new Map(),
+      timelineTypesMap: new Map(),
+    }
+  }
+
+  const count = allPostIds.length
+
+  // 全バッチクエリを並列実行
+  const [
+    engagementRows,
+    mediaRows,
+    mentionRows,
+    timelineTypeRows,
+    belongingTagRows,
+    emojiRows,
+    pollRows,
+  ] = await Promise.all([
+    handle.execAsync(replacePlaceholders(BATCH_ENGAGEMENTS_SQL, count), {
+      bind: allPostIds,
+      returnValue: 'resultRows',
+    }) as Promise<(string | number | null)[][]>,
+    handle.execAsync(replacePlaceholders(BATCH_MEDIA_SQL, count), {
+      bind: allPostIds,
+      returnValue: 'resultRows',
+    }) as Promise<(string | number | null)[][]>,
+    handle.execAsync(replacePlaceholders(BATCH_MENTIONS_SQL, count), {
+      bind: allPostIds,
+      returnValue: 'resultRows',
+    }) as Promise<(string | number | null)[][]>,
+    handle.execAsync(replacePlaceholders(BATCH_TIMELINE_TYPES_SQL, count), {
+      bind: allPostIds,
+      returnValue: 'resultRows',
+    }) as Promise<(string | number | null)[][]>,
+    handle.execAsync(replacePlaceholders(BATCH_BELONGING_TAGS_SQL, count), {
+      bind: allPostIds,
+      returnValue: 'resultRows',
+    }) as Promise<(string | number | null)[][]>,
+    handle.execAsync(replacePlaceholders(BATCH_CUSTOM_EMOJIS_SQL, count), {
+      bind: allPostIds,
+      returnValue: 'resultRows',
+    }) as Promise<(string | number | null)[][]>,
+    handle.execAsync(replacePlaceholders(BATCH_POLLS_SQL, count), {
+      bind: allPostIds,
+      returnValue: 'resultRows',
+    }) as Promise<(string | number | null)[][]>,
+  ])
+
+  // 結果を Map に変換
+  const engagementsMap = new Map<number, string>()
+  for (const row of engagementRows) {
+    engagementsMap.set(row[0] as number, row[1] as string)
+  }
+
+  const mediaMap = new Map<number, string>()
+  for (const row of mediaRows) {
+    mediaMap.set(row[0] as number, row[1] as string)
+  }
+
+  const mentionsMap = new Map<number, string>()
+  for (const row of mentionRows) {
+    mentionsMap.set(row[0] as number, row[1] as string)
+  }
+
+  const timelineTypesMap = new Map<number, string>()
+  for (const row of timelineTypeRows) {
+    timelineTypesMap.set(row[0] as number, row[1] as string)
+  }
+
+  const belongingTagsMap = new Map<number, string>()
+  for (const row of belongingTagRows) {
+    belongingTagsMap.set(row[0] as number, row[1] as string)
+  }
+
+  // emojis は usage_context ごとに分ける: [post_id, usage_context, emojis_json]
+  const statusEmojisMap = new Map<number, string>()
+  const accountEmojisMap = new Map<number, string>()
+  for (const row of emojiRows) {
+    const postId = row[0] as number
+    const context = row[1] as string
+    const json = row[2] as string
+    if (context === 'status') {
+      statusEmojisMap.set(postId, json)
+    } else if (context === 'account') {
+      accountEmojisMap.set(postId, json)
+    }
+  }
+
+  const pollsMap = new Map<number, string>()
+  for (const row of pollRows) {
+    pollsMap.set(row[0] as number, row[1] as string)
+  }
+
+  return {
+    accountEmojisMap,
+    belongingTagsMap,
+    engagementsMap,
+    mediaMap,
+    mentionsMap,
+    pollsMap,
+    statusEmojisMap,
+    timelineTypesMap,
+  }
+}
+
+// ================================================================
+// バッチ結果から SqliteStoredStatus を組み立てるヘルパー
+// ================================================================
+
+/**
+ * Phase2-A の基本行 + バッチクエリの Map 群から SqliteStoredStatus を組み立てる。
+ *
+ * rowToStoredStatus と同じ出力を返すが、相関サブクエリの結果を
+ * 事前に取得済みの Map から引く点が異なる。
+ */
+export function assembleStatusFromBatch(
+  row: (string | number | null)[],
+  maps: BatchMaps,
+): SqliteStoredStatus {
+  const postId = row[0] as number
+
+  const engagementsCsv = maps.engagementsMap.get(postId) ?? null
+  const engagements = engagementsCsv ? engagementsCsv.split(',') : []
+  const mediaJson = maps.mediaMap.get(postId) ?? null
+  const mentionsJson = maps.mentionsMap.get(postId) ?? null
+  const timelineTypesJson = maps.timelineTypesMap.get(postId) ?? null
+  const belongingTagsJson = maps.belongingTagsMap.get(postId) ?? null
+  const statusEmojisJson = maps.statusEmojisMap.get(postId) ?? null
+  const accountEmojisJson = maps.accountEmojisMap.get(postId) ?? null
+  const pollJson = maps.pollsMap.get(postId) ?? null
+
+  const belongingTags: string[] = belongingTagsJson
+    ? (JSON.parse(belongingTagsJson) as (string | null)[]).filter(
+        (t): t is string => t !== null,
+      )
+    : []
+
+  const parseEmojis = (json: string | null): Entity.Emoji[] => {
+    if (!json) return []
+    const parsed = JSON.parse(json) as ({
+      shortcode: string
+      url: string
+      static_url: string | null
+      visible_in_picker: number
+    } | null)[]
+    return parsed
+      .filter(
+        (e): e is NonNullable<typeof e> => e !== null && e.shortcode !== null,
+      )
+      .map((e) => ({
+        shortcode: e.shortcode,
+        static_url: e.static_url ?? e.url,
+        url: e.url,
+        visible_in_picker: e.visible_in_picker === 1,
+      }))
+  }
+
+  const parsePoll = (json: string): Entity.Poll => {
+    const p = JSON.parse(json) as {
+      id: number
+      expires_at: string | null
+      multiple: number
+      votes_count: number
+      options: string | { title: string; votes_count: number | null }[]
+    }
+    const options =
+      typeof p.options === 'string'
+        ? (JSON.parse(p.options) as {
+            title: string
+            votes_count: number | null
+          }[])
+        : p.options
+    return {
+      expired: p.expires_at ? new Date(p.expires_at) < new Date() : false,
+      expires_at: p.expires_at,
+      id: String(p.id),
+      multiple: p.multiple === 1,
+      options: options.map((o) => ({
+        title: o.title,
+        votes_count: o.votes_count,
+      })),
+      voted: false,
+      votes_count: p.votes_count,
+    }
+  }
+
+  const parseMediaAttachments = (json: string | null): Entity.Attachment[] => {
+    if (!json) return []
+    return (JSON.parse(json) as (Entity.Attachment | null)[]).filter(
+      (m): m is Entity.Attachment => m !== null,
+    )
+  }
+
+  const parseMentions = (json: string | null): Entity.Mention[] => {
+    if (!json) return []
+    return (JSON.parse(json) as ({ acct: string } | null)[])
+      .filter((m): m is { acct: string } => m !== null)
+      .map((m) => ({
+        acct: m.acct,
+        id: '',
+        url: '',
+        username: m.acct.split('@')[0] ?? '',
+      }))
+  }
+
+  // リブログ元投稿の復元
+  // Phase2-A の基本行レイアウト: rb_post_id = [27]
+  const isReblog = (row[12] as number) === 1
+  const rbPostId = row[27] as number | null
+  let reblog: Entity.Status | null = null
+
+  if (isReblog && rbPostId !== null) {
+    const rbEngagementsCsv = maps.engagementsMap.get(rbPostId) ?? null
+    const rbEngagements = rbEngagementsCsv ? rbEngagementsCsv.split(',') : []
+    const rbMediaJson = maps.mediaMap.get(rbPostId) ?? null
+    const rbMentionsJson = maps.mentionsMap.get(rbPostId) ?? null
+    const rbStatusEmojisJson = maps.statusEmojisMap.get(rbPostId) ?? null
+    const rbAccountEmojisJson = maps.accountEmojisMap.get(rbPostId) ?? null
+    const rbPollJson = maps.pollsMap.get(rbPostId) ?? null
+
+    reblog = {
+      account: {
+        acct: (row[38] as string) ?? '',
+        avatar: (row[41] as string) ?? '',
+        avatar_static: (row[41] as string) ?? '',
+        bot: (row[44] as number) === 1,
+        created_at: '',
+        display_name: (row[40] as string) ?? '',
+        emojis: parseEmojis(rbAccountEmojisJson),
+        fields: [],
+        followers_count: 0,
+        following_count: 0,
+        group: null,
+        header: (row[42] as string) ?? '',
+        header_static: (row[42] as string) ?? '',
+        id: (row[51] as string) || '',
+        limited: null,
+        locked: (row[43] as number) === 1,
+        moved: null,
+        noindex: null,
+        note: '',
+        statuses_count: 0,
+        suspended: null,
+        url: (row[45] as string) ?? '',
+        username: (row[39] as string) ?? '',
+      },
+      application: null,
+      bookmarked: rbEngagements.includes('bookmark'),
+      card: null,
+      content: (row[28] as string) ?? '',
+      created_at: row[36] ? new Date(row[36] as number).toISOString() : '',
+      edited_at: row[35] as string | null,
+      emoji_reactions: [],
+      emojis: parseEmojis(rbStatusEmojisJson),
+      favourited: rbEngagements.includes('favourite'),
+      favourites_count: (row[48] as number) ?? 0,
+      id: (row[49] as string) ?? '',
+      in_reply_to_account_id: null,
+      in_reply_to_id: row[34] as string | null,
+      language: row[31] as string | null,
+      media_attachments: parseMediaAttachments(rbMediaJson),
+      mentions: parseMentions(rbMentionsJson),
+      muted: null,
+      pinned: null,
+      plain_content: null,
+      poll: rbPollJson ? parsePoll(rbPollJson) : null,
+      quote: null,
+      quote_approval: { automatic: [], current_user: '', manual: [] },
+      reblog: null,
+      reblogged: rbEngagements.includes('reblog'),
+      reblogs_count: (row[47] as number) ?? 0,
+      replies_count: (row[46] as number) ?? 0,
+      sensitive: (row[33] as number) === 1,
+      spoiler_text: (row[29] as string) ?? '',
+      tags: [],
+      uri: (row[37] as string) ?? '',
+      url: (row[30] as string | null) ?? undefined,
+      visibility: ((row[32] as string) ?? 'public') as Entity.StatusVisibility,
+    }
+  }
+
+  return {
+    account: {
+      acct: (row[16] as string) ?? '',
+      avatar: (row[19] as string) ?? '',
+      avatar_static: (row[19] as string) ?? '',
+      bot: (row[22] as number) === 1,
+      created_at: '',
+      display_name: (row[18] as string) ?? '',
+      emojis: parseEmojis(accountEmojisJson),
+      fields: [],
+      followers_count: 0,
+      following_count: 0,
+      group: null,
+      header: (row[20] as string) ?? '',
+      header_static: (row[20] as string) ?? '',
+      id: (row[50] as string) || '',
+      limited: null,
+      locked: (row[21] as number) === 1,
+      moved: null,
+      noindex: null,
+      note: '',
+      statuses_count: 0,
+      suspended: null,
+      url: (row[23] as string) ?? '',
+      username: (row[17] as string) ?? '',
+    },
+    application: null,
+    backendUrl: (row[1] as string) ?? '',
+    belongingTags,
+    bookmarked: engagements.includes('bookmark'),
+    card: null,
+    content: (row[6] as string) ?? '',
+    created_at: new Date(row[3] as number).toISOString(),
+    created_at_ms: row[3] as number,
+    edited_at: row[15] as string | null,
+    emoji_reactions: [],
+    emojis: parseEmojis(statusEmojisJson),
+    favourited: engagements.includes('favourite'),
+    favourites_count: (row[26] as number) ?? 0,
+    id: (row[2] as string) ?? '',
+    in_reply_to_account_id: null,
+    in_reply_to_id: row[14] as string | null,
+    language: row[9] as string | null,
+    media_attachments: parseMediaAttachments(mediaJson),
+    mentions: parseMentions(mentionsJson),
+    muted: null,
+    pinned: null,
+    plain_content: null,
+    poll: pollJson ? parsePoll(pollJson) : null,
+    post_id: postId,
+    quote: null,
+    quote_approval: { automatic: [], current_user: '', manual: [] },
+    reblog,
+    reblogged: engagements.includes('reblog'),
+    reblogs_count: (row[25] as number) ?? 0,
+    replies_count: (row[24] as number) ?? 0,
+    sensitive: (row[11] as number) === 1,
+    spoiler_text: (row[7] as string) ?? '',
+    storedAt: row[4] as number,
+    tags: belongingTags.map((t) => ({ name: t, url: '' })),
+    timelineTypes: timelineTypesJson
+      ? (JSON.parse(timelineTypesJson) as (TimelineType | null)[]).filter(
+          (t): t is TimelineType => t !== null,
+        )
+      : [],
+    uri: (row[5] as string) ?? '',
+    url: (row[8] as string | null) ?? undefined,
+    visibility: ((row[10] as string) ?? 'public') as Entity.StatusVisibility,
+  }
+}
+
 /**
  * 正規化テーブルの基本 JOIN 句（profiles, visibility_types, posts_backends）
  */
@@ -412,9 +975,11 @@ export const STATUS_BASE_JOINS = `
   LEFT JOIN profiles pr ON p.author_profile_id = pr.profile_id
   LEFT JOIN visibility_types vt ON p.visibility_id = vt.visibility_id
   LEFT JOIN posts_backends pb ON p.post_id = pb.post_id
+  LEFT JOIN post_stats ps ON p.post_id = ps.post_id
   LEFT JOIN posts rs ON p.reblog_of_uri = rs.object_uri AND rs.object_uri != ''
   LEFT JOIN profiles rpr ON rs.author_profile_id = rpr.profile_id
   LEFT JOIN visibility_types rvt ON rs.visibility_id = rvt.visibility_id
+  LEFT JOIN post_stats rps ON rs.post_id = rps.post_id
   LEFT JOIN profile_aliases pra ON pra.profile_id = pr.profile_id AND pra.server_id = pb.server_id
   LEFT JOIN profile_aliases rpra ON rpra.profile_id = rpr.profile_id AND rpra.server_id = pb.server_id`
 
@@ -425,10 +990,14 @@ export const STATUS_BASE_JOINS = `
 type SqliteHandle = Awaited<ReturnType<typeof getSqliteDb>>
 
 /**
- * post_id のリストから STATUS_SELECT + STATUS_BASE_JOINS で完全な投稿データを取得する
+ * post_id のリストから完全な投稿データを取得する（バッチクエリ版）
  *
  * 2段階クエリ戦略の第2段階で使用する共通ヘルパー。
  * 第1段階でフィルタ済みの post_id を受け取り、詳細情報を返す。
+ *
+ * 従来は 1 つの SQL に ~13 個の相関サブクエリを埋め込んでいたが、
+ * 本実装では本体クエリ (Phase2-A) + 7 個の子テーブルバッチクエリに分解し、
+ * JS 側でマージする。これにより約 1,050 回 → 8 回にクエリ回数を削減する。
  */
 async function fetchStatusesByIds(
   handle: SqliteHandle,
@@ -436,31 +1005,48 @@ async function fetchStatusesByIds(
   timelineTypesMap?: Map<number, string>,
 ): Promise<SqliteStoredStatus[]> {
   if (postIds.length === 0) return []
+
+  // Phase2-A: 本体 + 1:1 JOIN (相関サブクエリなし)
   const placeholders = postIds.map(() => '?').join(',')
-  const sql = `
-    SELECT ${STATUS_SELECT}
+  const baseSql = `
+    SELECT ${STATUS_BASE_SELECT}
     FROM posts p
       ${STATUS_BASE_JOINS}
     WHERE p.post_id IN (${placeholders})
     GROUP BY p.post_id
     ORDER BY p.created_at_ms DESC;
   `
-  const rows = (await handle.execAsync(sql, {
+  const baseRows = (await handle.execAsync(baseSql, {
     bind: postIds,
     returnValue: 'resultRows',
   })) as (string | number | null)[][]
-  const statuses = rows.map(rowToStoredStatus)
-  if (timelineTypesMap) {
-    for (const status of statuses) {
-      const types = timelineTypesMap.get(status.post_id)
-      if (types) {
-        status.timelineTypes = (
-          JSON.parse(types) as (TimelineType | null)[]
-        ).filter((t): t is TimelineType => t !== null)
-      }
+
+  if (baseRows.length === 0) return []
+
+  // リブログ元の post_id を収集し、全 post_id のリストを作成
+  const reblogPostIds: number[] = []
+  for (const row of baseRows) {
+    const rbPostId = row[27] as number | null // rb_post_id
+    if (rbPostId !== null) {
+      reblogPostIds.push(rbPostId)
     }
   }
-  return statuses
+
+  // 重複を排除した全 post_id (親 + リブログ元)
+  const allPostIds = [...new Set([...postIds, ...reblogPostIds])]
+
+  // Phase2-B〜H: 子テーブルのバッチクエリを並列実行
+  const maps = await executeBatchQueries(handle, allPostIds)
+
+  // 外部から渡された timelineTypesMap があればバッチ結果を上書き
+  if (timelineTypesMap) {
+    for (const [id, types] of timelineTypesMap) {
+      maps.timelineTypesMap.set(id, types)
+    }
+  }
+
+  // JS 側マージ: 基本行 + バッチ Map → SqliteStoredStatus
+  return baseRows.map((row) => assembleStatusFromBatch(row, maps))
 }
 
 // ================================================================
