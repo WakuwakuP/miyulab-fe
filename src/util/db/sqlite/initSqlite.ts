@@ -113,6 +113,9 @@ async function initMainThreadFallback(
     handleUpdateStatus,
     handleDeleteEvent,
     handleRemoveFromTimeline,
+    handleSyncFollows,
+    handleEnsureLocalAccount,
+    handleToggleReaction,
   } = await import('./worker/workerStatusStore')
   const {
     handleAddNotification,
@@ -274,6 +277,30 @@ async function initMainThreadFallback(
           break
         case 'enforceMaxLength':
           result = handleEnforceMaxLength(db)
+          break
+        case 'syncFollows':
+          result = handleSyncFollows(
+            db,
+            command.backendUrl,
+            command.accountsJson,
+          )
+          break
+        case 'ensureLocalAccount':
+          result = handleEnsureLocalAccount(
+            db,
+            command.backendUrl,
+            command.accountJson,
+          )
+          break
+
+        case 'toggleReaction':
+          result = handleToggleReaction(
+            db,
+            command.backendUrl,
+            command.statusId,
+            command.value,
+            command.emoji,
+          )
           break
 
         case 'exportDatabase':

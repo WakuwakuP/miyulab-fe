@@ -201,6 +201,47 @@ export function toggleEngagement(
 }
 
 /**
+ * リアクションのトグル。
+ * 「投稿に1件」: 既存リアクションがあれば置き換え、なければ追加。
+ */
+export function toggleReaction(
+  db: DbExecCompat,
+  localAccountId: number,
+  postId: number,
+  value: boolean,
+  emojiId: number | null,
+  emojiText: string | null,
+): void {
+  const reactionTypeId = (
+    db.exec(
+      "SELECT engagement_type_id FROM engagement_types WHERE code = 'reaction';",
+      { returnValue: 'resultRows' },
+    ) as number[][]
+  )[0][0]
+
+  if (value) {
+    // 既存のリアクションを削除してから新しいものを挿入（投稿に1件の制約）
+    db.exec(
+      `DELETE FROM post_engagements
+       WHERE local_account_id = ? AND post_id = ? AND engagement_type_id = ?;`,
+      { bind: [localAccountId, postId, reactionTypeId] },
+    )
+    db.exec(
+      `INSERT INTO post_engagements (
+        local_account_id, post_id, engagement_type_id, emoji_id, emoji_text, created_at
+      ) VALUES (?, ?, ?, ?, ?, datetime('now'));`,
+      { bind: [localAccountId, postId, reactionTypeId, emojiId, emojiText] },
+    )
+  } else {
+    db.exec(
+      `DELETE FROM post_engagements
+       WHERE local_account_id = ? AND post_id = ? AND engagement_type_id = ?;`,
+      { bind: [localAccountId, postId, reactionTypeId] },
+    )
+  }
+}
+
+/**
  * backendUrl に対応する server_id を返す。
  * 未登録の場合は servers テーブルに INSERT してから返す。
  */

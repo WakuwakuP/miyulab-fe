@@ -14,6 +14,7 @@ import {
 } from 'react-icons/ri'
 import type { StatusAddAppIndex } from 'types/types'
 import { REACTION_BACKENDS } from 'util/constants'
+import { toggleReactionInDb } from 'util/db/sqlite/statusStore'
 import { GetClient } from 'util/GetClient'
 import { AppsContext } from 'util/provider/AppsProvider'
 import { SetActionsContext } from 'util/provider/HomeTimelineProvider'
@@ -62,6 +63,8 @@ export const Actions = ({
         .then(() => {
           onReactionAdd?.(emoji)
           setShowReactionPicker(false)
+          // DB にリアクションを保存
+          toggleReactionInDb(reactionApp.backendUrl, statusId, true, emoji)
         })
         .catch((error) => {
           console.error('Failed to add reaction:', error)

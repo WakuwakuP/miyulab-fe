@@ -32,7 +32,7 @@
 import type { SchemaDbHandle as DbHandle } from './worker/workerSchema'
 
 /** 現在のスキーマバージョン */
-const SCHEMA_VERSION = 20
+const SCHEMA_VERSION = 21
 
 /**
  * スキーマの初期化・マイグレーション
@@ -53,6 +53,8 @@ export function ensureSchema(handle: DbHandle): void {
     if (currentVersion < 1) {
       // フレッシュインストール: v19 スキーマを直接作成
       createSchemaV19(handle)
+      migrateV19toV20(handle)
+      migrateV20toV21(handle)
     } else if (currentVersion < 2) {
       migrateV1toV2(handle)
       migrateV2toV3(handle)
@@ -71,6 +73,8 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV16toV17(handle)
       migrateV17toV18(handle)
       migrateV18toV19(handle)
+      migrateV19toV20(handle)
+      migrateV20toV21(handle)
     } else if (currentVersion < 3) {
       migrateV2toV3(handle)
       migrateV3toV4(handle)
@@ -88,6 +92,8 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV16toV17(handle)
       migrateV17toV18(handle)
       migrateV18toV19(handle)
+      migrateV19toV20(handle)
+      migrateV20toV21(handle)
     } else if (currentVersion < 4) {
       migrateV3toV4(handle)
       migrateV4toV5(handle)
@@ -104,6 +110,8 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV16toV17(handle)
       migrateV17toV18(handle)
       migrateV18toV19(handle)
+      migrateV19toV20(handle)
+      migrateV20toV21(handle)
     } else if (currentVersion < 5) {
       migrateV4toV5(handle)
       migrateV5toV6(handle)
@@ -119,6 +127,8 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV16toV17(handle)
       migrateV17toV18(handle)
       migrateV18toV19(handle)
+      migrateV19toV20(handle)
+      migrateV20toV21(handle)
     } else if (currentVersion < 6) {
       migrateV5toV6(handle)
       migrateV6toV7(handle)
@@ -133,6 +143,8 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV16toV17(handle)
       migrateV17toV18(handle)
       migrateV18toV19(handle)
+      migrateV19toV20(handle)
+      migrateV20toV21(handle)
     } else if (currentVersion < 7) {
       migrateV6toV7(handle)
       migrateV7toV8(handle)
@@ -146,6 +158,8 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV16toV17(handle)
       migrateV17toV18(handle)
       migrateV18toV19(handle)
+      migrateV19toV20(handle)
+      migrateV20toV21(handle)
     } else if (currentVersion < 8) {
       migrateV7toV8(handle)
       migrateV8toV9(handle)
@@ -158,6 +172,8 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV16toV17(handle)
       migrateV17toV18(handle)
       migrateV18toV19(handle)
+      migrateV19toV20(handle)
+      migrateV20toV21(handle)
     } else if (currentVersion < 9) {
       migrateV8toV9(handle)
       migrateV9toV10(handle)
@@ -169,6 +185,8 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV16toV17(handle)
       migrateV17toV18(handle)
       migrateV18toV19(handle)
+      migrateV19toV20(handle)
+      migrateV20toV21(handle)
     } else if (currentVersion < 10) {
       migrateV9toV10(handle)
       migrateV10toV11(handle)
@@ -179,6 +197,8 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV16toV17(handle)
       migrateV17toV18(handle)
       migrateV18toV19(handle)
+      migrateV19toV20(handle)
+      migrateV20toV21(handle)
     } else if (currentVersion < 11) {
       migrateV10toV11(handle)
       migrateV11toV12(handle)
@@ -188,6 +208,8 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV16toV17(handle)
       migrateV17toV18(handle)
       migrateV18toV19(handle)
+      migrateV19toV20(handle)
+      migrateV20toV21(handle)
     } else if (currentVersion < 12) {
       migrateV11toV12(handle)
       migrateV12toV13(handle)
@@ -196,6 +218,8 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV16toV17(handle)
       migrateV17toV18(handle)
       migrateV18toV19(handle)
+      migrateV19toV20(handle)
+      migrateV20toV21(handle)
     } else if (currentVersion < 13) {
       migrateV12toV13(handle)
       migrateV13toV14(handle)
@@ -203,29 +227,43 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV16toV17(handle)
       migrateV17toV18(handle)
       migrateV18toV19(handle)
+      migrateV19toV20(handle)
+      migrateV20toV21(handle)
     } else if (currentVersion < 14) {
       migrateV13toV14(handle)
       migrateV15toV16(handle)
       migrateV16toV17(handle)
       migrateV17toV18(handle)
       migrateV18toV19(handle)
+      migrateV19toV20(handle)
+      migrateV20toV21(handle)
     } else if (currentVersion < 16) {
       migrateV15toV16(handle)
       migrateV16toV17(handle)
       migrateV17toV18(handle)
       migrateV18toV19(handle)
+      migrateV19toV20(handle)
+      migrateV20toV21(handle)
     } else if (currentVersion < 17) {
       migrateV16toV17(handle)
       migrateV17toV18(handle)
       migrateV18toV19(handle)
+      migrateV19toV20(handle)
+      migrateV20toV21(handle)
     } else if (currentVersion < 18) {
       migrateV17toV18(handle)
       migrateV18toV19(handle)
+      migrateV19toV20(handle)
+      migrateV20toV21(handle)
     } else if (currentVersion < 19) {
       migrateV18toV19(handle)
       migrateV19toV20(handle)
+      migrateV20toV21(handle)
     } else if (currentVersion < 20) {
       migrateV19toV20(handle)
+      migrateV20toV21(handle)
+    } else if (currentVersion < 21) {
+      migrateV20toV21(handle)
     }
 
     db.exec(`PRAGMA user_version = ${SCHEMA_VERSION};`)
@@ -1921,6 +1959,7 @@ function createEngagementsTableV11(handle: DbHandle): void {
       post_id             INTEGER NOT NULL,
       engagement_type_id  INTEGER NOT NULL,
       emoji_id            INTEGER,
+      emoji_text          TEXT,
       created_at          TEXT NOT NULL,
       FOREIGN KEY (local_account_id) REFERENCES local_accounts(local_account_id),
       FOREIGN KEY (post_id) REFERENCES posts(post_id) ON DELETE CASCADE,
@@ -1933,14 +1972,14 @@ function createEngagementsTableV11(handle: DbHandle): void {
   db.exec(`
     CREATE UNIQUE INDEX IF NOT EXISTS idx_pe_unique
     ON post_engagements(local_account_id, post_id, engagement_type_id)
-    WHERE emoji_id IS NULL;
+    WHERE emoji_id IS NULL AND emoji_text IS NULL;
   `)
 
-  // reaction は同じ投稿に複数絵文字が可能なため emoji_id も含む
+  // reaction は「投稿に1件」なので (account, post, type) で一意
   db.exec(`
     CREATE UNIQUE INDEX IF NOT EXISTS idx_pe_unique_reaction
-    ON post_engagements(local_account_id, post_id, engagement_type_id, emoji_id)
-    WHERE emoji_id IS NOT NULL;
+    ON post_engagements(local_account_id, post_id, engagement_type_id)
+    WHERE emoji_id IS NOT NULL OR emoji_text IS NOT NULL;
   `)
 
   db.exec(`
@@ -2487,6 +2526,33 @@ function migrateV19toV20(handle: DbHandle): void {
   db.exec(
     'CREATE INDEX IF NOT EXISTS idx_notifications_type_actor ON notifications(notification_type_id, actor_profile_id, created_at_ms DESC);',
   )
+}
+
+// ================================================================
+// v20 → v21 マイグレーション: post_engagements に emoji_text カラム追加
+// ================================================================
+
+/**
+ * v20 → v21 マイグレーション
+ *
+ * post_engagements に emoji_text TEXT カラムを追加し、
+ * Unicode 絵文字リアクションを保存できるようにする。
+ * reaction 用ユニークインデックスを「投稿に1件」に再構築する。
+ */
+function migrateV20toV21(handle: DbHandle): void {
+  const { db } = handle
+
+  // post_engagements に emoji_text カラムを追加
+  db.exec('ALTER TABLE post_engagements ADD COLUMN emoji_text TEXT;')
+
+  // reaction 用ユニークインデックスを再構築
+  // 「投稿に1件」なので reaction タイプは (account, post, type) で一意
+  db.exec('DROP INDEX IF EXISTS idx_pe_unique_reaction;')
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_pe_unique_reaction
+    ON post_engagements(local_account_id, post_id, engagement_type_id)
+    WHERE emoji_id IS NOT NULL OR emoji_text IS NOT NULL;
+  `)
 }
 
 /*

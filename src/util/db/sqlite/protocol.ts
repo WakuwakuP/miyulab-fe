@@ -153,6 +153,24 @@ export type ExportDatabaseRequest = {
   id: number
 }
 
+/** ローカルアカウントの登録・更新 */
+export type EnsureLocalAccountRequest = {
+  type: 'ensureLocalAccount'
+  id: number
+  backendUrl: string
+  accountJson: string
+}
+
+/** リアクションの追加/削除 */
+export type ToggleReactionRequest = {
+  type: 'toggleReaction'
+  id: number
+  backendUrl: string
+  statusId: string
+  value: boolean
+  emoji: string // ':blobcat:' or '👍'
+}
+
 // ================================================================
 // Union 型
 // ================================================================
@@ -173,6 +191,8 @@ export type WorkerRequest =
   | EnforceMaxLengthRequest
   | SyncFollowsRequest
   | ExportDatabaseRequest
+  | EnsureLocalAccountRequest
+  | ToggleReactionRequest
 
 // ================================================================
 // Worker → Main Thread (レスポンス)

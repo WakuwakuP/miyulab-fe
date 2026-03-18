@@ -21,6 +21,7 @@ import {
 } from 'util/db/sqlite/notificationStore'
 import {
   bulkUpsertStatuses,
+  ensureLocalAccount,
   handleDeleteEvent,
   updateStatus,
   updateStatusAction,
@@ -306,6 +307,10 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
         // フォロー一覧を同期（バックグラウンド）
         client
           .verifyAccountCredentials()
+          .then(async (res) => {
+            await ensureLocalAccount(res.data, backendUrl)
+            return res
+          })
           .then((res) =>
             client.getAccountFollowing(res.data.id, {
               get_all: true,

@@ -23,6 +23,7 @@ import {
   syncPostLinkCard,
   syncProfileCustomEmojis,
   toggleEngagement,
+  toggleReaction,
 } from '../shared'
 
 // ================================================================
@@ -171,6 +172,7 @@ function ensureReblogOriginalPost(
   backendUrl: string,
   serverId: number,
   now: number,
+  localAccountId: number | null,
 ): void {
   const normalizedUri = originalStatus.uri?.trim() || ''
   if (!normalizedUri) return
@@ -303,6 +305,19 @@ function ensureReblogOriginalPost(
   syncPostHashtags(db, postId, originalStatus.tags)
   syncPollData(db, postId, originalStatus.poll)
   syncPostLinkCard(db, postId, originalStatus.card)
+
+  // エンゲージメント同期（サーバーから返されたフラグをDBに反映）
+  if (localAccountId !== null) {
+    if (originalStatus.favourited) {
+      toggleEngagement(db, localAccountId, postId, 'favourite', true)
+    }
+    if (originalStatus.reblogged) {
+      toggleEngagement(db, localAccountId, postId, 'reblog', true)
+    }
+    if (originalStatus.bookmarked) {
+      toggleEngagement(db, localAccountId, postId, 'bookmark', true)
+    }
+  }
 }
 
 // ================================================================
@@ -467,6 +482,21 @@ export function handleUpsertStatus(
     upsertMentionsInternal(db, postId, status.mentions)
     syncPostMedia(db, postId, status.media_attachments, status.sensitive)
     syncPostStats(db, postId, status)
+
+    // エンゲージメント同期（サーバーから返されたフラグをDBに反映）
+    const localAccountId = resolveLocalAccountId(db, backendUrl)
+    if (localAccountId !== null) {
+      if (status.favourited) {
+        toggleEngagement(db, localAccountId, postId, 'favourite', true)
+      }
+      if (status.reblogged) {
+        toggleEngagement(db, localAccountId, postId, 'reblog', true)
+      }
+      if (status.bookmarked) {
+        toggleEngagement(db, localAccountId, postId, 'bookmark', true)
+      }
+    }
+
     syncPostCustomEmojis(
       db,
       postId,
@@ -494,7 +524,14 @@ export function handleUpsertStatus(
 
       // リブログ元投稿も保存（reblog フィールド復元用）
       if (status.reblog) {
-        ensureReblogOriginalPost(db, status.reblog, backendUrl, serverId, now)
+        ensureReblogOriginalPost(
+          db,
+          status.reblog,
+          backendUrl,
+          serverId,
+          now,
+          localAccountId,
+        )
       }
     }
 
@@ -522,6 +559,7 @@ export function handleBulkUpsertStatuses(
   db.exec('BEGIN;')
   try {
     const serverId = ensureServer(db, backendUrl)
+    const localAccountId = resolveLocalAccountId(db, backendUrl)
 
     for (const sJson of statusesJson) {
       const status = JSON.parse(sJson) as Entity.Status
@@ -677,6 +715,20 @@ export function handleBulkUpsertStatuses(
       upsertMentionsInternal(db, postId, status.mentions)
       syncPostMedia(db, postId, status.media_attachments, status.sensitive)
       syncPostStats(db, postId, status)
+
+      // エンゲージメント同期（サーバーから返されたフラグをDBに反映）
+      if (localAccountId !== null) {
+        if (status.favourited) {
+          toggleEngagement(db, localAccountId, postId, 'favourite', true)
+        }
+        if (status.reblogged) {
+          toggleEngagement(db, localAccountId, postId, 'reblog', true)
+        }
+        if (status.bookmarked) {
+          toggleEngagement(db, localAccountId, postId, 'bookmark', true)
+        }
+      }
+
       syncPostCustomEmojis(
         db,
         postId,
@@ -705,7 +757,14 @@ export function handleBulkUpsertStatuses(
 
         // リブログ元投稿も保存（reblog フィールド復元用）
         if (status.reblog) {
-          ensureReblogOriginalPost(db, status.reblog, backendUrl, serverId, now)
+          ensureReblogOriginalPost(
+            db,
+            status.reblog,
+            backendUrl,
+            serverId,
+            now,
+            localAccountId,
+          )
         }
       }
     }
@@ -1031,6 +1090,21 @@ export function handleUpdateStatus(
     upsertMentionsInternal(db, postId, status.mentions)
     syncPostMedia(db, postId, status.media_attachments, status.sensitive)
     syncPostStats(db, postId, status)
+
+    // エンゲージメント同期（サーバーから返されたフラグをDBに反映）
+    const localAccountId = resolveLocalAccountId(db, backendUrl)
+    if (localAccountId !== null) {
+      if (status.favourited) {
+        toggleEngagement(db, localAccountId, postId, 'favourite', true)
+      }
+      if (status.reblogged) {
+        toggleEngagement(db, localAccountId, postId, 'reblog', true)
+      }
+      if (status.bookmarked) {
+        toggleEngagement(db, localAccountId, postId, 'bookmark', true)
+      }
+    }
+
     syncPostCustomEmojis(
       db,
       postId,
@@ -1044,7 +1118,14 @@ export function handleUpdateStatus(
 
     // リブログの場合、元投稿も更新する
     if (cols.is_reblog === 1 && status.reblog) {
-      ensureReblogOriginalPost(db, status.reblog, backendUrl, serverId, now)
+      ensureReblogOriginalPost(
+        db,
+        status.reblog,
+        backendUrl,
+        serverId,
+        now,
+        localAccountId,
+      )
     }
 
     db.exec('COMMIT;')
@@ -1097,4 +1178,76 @@ export function handleSyncFollows(
   }
 
   return { changedTables: [] }
+}
+
+// ================================================================
+// ローカルアカウント登録
+// ================================================================
+
+export function handleEnsureLocalAccount(
+  db: DbExec,
+  backendUrl: string,
+  accountJson: string,
+): HandlerResult {
+  const account = JSON.parse(accountJson) as Entity.Account
+  const serverId = ensureServer(db, backendUrl)
+  const profileId = ensureProfile(db, account)
+  ensureProfileAlias(db, profileId, serverId, account.id)
+  if (account.emojis.length > 0) {
+    syncProfileCustomEmojis(db, profileId, serverId, account.emojis)
+  }
+  db.exec(
+    `INSERT INTO local_accounts (server_id, profile_id, last_authenticated_at)
+     VALUES (?, ?, datetime('now'))
+     ON CONFLICT(server_id, profile_id) DO UPDATE SET
+       last_authenticated_at = datetime('now');`,
+    { bind: [serverId, profileId] },
+  )
+  return { changedTables: [] }
+}
+
+// ================================================================
+// リアクション保存
+// ================================================================
+
+export function handleToggleReaction(
+  db: DbExec,
+  backendUrl: string,
+  statusId: string,
+  value: boolean,
+  emoji: string,
+): HandlerResult {
+  const postId = resolvePostIdInternal(db, backendUrl, statusId)
+  if (postId === null) return { changedTables: [] }
+
+  const localAccountId = resolveLocalAccountId(db, backendUrl)
+  if (localAccountId === null) return { changedTables: [] }
+
+  const isCustom = emoji.startsWith(':') && emoji.endsWith(':')
+
+  let emojiId: number | null = null
+  let emojiText: string | null = null
+
+  if (isCustom) {
+    // カスタム絵文字: shortcode から custom_emojis を検索
+    const shortcode = emoji.slice(1, -1)
+    const serverId = ensureServer(db, backendUrl)
+    const rows = db.exec(
+      'SELECT emoji_id FROM custom_emojis WHERE server_id = ? AND shortcode = ?;',
+      { bind: [serverId, shortcode], returnValue: 'resultRows' },
+    ) as number[][]
+    if (rows.length > 0) {
+      emojiId = rows[0][0]
+    } else {
+      // custom_emojis に見つからない場合は shortcode を emoji_text に保存
+      emojiText = shortcode
+    }
+  } else {
+    // Unicode 絵文字
+    emojiText = emoji
+  }
+
+  toggleReaction(db, localAccountId, postId, value, emojiId, emojiText)
+
+  return { changedTables: ['posts'] }
 }
