@@ -1,38 +1,56 @@
 'use client'
 
+import type { Entity } from 'megalodon'
 import { useContext, useId, useState } from 'react'
-
 import type { PollAddAppIndex } from 'types/types'
 import { GetClient } from 'util/GetClient'
 import { AppsContext } from 'util/provider/AppsProvider'
 
+type PollWithOwnVotes = PollAddAppIndex & {
+  own_votes: number[] | undefined
+}
+
 export const Poll = ({
-  poll,
+  poll: initialPoll,
 }: {
-  poll?:
-    | (PollAddAppIndex & {
-        own_votes: number[] | undefined
-      })
-    | null
+  poll?: PollWithOwnVotes | null
 }) => {
   const internalId = useId()
   const apps = useContext(AppsContext)
 
-  const [selected, setSelected] = useState<number[]>(poll?.own_votes ?? [])
+  const [poll, setPoll] = useState<PollWithOwnVotes | null | undefined>(
+    initialPoll,
+  )
 
-  const [voted, setVoted] = useState<boolean>(poll?.voted ?? false)
+  const [selected, setSelected] = useState<number[]>(
+    initialPoll?.own_votes ?? [],
+  )
+
+  const [voted, setVoted] = useState<boolean>(initialPoll?.voted ?? false)
+
+  const [voting, setVoting] = useState(false)
 
   const vote = () => {
     if (apps.length <= 0) return
     if (poll == null || selected.length === 0) return
+    setVoting(true)
     const client = GetClient(apps[poll.appIndex])
     client
       .votePoll(poll.id, selected)
-      .then(() => {
+      .then((response) => {
+        const updatedPoll: Entity.Poll = response.data
+        setPoll({
+          ...updatedPoll,
+          appIndex: poll.appIndex,
+          own_votes: selected,
+        })
         setVoted(true)
       })
       .catch((error) => {
         console.error('Failed to vote poll:', error)
+      })
+      .finally(() => {
+        setVoting(false)
       })
   }
 
@@ -92,11 +110,12 @@ export const Poll = ({
         <div>
           {!voted && (
             <button
-              className="rounded-md border-2 border-gray-600 p-1"
+              className="rounded-md border-2 border-gray-600 p-1 disabled:opacity-50"
+              disabled={voting || selected.length === 0}
               onClick={vote}
               type="button"
             >
-              Vote
+              {voting ? 'Voting...' : 'Vote'}
             </button>
           )}
         </div>
