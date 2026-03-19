@@ -3,7 +3,23 @@ const nextConfig = {
   experimental: {
     turbopackUseSystemTlsCerts: true,
   },
-
+  async headers() {
+    return [
+      {
+        headers: [
+          {
+            key: 'Cross-Origin-Embedder-Policy',
+            value: 'credentialless',
+          },
+          {
+            key: 'Cross-Origin-Opener-Policy',
+            value: 'same-origin',
+          },
+        ],
+        source: '/:path*',
+      },
+    ]
+  },
   images: {
     localPatterns: [{
       pathname: '/api/attachment/**',
