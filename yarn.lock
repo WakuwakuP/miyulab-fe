@@ -1390,10 +1390,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@sqlite.org/sqlite-wasm@npm:^3.51.2-build7":
-  version: 3.51.2-build7
-  resolution: "@sqlite.org/sqlite-wasm@npm:3.51.2-build7"
-  checksum: 10c0/962a2d351fd24cdaee4301d02ad5732c48353a3e6a464d8b36330bcad2be3b592fdd330a96f7441ba8ec51bd890fecfee8b5d96fdedd1d18b4aefeeea6ed408c
+"@sqlite.org/sqlite-wasm@npm:^3.51.2-build8":
+  version: 3.51.2-build8
+  resolution: "@sqlite.org/sqlite-wasm@npm:3.51.2-build8"
+  checksum: 10c0/f193298c13a2e156897ca4dcae524f4c84c6004b7175baefc36dacec35b1ab3f7868f69d0ce975adfe64cb20c2cd15efba6285d3a48439ae4b556eb7f923e749
   languageName: node
   linkType: hard
 
@@ -2829,7 +2829,7 @@ __metadata:
     "@dnd-kit/utilities": "npm:^3.2.2"
     "@radix-ui/react-context-menu": "npm:^2.2.16"
     "@radix-ui/react-slot": "npm:1.2.4"
-    "@sqlite.org/sqlite-wasm": "npm:^3.51.2-build7"
+    "@sqlite.org/sqlite-wasm": "npm:^3.51.2-build8"
     "@tailwindcss/postcss": "npm:^4.2.1"
     "@types/node": "npm:^25.5.0"
     "@types/react": "npm:^19.2.14"
