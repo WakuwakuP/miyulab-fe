@@ -32,7 +32,7 @@
 import type { SchemaDbHandle as DbHandle } from './worker/workerSchema'
 
 /** 現在のスキーマバージョン */
-const SCHEMA_VERSION = 21
+const SCHEMA_VERSION = 22
 
 /**
  * スキーマの初期化・マイグレーション
@@ -55,6 +55,7 @@ export function ensureSchema(handle: DbHandle): void {
       createSchemaV19(handle)
       migrateV19toV20(handle)
       migrateV20toV21(handle)
+      migrateV21toV22(handle)
     } else if (currentVersion < 2) {
       migrateV1toV2(handle)
       migrateV2toV3(handle)
@@ -75,6 +76,7 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV18toV19(handle)
       migrateV19toV20(handle)
       migrateV20toV21(handle)
+      migrateV21toV22(handle)
     } else if (currentVersion < 3) {
       migrateV2toV3(handle)
       migrateV3toV4(handle)
@@ -94,6 +96,7 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV18toV19(handle)
       migrateV19toV20(handle)
       migrateV20toV21(handle)
+      migrateV21toV22(handle)
     } else if (currentVersion < 4) {
       migrateV3toV4(handle)
       migrateV4toV5(handle)
@@ -112,6 +115,7 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV18toV19(handle)
       migrateV19toV20(handle)
       migrateV20toV21(handle)
+      migrateV21toV22(handle)
     } else if (currentVersion < 5) {
       migrateV4toV5(handle)
       migrateV5toV6(handle)
@@ -129,6 +133,7 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV18toV19(handle)
       migrateV19toV20(handle)
       migrateV20toV21(handle)
+      migrateV21toV22(handle)
     } else if (currentVersion < 6) {
       migrateV5toV6(handle)
       migrateV6toV7(handle)
@@ -145,6 +150,7 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV18toV19(handle)
       migrateV19toV20(handle)
       migrateV20toV21(handle)
+      migrateV21toV22(handle)
     } else if (currentVersion < 7) {
       migrateV6toV7(handle)
       migrateV7toV8(handle)
@@ -160,6 +166,7 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV18toV19(handle)
       migrateV19toV20(handle)
       migrateV20toV21(handle)
+      migrateV21toV22(handle)
     } else if (currentVersion < 8) {
       migrateV7toV8(handle)
       migrateV8toV9(handle)
@@ -174,6 +181,7 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV18toV19(handle)
       migrateV19toV20(handle)
       migrateV20toV21(handle)
+      migrateV21toV22(handle)
     } else if (currentVersion < 9) {
       migrateV8toV9(handle)
       migrateV9toV10(handle)
@@ -187,6 +195,7 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV18toV19(handle)
       migrateV19toV20(handle)
       migrateV20toV21(handle)
+      migrateV21toV22(handle)
     } else if (currentVersion < 10) {
       migrateV9toV10(handle)
       migrateV10toV11(handle)
@@ -199,6 +208,7 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV18toV19(handle)
       migrateV19toV20(handle)
       migrateV20toV21(handle)
+      migrateV21toV22(handle)
     } else if (currentVersion < 11) {
       migrateV10toV11(handle)
       migrateV11toV12(handle)
@@ -210,6 +220,7 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV18toV19(handle)
       migrateV19toV20(handle)
       migrateV20toV21(handle)
+      migrateV21toV22(handle)
     } else if (currentVersion < 12) {
       migrateV11toV12(handle)
       migrateV12toV13(handle)
@@ -220,6 +231,7 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV18toV19(handle)
       migrateV19toV20(handle)
       migrateV20toV21(handle)
+      migrateV21toV22(handle)
     } else if (currentVersion < 13) {
       migrateV12toV13(handle)
       migrateV13toV14(handle)
@@ -229,6 +241,7 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV18toV19(handle)
       migrateV19toV20(handle)
       migrateV20toV21(handle)
+      migrateV21toV22(handle)
     } else if (currentVersion < 14) {
       migrateV13toV14(handle)
       migrateV15toV16(handle)
@@ -237,6 +250,7 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV18toV19(handle)
       migrateV19toV20(handle)
       migrateV20toV21(handle)
+      migrateV21toV22(handle)
     } else if (currentVersion < 16) {
       migrateV15toV16(handle)
       migrateV16toV17(handle)
@@ -244,26 +258,34 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV18toV19(handle)
       migrateV19toV20(handle)
       migrateV20toV21(handle)
+      migrateV21toV22(handle)
     } else if (currentVersion < 17) {
       migrateV16toV17(handle)
       migrateV17toV18(handle)
       migrateV18toV19(handle)
       migrateV19toV20(handle)
       migrateV20toV21(handle)
+      migrateV21toV22(handle)
     } else if (currentVersion < 18) {
       migrateV17toV18(handle)
       migrateV18toV19(handle)
       migrateV19toV20(handle)
       migrateV20toV21(handle)
+      migrateV21toV22(handle)
     } else if (currentVersion < 19) {
       migrateV18toV19(handle)
       migrateV19toV20(handle)
       migrateV20toV21(handle)
+      migrateV21toV22(handle)
     } else if (currentVersion < 20) {
       migrateV19toV20(handle)
       migrateV20toV21(handle)
+      migrateV21toV22(handle)
     } else if (currentVersion < 21) {
       migrateV20toV21(handle)
+      migrateV21toV22(handle)
+    } else if (currentVersion < 22) {
+      migrateV21toV22(handle)
     }
 
     db.exec(`PRAGMA user_version = ${SCHEMA_VERSION};`)
@@ -2553,6 +2575,23 @@ function migrateV20toV21(handle: DbHandle): void {
     ON post_engagements(local_account_id, post_id, engagement_type_id)
     WHERE emoji_id IS NOT NULL OR emoji_text IS NOT NULL;
   `)
+}
+
+// ================================================================
+// v21 → v22 マイグレーション: post_stats に emoji_reactions_json カラム追加
+// ================================================================
+
+/**
+ * v21 → v22 マイグレーション
+ *
+ * post_stats に emoji_reactions_json TEXT カラムを追加し、
+ * 投稿の絵文字リアクション情報（Pleroma/Firefish の emoji_reactions）を
+ * JSON 形式で保存できるようにする。
+ */
+function migrateV21toV22(handle: DbHandle): void {
+  const { db } = handle
+
+  db.exec('ALTER TABLE post_stats ADD COLUMN emoji_reactions_json TEXT;')
 }
 
 /*
