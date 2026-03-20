@@ -167,6 +167,13 @@ const EMPTY_PRB = `(SELECT NULL AS post_id, NULL AS original_uri, NULL AS reblog
  * - posts_mentions (pme) テーブルを LEFT JOIN に追加
  * - onlyMedia フィルタは SQL の has_media カラムで処理（JS 側フィルタ不要）
  * - カスタムクエリモードでは applyMuteFilter / applyInstanceBlock は適用しない
+ *
+ * @param config — タイムライン設定。`customQuery` が空のときは DB を叩かず空配列を返す
+ * @returns
+ * - `data`: Status と Notification の判別付き `StatusAddAppIndex | NotificationAddAppIndex` の配列
+ * - `queryDuration`: 直近クエリの実行時間（ms）、未計測時は `null`
+ * - `loadMore`: 取得件数上限を `TIMELINE_QUERY_LIMIT` 分だけ増やして再取得する
+ * @see {@link useTimelineData}
  */
 export function useCustomQueryTimeline(config: TimelineConfigV2): {
   data: (NotificationAddAppIndex | StatusAddAppIndex)[]

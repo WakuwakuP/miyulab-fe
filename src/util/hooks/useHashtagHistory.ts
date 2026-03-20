@@ -1,11 +1,26 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
+/**
+ * ハッシュタグ履歴の 1 件。永続化キーは `localStorage` の `hashtagHistory`。
+ */
 export type HashtagHistoryItem = {
+  /** ハッシュタグ文字列（先頭の `#` の有無は呼び出し側の規約に従う） */
   tag: string
+  /** ピン留めされていると一覧の先頭付近に固定表示される */
   isPinned: boolean
+  /** 最終アクセス時刻（Unix ミリ秒） */
   lastAccessed: number
 }
 
+/**
+ * ハッシュタグの履歴を `localStorage` で保持し、ピン・ソート付きで返す Hook。
+ *
+ * @returns
+ * - `hashtags`: ピン優先、その後 `lastAccessed` 降順に並べた一覧
+ * - `addHashtag`: タグを追加または既存なら `lastAccessed` を更新
+ * - `togglePin`: 指定タグのピン状態を切り替え
+ * - `removeHashtag`: 指定タグを履歴から削除
+ */
 export const useHashtagHistory = () => {
   const [hashtags, setHashtags] = useState<HashtagHistoryItem[]>([])
   const [isLoaded, setIsLoaded] = useState(false)

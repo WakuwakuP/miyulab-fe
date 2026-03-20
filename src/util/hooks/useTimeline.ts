@@ -31,9 +31,12 @@ function resolveAppIndex(
 }
 
 /**
- * タイムライン種類に応じたStatusをリアクティブに取得するHook (SQLite版)
+ * タイムライン種類に応じた Status をリアクティブに取得する Hook（SQLite 版）。
  *
- * @deprecated useFilteredTimeline を使用してください
+ * @deprecated `useFilteredTimeline` を使用してください。
+ * @param timelineType — DB の `channel_kinds.code` に対応するタイムライン種別
+ * @returns `appIndex` 付きの `StatusAddAppIndex[]`。`backendUrl` が apps に無い行は除外される
+ * @see {@link useFilteredTimeline}
  */
 export function useTimeline(timelineType: TimelineType): StatusAddAppIndex[] {
   const apps = useContext(AppsContext)
@@ -102,9 +105,13 @@ export function useTimeline(timelineType: TimelineType): StatusAddAppIndex[] {
 }
 
 /**
- * タグに応じたStatusをリアクティブに取得するHook (SQLite版)
+ * タグに応じた Status をリアクティブに取得する Hook（SQLite 版）。
  *
- * @deprecated useFilteredTagTimeline を使用してください
+ * @deprecated `useFilteredTagTimeline` を使用してください。
+ * @param tag — 検索するタグ（`posts_belonging_tags.tag` と一致）
+ * @param options — 省略可。`onlyMedia: true` のときメディア付き投稿のみ残す（JS 側フィルタ）
+ * @returns `appIndex` 付きの `StatusAddAppIndex[]`。`backendUrl` が apps に無い行は除外される
+ * @see {@link useFilteredTagTimeline}
  */
 export function useTagTimeline(
   tag: string,

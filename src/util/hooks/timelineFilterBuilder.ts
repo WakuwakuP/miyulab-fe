@@ -29,8 +29,15 @@ import {
  * backendUrl フィルタは呼び出し元が個別に追加するため、
  * この関数では生成しない。
  *
- * @param tableAlias カラム参照に付けるテーブルエイリアス。
- *   デフォルトは 'p'（posts テーブル）。
+ * @param config — v2 フィルタ（メディア・公開範囲・ミュート等）の設定
+ * @param targetBackendUrls — バインド用に参照する対象インスタンス URL 一覧（ミュート / インスタンスブロック条件で使用）
+ * @param tableAlias — カラム参照のプレフィックス。省略時は `'p'`（posts）
+ * @param options — `profileJoined: true` のとき `pr` JOIN 前提の account 条件を生成
+ * @returns
+ * - `conditions`: `WHERE` に `AND` 連結する SQL 断片
+ * - `binds`: 上記 `?` に対応するバインド値（`conditions` と同じ順序）
+ * @see {@link useFilteredTimeline}
+ * @see {@link useFilteredTagTimeline}
  */
 export function buildFilterConditions(
   config: TimelineConfigV2,
