@@ -51,17 +51,26 @@ function resolveVisibilityId(db: DbExec, visibility: string): number | null {
 
 /**
  * 通知の関連投稿が DB に存在しない場合、Entity.Status から投稿を挿入して post_id を返す。
- * 既に存在する場合はそのまま post_id を返す。
+ * 既に存在する場合も post_id を返す。
+ *
+ * poll_expired 等で通知に付いてくる最新の poll（集計結果・期限）を、タイムライン上の同一投稿に反映するため、
+ * 既存 post でも status.poll があれば polls / poll_options を上書き同期する。
  */
 function ensurePostForNotification(
   db: DbExec,
   status: Entity.Status,
   backendUrl: string,
   serverId: number,
-): number {
+): { postId: number; updatedPollOnExistingPost: boolean } {
   // posts_backends で既存チェック
   const existing = resolvePostId(db, backendUrl, status.id)
-  if (existing !== null) return existing
+  if (existing !== null) {
+    if (status.poll) {
+      syncPollData(db, existing, status.poll)
+      return { postId: existing, updatedPollOnExistingPost: true }
+    }
+    return { postId: existing, updatedPollOnExistingPost: false }
+  }
 
   // URI で既存チェック
   const normalizedUri = status.uri?.trim() || ''
@@ -71,13 +80,18 @@ function ensurePostForNotification(
       returnValue: 'resultRows',
     }) as number[][]
     if (uriRows.length > 0) {
+      const postId = uriRows[0][0]
       // posts_backends マッピングを追加
       db.exec(
         `INSERT OR IGNORE INTO posts_backends (post_id, backendUrl, local_id, server_id)
          VALUES (?, ?, ?, ?);`,
-        { bind: [uriRows[0][0], backendUrl, status.id, serverId] },
+        { bind: [postId, backendUrl, status.id, serverId] },
       )
-      return uriRows[0][0]
+      if (status.poll) {
+        syncPollData(db, postId, status.poll)
+        return { postId, updatedPollOnExistingPost: true }
+      }
+      return { postId, updatedPollOnExistingPost: false }
     }
   }
 
@@ -152,12 +166,35 @@ function ensurePostForNotification(
     syncPollData(db, postId, status.poll)
   }
 
-  return postId
+  // 新規行＋poll もタイムラインの集計表示に効くので posts 購読を起こす
+  return { postId, updatedPollOnExistingPost: Boolean(status.poll) }
+}
+
+/**
+ * 通知の status がブーストでラップされ、poll が reblog 先だけに付いているとき用。
+ * 元投稿（reblog 内）の local_id で posts を引き、無ければ ensurePostForNotification で格納する。
+ */
+function syncPollOntoStoredPost(
+  db: DbExec,
+  carrier: Entity.Status,
+  backendUrl: string,
+  serverId: number,
+): boolean {
+  if (!carrier.poll) return false
+  const existing = resolvePostId(db, backendUrl, carrier.id)
+  if (existing !== null) {
+    syncPollData(db, existing, carrier.poll)
+    return true
+  }
+  const r = ensurePostForNotification(db, carrier, backendUrl, serverId)
+  return r.updatedPollOnExistingPost
 }
 
 /**
  * 単一通知を解決して notifications テーブルに upsert する。
  * handleAddNotification と handleBulkAddNotifications の共通処理を集約。
+ *
+ * @returns 既存タイムライン投稿の poll を同期した場合 true（posts 購読の再取得用）
  */
 function upsertNotification(
   db: DbExec,
@@ -165,7 +202,7 @@ function upsertNotification(
   serverId: number,
   backendUrl: string,
   now: number,
-): void {
+): boolean {
   const created_at_ms = new Date(notification.created_at).getTime()
   const notificationTypeId = resolveNotificationTypeId(db, notification.type)
   const actorProfileId = notification.account
@@ -186,9 +223,23 @@ function upsertNotification(
       notification.account.emojis,
     )
   }
-  const relatedPostId = notification.status
-    ? ensurePostForNotification(db, notification.status, backendUrl, serverId)
-    : null
+  let relatedPostId: number | null = null
+  let touchPosts = false
+  if (notification.status) {
+    const r = ensurePostForNotification(
+      db,
+      notification.status,
+      backendUrl,
+      serverId,
+    )
+    relatedPostId = r.postId
+    touchPosts = r.updatedPollOnExistingPost
+    const rb = notification.status.reblog
+    if (rb?.poll) {
+      touchPosts =
+        touchPosts || syncPollOntoStoredPost(db, rb, backendUrl, serverId)
+    }
+  }
 
   // (server_id, local_id) で既存チェック
   const existing = db.exec(
@@ -236,6 +287,8 @@ function upsertNotification(
       },
     )
   }
+
+  return touchPosts
 }
 
 export function handleAddNotification(
@@ -246,8 +299,18 @@ export function handleAddNotification(
   const notification = JSON.parse(notificationJson) as Entity.Notification
   const now = Date.now()
   const serverId = ensureServer(db, backendUrl)
-  upsertNotification(db, notification, serverId, backendUrl, now)
-  return { changedTables: ['notifications'] }
+  const touchPosts = upsertNotification(
+    db,
+    notification,
+    serverId,
+    backendUrl,
+    now,
+  )
+  return {
+    changedTables: touchPosts
+      ? (['notifications', 'posts'] as TableName[])
+      : ['notifications'],
+  }
 }
 
 export function handleBulkAddNotifications(
@@ -260,11 +323,14 @@ export function handleBulkAddNotifications(
   const now = Date.now()
 
   db.exec('BEGIN;')
+  let touchPosts = false
   try {
     const serverId = ensureServer(db, backendUrl)
     for (const nJson of notificationsJson) {
       const notification = JSON.parse(nJson) as Entity.Notification
-      upsertNotification(db, notification, serverId, backendUrl, now)
+      if (upsertNotification(db, notification, serverId, backendUrl, now)) {
+        touchPosts = true
+      }
     }
     db.exec('COMMIT;')
   } catch (e) {
@@ -272,7 +338,11 @@ export function handleBulkAddNotifications(
     throw e
   }
 
-  return { changedTables: ['notifications'] }
+  return {
+    changedTables: touchPosts
+      ? (['notifications', 'posts'] as TableName[])
+      : ['notifications'],
+  }
 }
 
 export function handleUpdateNotificationStatusAction(

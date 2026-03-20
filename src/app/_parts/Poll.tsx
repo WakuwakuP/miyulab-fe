@@ -10,6 +10,13 @@ type PollWithOwnVotes = PollAddAppIndex & {
   own_votes: number[] | undefined
 }
 
+/** API の expired と期限日時の両方を見る（タブ放置中の経過やキャッシュ復元でも整合しやすい） */
+function isPollClosed(p: Entity.Poll): boolean {
+  if (p.expired) return true
+  if (p.expires_at == null) return false
+  return new Date(p.expires_at) < new Date()
+}
+
 export const Poll = ({
   poll: initialPoll,
 }: {
@@ -33,6 +40,7 @@ export const Poll = ({
   const vote = () => {
     if (apps.length <= 0) return
     if (poll == null || selected.length === 0) return
+    if (isPollClosed(poll)) return
     setVoting(true)
     const client = GetClient(apps[poll.appIndex])
     client
@@ -54,12 +62,15 @@ export const Poll = ({
       })
   }
 
+  const pollClosed = poll != null ? isPollClosed(poll) : false
+  const showResults = poll != null && (poll.voted || voted || pollClosed)
+
   return poll != null ? (
     <div className="p-2">
       <div>
         {poll.options.map((option, index) => (
           <div className="w-full" key={option.title}>
-            {voted ? (
+            {showResults ? (
               <div
                 className="my-0.5 flex flex-wrap rounded-md px-2"
                 style={{
@@ -90,7 +101,7 @@ export const Poll = ({
                   id={internalId + option.title}
                   name={internalId + poll.id}
                   onChange={() => {
-                    if (poll.voted) return
+                    if (poll.voted || isPollClosed(poll)) return
                     if (selected.includes(index)) {
                       setSelected(selected.filter((s) => s !== index))
                     } else {
@@ -107,8 +118,8 @@ export const Poll = ({
         ))}
       </div>
       <div className="flex items-center justify-between">
-        <div>
-          {!voted && (
+        <div className="flex flex-col gap-1">
+          {!showResults && (
             <button
               className="rounded-md border-2 border-gray-600 p-1 disabled:opacity-50"
               disabled={voting || selected.length === 0}
@@ -117,6 +128,9 @@ export const Poll = ({
             >
               {voting ? 'Voting...' : 'Vote'}
             </button>
+          )}
+          {pollClosed && (
+            <span className="text-sm text-white/50">投票終了</span>
           )}
         </div>
         <div className="flex">
