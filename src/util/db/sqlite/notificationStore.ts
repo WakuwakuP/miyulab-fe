@@ -8,6 +8,18 @@
 import type { Entity } from 'megalodon'
 import { getSqliteDb } from './connection'
 
+/**
+ * emoji_reactions_json カラムの JSON 文字列を Entity.Reaction[] にパースする
+ */
+function parseEmojiReactions(json: string | null): Entity.Reaction[] {
+  if (!json) return []
+  try {
+    return JSON.parse(json) as Entity.Reaction[]
+  } catch {
+    return []
+  }
+}
+
 /** クエリの最大行数上限 */
 const MAX_QUERY_LIMIT = 2147483647
 
@@ -59,7 +71,8 @@ export const NOTIFICATION_SELECT = `
   (SELECT json_object('id', pl.poll_id, 'expires_at', pl.expires_at, 'multiple', pl.multiple, 'votes_count', pl.votes_count, 'options', (SELECT json_group_array(json_object('title', po.title, 'votes_count', po.votes_count)) FROM poll_options po WHERE po.poll_id = pl.poll_id ORDER BY po.option_index)) FROM polls pl WHERE pl.post_id = rp.post_id) AS rp_poll_json,
   (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.image_url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM profile_custom_emojis pce2 INNER JOIN custom_emojis ce ON pce2.emoji_id = ce.emoji_id WHERE pce2.profile_id = ap.profile_id) AS actor_emojis_json,
   COALESCE(apa.remote_account_id, '') AS actor_account_id,
-  COALESCE(rppa.remote_account_id, '') AS rp_author_account_id`
+  COALESCE(rppa.remote_account_id, '') AS rp_author_account_id,
+  rpps.emoji_reactions_json AS rp_emoji_reactions_json`
 
 export const NOTIFICATION_BASE_JOINS = `
   LEFT JOIN servers sv ON n.server_id = sv.server_id
@@ -67,6 +80,7 @@ export const NOTIFICATION_BASE_JOINS = `
   LEFT JOIN profiles ap ON n.actor_profile_id = ap.profile_id
   LEFT JOIN posts rp ON n.related_post_id = rp.post_id
   LEFT JOIN profiles rppr ON rp.author_profile_id = rppr.profile_id
+  LEFT JOIN post_stats rpps ON rp.post_id = rpps.post_id
   LEFT JOIN profile_aliases apa ON apa.profile_id = ap.profile_id AND apa.server_id = n.server_id
   LEFT JOIN profile_aliases rppa ON rppa.profile_id = rppr.profile_id AND rppa.server_id = n.server_id`
 
@@ -88,6 +102,7 @@ export const NOTIFICATION_BASE_JOINS = `
  *   [34] rp_poll_json
  *   [35] actor_emojis_json
  *   [36] actor_account_id [37] rp_author_account_id
+ *   [38] rp_emoji_reactions_json
  */
 export function rowToStoredNotification(
   row: (string | number | null)[],
@@ -181,7 +196,7 @@ export function rowToStoredNotification(
       content: (row[16] as string) ?? '',
       created_at: rpCreatedAtMs ? new Date(rpCreatedAtMs).toISOString() : '',
       edited_at: row[31] as string | null,
-      emoji_reactions: [],
+      emoji_reactions: parseEmojiReactions(row[38] as string | null),
       emojis: parseEmojis(rpStatusEmojisJson),
       favourited: null,
       favourites_count: 0,

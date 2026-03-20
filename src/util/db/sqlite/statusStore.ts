@@ -43,6 +43,18 @@ export interface SqliteStoredStatus extends Entity.Status {
 // ================================================================
 
 /**
+ * emoji_reactions_json カラムの JSON 文字列を Entity.Reaction[] にパースする
+ */
+function parseEmojiReactions(json: string | null): Entity.Reaction[] {
+  if (!json) return []
+  try {
+    return JSON.parse(json) as Entity.Reaction[]
+  } catch {
+    return []
+  }
+}
+
+/**
  * クエリ結果の1行を SqliteStoredStatus に変換する
  *
  * row レイアウト:
@@ -71,6 +83,10 @@ export interface SqliteStoredStatus extends Entity.Status {
  *   [56] rb_favourites_count [57] rb_engagements_csv [58] rb_media_json
  *   [59] rb_mentions_json [60] rb_status_emojis_json
  *   [61] rb_account_emojis_json [62] rb_poll_json [63] rb_local_id
+ *
+ * 追加フィールド:
+ *   [64] author_account_id [65] rb_author_account_id
+ *   [66] emoji_reactions_json [67] rb_emoji_reactions_json
  */
 export function rowToStoredStatus(
   row: (string | number | null)[],
@@ -84,6 +100,8 @@ export function rowToStoredStatus(
   const statusEmojisJson = row[32] as string | null
   const accountEmojisJson = row[33] as string | null
   const pollJson = row[34] as string | null
+  const emojiReactionsJson = row[66] as string | null
+  const rbEmojiReactionsJson = row[67] as string | null
 
   const belongingTags: string[] = belongingTagsJson
     ? (JSON.parse(belongingTagsJson) as (string | null)[]).filter(
@@ -205,7 +223,7 @@ export function rowToStoredStatus(
       content: (row[36] as string) ?? '',
       created_at: row[44] ? new Date(row[44] as number).toISOString() : '',
       edited_at: row[43] as string | null,
-      emoji_reactions: [],
+      emoji_reactions: parseEmojiReactions(rbEmojiReactionsJson),
       emojis: parseEmojis(rbStatusEmojisJson),
       favourited: rbEngagements.includes('favourite'),
       favourites_count: (row[56] as number) ?? 0,
@@ -269,7 +287,7 @@ export function rowToStoredStatus(
     created_at: new Date(row[3] as number).toISOString(),
     created_at_ms: row[3] as number,
     edited_at: row[15] as string | null,
-    emoji_reactions: [],
+    emoji_reactions: parseEmojiReactions(emojiReactionsJson),
     emojis: parseEmojis(statusEmojisJson),
     favourited: engagements.includes('favourite'),
     favourites_count: (row[26] as number) ?? 0,
@@ -394,7 +412,9 @@ export const STATUS_SELECT = `
     ELSE NULL
   END AS rb_local_id,
   COALESCE(pra.remote_account_id, '') AS author_account_id,
-  COALESCE(rpra.remote_account_id, '') AS rb_author_account_id`
+  COALESCE(rpra.remote_account_id, '') AS rb_author_account_id,
+  ps.emoji_reactions_json,
+  rps.emoji_reactions_json AS rb_emoji_reactions_json`
 
 // ================================================================
 // Phase2 バッチクエリ用の定数・型定義
@@ -424,6 +444,7 @@ export const STATUS_SELECT = `
  *   [45] rb_author_url   [46] rb_replies_count [47] rb_reblogs_count
  *   [48] rb_favourites_count
  *   [49] rb_local_id     [50] author_account_id [51] rb_author_account_id
+ *   [52] emoji_reactions_json [53] rb_emoji_reactions_json
  */
 export const STATUS_BASE_SELECT = `
   p.post_id,
@@ -480,7 +501,9 @@ export const STATUS_BASE_SELECT = `
     ELSE NULL
   END AS rb_local_id,
   COALESCE(pra.remote_account_id, '') AS author_account_id,
-  COALESCE(rpra.remote_account_id, '') AS rb_author_account_id`
+  COALESCE(rpra.remote_account_id, '') AS rb_author_account_id,
+  ps.emoji_reactions_json,
+  rps.emoji_reactions_json AS rb_emoji_reactions_json`
 
 /** post_id → engagements_csv (例: "favourite,bookmark") のバッチクエリ */
 const BATCH_ENGAGEMENTS_SQL = `
@@ -584,6 +607,7 @@ interface BatchMaps {
   statusEmojisMap: Map<number, string>
   accountEmojisMap: Map<number, string>
   pollsMap: Map<number, string>
+  emojiReactionsMap: Map<number, string>
 }
 
 // ================================================================
@@ -613,6 +637,7 @@ export async function executeBatchQueries(
     return {
       accountEmojisMap: new Map(),
       belongingTagsMap: new Map(),
+      emojiReactionsMap: new Map(),
       engagementsMap: new Map(),
       mediaMap: new Map(),
       mentionsMap: new Map(),
@@ -709,9 +734,14 @@ export async function executeBatchQueries(
     pollsMap.set(row[0] as number, row[1] as string)
   }
 
+  // emoji_reactions は Phase2-A の基本行に含まれるため、バッチクエリ不要。
+  // assembleStatusFromBatch 内で row[52] / row[53] から直接読み取る。
+  const emojiReactionsMap = new Map<number, string>()
+
   return {
     accountEmojisMap,
     belongingTagsMap,
+    emojiReactionsMap,
     engagementsMap,
     mediaMap,
     mentionsMap,
@@ -868,7 +898,7 @@ export function assembleStatusFromBatch(
       content: (row[28] as string) ?? '',
       created_at: row[36] ? new Date(row[36] as number).toISOString() : '',
       edited_at: row[35] as string | null,
-      emoji_reactions: [],
+      emoji_reactions: parseEmojiReactions(row[53] as string | null),
       emojis: parseEmojis(rbStatusEmojisJson),
       favourited: rbEngagements.includes('favourite'),
       favourites_count: (row[48] as number) ?? 0,
@@ -932,7 +962,7 @@ export function assembleStatusFromBatch(
     created_at: new Date(row[3] as number).toISOString(),
     created_at_ms: row[3] as number,
     edited_at: row[15] as string | null,
-    emoji_reactions: [],
+    emoji_reactions: parseEmojiReactions(row[52] as string | null),
     emojis: parseEmojis(statusEmojisJson),
     favourited: engagements.includes('favourite'),
     favourites_count: (row[26] as number) ?? 0,

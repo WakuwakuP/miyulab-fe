@@ -138,21 +138,38 @@ function syncPostStats(
   postId: number,
   status: Entity.Status,
 ): void {
+  // emoji_reactions を JSON 文字列に変換（account_ids のみ保持、accounts は省略）
+  const emojiReactionsJson =
+    status.emoji_reactions && status.emoji_reactions.length > 0
+      ? JSON.stringify(
+          status.emoji_reactions.map((r) => ({
+            account_ids: r.account_ids,
+            count: r.count,
+            me: r.me,
+            name: r.name,
+            static_url: r.static_url,
+            url: r.url,
+          })),
+        )
+      : null
+
   db.exec(
     `INSERT INTO post_stats (
-      post_id, replies_count, reblogs_count, favourites_count, fetched_at
-    ) VALUES (?, ?, ?, ?, datetime('now'))
+      post_id, replies_count, reblogs_count, favourites_count, emoji_reactions_json, fetched_at
+    ) VALUES (?, ?, ?, ?, ?, datetime('now'))
     ON CONFLICT(post_id) DO UPDATE SET
-      replies_count    = excluded.replies_count,
-      reblogs_count    = excluded.reblogs_count,
-      favourites_count = excluded.favourites_count,
-      fetched_at       = excluded.fetched_at;`,
+      replies_count        = excluded.replies_count,
+      reblogs_count        = excluded.reblogs_count,
+      favourites_count     = excluded.favourites_count,
+      emoji_reactions_json = excluded.emoji_reactions_json,
+      fetched_at           = excluded.fetched_at;`,
     {
       bind: [
         postId,
         status.replies_count,
         status.reblogs_count,
         status.favourites_count,
+        emojiReactionsJson,
       ],
     },
   )
