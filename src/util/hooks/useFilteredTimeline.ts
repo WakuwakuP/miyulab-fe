@@ -62,6 +62,13 @@ function resolveAppIndex(
  * onlyMedia / visibilityFilter / languageFilter 等のフィルタは
  * 正規化カラムを使って SQL の WHERE 句で直接フィルタする。
  * これにより LIMIT の精度が向上し、JS 側フィルタが不要になる。
+ *
+ * @param config — タイムライン設定。`type` が `home` / `local` / `public` 以外のときは DB を叩かず空配列を返す
+ * @returns
+ * - `data`: `StatusAddAppIndex[]`（`appIndex` 解決不能行は除外）
+ * - `queryDuration`: 直近クエリの実行時間（ms）、未計測時は `null`
+ * - `loadMore`: 取得件数上限を `TIMELINE_QUERY_LIMIT` 分だけ増やして再取得する
+ * @see {@link buildFilterConditions}
  */
 export function useFilteredTimeline(config: TimelineConfigV2): {
   data: StatusAddAppIndex[]

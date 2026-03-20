@@ -54,9 +54,17 @@ function resolveAppIndex(
 }
 
 /**
- * 通知をリアクティブに取得するHook (SQLite版)
+ * 通知をリアクティブに取得する Hook（SQLite 版）。
  *
- * subscribe/notifyChange による変更通知で再クエリする。
+ * DB の変更は `subscribe` 経由で再クエリされる。
+ *
+ * @param config — 省略時は登録済み全アカウントの `backendUrl` を対象にする。
+ *   指定時は `backendFilter` に従い対象インスタンスを絞る。`type !== 'notification'` のときは空配列を返す
+ * @returns
+ * - `data`: `NotificationAddAppIndex[]`（関連 Status が要る種別はバッチで結合）
+ * - `queryDuration`: 直近クエリの実行時間（ms）、未計測時は `null`
+ * - `loadMore`: 取得件数上限を `TIMELINE_QUERY_LIMIT` 分だけ増やして再取得する
+ * @see {@link useTimelineData}
  */
 export function useNotifications(config?: TimelineConfigV2): {
   data: NotificationAddAppIndex[]

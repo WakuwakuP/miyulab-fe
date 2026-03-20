@@ -13,19 +13,25 @@ import { useNotifications } from 'util/hooks/useNotifications'
 const noopLoadMore = () => {}
 
 /**
- * TimelineConfigV2 に基づいて適切なデータ取得 Hook を選択するファサード
+ * `TimelineConfigV2` に基づき、適切なデータ取得 Hook を束ねるファサード。
  *
- * - customQuery が設定されている場合 → useCustomQueryTimeline
- * - type === 'tag' → useFilteredTagTimeline
- * - type === 'home' | 'local' | 'public' → useFilteredTimeline
- * - type === 'notification' → useNotifications (既存)
+ * - `customQuery` が非空 → `useCustomQueryTimeline`
+ * - `type === 'tag'` → `useFilteredTagTimeline`
+ * - `type === 'home' | 'local' | 'public'` → `useFilteredTimeline`
+ * - `type === 'notification'` → `useNotifications`
  *
- * ※ React の Hook ルール（条件分岐内での Hook 呼び出し禁止）を遵守するため、
- *   内部では全 Hook を常に呼び出し、type に応じて結果を選択する。
+ * React の Hook ルールのため内部では全 Hook を常に呼び出し、上記に応じて戻り値だけを選択する。
+ * 各実装 Hook は `config.type` 不一致時に早期リターンし、不要な DB クエリを避ける。
  *
- * ※ 各 Hook 内部で config.type をチェックして早期に空配列を返すため、
- *   不要な DB クエリは発行されない。例えば type === 'tag' の場合、
- *   useFilteredTimeline は DB クエリをスキップして空配列を返す。
+ * @param config — タイムライン種別・フィルタ・カスタム SQL 等の設定
+ * @returns 選択された Hook と同形の `{ data, queryDuration, loadMore }`
+ * @remarks
+ * `customQuery` が空で、かつ `type` が上記いずれでもない場合は
+ * `{ data: [], queryDuration: null, loadMore: 空関数 }` を返す。
+ * @see {@link useFilteredTimeline}
+ * @see {@link useFilteredTagTimeline}
+ * @see {@link useCustomQueryTimeline}
+ * @see {@link useNotifications}
  */
 export function useTimelineData(config: TimelineConfigV2): {
   data: (NotificationAddAppIndex | StatusAddAppIndex)[]
