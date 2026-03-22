@@ -116,7 +116,8 @@ export async function fetchMoreData(
            LIMIT 1;`,
           {
             bind: [tag, backendUrl],
-            kind: 'timeline',
+            // API ページネーション用の補助 Read（表示タイムライン構築ではない）→ other
+            kind: 'other',
             returnValue: 'resultRows',
           },
         )) as string[][]
