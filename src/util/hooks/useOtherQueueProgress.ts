@@ -30,12 +30,12 @@ export function useOtherQueueProgress(): {
       }
     }
 
+    // サブスクリプションを先に設定して、初回チェックとの間の遷移を逃さない
+    const unsub = subscribeQueueStats(check)
+
     // 初回チェック
     check()
 
-    if (doneRef.current) return
-
-    const unsub = subscribeQueueStats(check)
     return () => unsub()
   }, [])
 
