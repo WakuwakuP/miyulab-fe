@@ -74,6 +74,10 @@
   animation: picker-in 0.15s ease-out;
 }
 
+@utility animate-progress-bar {
+  animation: progress-bar 1.5s ease-in-out infinite;
+}
+
 @keyframes picker-in {
   from {
     opacity: 0;
@@ -82,6 +86,15 @@
   to {
     opacity: 1;
     transform: scale(1);
+  }
+}
+
+@keyframes progress-bar {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
   }
 }
 

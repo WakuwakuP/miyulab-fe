@@ -2,6 +2,7 @@
 
 import { DetailPanel } from 'app/_components/DetailPanel'
 import { DynamicTimeline } from 'app/_components/DynamicTimeline'
+import { InitialProgressBar } from 'app/_components/InitialProgressBar'
 import { MainPanel } from 'app/_components/MainPanel'
 import { MediaModal } from 'app/_components/MediaModal'
 import { TabbedTimeline } from 'app/_components/TabbedTimeline'
@@ -91,6 +92,7 @@ export default function Home() {
 
   return (
     <main className="flex overflow-y-visible overflow-x-scroll *:w-[calc(100vw/6)] *:min-w-60 *:shrink-0">
+      <InitialProgressBar />
       <MainPanel />
       {columns.map((column) => {
         if (column.type === 'single') {
