@@ -121,6 +121,7 @@ export async function runExplainQueryPlan(
     const explainSql = `EXPLAIN QUERY PLAN ${sql}`
     const rows = (await handle.execAsync(explainSql, {
       bind: binds,
+      kind: 'other',
       returnValue: 'resultRows',
     })) as unknown[][]
 

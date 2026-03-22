@@ -183,7 +183,8 @@ export const UnifiedTimeline = ({
                  LIMIT 1;`,
                 {
                   bind: [tag, url],
-                  kind: 'timeline',
+                  // fetchMore 用 max_id 解決（API 取得の補助）→ other
+                  kind: 'other',
                   returnValue: 'resultRows',
                 },
               )) as string[][]
@@ -205,7 +206,8 @@ export const UnifiedTimeline = ({
                LIMIT 1;`,
               {
                 bind: [url, timelineType],
-                kind: 'timeline',
+                // fetchMore 用 max_id 解決（API 取得の補助）→ other
+                kind: 'other',
                 returnValue: 'resultRows',
               },
             )) as string[][]

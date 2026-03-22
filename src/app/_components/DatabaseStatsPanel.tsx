@@ -48,6 +48,7 @@ export const DatabaseStatsPanel = () => {
       ).join(' UNION ALL ')
 
       const rows = (await handle.execAsync(sql, {
+        kind: 'other',
         returnValue: 'resultRows',
       })) as [string, number][]
 
