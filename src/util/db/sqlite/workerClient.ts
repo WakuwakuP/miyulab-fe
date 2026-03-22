@@ -3,8 +3,18 @@
  *
  * Worker に対して型安全なメッセージを送信し、Promise で結果を受け取る。
  * changedTables フィールドを元に notifyChange を自動発火する。
+ *
+ * 書き込みキューと読み込みキューの 2 本立てで、書き込みを優先的に処理する。
+ * 読み込みキューは同一クエリ (SQL + bind) が未処理なら重複追加しない。
  */
 
+import type { QueueKind } from '../dbQueue'
+import {
+  reportDequeue,
+  reportEnqueue,
+  startSnapshotRecording,
+  stopSnapshotRecording,
+} from '../dbQueue'
 import type {
   ExecBatchRequest,
   ExecRequest,
@@ -26,12 +36,26 @@ type QueuedRequest = {
   message: { type: string; id: number; [key: string]: unknown }
   resolve: (value: unknown) => void
   reject: (reason: Error) => void
+  kind: QueueKind
 }
 
 let worker: Worker | null = null
 let nextId = 0
 const pending = new Map<number, PendingRequest>()
-const requestQueue: QueuedRequest[] = []
+
+/** 書き込みキュー（優先） */
+const writeQueue: QueuedRequest[] = []
+/** 読み込みキュー */
+const readQueue: QueuedRequest[] = []
+/**
+ * 読み込みキューの重複排除マップ
+ * key = SQL + JSON(bind), value = 共有される Promise の resolve/reject 配列
+ */
+const readDedup = new Map<
+  string,
+  { resolvers: ((v: unknown) => void)[]; rejectors: ((e: Error) => void)[] }
+>()
+
 let activeRequest = false
 let notifyChangeCallback: ((table: TableName) => void) | null = null
 let initResolve: ((persistence: 'opfs' | 'memory') => void) | null = null
@@ -59,6 +83,9 @@ export function initWorker(
   if (initPromise) return initPromise
 
   notifyChangeCallback = onNotify
+
+  // キュースナップショット記録を開始
+  startSnapshotRecording()
 
   initPromise = new Promise<'opfs' | 'memory'>((resolve, reject) => {
     initResolve = resolve
@@ -172,6 +199,24 @@ function handleMessage(event: MessageEvent<WorkerMessage>): void {
 // RPC ユーティリティ
 // ================================================================
 
+// ================================================================
+// 読み込みキュー重複排除ユーティリティ
+// ================================================================
+
+/**
+ * exec リクエストの SQL + bind から重複排除用キーを生成する。
+ */
+function makeReadDedupKey(message: { [key: string]: unknown }): string | null {
+  if (message.type !== 'exec') return null
+  const sql = message.sql as string
+  const bind = message.bind as unknown[] | undefined
+  return bind ? `${sql}\0${JSON.stringify(bind)}` : sql
+}
+
+// ================================================================
+// キュー操作
+// ================================================================
+
 /**
  * リクエストをキューに追加し、順番に Worker へ送信する。
  *
@@ -179,34 +224,91 @@ function handleMessage(event: MessageEvent<WorkerMessage>): void {
  * 一度に複数の postMessage を送ると後続リクエストのタイムアウトが
  * 実際の処理時間ではなくキュー待ち時間を含んでしまう。
  * キューで直列化し、タイムアウトは実際に送信した時点から計測する。
+ *
+ * kind='read' の場合、同一クエリが既にキューにあれば新たに積まず
+ * 既存リクエストの結果を共有する。
  */
-function sendRequest(message: {
-  type: string
-  id: number
-  [key: string]: unknown
-}): Promise<unknown> {
+function sendRequest(
+  message: {
+    type: string
+    id: number
+    [key: string]: unknown
+  },
+  kind: QueueKind = 'write',
+): Promise<unknown> {
   if (!worker) {
     return Promise.reject(new Error('Worker not initialized'))
   }
 
   return new Promise<unknown>((resolve, reject) => {
-    requestQueue.push({ message, reject, resolve })
+    // 読み込みキューの重複排除
+    if (kind === 'read') {
+      const dedupKey = makeReadDedupKey(message)
+      if (dedupKey != null) {
+        const existing = readDedup.get(dedupKey)
+        if (existing) {
+          // 同じクエリが未処理なら新しく積まない — 結果を共有
+          existing.resolvers.push(resolve)
+          existing.rejectors.push(reject)
+          return
+        }
+        readDedup.set(dedupKey, {
+          rejectors: [reject],
+          resolvers: [resolve],
+        })
+        // ラップされた resolve/reject で全待機者に通知する
+        const sharedResolve = (value: unknown) => {
+          const entry = readDedup.get(dedupKey)
+          readDedup.delete(dedupKey)
+          if (entry) {
+            for (const r of entry.resolvers) r(value)
+          }
+        }
+        const sharedReject = (reason: Error) => {
+          const entry = readDedup.get(dedupKey)
+          readDedup.delete(dedupKey)
+          if (entry) {
+            for (const r of entry.rejectors) r(reason)
+          }
+        }
+        readQueue.push({
+          kind,
+          message,
+          reject: sharedReject,
+          resolve: sharedResolve,
+        })
+        reportEnqueue('read')
+        processQueue()
+        return
+      }
+    }
+
+    const queue = kind === 'write' ? writeQueue : readQueue
+    queue.push({ kind, message, reject, resolve })
+    reportEnqueue(kind)
     processQueue()
   })
 }
 
 function processQueue(): void {
-  if (activeRequest || requestQueue.length === 0 || !worker) return
+  if (activeRequest || !worker) return
 
-  const next = requestQueue.shift()
+  // 書き込みキューを優先
+  let next: QueuedRequest | undefined
+  if (writeQueue.length > 0) {
+    next = writeQueue.shift()
+  } else if (readQueue.length > 0) {
+    next = readQueue.shift()
+  }
   if (!next) return
   activeRequest = true
-  const { message, resolve, reject } = next
+  const { kind, message, resolve, reject } = next
   const id = message.id
 
   const timer = setTimeout(() => {
     pending.delete(id)
     activeRequest = false
+    reportDequeue(kind)
     reject(
       new Error(`Worker request timed out (id=${id}, type=${message.type})`),
     )
@@ -217,12 +319,14 @@ function processQueue(): void {
     reject: (reason: Error) => {
       clearTimeout(timer)
       activeRequest = false
+      reportDequeue(kind)
       reject(reason)
       processQueue()
     },
     resolve: (value: unknown) => {
       clearTimeout(timer)
       activeRequest = false
+      reportDequeue(kind)
       resolve(value)
       processQueue()
     },
@@ -253,7 +357,7 @@ export function execAsync(
     sql,
     type: 'exec',
   }
-  return sendRequest(request)
+  return sendRequest(request, 'read')
 }
 
 /**
@@ -274,7 +378,7 @@ export async function execAsyncTimed(
     sql,
     type: 'exec',
   }
-  const result = await sendRequest(request)
+  const result = await sendRequest(request, 'read')
   const durationMs = durationForId.get(id) ?? 0
   durationForId.delete(id)
   return { durationMs, result }
@@ -302,7 +406,7 @@ export function execBatch(
     statements,
     type: 'execBatch',
   }
-  return sendRequest(request) as Promise<Record<number, unknown>>
+  return sendRequest(request, 'write') as Promise<Record<number, unknown>>
 }
 
 /**
@@ -315,7 +419,7 @@ export function sendCommand(command: SendCommandPayload): Promise<unknown> {
     id: number
     [key: string]: unknown
   }
-  return sendRequest(message)
+  return sendRequest(message, 'write')
 }
 
 /**
@@ -326,14 +430,20 @@ export function terminateWorker(): void {
   worker = null
   pending.clear()
   // キュー内の未送信リクエストを拒否してクリア
-  for (const queued of requestQueue) {
+  for (const queued of writeQueue) {
     queued.reject(new Error('Worker terminated'))
   }
-  requestQueue.length = 0
+  for (const queued of readQueue) {
+    queued.reject(new Error('Worker terminated'))
+  }
+  writeQueue.length = 0
+  readQueue.length = 0
+  readDedup.clear()
   activeRequest = false
   initPromise = null
   initResolve = null
   initReject = null
   notifyChangeCallback = null
   nextId = 0
+  stopSnapshotRecording()
 }

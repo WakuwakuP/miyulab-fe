@@ -1,5 +1,6 @@
 'use client'
 
+import { QueueStatsGraph } from 'app/_components/QueueStatsGraph'
 import { useCallback, useEffect, useState } from 'react'
 import { getSqliteDb } from 'util/db/sqlite/connection'
 
@@ -94,6 +95,7 @@ export const DatabaseStatsPanel = () => {
           </tbody>
         </table>
       )}
+      <QueueStatsGraph />
     </div>
   )
 }
