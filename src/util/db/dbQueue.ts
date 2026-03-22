@@ -50,6 +50,9 @@ const snapshots: QueueSnapshot[] = []
 /** other キューの現在サイズ */
 let otherQueueSize = 0
 
+/** other キューに一度でもアイテムが入ったか */
+let otherHasBeenNonZero = false
+
 /** タイムライン取得キューの現在サイズ */
 let timelineQueueSize = 0
 
@@ -127,6 +130,10 @@ export function stopSnapshotRecording(): void {
 export function reportEnqueue(kind: QueueKind): void {
   if (kind === 'other') {
     otherQueueSize++
+    if (!otherHasBeenNonZero) {
+      otherHasBeenNonZero = true
+      notifyListeners()
+    }
   } else {
     timelineQueueSize++
   }
@@ -139,6 +146,9 @@ export function reportDequeue(kind: QueueKind): void {
   if (kind === 'other') {
     otherQueueSize = Math.max(0, otherQueueSize - 1)
     otherProcessedTotal++
+    if (otherQueueSize === 0) {
+      notifyListeners()
+    }
   } else {
     timelineQueueSize = Math.max(0, timelineQueueSize - 1)
     timelineProcessedTotal++
@@ -162,6 +172,14 @@ export function getSnapshots(): readonly QueueSnapshot[] {
  */
 export function getCurrentQueueSizes(): { other: number; timeline: number } {
   return { other: otherQueueSize, timeline: timelineQueueSize }
+}
+
+/**
+ * Other キューに一度でもアイテムが追加されたことがあるかを返す。
+ * 初回チェックでキューが空のときに「まだ開始されていない」と判定するために使用する。
+ */
+export function hasOtherQueueBeenActive(): boolean {
+  return otherHasBeenNonZero
 }
 
 // ================================================================
