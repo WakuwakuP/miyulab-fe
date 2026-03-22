@@ -16,8 +16,7 @@ import { getDb } from './initSqlite'
 import type { TableName } from './protocol'
 import type { DbHandle } from './types'
 
-export type { DbHandle }
-export type { TableName }
+export type { DbHandle, TableName }
 
 /** 変更リスナー */
 type ChangeListener = () => void
