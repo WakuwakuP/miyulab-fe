@@ -55,7 +55,7 @@ function toPolylinePoints(
 
 export const QueueStatsGraph = () => {
   const [snapshots, setSnapshots] = useState<readonly QueueSnapshot[]>([])
-  const mountedRef = useRef(true)
+  const mountedRef = useRef(false)
 
   const refresh = useCallback(() => {
     if (!mountedRef.current) return
