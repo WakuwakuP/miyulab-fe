@@ -84,9 +84,6 @@ export function initWorker(
 
   notifyChangeCallback = onNotify
 
-  // キュースナップショット記録を開始
-  startSnapshotRecording()
-
   initPromise = new Promise<'opfs' | 'memory'>((resolve, reject) => {
     initResolve = resolve
     initReject = reject
@@ -94,6 +91,7 @@ export function initWorker(
     // Worker 初期化タイムアウト — init メッセージが来ない場合にフォールバックを有効にする
     initTimer = setTimeout(() => {
       if (initReject) {
+        stopSnapshotRecording()
         initReject(
           new Error(
             `Worker initialization timed out after ${INIT_TIMEOUT_MS}ms`,
@@ -117,6 +115,7 @@ export function initWorker(
       worker.onerror = (e) => {
         console.error('SQLite Worker error:', e)
         if (initReject) {
+          stopSnapshotRecording()
           initReject(new Error(`Worker initialization failed: ${e.message}`))
           initReject = null
           initResolve = null
@@ -144,6 +143,8 @@ function handleMessage(event: MessageEvent<WorkerMessage>): void {
   switch (msg.type) {
     case 'init': {
       if (initResolve) {
+        // 初期化成功 — スナップショット記録を開始
+        startSnapshotRecording()
         initResolve(msg.persistence)
         initResolve = null
         initReject = null
@@ -429,11 +430,13 @@ export function terminateWorker(): void {
   worker?.terminate()
   worker = null
   pending.clear()
-  // キュー内の未送信リクエストを拒否してクリア
+  // キュー内の未送信リクエストを拒否してクリア（stats カウンタも減算）
   for (const queued of writeQueue) {
+    reportDequeue('write')
     queued.reject(new Error('Worker terminated'))
   }
   for (const queued of readQueue) {
+    reportDequeue('read')
     queued.reject(new Error('Worker terminated'))
   }
   writeQueue.length = 0

@@ -184,7 +184,7 @@ export const QueueStatsGraph = () => {
           <text
             fill={LABEL_COLOR}
             fontSize="8"
-            key={label}
+            key={`${x}-${label}`}
             textAnchor="middle"
             x={x}
             y={GRAPH_HEIGHT - 4}

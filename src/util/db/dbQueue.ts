@@ -151,9 +151,10 @@ export function reportDequeue(kind: QueueKind): void {
 
 /**
  * スナップショット履歴を返す（直近 MAX_SNAPSHOTS 件）。
+ * 呼び出し側から内部配列を破壊的変更できないよう、shallow copy を返す。
  */
 export function getSnapshots(): readonly QueueSnapshot[] {
-  return snapshots
+  return snapshots.slice()
 }
 
 /**
