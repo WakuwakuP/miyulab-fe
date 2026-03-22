@@ -3,6 +3,7 @@
 import { Notification } from 'app/_parts/Notification'
 import { Panel } from 'app/_parts/Panel'
 import { TimelineStreamIcon } from 'app/_parts/TimelineIcon'
+import { TimelineLoading } from 'app/_parts/TimelineLoading'
 import {
   useCallback,
   useEffect,
@@ -14,6 +15,7 @@ import {
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import type { NotificationAddAppIndex, TimelineConfigV2 } from 'types/types'
 import { CENTER_INDEX } from 'util/environment'
+import { useOtherQueueProgress } from 'util/hooks/useOtherQueueProgress'
 import { useTimelineData } from 'util/hooks/useTimelineData'
 
 export const NotificationTimeline = ({
@@ -24,6 +26,7 @@ export const NotificationTimeline = ({
   headerOffset?: string
 }) => {
   const { data: rawData, queryDuration, loadMore } = useTimelineData(config)
+  const { initializing } = useOtherQueueProgress()
   // Runtime type guard: filter out any non-notification items that may slip through
   const notifications = useMemo(
     () =>
@@ -105,26 +108,32 @@ export const NotificationTimeline = ({
       }}
       queryDuration={queryDuration}
     >
-      {enableScrollToTop && <TimelineStreamIcon />}
-      <Virtuoso
-        atTopStateChange={atTopStateChange}
-        atTopThreshold={20}
-        data={notifications}
-        endReached={loadMore}
-        firstItemIndex={internalIndex}
-        increaseViewportBy={200}
-        isScrolling={setIsScrolling}
-        itemContent={(_, notification) => (
-          <Notification
-            key={notification.id}
-            notification={notification}
-            scrolling={enableScrollToTop ? false : isScrolling}
+      {notifications.length === 0 && initializing ? (
+        <TimelineLoading />
+      ) : (
+        <>
+          {enableScrollToTop && <TimelineStreamIcon />}
+          <Virtuoso
+            atTopStateChange={atTopStateChange}
+            atTopThreshold={20}
+            data={notifications}
+            endReached={loadMore}
+            firstItemIndex={internalIndex}
+            increaseViewportBy={200}
+            isScrolling={setIsScrolling}
+            itemContent={(_, notification) => (
+              <Notification
+                key={notification.id}
+                notification={notification}
+                scrolling={enableScrollToTop ? false : isScrolling}
+              />
+            )}
+            onWheel={onWheel}
+            ref={scrollerRef}
+            totalCount={notifications.length}
           />
-        )}
-        onWheel={onWheel}
-        ref={scrollerRef}
-        totalCount={notifications.length}
-      />
+        </>
+      )}
     </Panel>
   )
 }
