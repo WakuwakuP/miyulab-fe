@@ -17,9 +17,9 @@ export type QueueKind = 'read' | 'write'
 export type QueueSnapshot = {
   /** 記録時刻 (performance.now()) */
   time: number
-  /** 書き込みキュー内アイテム数 */
+  /** 未完了の書き込みリクエスト数 (キュー待機中 + 実行中) */
   write: number
-  /** 読み込みキュー内アイテム数 */
+  /** 未完了の読み込みリクエスト数 (キュー待機中 + 実行中) */
   read: number
   /** 処理完了した書き込み数の累計 */
   writeProcessed: number

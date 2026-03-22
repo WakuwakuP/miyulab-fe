@@ -5,7 +5,8 @@
  * changedTables フィールドを元に notifyChange を自動発火する。
  *
  * 書き込みキューと読み込みキューの 2 本立てで、書き込みを優先的に処理する。
- * 読み込みキューは同一クエリ (SQL + bind) が未処理なら重複追加しない。
+ * execAsync は SQL 文を解析して自動的に read/write キューに振り分ける。
+ * 読み込みキューは同一クエリ (SQL + bind + returnValue) が未処理なら重複追加しない。
  */
 
 import type { QueueKind } from '../dbQueue'
@@ -30,6 +31,8 @@ import type {
 type PendingRequest = {
   resolve: (value: unknown) => void
   reject: (reason: Error) => void
+  kind: QueueKind
+  timer: ReturnType<typeof setTimeout>
 }
 
 type QueuedRequest = {
@@ -201,17 +204,38 @@ function handleMessage(event: MessageEvent<WorkerMessage>): void {
 // ================================================================
 
 // ================================================================
+// SQL 種別判定
+// ================================================================
+
+/** SQL 文が読み込み (SELECT) か書き込み (INSERT/UPDATE/DELETE 等) かを判定する。 */
+const WRITE_SQL_RE = /^\s*(INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|REPLACE)\b/i
+
+function classifySql(sql: string): QueueKind {
+  return WRITE_SQL_RE.test(sql) ? 'write' : 'read'
+}
+
+// ================================================================
 // 読み込みキュー重複排除ユーティリティ
 // ================================================================
 
 /**
- * exec リクエストの SQL + bind から重複排除用キーを生成する。
+ * exec リクエストの SQL + bind + returnValue から重複排除用キーを生成する。
+ * returnValue が異なると結果の形式が変わるため、キーに含める。
  */
 function makeReadDedupKey(message: { [key: string]: unknown }): string | null {
   if (message.type !== 'exec') return null
   const sql = message.sql as string
   const bind = message.bind as unknown[] | undefined
-  return bind ? `${sql}\0${JSON.stringify(bind)}` : sql
+  const returnValue = message.returnValue as string | undefined
+
+  const parts: string[] = [sql]
+  if (bind !== undefined) {
+    parts.push(JSON.stringify(bind))
+  }
+  if (returnValue !== undefined) {
+    parts.push(returnValue)
+  }
+  return parts.join('\0')
 }
 
 // ================================================================
@@ -317,6 +341,7 @@ function processQueue(): void {
   }, TIMEOUT_MS)
 
   pending.set(id, {
+    kind,
     reject: (reason: Error) => {
       clearTimeout(timer)
       activeRequest = false
@@ -331,6 +356,7 @@ function processQueue(): void {
       resolve(value)
       processQueue()
     },
+    timer,
   })
 
   worker.postMessage(message)
@@ -341,7 +367,8 @@ function processQueue(): void {
 // ================================================================
 
 /**
- * 汎用 READ 用 — 単一 SQL を Worker で実行する。
+ * 汎用 SQL 実行 — SQL の種類に応じて read/write キューに自動振り分けする。
+ * SELECT は read キュー（重複排除あり）、INSERT/UPDATE/DELETE 等は write キュー。
  */
 export function execAsync(
   sql: string,
@@ -358,11 +385,12 @@ export function execAsync(
     sql,
     type: 'exec',
   }
-  return sendRequest(request, 'read')
+  return sendRequest(request, classifySql(sql))
 }
 
 /**
- * 汎用 READ 用 — Worker 内の実際の SQL 実行時間も返す。
+ * 汎用 SQL 実行 — Worker 内の実際の SQL 実行時間も返す。
+ * SQL の種類に応じて read/write キューに自動振り分けする。
  */
 export async function execAsyncTimed(
   sql: string,
@@ -379,7 +407,7 @@ export async function execAsyncTimed(
     sql,
     type: 'exec',
   }
-  const result = await sendRequest(request, 'read')
+  const result = await sendRequest(request, classifySql(sql))
   const durationMs = durationForId.get(id) ?? 0
   durationForId.delete(id)
   return { durationMs, result }
@@ -429,6 +457,12 @@ export function sendCommand(command: SendCommandPayload): Promise<unknown> {
 export function terminateWorker(): void {
   worker?.terminate()
   worker = null
+  // 実行中 (in-flight) のリクエストを拒否してクリア
+  for (const req of pending.values()) {
+    clearTimeout(req.timer)
+    reportDequeue(req.kind)
+    req.reject(new Error('Worker terminated'))
+  }
   pending.clear()
   // キュー内の未送信リクエストを拒否してクリア（stats カウンタも減算）
   for (const queued of writeQueue) {

@@ -133,14 +133,14 @@ export const QueueStatsGraph = () => {
             className="inline-block h-2 w-3 rounded-sm"
             style={{ backgroundColor: WRITE_COLOR }}
           />
-          Write ({lastSnap?.write ?? 0} queued / {writeDelta} processed)
+          Write ({lastSnap?.write ?? 0} pending / {writeDelta} processed)
         </span>
         <span className="flex items-center gap-1">
           <span
             className="inline-block h-2 w-3 rounded-sm"
             style={{ backgroundColor: READ_COLOR }}
           />
-          Read ({lastSnap?.read ?? 0} queued / {readDelta} processed)
+          Read ({lastSnap?.read ?? 0} pending / {readDelta} processed)
         </span>
       </div>
 
