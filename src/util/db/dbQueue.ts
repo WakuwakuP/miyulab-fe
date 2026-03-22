@@ -1,9 +1,9 @@
 /**
  * DB 操作キューシステム
  *
- * 書き込み(write)キューと読み込み(read)キューを提供し、
- * 書き込みキューを優先して処理する。
- * 読み込みキューは同じクエリ(SQL + bind)が未処理なら新しく積まない。
+ * タイムライン取得(timeline)キューとそれ以外(other)キューを提供し、
+ * other キューを優先して処理する。
+ * timeline キューは同じクエリ(SQL + bind + returnValue)が未処理なら新しく積まない。
  * キューの変化をスナップショットとして記録し、グラフ表示に利用する。
  */
 
@@ -11,20 +11,20 @@
 // 型定義
 // ================================================================
 
-export type QueueKind = 'read' | 'write'
+export type QueueKind = 'other' | 'timeline'
 
 /** スナップショット1件 */
 export type QueueSnapshot = {
   /** 記録時刻 (performance.now()) */
   time: number
-  /** 未完了の書き込みリクエスト数 (キュー待機中 + 実行中) */
-  write: number
-  /** 未完了の読み込みリクエスト数 (キュー待機中 + 実行中) */
-  read: number
-  /** 処理完了した書き込み数の累計 */
-  writeProcessed: number
-  /** 処理完了した読み込み数の累計 */
-  readProcessed: number
+  /** 未完了の other リクエスト数 (キュー待機中 + 実行中) */
+  other: number
+  /** 未完了のタイムライン取得リクエスト数 (キュー待機中 + 実行中) */
+  timeline: number
+  /** 処理完了した other 数の累計 */
+  otherProcessed: number
+  /** 処理完了したタイムライン取得数の累計 */
+  timelineProcessed: number
 }
 
 /** キュー変更リスナー */
@@ -47,17 +47,17 @@ const SNAPSHOT_INTERVAL_MS = 500
 /** スナップショット履歴 (循環バッファ) */
 const snapshots: QueueSnapshot[] = []
 
-/** 書き込みキューの現在サイズ */
-let writeQueueSize = 0
+/** other キューの現在サイズ */
+let otherQueueSize = 0
 
-/** 読み込みキューの現在サイズ */
-let readQueueSize = 0
+/** タイムライン取得キューの現在サイズ */
+let timelineQueueSize = 0
 
-/** 処理済み書き込み数（累計） */
-let writeProcessedTotal = 0
+/** 処理済み other 数（累計） */
+let otherProcessedTotal = 0
 
-/** 処理済み読み込み数（累計） */
-let readProcessedTotal = 0
+/** 処理済みタイムライン取得数（累計） */
+let timelineProcessedTotal = 0
 
 /** 定期スナップショットタイマー */
 let snapshotTimerId: ReturnType<typeof setInterval> | null = null
@@ -71,11 +71,11 @@ const listeners = new Set<QueueChangeListener>()
 
 function recordSnapshot(): void {
   const snapshot: QueueSnapshot = {
-    read: readQueueSize,
-    readProcessed: readProcessedTotal,
+    other: otherQueueSize,
+    otherProcessed: otherProcessedTotal,
     time: performance.now(),
-    write: writeQueueSize,
-    writeProcessed: writeProcessedTotal,
+    timeline: timelineQueueSize,
+    timelineProcessed: timelineProcessedTotal,
   }
   snapshots.push(snapshot)
   if (snapshots.length > MAX_SNAPSHOTS) {
@@ -125,10 +125,10 @@ export function stopSnapshotRecording(): void {
  * キューにアイテムが追加されたときに呼ぶ。
  */
 export function reportEnqueue(kind: QueueKind): void {
-  if (kind === 'write') {
-    writeQueueSize++
+  if (kind === 'other') {
+    otherQueueSize++
   } else {
-    readQueueSize++
+    timelineQueueSize++
   }
 }
 
@@ -136,12 +136,12 @@ export function reportEnqueue(kind: QueueKind): void {
  * キューからアイテムが処理完了したときに呼ぶ。
  */
 export function reportDequeue(kind: QueueKind): void {
-  if (kind === 'write') {
-    writeQueueSize = Math.max(0, writeQueueSize - 1)
-    writeProcessedTotal++
+  if (kind === 'other') {
+    otherQueueSize = Math.max(0, otherQueueSize - 1)
+    otherProcessedTotal++
   } else {
-    readQueueSize = Math.max(0, readQueueSize - 1)
-    readProcessedTotal++
+    timelineQueueSize = Math.max(0, timelineQueueSize - 1)
+    timelineProcessedTotal++
   }
 }
 
@@ -160,8 +160,8 @@ export function getSnapshots(): readonly QueueSnapshot[] {
 /**
  * 現在のキューサイズを返す。
  */
-export function getCurrentQueueSizes(): { read: number; write: number } {
-  return { read: readQueueSize, write: writeQueueSize }
+export function getCurrentQueueSizes(): { other: number; timeline: number } {
+  return { other: otherQueueSize, timeline: timelineQueueSize }
 }
 
 // ================================================================

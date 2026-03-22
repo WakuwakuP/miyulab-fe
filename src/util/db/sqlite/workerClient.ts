@@ -4,9 +4,9 @@
  * Worker に対して型安全なメッセージを送信し、Promise で結果を受け取る。
  * changedTables フィールドを元に notifyChange を自動発火する。
  *
- * 書き込みキューと読み込みキューの 2 本立てで、書き込みを優先的に処理する。
- * execAsync は SQL 文を解析して自動的に read/write キューに振り分ける。
- * 読み込みキューは同一クエリ (SQL + bind + returnValue) が未処理なら重複追加しない。
+ * other キュー（書き込み・管理系読み込み等）と timeline キュー（タイムライン取得）
+ * の 2 本立てで、other キューを優先的に処理する。
+ * timeline キューは同一クエリ (SQL + bind + returnValue) が未処理なら重複追加しない。
  */
 
 import type { QueueKind } from '../dbQueue'
@@ -46,15 +46,15 @@ let worker: Worker | null = null
 let nextId = 0
 const pending = new Map<number, PendingRequest>()
 
-/** 書き込みキュー（優先） */
-const writeQueue: QueuedRequest[] = []
-/** 読み込みキュー */
-const readQueue: QueuedRequest[] = []
+/** other キュー（優先） */
+const otherQueue: QueuedRequest[] = []
+/** タイムライン取得キュー */
+const timelineQueue: QueuedRequest[] = []
 /**
- * 読み込みキューの重複排除マップ
- * key = SQL + JSON(bind), value = 共有される Promise の resolve/reject 配列
+ * タイムライン取得キューの重複排除マップ
+ * key = SQL + JSON(bind) + returnValue, value = 共有される Promise の resolve/reject 配列
  */
-const readDedup = new Map<
+const timelineDedup = new Map<
   string,
   { resolvers: ((v: unknown) => void)[]; rejectors: ((e: Error) => void)[] }
 >()
@@ -204,25 +204,16 @@ function handleMessage(event: MessageEvent<WorkerMessage>): void {
 // ================================================================
 
 // ================================================================
-// SQL 種別判定
-// ================================================================
-
-/** SQL 文が読み込み (SELECT) か書き込み (INSERT/UPDATE/DELETE 等) かを判定する。 */
-const WRITE_SQL_RE = /^\s*(INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|REPLACE)\b/i
-
-function classifySql(sql: string): QueueKind {
-  return WRITE_SQL_RE.test(sql) ? 'write' : 'read'
-}
-
-// ================================================================
-// 読み込みキュー重複排除ユーティリティ
+// タイムラインキュー重複排除ユーティリティ
 // ================================================================
 
 /**
- * exec リクエストの SQL + bind + returnValue から重複排除用キーを生成する。
+ * exec リクエストの SQL + bind + returnValue からタイムラインキュー重複排除用キーを生成する。
  * returnValue が異なると結果の形式が変わるため、キーに含める。
  */
-function makeReadDedupKey(message: { [key: string]: unknown }): string | null {
+function makeTimelineDedupKey(message: {
+  [key: string]: unknown
+}): string | null {
   if (message.type !== 'exec') return null
   const sql = message.sql as string
   const bind = message.bind as unknown[] | undefined
@@ -250,7 +241,7 @@ function makeReadDedupKey(message: { [key: string]: unknown }): string | null {
  * 実際の処理時間ではなくキュー待ち時間を含んでしまう。
  * キューで直列化し、タイムアウトは実際に送信した時点から計測する。
  *
- * kind='read' の場合、同一クエリが既にキューにあれば新たに積まず
+ * kind='timeline' の場合、同一クエリが既にキューにあれば新たに積まず
  * 既存リクエストの結果を共有する。
  */
 function sendRequest(
@@ -259,56 +250,56 @@ function sendRequest(
     id: number
     [key: string]: unknown
   },
-  kind: QueueKind = 'write',
+  kind: QueueKind = 'other',
 ): Promise<unknown> {
   if (!worker) {
     return Promise.reject(new Error('Worker not initialized'))
   }
 
   return new Promise<unknown>((resolve, reject) => {
-    // 読み込みキューの重複排除
-    if (kind === 'read') {
-      const dedupKey = makeReadDedupKey(message)
+    // タイムラインキューの重複排除
+    if (kind === 'timeline') {
+      const dedupKey = makeTimelineDedupKey(message)
       if (dedupKey != null) {
-        const existing = readDedup.get(dedupKey)
+        const existing = timelineDedup.get(dedupKey)
         if (existing) {
           // 同じクエリが未処理なら新しく積まない — 結果を共有
           existing.resolvers.push(resolve)
           existing.rejectors.push(reject)
           return
         }
-        readDedup.set(dedupKey, {
+        timelineDedup.set(dedupKey, {
           rejectors: [reject],
           resolvers: [resolve],
         })
         // ラップされた resolve/reject で全待機者に通知する
         const sharedResolve = (value: unknown) => {
-          const entry = readDedup.get(dedupKey)
-          readDedup.delete(dedupKey)
+          const entry = timelineDedup.get(dedupKey)
+          timelineDedup.delete(dedupKey)
           if (entry) {
             for (const r of entry.resolvers) r(value)
           }
         }
         const sharedReject = (reason: Error) => {
-          const entry = readDedup.get(dedupKey)
-          readDedup.delete(dedupKey)
+          const entry = timelineDedup.get(dedupKey)
+          timelineDedup.delete(dedupKey)
           if (entry) {
             for (const r of entry.rejectors) r(reason)
           }
         }
-        readQueue.push({
+        timelineQueue.push({
           kind,
           message,
           reject: sharedReject,
           resolve: sharedResolve,
         })
-        reportEnqueue('read')
+        reportEnqueue('timeline')
         processQueue()
         return
       }
     }
 
-    const queue = kind === 'write' ? writeQueue : readQueue
+    const queue = kind === 'other' ? otherQueue : timelineQueue
     queue.push({ kind, message, reject, resolve })
     reportEnqueue(kind)
     processQueue()
@@ -318,12 +309,12 @@ function sendRequest(
 function processQueue(): void {
   if (activeRequest || !worker) return
 
-  // 書き込みキューを優先
+  // other キューを優先
   let next: QueuedRequest | undefined
-  if (writeQueue.length > 0) {
-    next = writeQueue.shift()
-  } else if (readQueue.length > 0) {
-    next = readQueue.shift()
+  if (otherQueue.length > 0) {
+    next = otherQueue.shift()
+  } else if (timelineQueue.length > 0) {
+    next = timelineQueue.shift()
   }
   if (!next) return
   activeRequest = true
@@ -367,14 +358,15 @@ function processQueue(): void {
 // ================================================================
 
 /**
- * 汎用 SQL 実行 — SQL の種類に応じて read/write キューに自動振り分けする。
- * SELECT は read キュー（重複排除あり）、INSERT/UPDATE/DELETE 等は write キュー。
+ * 汎用 SQL 実行 — デフォルトは other キュー。
+ * タイムライン取得は opts.kind='timeline' で timeline キュー（重複排除あり）に振り分け可能。
  */
 export function execAsync(
   sql: string,
   opts?: {
     bind?: (string | number | null)[]
     returnValue?: 'resultRows'
+    kind?: QueueKind
   },
 ): Promise<unknown> {
   const id = nextId++
@@ -385,18 +377,19 @@ export function execAsync(
     sql,
     type: 'exec',
   }
-  return sendRequest(request, classifySql(sql))
+  return sendRequest(request, opts?.kind ?? 'other')
 }
 
 /**
  * 汎用 SQL 実行 — Worker 内の実際の SQL 実行時間も返す。
- * SQL の種類に応じて read/write キューに自動振り分けする。
+ * デフォルトは other キュー。opts.kind='timeline' で timeline キューに振り分け可能。
  */
 export async function execAsyncTimed(
   sql: string,
   opts?: {
     bind?: (string | number | null)[]
     returnValue?: 'resultRows'
+    kind?: QueueKind
   },
 ): Promise<{ result: unknown; durationMs: number }> {
   const id = nextId++
@@ -407,7 +400,7 @@ export async function execAsyncTimed(
     sql,
     type: 'exec',
   }
-  const result = await sendRequest(request, classifySql(sql))
+  const result = await sendRequest(request, opts?.kind ?? 'other')
   const durationMs = durationForId.get(id) ?? 0
   durationForId.delete(id)
   return { durationMs, result }
@@ -435,7 +428,7 @@ export function execBatch(
     statements,
     type: 'execBatch',
   }
-  return sendRequest(request, 'write') as Promise<Record<number, unknown>>
+  return sendRequest(request, 'other') as Promise<Record<number, unknown>>
 }
 
 /**
@@ -448,7 +441,7 @@ export function sendCommand(command: SendCommandPayload): Promise<unknown> {
     id: number
     [key: string]: unknown
   }
-  return sendRequest(message, 'write')
+  return sendRequest(message, 'other')
 }
 
 /**
@@ -465,17 +458,17 @@ export function terminateWorker(): void {
   }
   pending.clear()
   // キュー内の未送信リクエストを拒否してクリア（stats カウンタも減算）
-  for (const queued of writeQueue) {
-    reportDequeue('write')
+  for (const queued of otherQueue) {
+    reportDequeue('other')
     queued.reject(new Error('Worker terminated'))
   }
-  for (const queued of readQueue) {
-    reportDequeue('read')
+  for (const queued of timelineQueue) {
+    reportDequeue('timeline')
     queued.reject(new Error('Worker terminated'))
   }
-  writeQueue.length = 0
-  readQueue.length = 0
-  readDedup.clear()
+  otherQueue.length = 0
+  timelineQueue.length = 0
+  timelineDedup.clear()
   activeRequest = false
   initPromise = null
   initResolve = null

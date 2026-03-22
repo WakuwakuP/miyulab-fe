@@ -324,6 +324,7 @@ export async function getNotifications(
 
   const rows = (await handle.execAsync(sql, {
     bind: binds,
+    kind: 'timeline',
     returnValue: 'resultRows',
   })) as (string | number | null)[][]
 

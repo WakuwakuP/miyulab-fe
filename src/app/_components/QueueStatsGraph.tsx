@@ -17,8 +17,8 @@ const PADDING = { bottom: 20, left: 36, right: 12, top: 12 }
 const PLOT_W = GRAPH_WIDTH - PADDING.left - PADDING.right
 const PLOT_H = GRAPH_HEIGHT - PADDING.top - PADDING.bottom
 
-const WRITE_COLOR = '#f97316' // orange-500
-const READ_COLOR = '#3b82f6' // blue-500
+const OTHER_COLOR = '#f97316' // orange-500
+const TIMELINE_COLOR = '#3b82f6' // blue-500
 const GRID_COLOR = '#374151' // gray-700
 const LABEL_COLOR = '#9ca3af' // gray-400
 
@@ -74,7 +74,10 @@ export const QueueStatsGraph = () => {
   }, [refresh])
 
   // Y 軸の最大値を算出
-  const maxY = Math.max(1, ...snapshots.map((s) => Math.max(s.write, s.read)))
+  const maxY = Math.max(
+    1,
+    ...snapshots.map((s) => Math.max(s.other, s.timeline)),
+  )
 
   // 時間範囲
   const timeMin = snapshots.length > 0 ? snapshots[0].time : 0
@@ -90,21 +93,23 @@ export const QueueStatsGraph = () => {
   const lastSnap = snapshots[snapshots.length - 1]
   const writeDelta =
     firstSnap && lastSnap
-      ? lastSnap.writeProcessed - firstSnap.writeProcessed
+      ? lastSnap.otherProcessed - firstSnap.otherProcessed
       : 0
   const readDelta =
-    firstSnap && lastSnap ? lastSnap.readProcessed - firstSnap.readProcessed : 0
+    firstSnap && lastSnap
+      ? lastSnap.timelineProcessed - firstSnap.timelineProcessed
+      : 0
 
-  const writePoints = toPolylinePoints(
+  const otherPoints = toPolylinePoints(
     snapshots,
-    (s) => s.write,
+    (s) => s.other,
     maxY,
     timeMin,
     timeRange,
   )
-  const readPoints = toPolylinePoints(
+  const timelinePoints = toPolylinePoints(
     snapshots,
-    (s) => s.read,
+    (s) => s.timeline,
     maxY,
     timeMin,
     timeRange,
@@ -131,16 +136,16 @@ export const QueueStatsGraph = () => {
         <span className="flex items-center gap-1">
           <span
             className="inline-block h-2 w-3 rounded-sm"
-            style={{ backgroundColor: WRITE_COLOR }}
+            style={{ backgroundColor: OTHER_COLOR }}
           />
-          Write ({lastSnap?.write ?? 0} pending / {writeDelta} processed)
+          Other ({lastSnap?.other ?? 0} pending / {writeDelta} processed)
         </span>
         <span className="flex items-center gap-1">
           <span
             className="inline-block h-2 w-3 rounded-sm"
-            style={{ backgroundColor: READ_COLOR }}
+            style={{ backgroundColor: TIMELINE_COLOR }}
           />
-          Read ({lastSnap?.read ?? 0} pending / {readDelta} processed)
+          Timeline ({lastSnap?.timeline ?? 0} pending / {readDelta} processed)
         </span>
       </div>
 
@@ -193,23 +198,23 @@ export const QueueStatsGraph = () => {
           </text>
         ))}
 
-        {/* Write ライン */}
-        {writePoints && (
+        {/* Other ライン */}
+        {otherPoints && (
           <polyline
             fill="none"
-            points={writePoints}
-            stroke={WRITE_COLOR}
+            points={otherPoints}
+            stroke={OTHER_COLOR}
             strokeLinejoin="round"
             strokeWidth="1.5"
           />
         )}
 
-        {/* Read ライン */}
-        {readPoints && (
+        {/* Timeline ライン */}
+        {timelinePoints && (
           <polyline
             fill="none"
-            points={readPoints}
-            stroke={READ_COLOR}
+            points={timelinePoints}
+            stroke={TIMELINE_COLOR}
             strokeLinejoin="round"
             strokeWidth="1.5"
           />

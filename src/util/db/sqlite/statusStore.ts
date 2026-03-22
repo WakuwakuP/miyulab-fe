@@ -661,30 +661,37 @@ export async function executeBatchQueries(
   ] = await Promise.all([
     handle.execAsync(replacePlaceholders(BATCH_ENGAGEMENTS_SQL, count), {
       bind: allPostIds,
+      kind: 'timeline',
       returnValue: 'resultRows',
     }) as Promise<(string | number | null)[][]>,
     handle.execAsync(replacePlaceholders(BATCH_MEDIA_SQL, count), {
       bind: allPostIds,
+      kind: 'timeline',
       returnValue: 'resultRows',
     }) as Promise<(string | number | null)[][]>,
     handle.execAsync(replacePlaceholders(BATCH_MENTIONS_SQL, count), {
       bind: allPostIds,
+      kind: 'timeline',
       returnValue: 'resultRows',
     }) as Promise<(string | number | null)[][]>,
     handle.execAsync(replacePlaceholders(BATCH_TIMELINE_TYPES_SQL, count), {
       bind: allPostIds,
+      kind: 'timeline',
       returnValue: 'resultRows',
     }) as Promise<(string | number | null)[][]>,
     handle.execAsync(replacePlaceholders(BATCH_BELONGING_TAGS_SQL, count), {
       bind: allPostIds,
+      kind: 'timeline',
       returnValue: 'resultRows',
     }) as Promise<(string | number | null)[][]>,
     handle.execAsync(replacePlaceholders(BATCH_CUSTOM_EMOJIS_SQL, count), {
       bind: allPostIds,
+      kind: 'timeline',
       returnValue: 'resultRows',
     }) as Promise<(string | number | null)[][]>,
     handle.execAsync(replacePlaceholders(BATCH_POLLS_SQL, count), {
       bind: allPostIds,
+      kind: 'timeline',
       returnValue: 'resultRows',
     }) as Promise<(string | number | null)[][]>,
   ])
@@ -1048,6 +1055,7 @@ async function fetchStatusesByIds(
   `
   const baseRows = (await handle.execAsync(baseSql, {
     bind: postIds,
+    kind: 'timeline',
     returnValue: 'resultRows',
   })) as (string | number | null)[][]
 
@@ -1291,6 +1299,7 @@ export async function getStatusesByTimelineType(
 
   const idRows = (await handle.execAsync(phase1Sql, {
     bind: phase1Binds,
+    kind: 'timeline',
     returnValue: 'resultRows',
   })) as (string | number | null)[][]
 
@@ -1339,6 +1348,7 @@ export async function getStatusesByTag(
 
   const idRows = (await handle.execAsync(phase1Sql, {
     bind: phase1Binds,
+    kind: 'timeline',
     returnValue: 'resultRows',
   })) as (number | null)[][]
 
@@ -1381,6 +1391,7 @@ export async function getBookmarkedStatuses(
 
   const idRows = (await handle.execAsync(phase1Sql, {
     bind: phase1Binds,
+    kind: 'timeline',
     returnValue: 'resultRows',
   })) as (number | null)[][]
 
@@ -1519,6 +1530,7 @@ export async function getStatusesByCustomQuery(
 
   const idRows = (await handle.execAsync(phase1Sql, {
     bind: phase1Binds,
+    kind: 'timeline',
     returnValue: 'resultRows',
   })) as (number | null)[][]
 

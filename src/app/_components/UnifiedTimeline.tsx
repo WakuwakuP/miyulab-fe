@@ -178,7 +178,11 @@ export const UnifiedTimeline = ({
                  WHERE pbt.tag = ? AND pb2.backendUrl = ?
                  ORDER BY p.created_at_ms ASC
                  LIMIT 1;`,
-                { bind: [tag, url], returnValue: 'resultRows' },
+                {
+                  bind: [tag, url],
+                  kind: 'timeline',
+                  returnValue: 'resultRows',
+                },
               )) as string[][]
               if (rows.length > 0) {
                 oldestId = rows[0][0]
@@ -196,7 +200,11 @@ export const UnifiedTimeline = ({
                WHERE pb2.backendUrl = ? AND ck.code = ?
                ORDER BY p.created_at_ms ASC
                LIMIT 1;`,
-              { bind: [url, timelineType], returnValue: 'resultRows' },
+              {
+                bind: [url, timelineType],
+                kind: 'timeline',
+                returnValue: 'resultRows',
+              },
             )) as string[][]
             if (rows.length > 0) {
               oldestId = rows[0][0]
