@@ -236,6 +236,7 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
       const { result: idRowsRaw, durationMs: phase1Duration } =
         await handle.execAsyncTimed(phase1Sql, {
           bind: phase1Binds,
+          kind: 'timeline',
           returnValue: 'resultRows',
         })
       const idRows = idRowsRaw as (number | null)[][]
@@ -262,6 +263,7 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
       const { result: baseRowsRaw, durationMs: phase2Duration } =
         await handle.execAsyncTimed(phase2BaseSql, {
           bind: postIds,
+          kind: 'timeline',
           returnValue: 'resultRows',
         })
       const baseRows = baseRowsRaw as (string | number | null)[][]

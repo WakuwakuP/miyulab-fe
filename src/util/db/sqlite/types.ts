@@ -10,6 +10,8 @@ import type { BindValue, SendCommandPayload } from './protocol'
 export type ExecOpts = {
   bind?: BindValue[]
   returnValue?: 'resultRows'
+  /** キュー振り分け: 'timeline' はタイムライン取得キュー（低優先・重複排除あり）、'other' はそれ以外（優先処理） */
+  kind?: 'timeline' | 'other'
 }
 
 /** バッチ SQL ステートメント */

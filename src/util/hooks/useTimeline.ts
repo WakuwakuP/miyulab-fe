@@ -75,6 +75,7 @@ export function useTimeline(timelineType: TimelineType): StatusAddAppIndex[] {
 
       const rows = (await handle.execAsync(sql, {
         bind: binds,
+        kind: 'timeline',
         returnValue: 'resultRows',
       })) as (string | number | null)[][]
 
@@ -153,6 +154,7 @@ export function useTagTimeline(
 
       const rows = (await handle.execAsync(sql, {
         bind: binds,
+        kind: 'timeline',
         returnValue: 'resultRows',
       })) as (string | number | null)[][]
 

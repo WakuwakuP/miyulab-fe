@@ -3,8 +3,19 @@
  *
  * Worker に対して型安全なメッセージを送信し、Promise で結果を受け取る。
  * changedTables フィールドを元に notifyChange を自動発火する。
+ *
+ * other キュー（書き込み・管理系読み込み等）と timeline キュー（タイムライン取得）
+ * の 2 本立てで、other キューを優先的に処理する。
+ * timeline キューは同一クエリ (SQL + bind + returnValue) が未処理なら重複追加しない。
  */
 
+import type { QueueKind } from '../dbQueue'
+import {
+  reportDequeue,
+  reportEnqueue,
+  startSnapshotRecording,
+  stopSnapshotRecording,
+} from '../dbQueue'
 import type {
   ExecBatchRequest,
   ExecRequest,
@@ -20,18 +31,34 @@ import type {
 type PendingRequest = {
   resolve: (value: unknown) => void
   reject: (reason: Error) => void
+  kind: QueueKind
+  timer: ReturnType<typeof setTimeout>
 }
 
 type QueuedRequest = {
   message: { type: string; id: number; [key: string]: unknown }
   resolve: (value: unknown) => void
   reject: (reason: Error) => void
+  kind: QueueKind
 }
 
 let worker: Worker | null = null
 let nextId = 0
 const pending = new Map<number, PendingRequest>()
-const requestQueue: QueuedRequest[] = []
+
+/** other キュー（優先） */
+const otherQueue: QueuedRequest[] = []
+/** タイムライン取得キュー */
+const timelineQueue: QueuedRequest[] = []
+/**
+ * タイムライン取得キューの重複排除マップ
+ * key = SQL + JSON(bind) + returnValue, value = 共有される Promise の resolve/reject 配列
+ */
+const timelineDedup = new Map<
+  string,
+  { resolvers: ((v: unknown) => void)[]; rejectors: ((e: Error) => void)[] }
+>()
+
 let activeRequest = false
 let notifyChangeCallback: ((table: TableName) => void) | null = null
 let initResolve: ((persistence: 'opfs' | 'memory') => void) | null = null
@@ -67,6 +94,7 @@ export function initWorker(
     // Worker 初期化タイムアウト — init メッセージが来ない場合にフォールバックを有効にする
     initTimer = setTimeout(() => {
       if (initReject) {
+        stopSnapshotRecording()
         initReject(
           new Error(
             `Worker initialization timed out after ${INIT_TIMEOUT_MS}ms`,
@@ -90,6 +118,7 @@ export function initWorker(
       worker.onerror = (e) => {
         console.error('SQLite Worker error:', e)
         if (initReject) {
+          stopSnapshotRecording()
           initReject(new Error(`Worker initialization failed: ${e.message}`))
           initReject = null
           initResolve = null
@@ -117,6 +146,8 @@ function handleMessage(event: MessageEvent<WorkerMessage>): void {
   switch (msg.type) {
     case 'init': {
       if (initResolve) {
+        // 初期化成功 — スナップショット記録を開始
+        startSnapshotRecording()
         initResolve(msg.persistence)
         initResolve = null
         initReject = null
@@ -172,6 +203,36 @@ function handleMessage(event: MessageEvent<WorkerMessage>): void {
 // RPC ユーティリティ
 // ================================================================
 
+// ================================================================
+// タイムラインキュー重複排除ユーティリティ
+// ================================================================
+
+/**
+ * exec リクエストの SQL + bind + returnValue からタイムラインキュー重複排除用キーを生成する。
+ * returnValue が異なると結果の形式が変わるため、キーに含める。
+ */
+function makeTimelineDedupKey(message: {
+  [key: string]: unknown
+}): string | null {
+  if (message.type !== 'exec') return null
+  const sql = message.sql as string
+  const bind = message.bind as unknown[] | undefined
+  const returnValue = message.returnValue as string | undefined
+
+  const parts: string[] = [sql]
+  if (bind !== undefined) {
+    parts.push(JSON.stringify(bind))
+  }
+  if (returnValue !== undefined) {
+    parts.push(returnValue)
+  }
+  return parts.join('\0')
+}
+
+// ================================================================
+// キュー操作
+// ================================================================
+
 /**
  * リクエストをキューに追加し、順番に Worker へ送信する。
  *
@@ -179,34 +240,91 @@ function handleMessage(event: MessageEvent<WorkerMessage>): void {
  * 一度に複数の postMessage を送ると後続リクエストのタイムアウトが
  * 実際の処理時間ではなくキュー待ち時間を含んでしまう。
  * キューで直列化し、タイムアウトは実際に送信した時点から計測する。
+ *
+ * kind='timeline' の場合、同一クエリが既にキューにあれば新たに積まず
+ * 既存リクエストの結果を共有する。
  */
-function sendRequest(message: {
-  type: string
-  id: number
-  [key: string]: unknown
-}): Promise<unknown> {
+function sendRequest(
+  message: {
+    type: string
+    id: number
+    [key: string]: unknown
+  },
+  kind: QueueKind = 'other',
+): Promise<unknown> {
   if (!worker) {
     return Promise.reject(new Error('Worker not initialized'))
   }
 
   return new Promise<unknown>((resolve, reject) => {
-    requestQueue.push({ message, reject, resolve })
+    // タイムラインキューの重複排除
+    if (kind === 'timeline') {
+      const dedupKey = makeTimelineDedupKey(message)
+      if (dedupKey != null) {
+        const existing = timelineDedup.get(dedupKey)
+        if (existing) {
+          // 同じクエリが未処理なら新しく積まない — 結果を共有
+          existing.resolvers.push(resolve)
+          existing.rejectors.push(reject)
+          return
+        }
+        timelineDedup.set(dedupKey, {
+          rejectors: [reject],
+          resolvers: [resolve],
+        })
+        // ラップされた resolve/reject で全待機者に通知する
+        const sharedResolve = (value: unknown) => {
+          const entry = timelineDedup.get(dedupKey)
+          timelineDedup.delete(dedupKey)
+          if (entry) {
+            for (const r of entry.resolvers) r(value)
+          }
+        }
+        const sharedReject = (reason: Error) => {
+          const entry = timelineDedup.get(dedupKey)
+          timelineDedup.delete(dedupKey)
+          if (entry) {
+            for (const r of entry.rejectors) r(reason)
+          }
+        }
+        timelineQueue.push({
+          kind,
+          message,
+          reject: sharedReject,
+          resolve: sharedResolve,
+        })
+        reportEnqueue('timeline')
+        processQueue()
+        return
+      }
+    }
+
+    const queue = kind === 'other' ? otherQueue : timelineQueue
+    queue.push({ kind, message, reject, resolve })
+    reportEnqueue(kind)
     processQueue()
   })
 }
 
 function processQueue(): void {
-  if (activeRequest || requestQueue.length === 0 || !worker) return
+  if (activeRequest || !worker) return
 
-  const next = requestQueue.shift()
+  // other キューを優先
+  let next: QueuedRequest | undefined
+  if (otherQueue.length > 0) {
+    next = otherQueue.shift()
+  } else if (timelineQueue.length > 0) {
+    next = timelineQueue.shift()
+  }
   if (!next) return
   activeRequest = true
-  const { message, resolve, reject } = next
+  const { kind, message, resolve, reject } = next
   const id = message.id
 
   const timer = setTimeout(() => {
     pending.delete(id)
     activeRequest = false
+    reportDequeue(kind)
     reject(
       new Error(`Worker request timed out (id=${id}, type=${message.type})`),
     )
@@ -214,18 +332,22 @@ function processQueue(): void {
   }, TIMEOUT_MS)
 
   pending.set(id, {
+    kind,
     reject: (reason: Error) => {
       clearTimeout(timer)
       activeRequest = false
+      reportDequeue(kind)
       reject(reason)
       processQueue()
     },
     resolve: (value: unknown) => {
       clearTimeout(timer)
       activeRequest = false
+      reportDequeue(kind)
       resolve(value)
       processQueue()
     },
+    timer,
   })
 
   worker.postMessage(message)
@@ -236,13 +358,15 @@ function processQueue(): void {
 // ================================================================
 
 /**
- * 汎用 READ 用 — 単一 SQL を Worker で実行する。
+ * 汎用 SQL 実行 — デフォルトは other キュー。
+ * タイムライン取得は opts.kind='timeline' で timeline キュー（重複排除あり）に振り分け可能。
  */
 export function execAsync(
   sql: string,
   opts?: {
     bind?: (string | number | null)[]
     returnValue?: 'resultRows'
+    kind?: QueueKind
   },
 ): Promise<unknown> {
   const id = nextId++
@@ -253,17 +377,19 @@ export function execAsync(
     sql,
     type: 'exec',
   }
-  return sendRequest(request)
+  return sendRequest(request, opts?.kind ?? 'other')
 }
 
 /**
- * 汎用 READ 用 — Worker 内の実際の SQL 実行時間も返す。
+ * 汎用 SQL 実行 — Worker 内の実際の SQL 実行時間も返す。
+ * デフォルトは other キュー。opts.kind='timeline' で timeline キューに振り分け可能。
  */
 export async function execAsyncTimed(
   sql: string,
   opts?: {
     bind?: (string | number | null)[]
     returnValue?: 'resultRows'
+    kind?: QueueKind
   },
 ): Promise<{ result: unknown; durationMs: number }> {
   const id = nextId++
@@ -274,7 +400,7 @@ export async function execAsyncTimed(
     sql,
     type: 'exec',
   }
-  const result = await sendRequest(request)
+  const result = await sendRequest(request, opts?.kind ?? 'other')
   const durationMs = durationForId.get(id) ?? 0
   durationForId.delete(id)
   return { durationMs, result }
@@ -302,7 +428,7 @@ export function execBatch(
     statements,
     type: 'execBatch',
   }
-  return sendRequest(request) as Promise<Record<number, unknown>>
+  return sendRequest(request, 'other') as Promise<Record<number, unknown>>
 }
 
 /**
@@ -315,7 +441,7 @@ export function sendCommand(command: SendCommandPayload): Promise<unknown> {
     id: number
     [key: string]: unknown
   }
-  return sendRequest(message)
+  return sendRequest(message, 'other')
 }
 
 /**
@@ -324,16 +450,30 @@ export function sendCommand(command: SendCommandPayload): Promise<unknown> {
 export function terminateWorker(): void {
   worker?.terminate()
   worker = null
+  // 実行中 (in-flight) のリクエストを拒否してクリア
+  for (const req of pending.values()) {
+    clearTimeout(req.timer)
+    reportDequeue(req.kind)
+    req.reject(new Error('Worker terminated'))
+  }
   pending.clear()
-  // キュー内の未送信リクエストを拒否してクリア
-  for (const queued of requestQueue) {
+  // キュー内の未送信リクエストを拒否してクリア（stats カウンタも減算）
+  for (const queued of otherQueue) {
+    reportDequeue('other')
     queued.reject(new Error('Worker terminated'))
   }
-  requestQueue.length = 0
+  for (const queued of timelineQueue) {
+    reportDequeue('timeline')
+    queued.reject(new Error('Worker terminated'))
+  }
+  otherQueue.length = 0
+  timelineQueue.length = 0
+  timelineDedup.clear()
   activeRequest = false
   initPromise = null
   initResolve = null
   initReject = null
   notifyChangeCallback = null
   nextId = 0
+  stopSnapshotRecording()
 }

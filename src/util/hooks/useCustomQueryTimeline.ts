@@ -348,12 +348,14 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         const { result: statusIdRowsRaw, durationMs: statusPhase1Dur } =
           await handle.execAsyncTimed(statusPhase1Sql, {
             bind: [...statusMediaBinds, queryLimit],
+            kind: 'timeline',
             returnValue: 'resultRows',
           })
         const statusIdRows = statusIdRowsRaw as (string | number | null)[][]
         const { result: notifIdRowsRaw, durationMs: notifPhase1Dur } =
           await handle.execAsyncTimed(notifPhase1Sql, {
             bind: [queryLimit],
+            kind: 'timeline',
             returnValue: 'resultRows',
           })
         const notifIdRows = notifIdRowsRaw as (string | number | null)[][]
@@ -396,6 +398,7 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           const { result: statusBaseRowsRaw, durationMs: dur } =
             await handle.execAsyncTimed(statusBaseSql, {
               bind: postIdsToFetch,
+              kind: 'timeline',
               returnValue: 'resultRows',
             })
           const statusBaseRows = statusBaseRowsRaw as (
@@ -438,6 +441,7 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           const { result: notifDetailRowsRaw, durationMs: dur } =
             await handle.execAsyncTimed(notifDetailSql, {
               bind: notifIdsToFetch,
+              kind: 'timeline',
               returnValue: 'resultRows',
             })
           notifPhase2Dur = dur
@@ -484,6 +488,7 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           sql,
           {
             bind: binds,
+            kind: 'timeline',
             returnValue: 'resultRows',
           },
         )
@@ -560,6 +565,7 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         const { result: idRowsRaw, durationMs: phase1Duration } =
           await handle.execAsyncTimed(phase1Sql, {
             bind: phase1Binds,
+            kind: 'timeline',
             returnValue: 'resultRows',
           })
         const idRows = idRowsRaw as (number | null)[][]
@@ -587,6 +593,7 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         const { result: baseRowsRaw, durationMs: phase2Duration } =
           await handle.execAsyncTimed(phase2BaseSql, {
             bind: postIds,
+            kind: 'timeline',
             returnValue: 'resultRows',
           })
         const baseRows = baseRowsRaw as (string | number | null)[][]

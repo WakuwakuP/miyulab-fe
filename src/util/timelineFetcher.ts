@@ -114,7 +114,11 @@ export async function fetchMoreData(
            WHERE pbt.tag = ? AND p.origin_backend_url = ?
            ORDER BY p.created_at_ms ASC
            LIMIT 1;`,
-          { bind: [tag, backendUrl], returnValue: 'resultRows' },
+          {
+            bind: [tag, backendUrl],
+            kind: 'timeline',
+            returnValue: 'resultRows',
+          },
         )) as string[][]
 
         let tagMaxId = maxId

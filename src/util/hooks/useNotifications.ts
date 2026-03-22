@@ -156,6 +156,7 @@ export function useNotifications(config?: TimelineConfigV2): {
 
       const { result: rowsRaw, durationMs } = await handle.execAsyncTimed(sql, {
         bind: binds,
+        kind: 'timeline',
         returnValue: 'resultRows',
       })
       const rows = rowsRaw as (string | number)[][]
