@@ -1,13 +1,19 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { getCurrentQueueSizes, subscribeQueueStats } from 'util/db/dbQueue'
+import {
+  getCurrentQueueSizes,
+  hasOtherQueueBeenActive,
+  subscribeQueueStats,
+} from 'util/db/dbQueue'
 
 /**
  * 初回のOtherキューが空になるまでの進捗を追跡するHook。
  *
  * - `initializing`: Otherキューがまだ処理中であれば `true`
- * - Otherキューが一度でも 0 になったら `false` に遷移し、以降は `false` を維持する
+ * - Otherキューに一度でもアイテムが追加され、その後 0 になったら `false` に遷移し、
+ *   以降は `false` を維持する
+ * - キューへのアイテム追加前に 0 であっても `false` にはしない（レース回避）
  *
  * タイムライン構築の初期化完了を判定するために使用する。
  */
@@ -23,6 +29,8 @@ export function useOtherQueueProgress(): {
 
     const check = () => {
       if (doneRef.current) return
+      // キューがまだ一度も使われていなければ完了とみなさない
+      if (!hasOtherQueueBeenActive()) return
       const { other } = getCurrentQueueSizes()
       if (other === 0) {
         doneRef.current = true
