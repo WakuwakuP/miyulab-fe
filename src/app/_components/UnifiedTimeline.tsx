@@ -3,6 +3,7 @@
 import { Panel } from 'app/_parts/Panel'
 import { Status } from 'app/_parts/Status'
 import { TimelineStreamIcon } from 'app/_parts/TimelineIcon'
+import { TimelineLoading } from 'app/_parts/TimelineLoading'
 import {
   useCallback,
   useContext,
@@ -16,6 +17,7 @@ import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import type { StatusAddAppIndex, TimelineConfigV2 } from 'types/types'
 import { CENTER_INDEX } from 'util/environment'
 import { GetClient } from 'util/GetClient'
+import { useOtherQueueProgress } from 'util/hooks/useOtherQueueProgress'
 import { useTimelineData } from 'util/hooks/useTimelineData'
 import { AppsContext } from 'util/provider/AppsProvider'
 import {
@@ -62,6 +64,7 @@ export const UnifiedTimeline = ({
   const apps = useContext(AppsContext)
   const scrollerRef = useRef<VirtuosoHandle>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const { initializing } = useOtherQueueProgress()
 
   // データ取得
   const {
@@ -279,26 +282,32 @@ export const UnifiedTimeline = ({
       onClickHeader={() => scrollToTop()}
       queryDuration={queryDuration}
     >
-      {enableScrollToTop && <TimelineStreamIcon />}
-      <Virtuoso
-        atTopStateChange={atTopStateChange}
-        atTopThreshold={20}
-        data={timeline}
-        endReached={moreLoad}
-        firstItemIndex={internalIndex}
-        increaseViewportBy={200}
-        isScrolling={setIsScrolling}
-        itemContent={(_, status) => (
-          <Status
-            key={status.id}
-            scrolling={enableScrollToTop ? false : isScrolling}
-            status={status}
+      {timeline.length === 0 && initializing ? (
+        <TimelineLoading />
+      ) : (
+        <>
+          {enableScrollToTop && <TimelineStreamIcon />}
+          <Virtuoso
+            atTopStateChange={atTopStateChange}
+            atTopThreshold={20}
+            data={timeline}
+            endReached={moreLoad}
+            firstItemIndex={internalIndex}
+            increaseViewportBy={200}
+            isScrolling={setIsScrolling}
+            itemContent={(_, status) => (
+              <Status
+                key={status.id}
+                scrolling={enableScrollToTop ? false : isScrolling}
+                status={status}
+              />
+            )}
+            onWheel={onWheel}
+            ref={scrollerRef}
+            totalCount={timeline.length}
           />
-        )}
-        onWheel={onWheel}
-        ref={scrollerRef}
-        totalCount={timeline.length}
-      />
+        </>
+      )}
     </Panel>
   )
 }

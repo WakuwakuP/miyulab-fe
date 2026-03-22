@@ -4,6 +4,7 @@ import { Notification } from 'app/_parts/Notification'
 import { Panel } from 'app/_parts/Panel'
 import { Status } from 'app/_parts/Status'
 import { TimelineStreamIcon } from 'app/_parts/TimelineIcon'
+import { TimelineLoading } from 'app/_parts/TimelineLoading'
 import {
   useCallback,
   useEffect,
@@ -19,6 +20,7 @@ import type {
   TimelineConfigV2,
 } from 'types/types'
 import { CENTER_INDEX } from 'util/environment'
+import { useOtherQueueProgress } from 'util/hooks/useOtherQueueProgress'
 import { useTimelineData } from 'util/hooks/useTimelineData'
 import { getDefaultTimelineName } from 'util/timelineDisplayName'
 
@@ -36,6 +38,7 @@ export const MixedTimeline = ({
   headerOffset?: string
 }) => {
   const { data: timeline, queryDuration, loadMore } = useTimelineData(config)
+  const { initializing } = useOtherQueueProgress()
   const scrollerRef = useRef<VirtuosoHandle>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -111,38 +114,44 @@ export const MixedTimeline = ({
       onClickHeader={() => scrollToTop()}
       queryDuration={queryDuration}
     >
-      {enableScrollToTop && <TimelineStreamIcon />}
-      <Virtuoso
-        atTopStateChange={atTopStateChange}
-        atTopThreshold={20}
-        data={timeline}
-        endReached={loadMore}
-        firstItemIndex={internalIndex}
-        increaseViewportBy={200}
-        isScrolling={setIsScrolling}
-        itemContent={(_, item) => {
-          // _type フィールドで Status と Notification を判別
-          if ('_type' in item && item._type === 'notification') {
-            return (
-              <Notification
-                key={item.id}
-                notification={item as NotificationAddAppIndex}
-                scrolling={enableScrollToTop ? false : isScrolling}
-              />
-            )
-          }
-          return (
-            <Status
-              key={item.id}
-              scrolling={enableScrollToTop ? false : isScrolling}
-              status={item as StatusAddAppIndex}
-            />
-          )
-        }}
-        onWheel={onWheel}
-        ref={scrollerRef}
-        totalCount={timeline.length}
-      />
+      {timeline.length === 0 && initializing ? (
+        <TimelineLoading />
+      ) : (
+        <>
+          {enableScrollToTop && <TimelineStreamIcon />}
+          <Virtuoso
+            atTopStateChange={atTopStateChange}
+            atTopThreshold={20}
+            data={timeline}
+            endReached={loadMore}
+            firstItemIndex={internalIndex}
+            increaseViewportBy={200}
+            isScrolling={setIsScrolling}
+            itemContent={(_, item) => {
+              // _type フィールドで Status と Notification を判別
+              if ('_type' in item && item._type === 'notification') {
+                return (
+                  <Notification
+                    key={item.id}
+                    notification={item as NotificationAddAppIndex}
+                    scrolling={enableScrollToTop ? false : isScrolling}
+                  />
+                )
+              }
+              return (
+                <Status
+                  key={item.id}
+                  scrolling={enableScrollToTop ? false : isScrolling}
+                  status={item as StatusAddAppIndex}
+                />
+              )
+            }}
+            onWheel={onWheel}
+            ref={scrollerRef}
+            totalCount={timeline.length}
+          />
+        </>
+      )}
     </Panel>
   )
 }
