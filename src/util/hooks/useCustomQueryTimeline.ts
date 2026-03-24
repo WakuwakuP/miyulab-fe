@@ -34,6 +34,7 @@ import {
   detectReferencedAliases,
   isMixedQuery,
   isNotificationQuery,
+  rewriteLegacyColumnsForPhase1,
 } from 'util/queryBuilder'
 import { useConfigRefresh } from 'util/timelineRefresh'
 
@@ -74,28 +75,8 @@ function hasUnquotedQuestionMark(query: string): boolean {
 // 互換サブクエリ: 旧カラム名をカスタム WHERE 句で使えるようにする
 // ================================================================
 
-/**
- * posts 互換サブクエリ FROM 句（旧カラム名を後方互換で提供、JOIN ベース）
- *
- * 旧 STATUS_COMPAT_FROM の相関サブクエリを LEFT JOIN に置き換えたもの。
- * インデックスベースの JOIN によりパフォーマンスが大幅に改善される。
- */
-const STATUS_COMPAT_FROM = `(
-      SELECT p.*,
-        COALESCE(sv_c.base_url, '') AS origin_backend_url,
-        COALESCE(pr_c.acct, '') AS account_acct,
-        '' AS account_id,
-        COALESCE(vt_c.code, 'public') AS visibility,
-        NULL AS reblog_of_id,
-        COALESCE(ps_c.favourites_count, 0) AS favourites_count,
-        COALESCE(ps_c.reblogs_count, 0) AS reblogs_count,
-        COALESCE(ps_c.replies_count, 0) AS replies_count
-      FROM posts p
-      LEFT JOIN servers sv_c ON sv_c.server_id = p.origin_server_id
-      LEFT JOIN profiles pr_c ON pr_c.profile_id = p.author_profile_id
-      LEFT JOIN visibility_types vt_c ON vt_c.visibility_id = p.visibility_id
-      LEFT JOIN post_stats ps_c ON ps_c.post_id = p.post_id
-    ) p`
+// STATUS_COMPAT_FROM は施策 A により廃止。
+// 旧カラム名の書き換えは queryBuilder.ts の rewriteLegacyColumnsForPhase1() で処理する。
 
 /** notifications 互換サブクエリ FROM 句（旧カラム名を後方互換で提供、JOIN ベース） */
 const NOTIF_COMPAT_FROM = `(
@@ -269,13 +250,19 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         // Phase2: 取得した ID から詳細情報をフェッチ
         // ============================
         const refs = detectReferencedAliases(sanitized)
-        const rewrittenWhere = sanitized.replace(
+        // pb.backend_url → pb.backendUrl 書き換え
+        const pbRewritten = sanitized.replace(
           /\bpb\.backend_url\b/g,
           'pb.backendUrl',
         )
+        // 施策 A+B: 旧カラム名を正規化形式に書き換え、必要な互換 JOIN を導出
+        const { rewrittenWhere, compatJoins } =
+          rewriteLegacyColumnsForPhase1(pbRewritten)
 
         // --- Phase1: Status ID 取得（STATUS_BASE_JOINS を除外して軽量化） ---
         const statusPhase1JoinLines: string[] = []
+        // 施策 A: 旧カラム参照に必要な互換 JOIN を追加
+        statusPhase1JoinLines.push(...compatJoins)
         // pb はカスタムクエリの backendUrl 参照用に常に提供
         statusPhase1JoinLines.push(
           'LEFT JOIN posts_backends pb ON p.post_id = pb.post_id',
@@ -313,9 +300,11 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           statusMediaConditions += '\n              AND p.has_media = 1'
         }
 
+        // 施策 A: サブクエリ廃止 → FROM posts p 直接参照
+        // idx_posts_created が ORDER BY ... DESC LIMIT に push down 可能になる
         const statusPhase1Sql = `
           SELECT p.post_id, p.created_at_ms
-          FROM ${STATUS_COMPAT_FROM}${statusPhase1Joins}
+          FROM posts p${statusPhase1Joins}
           WHERE (${rewrittenWhere})${statusMediaConditions}
           GROUP BY p.post_id
           ORDER BY p.created_at_ms DESC
@@ -508,12 +497,18 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         // Statuses クエリ: 2段階クエリ戦略
         // ============================
         const refs = detectReferencedAliases(sanitized)
-        const rewrittenWhere = sanitized.replace(
+        // pb.backend_url → pb.backendUrl 書き換え
+        const pbRewritten = sanitized.replace(
           /\bpb\.backend_url\b/g,
           'pb.backendUrl',
         )
+        // 施策 A+B: 旧カラム名を正規化形式に書き換え、必要な互換 JOIN を導出
+        const { rewrittenWhere, compatJoins } =
+          rewriteLegacyColumnsForPhase1(pbRewritten)
 
         const joinLines: string[] = []
+        // 施策 A: 旧カラム参照に必要な互換 JOIN を追加
+        joinLines.push(...compatJoins)
         // pb はカスタムクエリの backendUrl 参照用に常に提供
         joinLines.push('LEFT JOIN posts_backends pb ON p.post_id = pb.post_id')
         if (refs.ptt)
@@ -549,10 +544,10 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           additionalConditions += '\n          AND p.has_media = 1'
         }
 
-        // Phase1: 軽量な post_id のみ取得
+        // Phase1: 軽量な post_id のみ取得（施策 A: サブクエリ廃止）
         const phase1Sql = `
           SELECT DISTINCT p.post_id
-          FROM ${STATUS_COMPAT_FROM}${joinsClause}
+          FROM posts p${joinsClause}
           WHERE (${rewrittenWhere})${additionalConditions}
           ORDER BY p.created_at_ms DESC
           LIMIT ?;
@@ -633,17 +628,43 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
     refreshToken,
   ])
 
+  // 施策 C: subscribe コールバックのデバウンス (500ms)
+  // connection.ts の 80ms デバウンスに加え、Hook レベルでも
+  // ストリーミングバーストによる重複クエリ実行を抑制する
+  const debouncedFetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  )
+
   useEffect(() => {
-    fetchData()
+    fetchData() // 初回は即時実行
+
+    // subscribe コールバック用のデバウンスラッパー
+    const debouncedFetch = () => {
+      if (debouncedFetchTimerRef.current != null) {
+        clearTimeout(debouncedFetchTimerRef.current)
+      }
+      debouncedFetchTimerRef.current = setTimeout(() => {
+        debouncedFetchTimerRef.current = null
+        fetchData()
+      }, 500)
+    }
+
     // 監視するテーブルはクエリモードに応じて決定
     const unsubStatuses =
-      queryMode !== 'notification' ? subscribe('posts', fetchData) : undefined
+      queryMode !== 'notification'
+        ? subscribe('posts', debouncedFetch)
+        : undefined
     const unsubNotifications =
-      queryMode !== 'status' ? subscribe('notifications', fetchData) : undefined
+      queryMode !== 'status'
+        ? subscribe('notifications', debouncedFetch)
+        : undefined
     return () => {
       unsubStatuses?.()
-
       unsubNotifications?.()
+      if (debouncedFetchTimerRef.current != null) {
+        clearTimeout(debouncedFetchTimerRef.current)
+        debouncedFetchTimerRef.current = null
+      }
     }
   }, [fetchData, queryMode])
 
