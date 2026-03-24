@@ -2564,8 +2564,16 @@ function migrateV19toV20(handle: DbHandle): void {
 function migrateV20toV21(handle: DbHandle): void {
   const { db } = handle
 
-  // post_engagements に emoji_text カラムを追加
-  db.exec('ALTER TABLE post_engagements ADD COLUMN emoji_text TEXT;')
+  // post_engagements に emoji_text カラムを追加（冪等）
+  // createEngagementsTableV11 が既に emoji_text 付きで CREATE TABLE する場合があるため、
+  // カラムが存在しなければ追加する。
+  const cols = db.exec('PRAGMA table_info(post_engagements);', {
+    returnValue: 'resultRows',
+  }) as (string | number | null)[][]
+  const hasEmojiText = cols.some((row) => row[1] === 'emoji_text')
+  if (!hasEmojiText) {
+    db.exec('ALTER TABLE post_engagements ADD COLUMN emoji_text TEXT;')
+  }
 
   // reaction 用ユニークインデックスを再構築
   // 「投稿に1件」なので reaction タイプは (account, post, type) で一意
