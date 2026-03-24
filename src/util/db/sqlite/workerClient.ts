@@ -60,6 +60,13 @@ const timelineDedup = new Map<
 >()
 
 let activeRequest = false
+/** other キューを連続処理した回数（timeline 飢餓防止用） */
+let consecutiveOther = 0
+/**
+ * timeline キューの飢餓を防ぐため、other を連続処理する最大回数。
+ * この回数に達すると timeline キューにアイテムがあれば先に処理する。
+ */
+const MAX_CONSECUTIVE_OTHER = 4
 let notifyChangeCallback: ((table: TableName) => void) | null = null
 let initResolve: ((persistence: 'opfs' | 'memory') => void) | null = null
 let initReject: ((reason: Error) => void) | null = null
@@ -309,12 +316,18 @@ function sendRequest(
 function processQueue(): void {
   if (activeRequest || !worker) return
 
-  // other キューを優先
+  // other キューを優先するが、timeline キューの飢餓を防ぐため
+  // other を MAX_CONSECUTIVE_OTHER 回連続処理したら timeline に譲る
   let next: QueuedRequest | undefined
-  if (otherQueue.length > 0) {
+  if (
+    otherQueue.length > 0 &&
+    (timelineQueue.length === 0 || consecutiveOther < MAX_CONSECUTIVE_OTHER)
+  ) {
     next = otherQueue.shift()
+    consecutiveOther++
   } else if (timelineQueue.length > 0) {
     next = timelineQueue.shift()
+    consecutiveOther = 0
   }
   if (!next) return
   activeRequest = true
@@ -470,6 +483,7 @@ export function terminateWorker(): void {
   timelineQueue.length = 0
   timelineDedup.clear()
   activeRequest = false
+  consecutiveOther = 0
   initPromise = null
   initResolve = null
   initReject = null
