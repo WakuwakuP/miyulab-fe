@@ -32,6 +32,8 @@ import { useQueryDuration } from 'util/hooks/useQueryDuration'
 import { AppsContext } from 'util/provider/AppsProvider'
 import {
   detectReferencedAliases,
+  extractNotificationTypeCodes,
+  injectProfileIdHint,
   isMixedQuery,
   isNotificationQuery,
   rewriteLegacyColumnsForPhase1,
@@ -291,10 +293,12 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         // WHERE 句の n.* 参照を直接 NULL に置換する。
         // これにより MATERIALIZE + SCAN n LEFT-JOIN のオーバーヘッドを排除し、
         // SQLite の定数畳み込みで不要な条件分岐が除去される。
-        const statusRewrittenWhere = rewrittenWhere.replace(
-          /\bn\.\w+\b/g,
-          'NULL',
-        )
+        const statusNullReplaced = rewrittenWhere.replace(/\bn\.\w+\b/g, 'NULL')
+
+        // --- 施策D: 相関サブクエリに profile_id ヒント注入 ---
+        // profiles.acct 比較を検出し、冗長な actor_profile_id = p.author_profile_id を注入
+        // → idx_notifications_type_actor (notification_type_id, actor_profile_id, created_at_ms DESC) が使える
+        const statusRewrittenWhere = injectProfileIdHint(statusNullReplaced)
 
         const statusPhase1Joins = `\n            ${statusPhase1JoinLines.join('\n            ')}`
 
@@ -362,10 +366,53 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           }
         }
 
+        // --- 施策E: アクター事前フィルタ ---
+        // 相関サブクエリが notifications テーブルを参照する場合、
+        // マッチする actor_profile_id を事前取得して外側スキャン行数を削減する。
+        // EXISTS (not NOT EXISTS) + notifications + acct 比較パターンのみ対象。
+        let statusAuthorPreFilter = ''
+        const statusHintWasInjected =
+          statusRewrittenWhere !== statusNullReplaced
+        if (
+          statusHintWasInjected &&
+          !/\bNOT\s+EXISTS\b/i.test(statusRewrittenWhere)
+        ) {
+          const typeCodes = extractNotificationTypeCodes(statusRewrittenWhere)
+          let actorSql: string
+          let actorBinds: (string | number)[]
+
+          if (typeCodes && typeCodes.length > 0) {
+            const placeholders = typeCodes.map(() => '?').join(',')
+            actorSql = `
+              SELECT DISTINCT ntf.actor_profile_id
+              FROM notifications ntf
+              INNER JOIN notification_types ntt
+                ON ntt.notification_type_id = ntf.notification_type_id
+              WHERE ntt.code IN (${placeholders})`
+            actorBinds = typeCodes
+          } else {
+            actorSql = 'SELECT DISTINCT actor_profile_id FROM notifications'
+            actorBinds = []
+          }
+
+          const actorRows = (await handle.execAsync(actorSql, {
+            bind: actorBinds,
+            returnValue: 'resultRows',
+          })) as (number | null)[][]
+
+          const actorProfileIds = actorRows
+            .map((r) => r[0])
+            .filter((id): id is number => id !== null)
+
+          if (actorProfileIds.length > 0 && actorProfileIds.length <= 500) {
+            statusAuthorPreFilter = `\n              AND p.author_profile_id IN (${actorProfileIds.join(',')})`
+          }
+        }
+
         const statusPhase1Sql = `
           SELECT p.post_id, p.created_at_ms
           FROM posts p${statusPhase1Joins}
-          WHERE (${statusRewrittenWhere})${statusMediaConditions}${statusTimeBound}${statusGroupBy}
+          WHERE (${statusRewrittenWhere})${statusMediaConditions}${statusTimeBound}${statusAuthorPreFilter}${statusGroupBy}
           ORDER BY p.created_at_ms DESC
           LIMIT ?;
         `
@@ -532,8 +579,12 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           'pb.backendUrl',
         )
         // 施策 A+B: 旧カラム名を正規化形式に書き換え、必要な互換 JOIN を導出
-        const { rewrittenWhere, compatJoins } =
+        const { rewrittenWhere: rawRewrittenWhere, compatJoins } =
           rewriteLegacyColumnsForPhase1(pbRewritten)
+
+        // --- 施策D: 相関サブクエリに profile_id ヒント注入 ---
+        const rewrittenWhere = injectProfileIdHint(rawRewrittenWhere)
+        const statusOnlyHintInjected = rewrittenWhere !== rawRewrittenWhere
 
         const joinLines: string[] = []
         // 施策 A: 旧カラム参照に必要な互換 JOIN を追加
@@ -584,10 +635,48 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         const selectClause = hasMultiRowJoin
           ? 'SELECT DISTINCT p.post_id'
           : 'SELECT p.post_id'
+        // --- 施策E: アクター事前フィルタ ---
+        let statusOnlyAuthorPreFilter = ''
+        if (
+          statusOnlyHintInjected &&
+          !/\bNOT\s+EXISTS\b/i.test(rewrittenWhere)
+        ) {
+          const typeCodes = extractNotificationTypeCodes(rewrittenWhere)
+          let actorSql: string
+          let actorBinds: (string | number)[]
+
+          if (typeCodes && typeCodes.length > 0) {
+            const placeholders = typeCodes.map(() => '?').join(',')
+            actorSql = `
+              SELECT DISTINCT ntf.actor_profile_id
+              FROM notifications ntf
+              INNER JOIN notification_types ntt
+                ON ntt.notification_type_id = ntf.notification_type_id
+              WHERE ntt.code IN (${placeholders})`
+            actorBinds = typeCodes
+          } else {
+            actorSql = 'SELECT DISTINCT actor_profile_id FROM notifications'
+            actorBinds = []
+          }
+
+          const actorRows = (await handle.execAsync(actorSql, {
+            bind: actorBinds,
+            returnValue: 'resultRows',
+          })) as (number | null)[][]
+
+          const actorProfileIds = actorRows
+            .map((r) => r[0])
+            .filter((id): id is number => id !== null)
+
+          if (actorProfileIds.length > 0 && actorProfileIds.length <= 500) {
+            statusOnlyAuthorPreFilter = `\n          AND p.author_profile_id IN (${actorProfileIds.join(',')})`
+          }
+        }
+
         const phase1Sql = `
           ${selectClause}
           FROM posts p${joinsClause}
-          WHERE (${rewrittenWhere})${additionalConditions}
+          WHERE (${rewrittenWhere})${additionalConditions}${statusOnlyAuthorPreFilter}
           ORDER BY p.created_at_ms DESC
           LIMIT ?;
         `
