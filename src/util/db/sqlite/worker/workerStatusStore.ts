@@ -43,6 +43,11 @@ type DbExec = {
 
 type HandlerResult = { changedTables: TableName[] }
 
+// マスターデータキャッシュ（セッション中不変）
+const visibilityCache = new Map<string, number | null>()
+const mediaTypeCache = new Map<string, number>()
+let cachedPostItemKindId: number | null = null
+
 // ================================================================
 // 内部ヘルパー
 // ================================================================
@@ -64,11 +69,15 @@ function getLastInsertRowId(db: DbExec): number {
 }
 
 function resolveVisibilityId(db: DbExec, visibility: string): number | null {
+  const cached = visibilityCache.get(visibility)
+  if (cached !== undefined) return cached
   const rows = db.exec(
     'SELECT visibility_id FROM visibility_types WHERE code = ?;',
     { bind: [visibility], returnValue: 'resultRows' },
   ) as number[][]
-  return rows.length > 0 ? rows[0][0] : null
+  const result = rows.length > 0 ? rows[0][0] : null
+  if (result !== null) visibilityCache.set(visibility, result)
+  return result
 }
 
 function upsertMentionsInternal(
@@ -88,16 +97,21 @@ function upsertMentionsInternal(
 }
 
 function resolveMediaTypeId(db: DbExec, mediaType: string): number {
+  const cached = mediaTypeCache.get(mediaType)
+  if (cached !== undefined) return cached
   const rows = db.exec(
     'SELECT media_type_id FROM media_types WHERE code = ?;',
     { bind: [mediaType], returnValue: 'resultRows' },
   ) as number[][]
-  if (rows.length > 0) return rows[0][0]
-  // フォールバック: unknown
+  if (rows.length > 0) {
+    mediaTypeCache.set(mediaType, rows[0][0])
+    return rows[0][0]
+  }
   const fallback = db.exec(
     "SELECT media_type_id FROM media_types WHERE code = 'unknown';",
     { returnValue: 'resultRows' },
   ) as number[][]
+  mediaTypeCache.set(mediaType, fallback[0][0])
   return fallback[0][0]
 }
 
@@ -473,7 +487,10 @@ export function handleUpsertStatus(
 
     // timeline_items に登録（timelines が未作成なら自動作成）
     const timelineId = ensureTimeline(db, serverId, timelineType, tag)
-    const postItemKindId = resolvePostItemKindId(db)
+    if (cachedPostItemKindId === null) {
+      cachedPostItemKindId = resolvePostItemKindId(db)
+    }
+    const postItemKindId = cachedPostItemKindId
     db.exec(
       `INSERT OR IGNORE INTO timeline_items (timeline_id, timeline_item_kind_id, post_id, sort_key, inserted_at)
        VALUES (?, ?, ?, ?, ?);`,
@@ -577,6 +594,11 @@ export function handleBulkUpsertStatuses(
   try {
     const serverId = ensureServer(db, backendUrl)
     const localAccountId = resolveLocalAccountId(db, backendUrl)
+    const timelineId = ensureTimeline(db, serverId, timelineType, tag)
+    if (cachedPostItemKindId === null) {
+      cachedPostItemKindId = resolvePostItemKindId(db)
+    }
+    const postItemKindId = cachedPostItemKindId
 
     for (const sJson of statusesJson) {
       const status = JSON.parse(sJson) as Entity.Status
@@ -704,9 +726,7 @@ export function handleBulkUpsertStatuses(
         { bind: [postId, backendUrl, status.id, serverId] },
       )
 
-      // timeline_items に登録（timelines が未作成なら自動作成）
-      const timelineId = ensureTimeline(db, serverId, timelineType, tag)
-      const postItemKindId = resolvePostItemKindId(db)
+      // timeline_items に登録
       db.exec(
         `INSERT OR IGNORE INTO timeline_items (timeline_id, timeline_item_kind_id, post_id, sort_key, inserted_at)
          VALUES (?, ?, ?, ?, ?);`,

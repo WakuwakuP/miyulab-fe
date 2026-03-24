@@ -1110,8 +1110,62 @@ export function toStoredStatus(
   }
 }
 
+// ================================================================
+// ストリーミングイベント マイクロバッチング
+// ================================================================
+
+type BufferedUpsert = {
+  backendUrl: string
+  status: Entity.Status
+  tag?: string
+  timelineType: TimelineType
+}
+
+/** バッファキー: backendUrl + timelineType + tag */
+function makeBufferKey(
+  backendUrl: string,
+  timelineType: string,
+  tag?: string,
+): string {
+  return `${backendUrl}\0${timelineType}\0${tag ?? ''}`
+}
+
+const upsertBufferMap = new Map<string, BufferedUpsert[]>()
+let flushTimer: ReturnType<typeof setTimeout> | null = null
+
+/** バッファリング間隔（ms） */
+const FLUSH_INTERVAL_MS = 100
+/** この件数に達したら即座にフラッシュ */
+const FLUSH_SIZE_THRESHOLD = 20
+
+async function flushAllBuffers(): Promise<void> {
+  flushTimer = null
+  const entries = Array.from(upsertBufferMap.entries())
+  upsertBufferMap.clear()
+
+  for (const [, items] of entries) {
+    if (items.length === 0) continue
+    const { backendUrl, tag, timelineType } = items[0]
+    try {
+      const handle = await getSqliteDb()
+      await handle.sendCommand({
+        backendUrl,
+        statusesJson: items.map((e) => JSON.stringify(e.status)),
+        tag,
+        timelineType,
+        type: 'bulkUpsertStatuses',
+      })
+    } catch (error) {
+      console.error('Failed to flush upsert buffer:', error)
+    }
+  }
+}
+
 /**
- * Status を追加または更新
+ * Status を追加または更新（マイクロバッチング対応）
+ *
+ * ストリーミングイベントごとの個別トランザクションを避けるため、
+ * バッファに蓄積し一定間隔または閾値到達時にまとめてフラッシュする。
  */
 export async function upsertStatus(
   status: Entity.Status,
@@ -1119,14 +1173,33 @@ export async function upsertStatus(
   timelineType: TimelineType,
   tag?: string,
 ): Promise<void> {
-  const handle = await getSqliteDb()
-  await handle.sendCommand({
-    backendUrl,
-    statusJson: JSON.stringify(status),
-    tag,
-    timelineType,
-    type: 'upsertStatus',
-  })
+  const key = makeBufferKey(backendUrl, timelineType, tag)
+  let buf = upsertBufferMap.get(key)
+  if (!buf) {
+    buf = []
+    upsertBufferMap.set(key, buf)
+  }
+  buf.push({ backendUrl, status, tag, timelineType })
+
+  // 閾値に達したら即座にフラッシュ
+  const totalBuffered = Array.from(upsertBufferMap.values()).reduce(
+    (sum, b) => sum + b.length,
+    0,
+  )
+  if (totalBuffered >= FLUSH_SIZE_THRESHOLD) {
+    if (flushTimer !== null) {
+      clearTimeout(flushTimer)
+    }
+    await flushAllBuffers()
+    return
+  }
+
+  // タイマーが未設定なら設定
+  if (flushTimer === null) {
+    flushTimer = setTimeout(() => {
+      flushAllBuffers()
+    }, FLUSH_INTERVAL_MS)
+  }
 }
 
 /**

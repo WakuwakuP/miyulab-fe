@@ -7,6 +7,18 @@
 
 import type { Entity } from 'megalodon'
 
+// ================================================================
+// セッション中不変のマスターデータキャッシュ
+// Worker / メインスレッド両方で使用。一度 DB から取得した値を保持する。
+// ================================================================
+
+const channelKindCache = new Map<string, number>()
+const serverCache = new Map<string, number>()
+const timelineCache = new Map<string, number>()
+const localAccountCache = new Map<string, number | null>()
+const profileIdCache = new Map<string, number>()
+const customEmojiIdCache = new Map<string, number>()
+
 /**
  * compositeKey を生成する
  *
@@ -89,6 +101,9 @@ export function resolveLocalAccountId(
   db: DbExecCompat,
   backendUrl: string,
 ): number | null {
+  const cached = localAccountCache.get(backendUrl)
+  if (cached !== undefined) return cached
+
   const rows = db.exec(
     `SELECT la.local_account_id
      FROM local_accounts la
@@ -97,7 +112,9 @@ export function resolveLocalAccountId(
      LIMIT 1;`,
     { bind: [backendUrl], returnValue: 'resultRows' },
   ) as number[][]
-  return rows.length > 0 ? rows[0][0] : null
+  const result = rows.length > 0 ? rows[0][0] : null
+  localAccountCache.set(backendUrl, result)
+  return result
 }
 
 /**
@@ -107,11 +124,17 @@ export function resolveChannelKindId(
   db: DbExecCompat,
   code: string,
 ): number | null {
+  const cached = channelKindCache.get(code)
+  if (cached !== undefined) return cached
+
   const rows = db.exec(
     'SELECT channel_kind_id FROM channel_kinds WHERE code = ?;',
     { bind: [code], returnValue: 'resultRows' },
   ) as number[][]
-  return rows.length > 0 ? rows[0][0] : null
+  const result = rows.length > 0 ? rows[0][0] : null
+  // null 結果はキャッシュしない（コードが不正な場合）
+  if (result !== null) channelKindCache.set(code, result)
+  return result
 }
 
 /**
@@ -134,6 +157,10 @@ export function ensureTimeline(
   channelKindCode: string,
   tag?: string | null,
 ): number {
+  const cacheKey = `${serverId}\0${channelKindCode}\0${tag ?? ''}`
+  const cached = timelineCache.get(cacheKey)
+  if (cached !== undefined) return cached
+
   const channelKindId = resolveChannelKindId(db, channelKindCode)
   if (channelKindId === null) {
     throw new Error(`Unknown channel_kind code: ${channelKindCode}`)
@@ -151,7 +178,10 @@ export function ensureTimeline(
     },
   ) as number[][]
 
-  if (existing.length > 0) return existing[0][0]
+  if (existing.length > 0) {
+    timelineCache.set(cacheKey, existing[0][0])
+    return existing[0][0]
+  }
 
   db.exec(
     `INSERT INTO timelines (server_id, channel_kind_id, tag, created_at)
@@ -168,6 +198,7 @@ export function ensureTimeline(
     },
   ) as number[][]
 
+  timelineCache.set(cacheKey, rows[0][0])
   return rows[0][0]
 }
 
@@ -257,6 +288,9 @@ export function ensureServer(
   },
   backendUrl: string,
 ): number {
+  const cached = serverCache.get(backendUrl)
+  if (cached !== undefined) return cached
+
   const host = new URL(backendUrl).host
 
   db.exec('INSERT OR IGNORE INTO servers (host, base_url) VALUES (?, ?);', {
@@ -268,6 +302,7 @@ export function ensureServer(
     returnValue: 'resultRows',
   }) as number[][]
 
+  serverCache.set(backendUrl, rows[0][0])
   return rows[0][0]
 }
 
@@ -291,6 +326,7 @@ export function ensureProfile(
   const acct = account.acct
   const domain = acct.includes('@') ? acct.split('@')[1] : null
 
+  // UPSERT は常に実行（display_name 等の更新のため）
   db.exec(
     `INSERT INTO profiles (
       actor_uri, acct, username, domain, display_name,
@@ -318,11 +354,16 @@ export function ensureProfile(
     },
   )
 
+  // キャッシュヒット時は SELECT をスキップ
+  const cached = profileIdCache.get(actorUri)
+  if (cached !== undefined) return cached
+
   const rows = db.exec('SELECT profile_id FROM profiles WHERE actor_uri = ?;', {
     bind: [actorUri],
     returnValue: 'resultRows',
   }) as number[][]
 
+  profileIdCache.set(actorUri, rows[0][0])
   return rows[0][0]
 }
 
@@ -379,6 +420,9 @@ export function ensureCustomEmoji(
     visible_in_picker?: boolean
   },
 ): number {
+  const cacheKey = `${serverId}\0${emoji.shortcode}`
+
+  // UPSERT は常に実行（image_url 等の更新のため）
   db.exec(
     `INSERT INTO custom_emojis (server_id, shortcode, image_url, static_url, visible_in_picker)
      VALUES (?, ?, ?, ?, ?)
@@ -396,11 +440,16 @@ export function ensureCustomEmoji(
     },
   )
 
+  // キャッシュヒット時は SELECT をスキップ
+  const cached = customEmojiIdCache.get(cacheKey)
+  if (cached !== undefined) return cached
+
   const emojiRows = db.exec(
     'SELECT emoji_id FROM custom_emojis WHERE server_id = ? AND shortcode = ?;',
     { bind: [serverId, emoji.shortcode], returnValue: 'resultRows' },
   ) as number[][]
 
+  customEmojiIdCache.set(cacheKey, emojiRows[0][0])
   return emojiRows[0][0]
 }
 
