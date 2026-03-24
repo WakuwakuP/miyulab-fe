@@ -263,10 +263,14 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         const statusPhase1JoinLines: string[] = []
         // 施策 A: 旧カラム参照に必要な互換 JOIN を追加
         statusPhase1JoinLines.push(...compatJoins)
-        // pb はカスタムクエリの backendUrl 参照用に常に提供
-        statusPhase1JoinLines.push(
-          'LEFT JOIN posts_backends pb ON p.post_id = pb.post_id',
-        )
+        // pb は参照されている場合のみ JOIN（1:N のため GROUP BY が必要になる）
+        if (refs.pb)
+          statusPhase1JoinLines.push(
+            'LEFT JOIN posts_backends pb ON p.post_id = pb.post_id',
+          )
+        // 1:N JOIN が存在する場合のみ GROUP BY が必要
+        const statusHasMultiRowJoin =
+          refs.pb || refs.ptt || refs.pbt || refs.pme || refs.prb || refs.pe
         if (refs.ptt)
           statusPhase1JoinLines.push(
             `LEFT JOIN ${PTT_COMPAT} ptt\n              ON p.post_id = ptt.post_id`,
@@ -301,12 +305,14 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         }
 
         // 施策 A: サブクエリ廃止 → FROM posts p 直接参照
-        // idx_posts_created が ORDER BY ... DESC LIMIT に push down 可能になる
+        // 1:N JOIN がなければ GROUP BY 不要 → idx_posts_created で ORDER BY + LIMIT early termination が効く
+        const statusGroupBy = statusHasMultiRowJoin
+          ? '\n          GROUP BY p.post_id'
+          : ''
         const statusPhase1Sql = `
           SELECT p.post_id, p.created_at_ms
           FROM posts p${statusPhase1Joins}
-          WHERE (${rewrittenWhere})${statusMediaConditions}
-          GROUP BY p.post_id
+          WHERE (${rewrittenWhere})${statusMediaConditions}${statusGroupBy}
           ORDER BY p.created_at_ms DESC
           LIMIT ?;
         `
@@ -509,8 +515,14 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         const joinLines: string[] = []
         // 施策 A: 旧カラム参照に必要な互換 JOIN を追加
         joinLines.push(...compatJoins)
-        // pb はカスタムクエリの backendUrl 参照用に常に提供
-        joinLines.push('LEFT JOIN posts_backends pb ON p.post_id = pb.post_id')
+        // pb は参照されている場合のみ JOIN（1:N のため DISTINCT が必要になる）
+        if (refs.pb)
+          joinLines.push(
+            'LEFT JOIN posts_backends pb ON p.post_id = pb.post_id',
+          )
+        // 1:N JOIN が存在する場合のみ DISTINCT が必要
+        const hasMultiRowJoin =
+          refs.pb || refs.ptt || refs.pbt || refs.pme || refs.prb || refs.pe
         if (refs.ptt)
           joinLines.push(
             `LEFT JOIN ${PTT_COMPAT} ptt\n            ON p.post_id = ptt.post_id`,
@@ -545,8 +557,12 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         }
 
         // Phase1: 軽量な post_id のみ取得（施策 A: サブクエリ廃止）
+        // 1:N JOIN がなければ DISTINCT 不要 → idx_posts_created で ORDER BY + LIMIT early termination が効く
+        const selectClause = hasMultiRowJoin
+          ? 'SELECT DISTINCT p.post_id'
+          : 'SELECT p.post_id'
         const phase1Sql = `
-          SELECT DISTINCT p.post_id
+          ${selectClause}
           FROM posts p${joinsClause}
           WHERE (${rewrittenWhere})${additionalConditions}
           ORDER BY p.created_at_ms DESC
