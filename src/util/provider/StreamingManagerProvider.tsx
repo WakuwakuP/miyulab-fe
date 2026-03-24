@@ -8,6 +8,7 @@ import {
   useContext,
   useEffect,
   useEffectEvent,
+  useMemo,
   useRef,
 } from 'react'
 import type { App, TimelineConfigV2 } from 'types/types'
@@ -422,8 +423,10 @@ export const StreamingManagerProvider = ({
     }
   }, [apps, timelineSettings])
 
+  const streamingManagerValue = useMemo(() => ({ getStatus }), [getStatus])
+
   return (
-    <StreamingManagerContext.Provider value={{ getStatus }}>
+    <StreamingManagerContext.Provider value={streamingManagerValue}>
       {children}
     </StreamingManagerContext.Provider>
   )
