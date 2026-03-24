@@ -11,8 +11,10 @@ import {
   useEffect,
   useState,
 } from 'react'
-import type { App, Backend } from 'types/types'
+import { type App, type Backend, backendList } from 'types/types'
 import { APP_NAME, APP_URL, BACKEND_SNS, BACKEND_URL } from 'util/environment'
+import { detectMisskey, fetchMiAuthToken } from 'util/misskey/auth'
+import { MisskeyAdapter } from 'util/misskey/MisskeyAdapter'
 
 export const AppsContext = createContext<App[]>([])
 
@@ -24,7 +26,9 @@ export const AppsProvider = ({
   children,
 }: Readonly<{ children: ReactNode }>) => {
   const router = useRouter()
-  const code = useSearchParams().get('code')
+  const searchParams = useSearchParams()
+  const code = searchParams.get('code')
+  const session = searchParams.get('session')
   const [apps, setApps] = useState<App[]>([])
 
   const [backend, setBackend] = useState<Backend | ''>(BACKEND_SNS)
@@ -50,7 +54,7 @@ export const AppsProvider = ({
       return
     }
 
-    if (code != null) {
+    if (code != null || session != null) {
       if (isRequestedToken) {
         return
       }
@@ -63,18 +67,23 @@ export const AppsProvider = ({
         return
       }
 
-      const client = generator(
-        processingAppData.backend,
-        processingAppData.backendUrl,
-      )
       setIsRequestedToken(true)
-      client
-        .fetchAccessToken(
-          processingAppData.appData.client_id,
-          processingAppData.appData.client_secret,
-          code,
-          APP_URL,
-        )
+      const tokenPromise =
+        processingAppData.backend === 'misskey'
+          ? fetchMiAuthToken(
+              processingAppData.backendUrl,
+              processingAppData.appData.client_id,
+            )
+          : generator(
+              processingAppData.backend,
+              processingAppData.backendUrl,
+            ).fetchAccessToken(
+              processingAppData.appData.client_id,
+              processingAppData.appData.client_secret,
+              code ?? '',
+              APP_URL,
+            )
+      tokenPromise
         .then((tokenData) => {
           const newApp: App = {
             appData: processingAppData.appData,
@@ -120,6 +129,7 @@ export const AppsProvider = ({
             }
 
             if (expires - now < 1000 * 60 * 60 * 24) {
+              if (app.backend === 'misskey') return // Misskey はリフレッシュトークン非対応
               const client = generator(app.backend, app.backendUrl)
               await client
                 .refreshToken(
@@ -140,7 +150,15 @@ export const AppsProvider = ({
       })
       setFinishLoading(true)
     }
-  }, [apps, code, isRequestedToken, router, storageLoading, updateApps])
+  }, [
+    apps,
+    code,
+    session,
+    isRequestedToken,
+    router,
+    storageLoading,
+    updateApps,
+  ])
 
   const onRegister = async () => {
     if (backendUrl === '') {
@@ -152,7 +170,15 @@ export const AppsProvider = ({
       try {
         return await detector(backendUrl)
       } catch (e) {
-        console.error('Failed to detect backend:', e)
+        console.error('Failed to detect backend via megalodon:', e)
+        // megalodon が検出できない場合、Misskey かどうか確認
+        try {
+          if (await detectMisskey(backendUrl)) {
+            return 'misskey' as Backend
+          }
+        } catch (e2) {
+          console.error('Failed to detect Misskey:', e2)
+        }
         return null
       }
     })()
@@ -160,7 +186,10 @@ export const AppsProvider = ({
       return
     }
     setBackend(detectedBackend)
-    const client = generator(detectedBackend, backendUrl)
+    const client =
+      detectedBackend === 'misskey'
+        ? new MisskeyAdapter(backendUrl)
+        : generator(detectedBackend, backendUrl)
 
     const findApp = apps.find(
       (app) => app.backend === detectedBackend && app.backendUrl === backendUrl,
@@ -217,6 +246,20 @@ export const AppsProvider = ({
               type="text"
               value={backendUrl}
             />
+            <select
+              className="w-full rounded-md border bg-gray-800 px-2 py-1 text-white"
+              onChange={(e) => {
+                setBackend(e.target.value as Backend | '')
+              }}
+              value={backend}
+            >
+              <option value="">自動検出</option>
+              {backendList.map((b) => (
+                <option key={b} value={b}>
+                  {b}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="pt-4">
             <button
