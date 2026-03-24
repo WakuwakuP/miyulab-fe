@@ -79,7 +79,7 @@ export const ResourceProvider = ({
   )
 
   const sortedTags = useMemo(() => {
-    return tags.sort((a, b) => a.length - b.length)
+    return [...tags].sort((a, b) => a.length - b.length)
   }, [tags])
 
   useEffect(() => {

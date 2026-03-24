@@ -1,6 +1,12 @@
 'use client'
 
-import { createContext, type ReactNode, useContext, useMemo } from 'react'
+import {
+  createContext,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useMemo,
+} from 'react'
 import type {
   NotificationAddAppIndex,
   StatusAddAppIndex,
@@ -60,49 +66,45 @@ export const HomeTimelineProvider = ({ children }: { children: ReactNode }) => {
 
   // 既存APIとの互換性を保つためのラッパー
   // appIndex → backendUrl への変換をここで行う
-  const setReblogged = (
-    appIndex: number,
-    statusId: string,
-    reblogged: boolean,
-  ) => {
-    const backendUrl = apps[appIndex]?.backendUrl
-    if (backendUrl) {
-      storeActions.setReblogged(backendUrl, statusId, reblogged)
-    }
-  }
+  const setReblogged = useCallback(
+    (appIndex: number, statusId: string, reblogged: boolean) => {
+      const backendUrl = apps[appIndex]?.backendUrl
+      if (backendUrl) {
+        storeActions.setReblogged(backendUrl, statusId, reblogged)
+      }
+    },
+    [apps, storeActions],
+  )
 
-  const setFavourited = (
-    appIndex: number,
-    statusId: string,
-    favourited: boolean,
-  ) => {
-    const backendUrl = apps[appIndex]?.backendUrl
-    if (backendUrl) {
-      storeActions.setFavourited(backendUrl, statusId, favourited)
-    }
-  }
+  const setFavourited = useCallback(
+    (appIndex: number, statusId: string, favourited: boolean) => {
+      const backendUrl = apps[appIndex]?.backendUrl
+      if (backendUrl) {
+        storeActions.setFavourited(backendUrl, statusId, favourited)
+      }
+    },
+    [apps, storeActions],
+  )
 
-  const setBookmarked = (
-    appIndex: number,
-    statusId: string,
-    bookmarked: boolean,
-  ) => {
-    const backendUrl = apps[appIndex]?.backendUrl
-    if (backendUrl) {
-      storeActions.setBookmarked(backendUrl, statusId, bookmarked)
-    }
-  }
+  const setBookmarked = useCallback(
+    (appIndex: number, statusId: string, bookmarked: boolean) => {
+      const backendUrl = apps[appIndex]?.backendUrl
+      if (backendUrl) {
+        storeActions.setBookmarked(backendUrl, statusId, bookmarked)
+      }
+    },
+    [apps, storeActions],
+  )
+
+  const setActionsValue = useMemo(
+    () => ({ setBookmarked, setFavourited, setReblogged }),
+    [setBookmarked, setFavourited, setReblogged],
+  )
 
   return (
     <HomeTimelineContext.Provider value={homeTimeline}>
       <NotificationsContext.Provider value={notifications}>
-        <SetActionsContext.Provider
-          value={{
-            setBookmarked,
-            setFavourited,
-            setReblogged,
-          }}
-        >
+        <SetActionsContext.Provider value={setActionsValue}>
           {children}
         </SetActionsContext.Provider>
       </NotificationsContext.Provider>

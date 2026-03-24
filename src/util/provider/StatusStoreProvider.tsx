@@ -8,6 +8,7 @@ import {
   useContext,
   useEffect,
   useEffectEvent,
+  useMemo,
   useRef,
 } from 'react'
 import type { App } from 'types/types'
@@ -337,14 +338,17 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [apps])
 
+  const storeActionsValue = useMemo(
+    () => ({
+      setBookmarked,
+      setFavourited,
+      setReblogged,
+    }),
+    [setBookmarked, setFavourited, setReblogged],
+  )
+
   return (
-    <StatusStoreActionsContext.Provider
-      value={{
-        setBookmarked,
-        setFavourited,
-        setReblogged,
-      }}
-    >
+    <StatusStoreActionsContext.Provider value={storeActionsValue}>
       {children}
     </StatusStoreActionsContext.Provider>
   )

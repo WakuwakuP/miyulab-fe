@@ -91,13 +91,15 @@ export function useNotifications(config?: TimelineConfigV2): {
   }, [configId])
 
   // configが渡された場合はbackendFilterを適用、なければ全バックエンド
+  const backendFilter = config?.backendFilter
+  const hasConfig = config != null
   const targetBackendUrls = useMemo(() => {
-    if (!config) {
+    if (!hasConfig) {
       return apps.map((app) => app.backendUrl)
     }
-    const filter = normalizeBackendFilter(config.backendFilter, apps)
+    const filter = normalizeBackendFilter(backendFilter, apps)
     return resolveBackendUrls(filter, apps)
-  }, [config, apps])
+  }, [hasConfig, backendFilter, apps])
 
   // 非同期クエリの競合状態を防止するためのバージョンカウンター
   const fetchVersionRef = useRef(0)
@@ -106,6 +108,12 @@ export function useNotifications(config?: TimelineConfigV2): {
   const refreshToken = useConfigRefresh(config?.id ?? '')
 
   const configType = config?.type
+  // notificationFilter は配列なので参照が毎回変わる可能性がある。
+  // JSON.stringify で安定化し useCallback の依存に使う。
+  // callback 内では notificationFilterKey から JSON.parse して使用する。
+  const notificationFilterKey = JSON.stringify(
+    config?.notificationFilter ?? null,
+  )
 
   const fetchData = useCallback(async () => {
     void refreshToken
@@ -136,7 +144,9 @@ export function useNotifications(config?: TimelineConfigV2): {
       binds.push(...targetBackendUrls)
 
       // 通知タイプフィルタ
-      const notificationFilter = config?.notificationFilter
+      const notificationFilter: string[] | null = JSON.parse(
+        notificationFilterKey,
+      )
       if (notificationFilter != null && notificationFilter.length > 0) {
         const typePlaceholders = notificationFilter.map(() => '?').join(',')
         conditions.push(`nt.code IN (${typePlaceholders})`)
@@ -176,7 +186,7 @@ export function useNotifications(config?: TimelineConfigV2): {
     configType,
     targetBackendUrls,
     config?.customQuery,
-    config?.notificationFilter,
+    notificationFilterKey,
     queryLimit,
     recordDuration,
     refreshToken,

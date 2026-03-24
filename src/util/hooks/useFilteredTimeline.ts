@@ -156,9 +156,6 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
       targetBackendUrls,
     ],
   )
-  const filterConditions = filterResult.conditions
-  const filterBinds = filterResult.binds
-
   const configType = config.type
   const customQuery = config.customQuery
 
@@ -179,6 +176,10 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
       setStatuses([])
       return
     }
+
+    // filterResult は useMemo で安定化済みなので、ここで分解しても安全
+    const filterConditions = filterResult.conditions
+    const filterBinds = filterResult.binds
 
     const version = ++fetchVersionRef.current
 
@@ -287,8 +288,7 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
     configType,
     customQuery,
     targetBackendUrls,
-    filterConditions,
-    filterBinds,
+    filterResult,
     queryLimit,
     recordDuration,
     refreshToken,

@@ -27,6 +27,9 @@ import {
 } from 'util/timelineConfigValidator'
 import { useConfigRefresh } from 'util/timelineRefresh'
 
+/** 安定した空配列参照（`?? []` による毎レンダー新規参照を防ぐ） */
+const EMPTY_TAGS: string[] = []
+
 /**
  * backendUrl から appIndex を算出するヘルパー
  *
@@ -98,7 +101,7 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
     return resolveBackendUrls(filter, apps)
   }, [config.backendFilter, apps])
 
-  const tags = tagConfig?.tags ?? []
+  const tags = tagConfig?.tags ?? EMPTY_TAGS
   const tagMode = tagConfig?.mode ?? 'or'
 
   // フィルタ条件を事前計算（useMemo で安定化）
@@ -151,9 +154,6 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
       targetBackendUrls,
     ],
   )
-  const filterConditions = filterResult.conditions
-  const filterBinds = filterResult.binds
-
   const configType = config.type
   const customQuery = config.customQuery
 
@@ -171,6 +171,7 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
     }
 
     const version = ++fetchVersionRef.current
+    const { conditions: filterConditions, binds: filterBinds } = filterResult
 
     try {
       const handle = await getSqliteDb()
@@ -297,8 +298,7 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
     customQuery,
     targetBackendUrls,
     tags,
-    filterConditions,
-    filterBinds,
+    filterResult,
     queryLimit,
     recordDuration,
     refreshToken,
