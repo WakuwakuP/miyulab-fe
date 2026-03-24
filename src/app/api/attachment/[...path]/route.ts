@@ -25,7 +25,12 @@ export async function GET(
     }
 
     // path配列を結合してURLを再構築 (https:// を追加)
-    const imageUrl = `https://${path.join('/')}`
+    // Next.jsがpath segmentsをデコード済みのため、そのまま結合
+    const decodedPath = path.join('/')
+    // リクエストURLからクエリパラメータを取得して付与 (Misskey proxy等で必要)
+    const requestUrl = new URL(request.url)
+    const queryString = requestUrl.search
+    const imageUrl = `https://${decodedPath}${queryString}`
 
     // 新しいタブで開いた場合（RefererもOriginもない場合）
     // リダイレクトではなく画像を直接表示する
