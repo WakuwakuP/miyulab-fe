@@ -32,7 +32,7 @@
 import type { SchemaDbHandle as DbHandle } from './worker/workerSchema'
 
 /** 現在のスキーマバージョン */
-const SCHEMA_VERSION = 22
+const SCHEMA_VERSION = 23
 
 /**
  * スキーマの初期化・マイグレーション
@@ -286,6 +286,11 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV21toV22(handle)
     } else if (currentVersion < 22) {
       migrateV21toV22(handle)
+    }
+
+    // v22→v23: 全パス共通（if-else chain の後で実行）
+    if (currentVersion < 23) {
+      migrateV22toV23(handle)
     }
 
     db.exec(`PRAGMA user_version = ${SCHEMA_VERSION};`)
@@ -2600,6 +2605,25 @@ function migrateV21toV22(handle: DbHandle): void {
   const { db } = handle
 
   db.exec('ALTER TABLE post_stats ADD COLUMN emoji_reactions_json TEXT;')
+}
+
+// ================================================================
+// v22 → v23 マイグレーション: timeline_items(post_id) インデックス追加
+// ================================================================
+
+/**
+ * timeline_items.post_id に単体インデックスを追加して、
+ * 孤立 post 検出クエリ (NOT EXISTS) を高速化する。
+ *
+ * 既存の idx_timeline_items_post は (timeline_id, post_id) の複合インデックスで、
+ * post_id 単体での検索には使えない。
+ */
+function migrateV22toV23(handle: DbHandle): void {
+  const { db } = handle
+
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_timeline_items_post_id ON timeline_items(post_id) WHERE post_id IS NOT NULL;',
+  )
 }
 
 /*
