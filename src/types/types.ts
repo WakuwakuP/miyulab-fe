@@ -14,6 +14,7 @@ export const backendList = [
   'firefish',
   'gotosocial',
   'pixelfed',
+  'misskey',
 ] as const
 
 export type Backend = (typeof backendList)[number]
