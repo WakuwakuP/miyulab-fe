@@ -72,7 +72,9 @@ export const NOTIFICATION_SELECT = `
   (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.image_url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM profile_custom_emojis pce2 INNER JOIN custom_emojis ce ON pce2.emoji_id = ce.emoji_id WHERE pce2.profile_id = ap.profile_id) AS actor_emojis_json,
   COALESCE(apa.remote_account_id, '') AS actor_account_id,
   COALESCE(rppa.remote_account_id, '') AS rp_author_account_id,
-  rpps.emoji_reactions_json AS rp_emoji_reactions_json`
+  rpps.emoji_reactions_json AS rp_emoji_reactions_json,
+  CASE WHEN rp.has_media = 1 THEN (SELECT json_group_array(json_object('id', pm.remote_media_id, 'type', COALESCE((SELECT mt.code FROM media_types mt WHERE mt.media_type_id = pm.media_type_id), 'unknown'), 'url', pm.url, 'preview_url', pm.preview_url, 'description', pm.description, 'blurhash', pm.blurhash, 'remote_url', pm.url)) FROM post_media pm WHERE pm.post_id = rp.post_id ORDER BY pm.sort_order) ELSE NULL END AS rp_media_json,
+  (SELECT json_group_array(json_object('acct', pme.acct)) FROM posts_mentions pme WHERE pme.post_id = rp.post_id) AS rp_mentions_json`
 
 export const NOTIFICATION_BASE_JOINS = `
   LEFT JOIN servers sv ON n.server_id = sv.server_id
@@ -103,6 +105,7 @@ export const NOTIFICATION_BASE_JOINS = `
  *   [35] actor_emojis_json
  *   [36] actor_account_id [37] rp_author_account_id
  *   [38] rp_emoji_reactions_json
+ *   [39] rp_media_json    [40] rp_mentions_json
  */
 export function rowToStoredNotification(
   row: (string | number | null)[],
@@ -159,6 +162,25 @@ export function rowToStoredNotification(
     }
   }
 
+  const parseMediaAttachments = (json: string | null): Entity.Attachment[] => {
+    if (!json) return []
+    return (JSON.parse(json) as (Entity.Attachment | null)[]).filter(
+      (m): m is Entity.Attachment => m !== null,
+    )
+  }
+
+  const parseMentions = (json: string | null): Entity.Mention[] => {
+    if (!json) return []
+    return (JSON.parse(json) as ({ acct: string } | null)[])
+      .filter((m): m is { acct: string } => m !== null)
+      .map((m) => ({
+        acct: m.acct,
+        id: '',
+        url: '',
+        username: m.acct.split('@')[0],
+      }))
+  }
+
   if (rpPostId !== null) {
     const rpCreatedAtMs = row[20] as number | null
     const rpStatusEmojisJson = row[32] as string | null
@@ -204,8 +226,8 @@ export function rowToStoredNotification(
       in_reply_to_account_id: null,
       in_reply_to_id: row[30] as string | null,
       language: row[23] as string | null,
-      media_attachments: [],
-      mentions: [],
+      media_attachments: parseMediaAttachments(row[39] as string | null),
+      mentions: parseMentions(row[40] as string | null),
       muted: null,
       pinned: null,
       plain_content: null,
