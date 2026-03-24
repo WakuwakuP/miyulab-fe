@@ -7,13 +7,16 @@ import { useContext, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { RiCloseCircleFill } from 'react-icons/ri'
 
-import type { App } from 'types/types'
+import { type App, type Backend, backendList } from 'types/types'
 import { APP_NAME, APP_URL } from 'util/environment'
 import { GetClient } from 'util/GetClient'
+import { detectMisskey } from 'util/misskey/auth'
+import { MisskeyAdapter } from 'util/misskey/MisskeyAdapter'
 import { AppsContext } from 'util/provider/AppsProvider'
 
 const AddAccountModal = ({ onClose }: { onClose: () => void }) => {
   const apps = useContext(AppsContext)
+  const [backend, setBackend] = useState<Backend | ''>('')
   const [backendUrl, setBackendUrl] = useState('')
 
   const onRegister = async () => {
@@ -22,17 +25,29 @@ const AddAccountModal = ({ onClose }: { onClose: () => void }) => {
     }
 
     const detectedBackend = await (async () => {
+      if (backend !== '') return backend
       try {
         return await detector(backendUrl)
       } catch (e) {
-        console.error('Failed to detect backend:', e)
+        console.error('Failed to detect backend via megalodon:', e)
+        // megalodon が検出できない場合、Misskey かどうか確認
+        try {
+          if (await detectMisskey(backendUrl)) {
+            return 'misskey' as Backend
+          }
+        } catch (e2) {
+          console.error('Failed to detect Misskey:', e2)
+        }
         return null
       }
     })()
     if (detectedBackend == null) {
       return
     }
-    const client = generator(detectedBackend, backendUrl)
+    const client =
+      detectedBackend === 'misskey'
+        ? new MisskeyAdapter(backendUrl)
+        : generator(detectedBackend, backendUrl)
 
     const findApp = apps.find(
       (app) => app.backend === detectedBackend && app.backendUrl === backendUrl,
@@ -87,6 +102,20 @@ const AddAccountModal = ({ onClose }: { onClose: () => void }) => {
             type="text"
             value={backendUrl}
           />
+          <select
+            className="w-full rounded-md border bg-gray-800 px-2 py-1 text-white"
+            onChange={(e) => {
+              setBackend(e.target.value as Backend | '')
+            }}
+            value={backend}
+          >
+            <option value="">自動検出</option>
+            {backendList.map((b) => (
+              <option key={b} value={b}>
+                {b}
+              </option>
+            ))}
+          </select>
         </div>
         <div className="pt-4">
           <button
