@@ -1173,6 +1173,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@simplewebauthn/types@npm:12.0.0":
+  version: 12.0.0
+  resolution: "@simplewebauthn/types@npm:12.0.0"
+  checksum: 10c0/b7ce0ae692ea1e069ad9cb028fc1ccfe3f37e0f197825ba9e468e60194f463e88f5db254ddea296019b470a465ffaffa96fe27bb5e1e5d5d14bfcd068b04abed
+  languageName: node
+  linkType: hard
+
 "@sindresorhus/is@npm:^4.6.0":
   version: 4.6.0
   resolution: "@sindresorhus/is@npm:4.6.0"
@@ -1975,7 +1982,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"eventemitter3@npm:^5.0.1":
+"eventemitter3@npm:5.0.1, eventemitter3@npm:^5.0.1":
   version: 5.0.1
   resolution: "eventemitter3@npm:5.0.1"
   checksum: 10c0/4ba5c00c506e6c786b4d6262cfbce90ddc14c10d4667e5c83ae993c9de88aa856033994dd2b35b83e8dc1170e224e66a319fa80adc4c32adcd2379bbc75da814
@@ -2602,6 +2609,17 @@ __metadata:
   languageName: node
   linkType: hard
 
+"misskey-js@npm:^2026.1.0-beta.0":
+  version: 2026.1.0-beta.0
+  resolution: "misskey-js@npm:2026.1.0-beta.0"
+  dependencies:
+    "@simplewebauthn/types": "npm:12.0.0"
+    eventemitter3: "npm:5.0.1"
+    reconnecting-websocket: "npm:4.4.0"
+  checksum: 10c0/457ffaa22c3cfa3988d27ee8dc72a6ceb2be3758fb88ee511c57d53e53b234533d359294db6aa1371cd27e1831bed37abec2b714e072f6635260b1ac3501702f
+  languageName: node
+  linkType: hard
+
 "miyulab-fe@workspace:.":
   version: 0.0.0-use.local
   resolution: "miyulab-fe@workspace:."
@@ -2632,6 +2650,7 @@ __metadata:
     lint-staged: "npm:^16.4.0"
     lucide-react: "npm:^0.577.0"
     megalodon: "npm:^10.2.4"
+    misskey-js: "npm:^2026.1.0-beta.0"
     next: "npm:^16.2.1"
     node-emoji: "npm:^2.2.0"
     postcss: "npm:^8.5.8"
@@ -3043,6 +3062,13 @@ __metadata:
   version: 19.2.4
   resolution: "react@npm:19.2.4"
   checksum: 10c0/cd2c9ff67a720799cc3b38a516009986f7fc4cb8d3e15716c6211cf098d1357ee3e348ab05ad0600042bbb0fd888530ba92e329198c92eafa0994f5213396596
+  languageName: node
+  linkType: hard
+
+"reconnecting-websocket@npm:4.4.0":
+  version: 4.4.0
+  resolution: "reconnecting-websocket@npm:4.4.0"
+  checksum: 10c0/0155223200882e123bc884eb5935bdff7ee4d2998eee578c23bba6a6fec63b68c22ccaf9ff4bdcd05284568d89f02e6a664cc40daf108872f820197848b09579
   languageName: node
   linkType: hard
 

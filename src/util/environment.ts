@@ -20,6 +20,7 @@ assert(
     process.env.NEXT_PUBLIC_BACKEND_SNS === 'pleroma' ||
     process.env.NEXT_PUBLIC_BACKEND_SNS === 'friendica' ||
     process.env.NEXT_PUBLIC_BACKEND_SNS === 'firefish' ||
+    process.env.NEXT_PUBLIC_BACKEND_SNS === 'misskey' ||
     process.env.NEXT_PUBLIC_BACKEND_SNS === undefined,
   'Invalid NEXT_PUBLIC_BACKEND_SNS',
 )
