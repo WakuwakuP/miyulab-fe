@@ -100,14 +100,10 @@ const NOTIF_COMPAT_FROM = `(
  * 混合クエリで対向テーブルのカラムを NULL として提供するために使用する。
  * 実テーブルへの LEFT JOIN ... ON 0 = 1 はフルスキャンを引き起こすため、
  * 0行のサブクエリで代替することでスキャンを完全に回避する。
+ *
+ * EMPTY_N は Status Phase1 では不要（n.* を WHERE 句内で直接 NULL に置換）。
+ * Notification Phase1 の EMPTY_S/PTT/PBT/PME/PB/PRB は引き続き使用する。
  */
-const EMPTY_N = `(SELECT
-      NULL AS notification_id, NULL AS server_id, NULL AS local_id,
-      NULL AS notification_type_id, NULL AS actor_profile_id,
-      NULL AS related_post_id, NULL AS created_at_ms,
-      NULL AS stored_at, NULL AS is_read,
-      NULL AS backend_url, NULL AS notification_type, NULL AS account_acct
-    LIMIT 0)`
 
 const EMPTY_S = `(SELECT
       NULL AS post_id, NULL AS object_uri, NULL AS origin_server_id,
@@ -291,7 +287,14 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           statusPhase1JoinLines.push(
             'LEFT JOIN post_engagements pe\n              ON p.post_id = pe.post_id',
           )
-        statusPhase1JoinLines.push(`LEFT JOIN ${EMPTY_N} n ON 1 = 1`)
+        // EMPTY_N は不要: Status 側では n.* は常に NULL のため、
+        // WHERE 句の n.* 参照を直接 NULL に置換する。
+        // これにより MATERIALIZE + SCAN n LEFT-JOIN のオーバーヘッドを排除し、
+        // SQLite の定数畳み込みで不要な条件分岐が除去される。
+        const statusRewrittenWhere = rewrittenWhere.replace(
+          /\bn\.\w+\b/g,
+          'NULL',
+        )
 
         const statusPhase1Joins = `\n            ${statusPhase1JoinLines.join('\n            ')}`
 
@@ -309,13 +312,6 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         const statusGroupBy = statusHasMultiRowJoin
           ? '\n          GROUP BY p.post_id'
           : ''
-        const statusPhase1Sql = `
-          SELECT p.post_id, p.created_at_ms
-          FROM posts p${statusPhase1Joins}
-          WHERE (${rewrittenWhere})${statusMediaConditions}${statusGroupBy}
-          ORDER BY p.created_at_ms DESC
-          LIMIT ?;
-        `
 
         // --- Phase1: Notification ID 取得 ---
         const notifDummyJoins = [
@@ -339,14 +335,10 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           LIMIT ?;
         `
 
-        // Phase1 実行
-        const { result: statusIdRowsRaw, durationMs: statusPhase1Dur } =
-          await handle.execAsyncTimed(statusPhase1Sql, {
-            bind: [...statusMediaBinds, queryLimit],
-            kind: 'timeline',
-            returnValue: 'resultRows',
-          })
-        const statusIdRows = statusIdRowsRaw as (string | number | null)[][]
+        // --- Phase1 実行: Notification を先に実行し、結果で Status のスキャン範囲を制限 ---
+        // Notification Phase1 が queryLimit 件に達していれば、最古の created_at_ms より
+        // 古い Status は merged 結果に入らないため、時間下限を付与してスキャン範囲を削減。
+        // これにより相関サブクエリの評価回数を大幅に削減できる。
         const { result: notifIdRowsRaw, durationMs: notifPhase1Dur } =
           await handle.execAsyncTimed(notifPhase1Sql, {
             bind: [queryLimit],
@@ -354,6 +346,37 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
             returnValue: 'resultRows',
           })
         const notifIdRows = notifIdRowsRaw as (string | number | null)[][]
+
+        // Notification が queryLimit 件以上 → 時間下限を導出
+        let statusTimeBound = ''
+        const statusTimeBoundBinds: number[] = []
+        if (notifIdRows.length >= queryLimit) {
+          let oldestNotifTime = Number.POSITIVE_INFINITY
+          for (const row of notifIdRows) {
+            const t = row[1] as number
+            if (t < oldestNotifTime) oldestNotifTime = t
+          }
+          if (Number.isFinite(oldestNotifTime)) {
+            statusTimeBound = '\n              AND p.created_at_ms >= ?'
+            statusTimeBoundBinds.push(oldestNotifTime)
+          }
+        }
+
+        const statusPhase1Sql = `
+          SELECT p.post_id, p.created_at_ms
+          FROM posts p${statusPhase1Joins}
+          WHERE (${statusRewrittenWhere})${statusMediaConditions}${statusTimeBound}${statusGroupBy}
+          ORDER BY p.created_at_ms DESC
+          LIMIT ?;
+        `
+
+        const { result: statusIdRowsRaw, durationMs: statusPhase1Dur } =
+          await handle.execAsyncTimed(statusPhase1Sql, {
+            bind: [...statusMediaBinds, ...statusTimeBoundBinds, queryLimit],
+            kind: 'timeline',
+            returnValue: 'resultRows',
+          })
+        const statusIdRows = statusIdRowsRaw as (string | number | null)[][]
 
         // Phase1 結果を統合・ソートして上位 queryLimit 件を選定
         const statusIds = statusIdRows.map((row) => ({
