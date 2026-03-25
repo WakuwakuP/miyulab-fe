@@ -78,8 +78,8 @@ export const DetailPanel = () => {
       }
 
       // 数値的な ID の場合は getAccount、そうでなければ searchAccount で解決
-      // Misskey の ID は英数字混合のため、acct 形式 (@ を含む) でなければ ID として扱う
-      const isAcctFormat = searchQuery.includes('@')
+      // Misskey の ID は英数字混合のため、acct 形式 (user@host) でなければ ID として扱う
+      const isAcctFormat = /^@?\w[\w.-]*@[\w.-]+\.\w+$/.test(searchQuery)
       const isNumericId = /^\d+$/.test(searchQuery)
       if (isNumericId) {
         client
