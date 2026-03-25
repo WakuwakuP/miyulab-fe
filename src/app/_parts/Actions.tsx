@@ -18,7 +18,6 @@ import { toggleReactionInDb } from 'util/db/sqlite/statusStore'
 import { GetClient } from 'util/GetClient'
 import { AppsContext } from 'util/provider/AppsProvider'
 import { SetActionsContext } from 'util/provider/HomeTimelineProvider'
-import { SelectedAppIndexContext } from 'util/provider/PostAccountProvider'
 import { SetReplyToContext } from 'util/provider/ReplyToProvider'
 import { SettingContext } from 'util/provider/SettingProvider'
 
@@ -35,8 +34,6 @@ export const Actions = ({
 
   const setReplyTo = useContext(SetReplyToContext)
 
-  const selectedAppIndex = useContext(SelectedAppIndexContext)
-
   const setting = useContext(SettingContext)
 
   const [reblogged, setReblogged] = useState(status.reblogged)
@@ -50,7 +47,8 @@ export const Actions = ({
   const handleReaction = useCallback(
     (emoji: string) => {
       if (apps.length <= 0) return
-      const reactionApp = apps[selectedAppIndex]
+      if (status.appIndex == null) return
+      const reactionApp = apps[status.appIndex]
       if (
         reactionApp == null ||
         !REACTION_BACKENDS.includes(reactionApp.backend)
@@ -70,7 +68,7 @@ export const Actions = ({
           console.error('Failed to add reaction:', error)
         })
     },
-    [apps, selectedAppIndex, status.reblog?.id, status.id, onReactionAdd],
+    [apps, status.appIndex, status.reblog?.id, status.id, onReactionAdd],
   )
 
   const openPicker = useCallback(() => {
@@ -100,9 +98,9 @@ export const Actions = ({
 
   const client = GetClient(apps[status.appIndex])
 
-  const selectedApp = apps[selectedAppIndex]
+  const statusApp = apps[status.appIndex]
   const canReact =
-    selectedApp != null && REACTION_BACKENDS.includes(selectedApp.backend)
+    statusApp != null && REACTION_BACKENDS.includes(statusApp.backend)
 
   // Check if the status is private (either the status itself or the reblogged status)
   const statusVisibility = status.reblog?.visibility ?? status.visibility

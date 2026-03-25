@@ -410,7 +410,7 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         }
 
         const statusPhase1Sql = `
-          SELECT p.post_id, p.created_at_ms
+          SELECT p.post_id, p.created_at_ms${refs.pb ? ', MIN(pb.backendUrl) AS backendUrl' : ''}
           FROM posts p${statusPhase1Joins}
           WHERE (${statusRewrittenWhere})${statusMediaConditions}${statusTimeBound}${statusAuthorPreFilter}${statusGroupBy}
           ORDER BY p.created_at_ms DESC
@@ -426,11 +426,17 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         const statusIdRows = statusIdRowsRaw as (string | number | null)[][]
 
         // Phase1 結果を統合・ソートして上位 queryLimit 件を選定
-        const statusIds = statusIdRows.map((row) => ({
-          created_at_ms: row[1] as number,
-          id: row[0] as number,
-          type: 'status' as const,
-        }))
+        const statusBackendUrlMap = new Map<number, string>()
+        const statusIds = statusIdRows.map((row) => {
+          if (refs.pb && row[2] != null) {
+            statusBackendUrlMap.set(row[0] as number, row[2] as string)
+          }
+          return {
+            created_at_ms: row[1] as number,
+            id: row[0] as number,
+            type: 'status' as const,
+          }
+        })
         const notifIds = notifIdRows.map((row) => ({
           created_at_ms: row[1] as number,
           id: row[0] as number,
@@ -484,10 +490,13 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           const maps = await executeBatchQueries(handle, allPostIds)
 
           statusPhase2Dur = dur
-          statusResults = statusBaseRows.map((row) => ({
-            ...assembleStatusFromBatch(row, maps),
-            _type: 'status' as const,
-          }))
+          statusResults = statusBaseRows.map((row) => {
+            const status = assembleStatusFromBatch(row, maps)
+            const postId = row[0] as number
+            status.backendUrl =
+              statusBackendUrlMap.get(postId) ?? status.backendUrl
+            return { ...status, _type: 'status' as const }
+          })
         }
 
         let notifResults: (SqliteStoredNotification & {
@@ -632,9 +641,19 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
 
         // Phase1: 軽量な post_id のみ取得（施策 A: サブクエリ廃止）
         // 1:N JOIN がなければ DISTINCT 不要 → idx_posts_created で ORDER BY + LIMIT early termination が効く
-        const selectClause = hasMultiRowJoin
-          ? 'SELECT DISTINCT p.post_id'
-          : 'SELECT p.post_id'
+        // pb が参照されている場合は MIN(pb.backendUrl) を取得し Phase2 後に上書きする
+        let selectClause: string
+        let groupByClause: string
+        if (refs.pb) {
+          selectClause = 'SELECT p.post_id, MIN(pb.backendUrl) AS backendUrl'
+          groupByClause = '\n          GROUP BY p.post_id'
+        } else if (hasMultiRowJoin) {
+          selectClause = 'SELECT DISTINCT p.post_id'
+          groupByClause = ''
+        } else {
+          selectClause = 'SELECT p.post_id'
+          groupByClause = ''
+        }
         // --- 施策E: アクター事前フィルタ ---
         let statusOnlyAuthorPreFilter = ''
         if (
@@ -676,7 +695,7 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         const phase1Sql = `
           ${selectClause}
           FROM posts p${joinsClause}
-          WHERE (${rewrittenWhere})${additionalConditions}${statusOnlyAuthorPreFilter}
+          WHERE (${rewrittenWhere})${additionalConditions}${statusOnlyAuthorPreFilter}${groupByClause}
           ORDER BY p.created_at_ms DESC
           LIMIT ?;
         `
@@ -691,8 +710,16 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
             kind: 'timeline',
             returnValue: 'resultRows',
           })
-        const idRows = idRowsRaw as (number | null)[][]
+        const idRows = idRowsRaw as (string | number | null)[][]
 
+        const backendUrlMap = new Map<number, string>()
+        if (refs.pb) {
+          for (const row of idRows) {
+            if (row[1] != null) {
+              backendUrlMap.set(row[0] as number, row[1] as string)
+            }
+          }
+        }
         const postIds = idRows.map((row) => row[0] as number)
 
         if (postIds.length === 0) {
@@ -734,10 +761,12 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
 
         recordDuration(phase1Duration + phase2Duration)
 
-        const statusResults = baseRows.map((row) => ({
-          ...assembleStatusFromBatch(row, maps),
-          _type: 'status' as const,
-        }))
+        const statusResults = baseRows.map((row) => {
+          const status = assembleStatusFromBatch(row, maps)
+          const postId = row[0] as number
+          status.backendUrl = backendUrlMap.get(postId) ?? status.backendUrl
+          return { ...status, _type: 'status' as const }
+        })
 
         // 古い非同期クエリの結果が新しいクエリの結果を上書きしないようにする
         if (fetchVersionRef.current !== version) return
