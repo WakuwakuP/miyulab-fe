@@ -179,7 +179,7 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
       const backendPlaceholders = targetBackendUrls.map(() => '?').join(',')
       const tagPlaceholders = tags.map(() => '?').join(',')
 
-      // === 第1段階: post_id の取得（軽量クエリ） ===
+      // === 第1段階: post_id + backendUrl の取得（軽量クエリ） ===
       let phase1Sql: string
       const phase1Binds: (string | number)[] = []
 
@@ -191,12 +191,13 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
         ]
 
         phase1Sql = `
-          SELECT DISTINCT p.post_id
+          SELECT p.post_id, MIN(pb.backendUrl) AS backendUrl
           FROM posts p
           INNER JOIN posts_backends pb ON p.post_id = pb.post_id
           LEFT JOIN profiles pr ON p.author_profile_id = pr.profile_id
           INNER JOIN posts_belonging_tags pbt ON p.post_id = pbt.post_id
           WHERE ${whereConditions.join('\n            AND ')}
+          GROUP BY p.post_id
           ORDER BY p.created_at_ms DESC
           LIMIT ?;
         `
@@ -214,7 +215,7 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
         ]
 
         phase1Sql = `
-          SELECT p.post_id
+          SELECT p.post_id, MIN(pb.backendUrl) AS backendUrl
           FROM posts p
           INNER JOIN posts_backends pb ON p.post_id = pb.post_id
           LEFT JOIN profiles pr ON p.author_profile_id = pr.profile_id
@@ -240,9 +241,15 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
           kind: 'timeline',
           returnValue: 'resultRows',
         })
-      const idRows = idRowsRaw as (number | null)[][]
+      const idRows = idRowsRaw as (string | number | null)[][]
 
       const postIds = idRows.map((row) => row[0] as number)
+      const backendUrlMap = new Map<number, string>()
+      for (const row of idRows) {
+        if (row[1] != null) {
+          backendUrlMap.set(row[0] as number, row[1] as string)
+        }
+      }
       if (postIds.length === 0) {
         recordDuration(phase1Duration)
         if (fetchVersionRef.current !== version) return
@@ -282,9 +289,12 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
 
       recordDuration(phase1Duration + phase2Duration)
 
-      const results: SqliteStoredStatus[] = baseRows.map((row) =>
-        assembleStatusFromBatch(row, maps),
-      )
+      const results: SqliteStoredStatus[] = baseRows.map((row) => {
+        const status = assembleStatusFromBatch(row, maps)
+        const postId = row[0] as number
+        status.backendUrl = backendUrlMap.get(postId) ?? status.backendUrl
+        return status
+      })
 
       // 古い非同期クエリの結果が新しいクエリの結果を上書きしないようにする
       if (fetchVersionRef.current !== version) return

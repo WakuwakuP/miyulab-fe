@@ -188,14 +188,14 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
 
       const backendPlaceholders = targetBackendUrls.map(() => '?').join(',')
 
-      // === 第1段階: post_id + timelineTypes の取得（軽量クエリ） ===
+      // === 第1段階: post_id + timelineTypes + backendUrl の取得（軽量クエリ） ===
       const whereConditions = [
         `pb.backendUrl IN (${backendPlaceholders})`,
         ...filterConditions,
       ]
 
       const phase1Sql = `
-        SELECT p.post_id, json_group_array(DISTINCT ck.code) AS timelineTypes
+        SELECT p.post_id, json_group_array(DISTINCT ck.code) AS timelineTypes, MIN(pb.backendUrl) AS backendUrl
         FROM channel_kinds ck
         INNER JOIN timelines t ON t.channel_kind_id = ck.channel_kind_id
         INNER JOIN timeline_items ti ON ti.timeline_id = t.timeline_id
@@ -225,9 +225,13 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
 
       const postIds = idRows.map((row) => row[0] as number)
       const timelineTypesMap = new Map<number, string>()
+      const backendUrlMap = new Map<number, string>()
       for (const row of idRows) {
         if (row[1] != null) {
           timelineTypesMap.set(row[0] as number, row[1] as string)
+        }
+        if (row[2] != null) {
+          backendUrlMap.set(row[0] as number, row[2] as string)
         }
       }
       if (postIds.length === 0) {
@@ -274,9 +278,12 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
 
       recordDuration(phase1Duration + phase2Duration)
 
-      const results: SqliteStoredStatus[] = baseRows.map((row) =>
-        assembleStatusFromBatch(row, maps),
-      )
+      const results: SqliteStoredStatus[] = baseRows.map((row) => {
+        const status = assembleStatusFromBatch(row, maps)
+        const postId = row[0] as number
+        status.backendUrl = backendUrlMap.get(postId) ?? status.backendUrl
+        return status
+      })
 
       // 古い非同期クエリの結果が新しいクエリの結果を上書きしないようにする
       if (fetchVersionRef.current !== version) return
