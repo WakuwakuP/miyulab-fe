@@ -77,8 +77,8 @@ export const DetailPanel = () => {
         }
       }
 
-      // 数値的な ID の場合は getAccount、そうでなければ searchAccount で解決
-      // Misskey の ID は英数字混合のため、acct 形式 (user@host) でなければ ID として扱う
+      // 数値的な ID の場合は getAccount を優先し、失敗したら searchAccount にフォールバック
+      // acct 形式 (user@host) は常に searchAccount を使用し、それ以外 (例: Misskey 英数字 ID) はまず getAccount を試行してから searchAccount にフォールバックする
       const isAcctFormat = /^@?\w[\w.-]*@[\w.-]+\.\w+$/.test(searchQuery)
       const isNumericId = /^\d+$/.test(searchQuery)
       if (isNumericId) {

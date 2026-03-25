@@ -159,7 +159,12 @@ export class MisskeyAdapter implements MegalodonInterface {
         ),
       )
     } catch (e) {
-      // userId でのルックアップが失敗した場合、username として検索を試行
+      // NO_SUCH_USER (404) の場合のみ username として検索をフォールバック
+      const isNotFound =
+        e instanceof Error &&
+        ('status' in e || /NO_SUCH_USER|not found|404/i.test(e.message))
+      if (!isNotFound) throw e
+
       try {
         const users = await this.client.request(
           'users/search-by-username-and-host',

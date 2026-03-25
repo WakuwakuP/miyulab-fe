@@ -385,7 +385,12 @@ export function mapNotification(
 // ========================================
 
 function escapeHtml(text: string): string {
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
 }
 
 /**
@@ -399,10 +404,11 @@ function mfmToHtml(text: string, instanceHost?: string): string {
 
   // URL をプレースホルダーに置換して後続のメンション/ハッシュタグ変換から保護
   const urlPlaceholders: string[] = []
-  escaped = escaped.replace(/https?:\/\/[^\s<>&)]+/g, (url) => {
+  escaped = escaped.replace(/https?:\/\/[^\s<>&)"']+/g, (url) => {
     const index = urlPlaceholders.length
+    const safeUrlForHref = url.replace(/"/g, '&quot;').replace(/'/g, '&#39;')
     urlPlaceholders.push(
-      `<a href="${url}" rel="noopener noreferrer" target="_blank">${url}</a>`,
+      `<a href="${safeUrlForHref}" rel="noopener noreferrer" target="_blank">${url}</a>`,
     )
     return `__MFM_URL_${index}__`
   })

@@ -1023,8 +1023,24 @@ export const STATUS_BASE_JOINS = `
   LEFT JOIN profiles rpr ON rs.author_profile_id = rpr.profile_id
   LEFT JOIN visibility_types rvt ON rs.visibility_id = rvt.visibility_id
   LEFT JOIN post_stats rps ON rs.post_id = rps.post_id
-  LEFT JOIN profile_aliases pra ON pra.profile_id = pr.profile_id AND pra.server_id = (SELECT pb_s.server_id FROM posts_backends pb_s WHERE pb_s.post_id = p.post_id ORDER BY pb_s.backendUrl LIMIT 1)
-  LEFT JOIN profile_aliases rpra ON rpra.profile_id = rpr.profile_id AND rpra.server_id = (SELECT pb_s.server_id FROM posts_backends pb_s WHERE pb_s.post_id = p.post_id ORDER BY pb_s.backendUrl LIMIT 1)`
+  LEFT JOIN (
+    SELECT
+      pb_s.post_id,
+      pb_s.server_id
+    FROM posts_backends pb_s
+    JOIN (
+      SELECT
+        post_id,
+        MIN(backendUrl) AS min_backendUrl
+      FROM posts_backends
+      GROUP BY post_id
+    ) pb_min
+      ON pb_min.post_id = pb_s.post_id
+      AND pb_min.min_backendUrl = pb_s.backendUrl
+    GROUP BY pb_s.post_id, pb_s.server_id
+  ) spb ON spb.post_id = p.post_id
+  LEFT JOIN profile_aliases pra ON pra.profile_id = pr.profile_id AND pra.server_id = spb.server_id
+  LEFT JOIN profile_aliases rpra ON rpra.profile_id = rpr.profile_id AND rpra.server_id = spb.server_id`
 
 // ================================================================
 // 2段階クエリ: post_id リストから詳細情報を取得する共通ヘルパー
