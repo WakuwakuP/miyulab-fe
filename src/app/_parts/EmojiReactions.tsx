@@ -8,7 +8,6 @@ import { REACTION_BACKENDS } from 'util/constants'
 import { toggleReactionInDb } from 'util/db/sqlite/statusStore'
 import { GetClient } from 'util/GetClient'
 import { AppsContext } from 'util/provider/AppsProvider'
-import { SelectedAppIndexContext } from 'util/provider/PostAccountProvider'
 
 export const EmojiReactions = ({
   status,
@@ -20,18 +19,17 @@ export const EmojiReactions = ({
   onToggle: (reactionName: string, currentlyMine: boolean) => void
 }) => {
   const apps = useContext(AppsContext)
-  const selectedAppIndex = useContext(SelectedAppIndexContext)
 
   if (reactions.length === 0) return null
 
-  const selectedApp = apps[selectedAppIndex]
+  const statusApp = status.appIndex != null ? apps[status.appIndex] : undefined
   const canReact =
-    selectedApp != null && REACTION_BACKENDS.includes(selectedApp.backend)
+    statusApp != null && REACTION_BACKENDS.includes(statusApp.backend)
 
   const handleReactionClick = (reaction: Entity.Reaction) => {
-    if (!canReact || selectedApp == null) return
+    if (!canReact || statusApp == null) return
 
-    const client = GetClient(selectedApp)
+    const client = GetClient(statusApp)
     const statusId = status.reblog?.id ?? status.id
 
     onToggle(reaction.name, reaction.me)
@@ -41,13 +39,13 @@ export const EmojiReactions = ({
         console.error('Failed to remove reaction:', error)
       })
       // DB からリアクションを削除
-      toggleReactionInDb(selectedApp.backendUrl, statusId, false, reaction.name)
+      toggleReactionInDb(statusApp.backendUrl, statusId, false, reaction.name)
     } else {
       client.createEmojiReaction(statusId, reaction.name).catch((error) => {
         console.error('Failed to add reaction:', error)
       })
       // DB にリアクションを保存
-      toggleReactionInDb(selectedApp.backendUrl, statusId, true, reaction.name)
+      toggleReactionInDb(statusApp.backendUrl, statusId, true, reaction.name)
     }
   }
 
