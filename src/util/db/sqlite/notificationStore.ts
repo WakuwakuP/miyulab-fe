@@ -63,7 +63,10 @@ export const NOTIFICATION_SELECT = `
   COALESCE(rppr.display_name, '') AS rp_author_display_name,
   COALESCE(rppr.avatar_url, '') AS rp_author_avatar,
   COALESCE(rppr.actor_uri, '') AS rp_author_url,
-  (SELECT MIN(rpb.local_id) FROM posts_backends rpb WHERE rpb.post_id = rp.post_id) AS rp_local_id,
+  COALESCE(
+    (SELECT rpb.local_id FROM posts_backends rpb WHERE rpb.post_id = rp.post_id AND rpb.backendUrl = sv.base_url LIMIT 1),
+    (SELECT rpb.local_id FROM posts_backends rpb WHERE rpb.post_id = rp.post_id ORDER BY rpb.backendUrl LIMIT 1)
+  ) AS rp_local_id,
   rp.in_reply_to_id AS rp_in_reply_to_id,
   rp.edited_at AS rp_edited_at,
   (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.image_url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM post_custom_emojis pce INNER JOIN custom_emojis ce ON pce.emoji_id = ce.emoji_id WHERE pce.post_id = rp.post_id AND pce.usage_context = 'status') AS rp_status_emojis_json,
