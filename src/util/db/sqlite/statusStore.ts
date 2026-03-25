@@ -331,7 +331,7 @@ export function rowToStoredStatus(
 export const STATUS_SELECT = `
   p.post_id,
   MIN(pb.backendUrl) AS backendUrl,
-  MIN(pb.local_id) AS local_id,
+  (SELECT pb2.local_id FROM posts_backends pb2 WHERE pb2.post_id = p.post_id ORDER BY pb2.backendUrl LIMIT 1) AS local_id,
   p.created_at_ms,
   p.stored_at,
   p.object_uri,
@@ -408,7 +408,10 @@ export const STATUS_SELECT = `
     ELSE NULL
   END AS rb_poll_json,
   CASE WHEN rs.post_id IS NOT NULL
-    THEN (SELECT MIN(rpb.local_id) FROM posts_backends rpb WHERE rpb.post_id = rs.post_id)
+    THEN COALESCE(
+      (SELECT rpb.local_id FROM posts_backends rpb WHERE rpb.post_id = rs.post_id AND rpb.backendUrl = (SELECT MIN(pb3.backendUrl) FROM posts_backends pb3 WHERE pb3.post_id = p.post_id) LIMIT 1),
+      (SELECT rpb.local_id FROM posts_backends rpb WHERE rpb.post_id = rs.post_id ORDER BY rpb.backendUrl LIMIT 1)
+    )
     ELSE NULL
   END AS rb_local_id,
   COALESCE(pra.remote_account_id, '') AS author_account_id,
@@ -449,7 +452,7 @@ export const STATUS_SELECT = `
 export const STATUS_BASE_SELECT = `
   p.post_id,
   MIN(pb.backendUrl) AS backendUrl,
-  MIN(pb.local_id) AS local_id,
+  (SELECT pb2.local_id FROM posts_backends pb2 WHERE pb2.post_id = p.post_id ORDER BY pb2.backendUrl LIMIT 1) AS local_id,
   p.created_at_ms,
   p.stored_at,
   p.object_uri,
@@ -497,7 +500,10 @@ export const STATUS_BASE_SELECT = `
   COALESCE(rps.reblogs_count, 0) AS rb_reblogs_count,
   COALESCE(rps.favourites_count, 0) AS rb_favourites_count,
   CASE WHEN rs.post_id IS NOT NULL
-    THEN (SELECT MIN(rpb.local_id) FROM posts_backends rpb WHERE rpb.post_id = rs.post_id)
+    THEN COALESCE(
+      (SELECT rpb.local_id FROM posts_backends rpb WHERE rpb.post_id = rs.post_id AND rpb.backendUrl = (SELECT MIN(pb3.backendUrl) FROM posts_backends pb3 WHERE pb3.post_id = p.post_id) LIMIT 1),
+      (SELECT rpb.local_id FROM posts_backends rpb WHERE rpb.post_id = rs.post_id ORDER BY rpb.backendUrl LIMIT 1)
+    )
     ELSE NULL
   END AS rb_local_id,
   COALESCE(pra.remote_account_id, '') AS author_account_id,
