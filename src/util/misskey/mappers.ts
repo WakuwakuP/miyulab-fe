@@ -229,8 +229,18 @@ export function mapNoteToStatus(
   const reblog =
     isRenote && note.renote ? mapNoteToStatus(note.renote, instanceHost) : null
 
-  // Build content from text (basic MFM → HTML)
-  const content = note.text ? escapeHtml(note.text) : ''
+  // Build content from text (MFM → HTML with mentions, hashtags, URLs)
+  const content = note.text ? mfmToHtml(note.text, instanceHost) : ''
+
+  // Extract mentions from text with enriched data
+  const mentions = note.text
+    ? parseMentionsFromText(note.text, note.mentions ?? [], instanceHost)
+    : (note.mentions ?? []).map((id) => ({
+        acct: '',
+        id,
+        url: '',
+        username: '',
+      }))
 
   return {
     account,
@@ -253,12 +263,7 @@ export function mapNoteToStatus(
     in_reply_to_id: note.replyId ?? null,
     language: null,
     media_attachments: (note.files ?? []).map(mapDriveFileToAttachment),
-    mentions: (note.mentions ?? []).map((id) => ({
-      acct: '',
-      id,
-      url: '',
-      username: '',
-    })),
+    mentions,
     muted: null,
     pinned: null,
     plain_content: note.text ?? null,
@@ -380,9 +385,87 @@ export function mapNotification(
 // ========================================
 
 function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/\n/g, '<br>')
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+/**
+ * MFM テキストを基本的な HTML に変換する。
+ * メンション (@user, @user@host)、ハッシュタグ (#tag)、URL をリンク化し、
+ * 改行を <br> に変換する。
+ */
+function mfmToHtml(text: string, instanceHost?: string): string {
+  const host = instanceHost ?? ''
+  let escaped = escapeHtml(text)
+
+  // URL をプレースホルダーに置換して後続のメンション/ハッシュタグ変換から保護
+  const urlPlaceholders: string[] = []
+  escaped = escaped.replace(/https?:\/\/[^\s<>&)]+/g, (url) => {
+    const index = urlPlaceholders.length
+    urlPlaceholders.push(
+      `<a href="${url}" rel="noopener noreferrer" target="_blank">${url}</a>`,
+    )
+    return `__MFM_URL_${index}__`
+  })
+
+  // メンションをリンク化 (@user@host or @user)
+  escaped = escaped.replace(
+    /@(\w[\w.-]*)(?:@([\w.-]+\.\w+))?/g,
+    (_match, username: string, mentionHost?: string) => {
+      const acct = mentionHost ? `${username}@${mentionHost}` : username
+      const href = mentionHost
+        ? `https://${mentionHost}/@${username}`
+        : `${host}/@${username}`
+      return `<a href="${href}" class="mention" rel="noopener noreferrer">@${acct}</a>`
+    },
+  )
+
+  // ハッシュタグをリンク化 (#tag)
+  escaped = escaped.replace(
+    /(?<=^|[\s>])#(\w+)/g,
+    (_match, tag: string) =>
+      `<a href="${host}/tags/${tag}" class="hashtag" rel="noopener noreferrer">#${tag}</a>`,
+  )
+
+  // URL プレースホルダーを復元
+  escaped = escaped.replace(
+    /__MFM_URL_(\d+)__/g,
+    (_match, index: string) => urlPlaceholders[Number(index)],
+  )
+
+  // 改行を <br> に変換
+  escaped = escaped.replace(/\n/g, '<br>')
+
+  return escaped
+}
+
+/**
+ * MFM テキストからメンション情報を抽出する。
+ */
+function parseMentionsFromText(
+  text: string,
+  mentionIds: string[],
+  instanceHost?: string,
+): Entity.Mention[] {
+  const host = instanceHost ?? ''
+  // URL 内のメンションを除外するため、URL を除去してからパース
+  const textWithoutUrls = text.replace(/https?:\/\/[^\s)]+/g, '')
+  const mentionRegex = /@(\w[\w.-]*)(?:@([\w.-]+\.\w+))?/g
+  const mentions: Entity.Mention[] = []
+  let match: RegExpExecArray | null
+
+  // biome-ignore lint/suspicious/noAssignInExpressions: regex exec loop pattern
+  while ((match = mentionRegex.exec(textWithoutUrls)) !== null) {
+    const username = match[1]
+    const mentionHost = match[2]
+    const acct = mentionHost ? `${username}@${mentionHost}` : username
+    const url = mentionHost
+      ? `https://${mentionHost}/@${username}`
+      : `${host}/@${username}`
+    // mentionIds がある場合、順番にIDを割り当て
+    const id =
+      mentions.length < mentionIds.length ? mentionIds[mentions.length] : ''
+    mentions.push({ acct, id, url, username })
+  }
+
+  return mentions
 }

@@ -150,13 +150,34 @@ export class MisskeyAdapter implements MegalodonInterface {
   }
 
   async getAccount(id: string): Promise<Response<Entity.Account>> {
-    const user = await this.client.request('users/show', { userId: id })
-    return wrapResponse(
-      mapUserDetailedToAccount(
-        user as unknown as Misskey.entities.UserDetailed,
-        this.origin,
-      ),
-    )
+    try {
+      const user = await this.client.request('users/show', { userId: id })
+      return wrapResponse(
+        mapUserDetailedToAccount(
+          user as unknown as Misskey.entities.UserDetailed,
+          this.origin,
+        ),
+      )
+    } catch (e) {
+      // userId でのルックアップが失敗した場合、username として検索を試行
+      try {
+        const users = await this.client.request(
+          'users/search-by-username-and-host',
+          { limit: 1, username: id },
+        )
+        if (users.length > 0) {
+          return wrapResponse(
+            mapUserLiteToAccount(
+              users[0] as unknown as Misskey.entities.UserLite,
+              this.origin,
+            ),
+          )
+        }
+      } catch {
+        // フォールバックも失敗した場合は元のエラーをスロー
+      }
+      throw e
+    }
   }
 
   async getAccountStatuses(
@@ -386,6 +407,29 @@ export class MisskeyAdapter implements MegalodonInterface {
       since_id?: string
     },
   ): Promise<Response<Array<Entity.Account>>> {
+    // acct 形式 (user@host) の場合は users/search-by-username-and-host を使用
+    const acctMatch = q.match(/^@?(\w[\w.-]*)@([\w.-]+\.\w+)$/)
+    if (acctMatch) {
+      const username = acctMatch[1]
+      const host = acctMatch[2]
+      const users = await this.client.request(
+        'users/search-by-username-and-host',
+        {
+          host,
+          limit: options?.limit ?? 20,
+          username,
+        },
+      )
+      return wrapResponse(
+        users.map((u) =>
+          mapUserLiteToAccount(
+            u as unknown as Misskey.entities.UserLite,
+            this.origin,
+          ),
+        ),
+      )
+    }
+
     const users = await this.client.request('users/search', {
       limit: options?.limit ?? 20,
       query: q,
@@ -730,22 +774,38 @@ export class MisskeyAdapter implements MegalodonInterface {
       since_id?: string
     },
   ): Promise<Response<Entity.Context>> {
-    // Get conversation (replies/ancestors)
-    const conversation = await this.client.request('notes/conversation', {
-      limit: 40,
-      noteId: id,
-    })
-    const children = await this.client.request('notes/children', {
-      limit: 40,
-      noteId: id,
-    })
+    const emptyContext: Entity.Context = { ancestors: [], descendants: [] }
 
-    return wrapResponse({
-      ancestors: conversation
+    // notes/conversation はリモートノートで失敗する場合があるため個別に try-catch
+    let ancestors: Entity.Status[] = []
+    try {
+      const conversation = await this.client.request('notes/conversation', {
+        limit: 40,
+        noteId: id,
+      })
+      ancestors = conversation
         .reverse()
-        .map((n) => mapNoteToStatus(n, this.origin)),
-      descendants: children.map((n) => mapNoteToStatus(n, this.origin)),
-    })
+        .map((n) => mapNoteToStatus(n, this.origin))
+    } catch (e) {
+      console.warn('Failed to fetch notes/conversation:', e)
+    }
+
+    let descendants: Entity.Status[] = []
+    try {
+      const children = await this.client.request('notes/children', {
+        limit: 40,
+        noteId: id,
+      })
+      descendants = children.map((n) => mapNoteToStatus(n, this.origin))
+    } catch (e) {
+      console.warn('Failed to fetch notes/children:', e)
+      // ancestors も descendants も取得できない場合は空コンテキストを返す
+      if (ancestors.length === 0) {
+        return wrapResponse(emptyContext)
+      }
+    }
+
+    return wrapResponse({ ancestors, descendants })
   }
 
   async getStatusSource(_id: string): Promise<Response<Entity.StatusSource>> {

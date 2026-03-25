@@ -78,6 +78,8 @@ export const DetailPanel = () => {
       }
 
       // 数値的な ID の場合は getAccount、そうでなければ searchAccount で解決
+      // Misskey の ID は英数字混合のため、acct 形式 (@ を含む) でなければ ID として扱う
+      const isAcctFormat = searchQuery.includes('@')
       const isNumericId = /^\d+$/.test(searchQuery)
       if (isNumericId) {
         client
@@ -85,8 +87,18 @@ export const DetailPanel = () => {
           .then((res) => resolveAsAccount(res.data))
           .catch((error) => {
             console.error('Failed to fetch account:', error)
+            // getAccount 失敗時は searchAccount にフォールバック
+            client
+              .searchAccount(searchQuery, { limit: 5, resolve: true })
+              .then((res) => {
+                const found = res.data[0]
+                if (found) resolveAsAccount(found)
+              })
+              .catch((fallbackError) => {
+                console.error('Fallback search also failed:', fallbackError)
+              })
           })
-      } else {
+      } else if (isAcctFormat) {
         client
           .searchAccount(searchQuery, { limit: 5, resolve: true })
           .then((res) => {
@@ -96,6 +108,23 @@ export const DetailPanel = () => {
           })
           .catch((error) => {
             console.error('Failed to search account:', error)
+          })
+      } else {
+        // Misskey 英数字 ID などの可能性: まず getAccount を試行し、失敗したら searchAccount
+        client
+          .getAccount(searchQuery)
+          .then((res) => resolveAsAccount(res.data))
+          .catch(() => {
+            client
+              .searchAccount(searchQuery, { limit: 5, resolve: true })
+              .then((res) => {
+                const found =
+                  res.data.find((a) => a.acct === searchQuery) ?? res.data[0]
+                if (found) resolveAsAccount(found)
+              })
+              .catch((error) => {
+                console.error('Failed to search account:', error)
+              })
           })
       }
     }
