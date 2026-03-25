@@ -173,26 +173,37 @@ export function mapUserDetailedToAccount(
 // Emoji Reactions → megalodon Reaction[]
 // ========================================
 
+/**
+ * Normalize a Misskey reaction name and resolve its emoji URL.
+ *
+ * Misskey custom emoji reactions use `:name@.:` for local emoji.
+ * This strips the `@.` suffix and looks up the URL in reactionEmojis.
+ */
+function normalizeReaction(
+  name: string,
+  reactionEmojis?: Record<string, string>,
+): { name: string; url: string | null } {
+  const isCustom = name.startsWith(':') && name.endsWith(':')
+  const shortcode = isCustom ? name.slice(1, -1).replace(/@\.$/, '') : name
+  const url = reactionEmojis?.[shortcode] ?? null
+  return { name: isCustom ? `:${shortcode}:` : name, url }
+}
+
 export function mapReactions(
   reactions: Record<string, number>,
   myReaction?: string | null,
   reactionEmojis?: Record<string, string>,
 ): Entity.Reaction[] {
-  return Object.entries(reactions).map(([name, count]) => {
-    // Custom emoji reactions have format :emoji_name: or :emoji_name@.:
-    const isCustom = name.startsWith(':') && name.endsWith(':')
-    const shortcode = isCustom ? name.slice(1, -1).replace(/@\.$/, '') : name
-    const emojiUrl = reactionEmojis?.[shortcode] ?? null
-    // Normalize name: remove @. suffix for local custom emoji
-    const normalizedName = isCustom ? `:${shortcode}:` : name
+  return Object.entries(reactions).map(([rawName, count]) => {
+    const r = normalizeReaction(rawName, reactionEmojis)
 
     return {
       accounts: [],
       count,
-      me: myReaction === name,
-      name: normalizedName,
+      me: myReaction === rawName,
+      name: r.name,
       // Only include static_url/url if it's a custom emoji with a known URL
-      ...(emojiUrl ? { static_url: emojiUrl, url: emojiUrl } : {}),
+      ...(r.url ? { static_url: r.url, url: r.url } : {}),
     } as Entity.Reaction
   })
 }
@@ -339,16 +350,9 @@ export function mapNotification(
       )
       if (notif.type === 'reaction' && 'reaction' in notif) {
         const rawReaction = (notif as { reaction: string }).reaction
-        const isCustom =
-          rawReaction.startsWith(':') && rawReaction.endsWith(':')
-        const shortcode = isCustom
-          ? rawReaction.slice(1, -1).replace(/@\.$/, '')
-          : rawReaction
-        const normalizedName = isCustom ? `:${shortcode}:` : rawReaction
-        // Resolve URL from note's reactionEmojis
         const reactionEmojis = (notif.note as Misskey.entities.Note | undefined)
           ?.reactionEmojis
-        const emojiUrl = reactionEmojis?.[shortcode] ?? null
+        const r = normalizeReaction(rawReaction, reactionEmojis)
         return {
           ...base,
           account,
@@ -356,8 +360,8 @@ export function mapNotification(
             accounts: [],
             count: 1,
             me: false,
-            name: normalizedName,
-            ...(emojiUrl ? { static_url: emojiUrl, url: emojiUrl } : {}),
+            name: r.name,
+            ...(r.url ? { static_url: r.url, url: r.url } : {}),
           },
           status,
         }
