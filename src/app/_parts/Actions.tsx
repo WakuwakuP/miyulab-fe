@@ -96,9 +96,9 @@ export const Actions = ({
   const timeString = `${hours}:${minutes}`
 
   if (apps.length <= 0) return null
-  if (status.appIndex == null) return null
+  if (apps[selectedAppIndex] == null) return null
 
-  const client = GetClient(apps[status.appIndex])
+  const client = GetClient(apps[selectedAppIndex])
 
   const selectedApp = apps[selectedAppIndex]
   const canReact =
@@ -130,7 +130,7 @@ export const Actions = ({
           if (reblogged ?? false) {
             client.unreblogStatus(status.reblog?.id ?? status.id)
             setActions.setReblogged(
-              status.appIndex,
+              selectedAppIndex,
               status.reblog?.id ?? status.id,
               false,
             )
@@ -138,7 +138,7 @@ export const Actions = ({
           } else {
             client.reblogStatus(status.reblog?.id ?? status.id)
             setActions.setReblogged(
-              status.appIndex,
+              selectedAppIndex,
               status.reblog?.id ?? status.id,
               true,
             )
@@ -160,7 +160,7 @@ export const Actions = ({
           if (favourited ?? false) {
             client.unfavouriteStatus(status.reblog?.id ?? status.id)
             setActions.setFavourited(
-              status.appIndex,
+              selectedAppIndex,
               status.reblog?.id ?? status.id,
               false,
             )
@@ -168,7 +168,7 @@ export const Actions = ({
           } else {
             client.favouriteStatus(status.reblog?.id ?? status.id)
             setActions.setFavourited(
-              status.appIndex,
+              selectedAppIndex,
               status.reblog?.id ?? status.id,
               true,
             )
@@ -203,7 +203,7 @@ export const Actions = ({
           if (bookmarked ?? false) {
             client.unbookmarkStatus(status.reblog?.id ?? status.id)
             setActions.setBookmarked(
-              status.appIndex,
+              selectedAppIndex,
               status.reblog?.id ?? status.id,
               false,
             )
@@ -211,7 +211,7 @@ export const Actions = ({
           } else {
             client.bookmarkStatus(status.reblog?.id ?? status.id)
             setActions.setBookmarked(
-              status.appIndex,
+              selectedAppIndex,
               status.reblog?.id ?? status.id,
               true,
             )
