@@ -409,7 +409,7 @@ export const STATUS_SELECT = `
   END AS rb_poll_json,
   CASE WHEN rs.post_id IS NOT NULL
     THEN COALESCE(
-      (SELECT rpb.local_id FROM posts_backends rpb WHERE rpb.post_id = rs.post_id AND rpb.backendUrl = MIN(pb.backendUrl) LIMIT 1),
+      (SELECT rpb.local_id FROM posts_backends rpb WHERE rpb.post_id = rs.post_id AND rpb.backendUrl = (SELECT MIN(pb3.backendUrl) FROM posts_backends pb3 WHERE pb3.post_id = p.post_id) LIMIT 1),
       (SELECT rpb.local_id FROM posts_backends rpb WHERE rpb.post_id = rs.post_id ORDER BY rpb.backendUrl LIMIT 1)
     )
     ELSE NULL
@@ -501,7 +501,7 @@ export const STATUS_BASE_SELECT = `
   COALESCE(rps.favourites_count, 0) AS rb_favourites_count,
   CASE WHEN rs.post_id IS NOT NULL
     THEN COALESCE(
-      (SELECT rpb.local_id FROM posts_backends rpb WHERE rpb.post_id = rs.post_id AND rpb.backendUrl = MIN(pb.backendUrl) LIMIT 1),
+      (SELECT rpb.local_id FROM posts_backends rpb WHERE rpb.post_id = rs.post_id AND rpb.backendUrl = (SELECT MIN(pb3.backendUrl) FROM posts_backends pb3 WHERE pb3.post_id = p.post_id) LIMIT 1),
       (SELECT rpb.local_id FROM posts_backends rpb WHERE rpb.post_id = rs.post_id ORDER BY rpb.backendUrl LIMIT 1)
     )
     ELSE NULL
