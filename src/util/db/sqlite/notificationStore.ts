@@ -77,7 +77,9 @@ export const NOTIFICATION_SELECT = `
   COALESCE(rppa.remote_account_id, '') AS rp_author_account_id,
   rpps.emoji_reactions_json AS rp_emoji_reactions_json,
   CASE WHEN rp.has_media = 1 THEN (SELECT json_group_array(json_object('id', pm.remote_media_id, 'type', COALESCE((SELECT mt.code FROM media_types mt WHERE mt.media_type_id = pm.media_type_id), 'unknown'), 'url', pm.url, 'preview_url', pm.preview_url, 'description', pm.description, 'blurhash', pm.blurhash, 'remote_url', pm.url)) FROM post_media pm WHERE pm.post_id = rp.post_id ORDER BY pm.sort_order) ELSE NULL END AS rp_media_json,
-  (SELECT json_group_array(json_object('acct', pme.acct)) FROM posts_mentions pme WHERE pme.post_id = rp.post_id) AS rp_mentions_json`
+  (SELECT json_group_array(json_object('acct', pme.acct)) FROM posts_mentions pme WHERE pme.post_id = rp.post_id) AS rp_mentions_json,
+  n.reaction_name,
+  n.reaction_url`
 
 export const NOTIFICATION_BASE_JOINS = `
   LEFT JOIN servers sv ON n.server_id = sv.server_id
@@ -109,6 +111,7 @@ export const NOTIFICATION_BASE_JOINS = `
  *   [36] actor_account_id [37] rp_author_account_id
  *   [38] rp_emoji_reactions_json
  *   [39] rp_media_json    [40] rp_mentions_json
+ *   [41] reaction_name    [42] reaction_url
  */
 export function rowToStoredNotification(
   row: (string | number | null)[],
@@ -250,6 +253,19 @@ export function rowToStoredNotification(
     }
   }
 
+  const reactionName = row[41] as string | null
+  const reactionUrl = row[42] as string | null
+  const reaction: Entity.Reaction | undefined =
+    reactionName != null
+      ? {
+          accounts: [],
+          count: 1,
+          me: false,
+          name: reactionName,
+          ...(reactionUrl ? { static_url: reactionUrl, url: reactionUrl } : {}),
+        }
+      : undefined
+
   return {
     account: {
       acct: (row[7] as string) ?? '',
@@ -282,6 +298,7 @@ export function rowToStoredNotification(
     id: (row[5] as string) ?? String(row[0]),
     // SqliteStoredNotification extra fields
     notification_id: row[0] as number,
+    ...(reaction ? { reaction } : {}),
     status,
     storedAt: row[3] as number,
     type: (row[4] as string) ?? '',
