@@ -32,7 +32,7 @@
 import type { SchemaDbHandle as DbHandle } from './worker/workerSchema'
 
 /** 現在のスキーマバージョン */
-const SCHEMA_VERSION = 23
+const SCHEMA_VERSION = 24
 
 /**
  * スキーマの初期化・マイグレーション
@@ -291,6 +291,11 @@ export function ensureSchema(handle: DbHandle): void {
     // v22→v23: 全パス共通（if-else chain の後で実行）
     if (currentVersion < 23) {
       migrateV22toV23(handle)
+    }
+
+    // v23→v24: notifications に reaction_name / reaction_url カラム追加
+    if (currentVersion < 24) {
+      migrateV23toV24(handle)
     }
 
     db.exec(`PRAGMA user_version = ${SCHEMA_VERSION};`)
@@ -2624,6 +2629,32 @@ function migrateV22toV23(handle: DbHandle): void {
   db.exec(
     'CREATE INDEX IF NOT EXISTS idx_timeline_items_post_id ON timeline_items(post_id) WHERE post_id IS NOT NULL;',
   )
+}
+
+// ================================================================
+// v23 → v24 マイグレーション: notifications に reaction_name / reaction_url カラム追加
+// ================================================================
+
+/**
+ * v23 → v24 マイグレーション
+ *
+ * notifications テーブルに reaction_name TEXT, reaction_url TEXT カラムを追加し、
+ * Misskey/Pleroma のリアクション絵文字情報を永続化できるようにする。
+ */
+function migrateV23toV24(handle: DbHandle): void {
+  const { db } = handle
+
+  const cols = db.exec('PRAGMA table_info(notifications);', {
+    returnValue: 'resultRows',
+  }) as (string | number | null)[][]
+  const hasReactionName = cols.some((row) => row[1] === 'reaction_name')
+  if (!hasReactionName) {
+    db.exec('ALTER TABLE notifications ADD COLUMN reaction_name TEXT;')
+  }
+  const hasReactionUrl = cols.some((row) => row[1] === 'reaction_url')
+  if (!hasReactionUrl) {
+    db.exec('ALTER TABLE notifications ADD COLUMN reaction_url TEXT;')
+  }
 }
 
 /*

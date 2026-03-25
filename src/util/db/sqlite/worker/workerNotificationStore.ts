@@ -255,7 +255,9 @@ function upsertNotification(
         actor_profile_id     = ?,
         related_post_id      = ?,
         created_at_ms        = ?,
-        stored_at            = ?
+        stored_at            = ?,
+        reaction_name        = ?,
+        reaction_url         = ?
       WHERE notification_id = ?;`,
       {
         bind: [
@@ -264,6 +266,10 @@ function upsertNotification(
           relatedPostId,
           created_at_ms,
           now,
+          notification.reaction?.name ?? null,
+          notification.reaction?.url ??
+            notification.reaction?.static_url ??
+            null,
           notificationId,
         ],
       },
@@ -272,8 +278,9 @@ function upsertNotification(
     db.exec(
       `INSERT INTO notifications (
         server_id, local_id, notification_type_id, actor_profile_id,
-        related_post_id, created_at_ms, stored_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?);`,
+        related_post_id, created_at_ms, stored_at,
+        reaction_name, reaction_url
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`,
       {
         bind: [
           serverId,
@@ -283,6 +290,10 @@ function upsertNotification(
           relatedPostId,
           created_at_ms,
           now,
+          notification.reaction?.name ?? null,
+          notification.reaction?.url ??
+            notification.reaction?.static_url ??
+            null,
         ],
       },
     )
