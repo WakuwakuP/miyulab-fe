@@ -1128,8 +1128,18 @@ export class MisskeyAdapter implements MegalodonInterface {
     )
   }
 
-  async getNotification(_id: string): Promise<Response<Entity.Notification>> {
-    // Misskey doesn't have a single notification endpoint; use the list with includeTypes
+  async getNotification(id: string): Promise<Response<Entity.Notification>> {
+    // Misskey doesn't have a single notification endpoint; fetch recent and filter
+    const notifications = await this.client.request('i/notifications', {
+      includeTypes: undefined,
+      limit: 1,
+      sinceId: undefined,
+      untilId: undefined,
+    })
+    const target = notifications.find((n) => n.id === id)
+    if (target) {
+      return wrapResponse(mapNotification(target, this.origin))
+    }
     throw new NotImplementedError('getNotification')
   }
 

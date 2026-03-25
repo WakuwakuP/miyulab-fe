@@ -183,12 +183,14 @@ export function mapReactions(
     const isCustom = name.startsWith(':') && name.endsWith(':')
     const shortcode = isCustom ? name.slice(1, -1).replace(/@\.$/, '') : name
     const emojiUrl = reactionEmojis?.[shortcode] ?? null
+    // Normalize name: remove @. suffix for local custom emoji
+    const normalizedName = isCustom ? `:${shortcode}:` : name
 
     return {
       accounts: [],
       count,
       me: myReaction === name,
-      name,
+      name: normalizedName,
       // Only include static_url/url if it's a custom emoji with a known URL
       ...(emojiUrl ? { static_url: emojiUrl, url: emojiUrl } : {}),
     } as Entity.Reaction
@@ -304,7 +306,7 @@ function mapNotificationType(type: string): string {
     case 'quote':
       return 'reblog'
     case 'reaction':
-      return 'favourite'
+      return 'reaction'
     case 'pollEnded':
       return 'poll'
     case 'note':
@@ -336,6 +338,17 @@ export function mapNotification(
         instanceHost,
       )
       if (notif.type === 'reaction' && 'reaction' in notif) {
+        const rawReaction = (notif as { reaction: string }).reaction
+        const isCustom =
+          rawReaction.startsWith(':') && rawReaction.endsWith(':')
+        const shortcode = isCustom
+          ? rawReaction.slice(1, -1).replace(/@\.$/, '')
+          : rawReaction
+        const normalizedName = isCustom ? `:${shortcode}:` : rawReaction
+        // Resolve URL from note's reactionEmojis
+        const reactionEmojis = (notif.note as Misskey.entities.Note | undefined)
+          ?.reactionEmojis
+        const emojiUrl = reactionEmojis?.[shortcode] ?? null
         return {
           ...base,
           account,
@@ -343,7 +356,8 @@ export function mapNotification(
             accounts: [],
             count: 1,
             me: false,
-            name: (notif as { reaction: string }).reaction,
+            name: normalizedName,
+            ...(emojiUrl ? { static_url: emojiUrl, url: emojiUrl } : {}),
           },
           status,
         }
