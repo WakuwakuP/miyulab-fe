@@ -1,6 +1,10 @@
 import { EventEmitter } from 'node:events'
 import type { WebSocketInterface } from 'megalodon'
 import type * as Misskey from 'misskey-js'
+import {
+  captureStreamEvent,
+  isRawDataCaptureEnabled,
+} from 'util/debug/rawDataCapture'
 import { acquireStream, releaseStream } from './MisskeyStreamPool'
 import { mapNoteToStatus, mapNotification } from './mappers'
 
@@ -126,6 +130,17 @@ export class MisskeyWebSocketAdapter
     // Note イベント → 'update' に変換
     this.channel.on('note', (note: Misskey.entities.Note) => {
       const status = mapNoteToStatus(note, this.origin)
+      if (isRawDataCaptureEnabled()) {
+        captureStreamEvent({
+          backend: 'misskey',
+          backendUrl: this.origin,
+          convertedData: status,
+          eventType: 'note',
+          origin: 'misskey-js',
+          rawData: note,
+          streamType: this.channelType,
+        })
+      }
       this.emit('update', status)
     })
 
@@ -138,6 +153,17 @@ export class MisskeyWebSocketAdapter
         'notification',
         (notif: Misskey.entities.Notification) => {
           const mapped = mapNotification(notif, this.origin)
+          if (isRawDataCaptureEnabled()) {
+            captureStreamEvent({
+              backend: 'misskey',
+              backendUrl: this.origin,
+              convertedData: mapped,
+              eventType: 'notification',
+              origin: 'misskey-js',
+              rawData: notif,
+              streamType: 'main',
+            })
+          }
           this.emit('notification', mapped)
         },
       )

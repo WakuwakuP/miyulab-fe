@@ -28,6 +28,11 @@ import {
   updateStatusAction,
   upsertStatus,
 } from 'util/db/sqlite/statusStore'
+import {
+  captureApiResponse,
+  captureStreamEvent,
+  isRawDataCaptureEnabled,
+} from 'util/debug/rawDataCapture'
 import { GetClient } from 'util/GetClient'
 import { getRetryDelay, MAX_RETRY_COUNT } from 'util/streaming/constants'
 import { restartStream, stopStream } from 'util/streaming/stopStream'
@@ -121,6 +126,18 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
     const { backendUrl } = app
 
     const onUpdate = async (status: Entity.Status) => {
+      // Raw data capture (stream)
+      if (isRawDataCaptureEnabled()) {
+        captureStreamEvent({
+          backend: app.backend,
+          backendUrl,
+          eventType: 'update',
+          origin: app.backend === 'misskey' ? 'misskey-js' : 'megalodon',
+          rawData: status,
+          streamType: 'home',
+        })
+      }
+
       // タグを収集
       setTagsEvent((prev) =>
         Array.from(new Set([...prev, ...status.tags.map((tag) => tag.name)])),
@@ -148,10 +165,30 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
     }
 
     const onStatusUpdate = async (status: Entity.Status) => {
+      if (isRawDataCaptureEnabled()) {
+        captureStreamEvent({
+          backend: app.backend,
+          backendUrl,
+          eventType: 'status_update',
+          origin: app.backend === 'misskey' ? 'misskey-js' : 'megalodon',
+          rawData: status,
+          streamType: 'home',
+        })
+      }
       await updateStatus(status, backendUrl)
     }
 
     const onNotification = async (notification: Entity.Notification) => {
+      if (isRawDataCaptureEnabled()) {
+        captureStreamEvent({
+          backend: app.backend,
+          backendUrl,
+          eventType: 'notification',
+          origin: app.backend === 'misskey' ? 'misskey-js' : 'megalodon',
+          rawData: notification,
+          streamType: 'home',
+        })
+      }
       await addNotification(notification, backendUrl)
 
       const account = notification.account
@@ -175,6 +212,16 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
 
     // deleteイベント: homeストリームからの受信なので 'home' のみ除外
     const onDelete = async (id: string) => {
+      if (isRawDataCaptureEnabled()) {
+        captureStreamEvent({
+          backend: app.backend,
+          backendUrl,
+          eventType: 'delete',
+          origin: app.backend === 'misskey' ? 'misskey-js' : 'megalodon',
+          rawData: id,
+          streamType: 'home',
+        })
+      }
       await handleDeleteEvent(backendUrl, id, 'home')
     }
 
@@ -265,6 +312,26 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
           client.getHomeTimeline({ limit: 40 }),
           client.getNotifications({ limit: 40 }),
         ])
+
+        // Raw data capture (API response)
+        if (isRawDataCaptureEnabled()) {
+          captureApiResponse({
+            backend: app.backend,
+            backendUrl,
+            dataCount: homeRes.data.length,
+            eventType: 'getHomeTimeline',
+            origin: app.backend === 'misskey' ? 'misskey-js' : 'megalodon',
+            rawData: homeRes.data,
+          })
+          captureApiResponse({
+            backend: app.backend,
+            backendUrl,
+            dataCount: notifRes.data.length,
+            eventType: 'getNotifications',
+            origin: app.backend === 'misskey' ? 'misskey-js' : 'megalodon',
+            rawData: notifRes.data,
+          })
+        }
 
         await bulkUpsertStatuses(homeRes.data, backendUrl, 'home')
 

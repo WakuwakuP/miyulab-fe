@@ -9,6 +9,7 @@ import {
   useEffect,
   useState,
 } from 'react'
+import { setRawDataCaptureEnabled } from 'util/debug/rawDataCapture'
 
 type SettingData = {
   showSensitive: boolean
@@ -16,11 +17,14 @@ type SettingData = {
   defaultStatusVisibility: Entity.StatusVisibility
   recentHashtagsCount: number
   reactionEmojis: string[]
+  /** Enable raw API/stream data capture for debugging */
+  captureRawData: boolean
 }
 
 const DEFAULT_REACTION_EMOJIS = ['👍', '❤️', '😃', '😢', '🙏', '👎', '😡']
 
 const initialSettingData: SettingData = {
+  captureRawData: false,
   defaultStatusVisibility: 'public',
   playerSize: 'medium',
   reactionEmojis: DEFAULT_REACTION_EMOJIS,
@@ -58,6 +62,11 @@ export const SettingProvider = ({
     }
     localStorage.setItem('setting', JSON.stringify(setting))
   }, [setting, storageLoading])
+
+  // Sync captureRawData flag with the module-level capture service
+  useEffect(() => {
+    setRawDataCaptureEnabled(setting.captureRawData)
+  }, [setting.captureRawData])
 
   return (
     <SettingContext.Provider value={setting}>
