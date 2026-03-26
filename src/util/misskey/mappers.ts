@@ -403,6 +403,8 @@ function mfmToHtml(text: string, instanceHost?: string): string {
   let escaped = escapeHtml(text)
 
   // URL をプレースホルダーに置換して後続のメンション/ハッシュタグ変換から保護
+  // 衝突を避けるためランダムな nonce をプレースホルダーに含める
+  const nonce = Math.random().toString(36).slice(2, 10)
   const urlPlaceholders: string[] = []
   escaped = escaped.replace(/https?:\/\/[^\s<>&)"']+/g, (url) => {
     const index = urlPlaceholders.length
@@ -410,7 +412,7 @@ function mfmToHtml(text: string, instanceHost?: string): string {
     urlPlaceholders.push(
       `<a href="${safeUrlForHref}" rel="noopener noreferrer" target="_blank">${url}</a>`,
     )
-    return `__MFM_URL_${index}__`
+    return `\x00MFM_URL_${nonce}_${index}\x00`
   })
 
   // メンションをリンク化 (@user@host or @user)
@@ -433,7 +435,8 @@ function mfmToHtml(text: string, instanceHost?: string): string {
   )
 
   // URL プレースホルダーを復元
-  escaped = escaped.replace(/__MFM_URL_(\d+)__/g, (match, index: string) => {
+  const placeholderRegex = new RegExp(`\x00MFM_URL_${nonce}_(\\d+)\x00`, 'g')
+  escaped = escaped.replace(placeholderRegex, (match, index: string) => {
     const url = urlPlaceholders[Number(index)]
     // 未知のプレースホルダーはそのまま残す
     return url !== undefined ? url : match
