@@ -128,6 +128,7 @@ async function initMainThreadFallback(
     handleSyncFollows,
     handleEnsureLocalAccount,
     handleToggleReaction,
+    handleBulkUpsertCustomEmojis,
   } = await import('./worker/workerStatusStore')
   const {
     handleAddNotification,
@@ -385,6 +386,14 @@ async function initMainThreadFallback(
             command.statusId,
             command.value,
             command.emoji,
+          )
+          break
+
+        case 'bulkUpsertCustomEmojis':
+          result = handleBulkUpsertCustomEmojis(
+            db,
+            command.backendUrl,
+            command.emojisJson,
           )
           break
 

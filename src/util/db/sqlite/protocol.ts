@@ -171,6 +171,14 @@ export type ToggleReactionRequest = {
   emoji: string // ':blobcat:' or '👍'
 }
 
+/** カスタム絵文字の一括登録（サーバ絵文字カタログのDBキャッシュ） */
+export type BulkUpsertCustomEmojisRequest = {
+  type: 'bulkUpsertCustomEmojis'
+  id: number
+  backendUrl: string
+  emojisJson: string
+}
+
 /** タイムライン一括取得リクエスト */
 export type FetchTimelineRequest = {
   type: 'fetchTimeline'
@@ -234,6 +242,7 @@ export type WorkerRequest =
   | ExportDatabaseRequest
   | EnsureLocalAccountRequest
   | ToggleReactionRequest
+  | BulkUpsertCustomEmojisRequest
   | FetchTimelineRequest
 
 // ================================================================

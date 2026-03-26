@@ -16,6 +16,7 @@ import {
   handleUpdateNotificationStatusAction,
 } from './workerNotificationStore'
 import {
+  handleBulkUpsertCustomEmojis,
   handleBulkUpsertStatuses,
   handleDeleteEvent,
   handleEnsureLocalAccount,
@@ -435,6 +436,17 @@ self.onmessage = (
           msg.statusId,
           msg.value,
           msg.emoji,
+        )
+        sendResponse(msg.id, { ok: true }, r.changedTables)
+        break
+      }
+
+      // ---- Custom Emoji Catalog ----
+      case 'bulkUpsertCustomEmojis': {
+        const r = handleBulkUpsertCustomEmojis(
+          db,
+          msg.backendUrl,
+          msg.emojisJson,
         )
         sendResponse(msg.id, { ok: true }, r.changedTables)
         break

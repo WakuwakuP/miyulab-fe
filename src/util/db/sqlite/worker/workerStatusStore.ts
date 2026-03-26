@@ -9,11 +9,13 @@ import type { Entity } from 'megalodon'
 import type { TableName } from '../protocol'
 import {
   ACTION_TO_ENGAGEMENT,
+  ensureCustomEmoji,
   ensureProfile,
   ensureProfileAlias,
   ensureServer,
   ensureTimeline,
   extractStatusColumns,
+  resolveEmojisFromDb,
   resolveLocalAccountId,
   resolvePostId,
   resolvePostItemKindId,
@@ -213,13 +215,17 @@ function ensureReblogOriginalPost(
   const visibilityId = resolveVisibilityId(db, cols.visibility)
   const profileId = ensureProfile(db, originalStatus.account)
   ensureProfileAlias(db, profileId, serverId, originalStatus.account.id)
-  if (originalStatus.account.emojis.length > 0) {
-    syncProfileCustomEmojis(
-      db,
-      profileId,
-      serverId,
-      originalStatus.account.emojis,
-    )
+  const accountEmojis =
+    originalStatus.account.emojis.length > 0
+      ? originalStatus.account.emojis
+      : resolveEmojisFromDb(
+          db,
+          serverId,
+          originalStatus.account.display_name,
+          backendUrl,
+        )
+  if (accountEmojis.length > 0) {
+    syncProfileCustomEmojis(db, profileId, serverId, accountEmojis)
   }
 
   let postId: number | undefined
@@ -326,12 +332,30 @@ function ensureReblogOriginalPost(
     originalStatus.sensitive,
   )
   syncPostStats(db, postId, originalStatus)
+  const resolvedStatusEmojis =
+    originalStatus.emojis?.length > 0
+      ? originalStatus.emojis
+      : resolveEmojisFromDb(
+          db,
+          serverId,
+          originalStatus.plain_content ?? null,
+          backendUrl,
+        )
+  const resolvedAccountEmojis =
+    originalStatus.account?.emojis?.length > 0
+      ? originalStatus.account.emojis
+      : resolveEmojisFromDb(
+          db,
+          serverId,
+          originalStatus.account?.display_name ?? null,
+          backendUrl,
+        )
   syncPostCustomEmojis(
     db,
     postId,
     serverId,
-    originalStatus.emojis ?? [],
-    originalStatus.account?.emojis ?? [],
+    resolvedStatusEmojis,
+    resolvedAccountEmojis,
   )
   syncPostHashtags(db, postId, originalStatus.tags)
   syncPollData(db, postId, originalStatus.poll)
@@ -374,8 +398,17 @@ export function handleUpsertStatus(
     const visibilityId = resolveVisibilityId(db, cols.visibility)
     const profileId = ensureProfile(db, status.account)
     ensureProfileAlias(db, profileId, serverId, status.account.id)
-    if (status.account.emojis.length > 0) {
-      syncProfileCustomEmojis(db, profileId, serverId, status.account.emojis)
+    const acctEmojis =
+      status.account.emojis.length > 0
+        ? status.account.emojis
+        : resolveEmojisFromDb(
+            db,
+            serverId,
+            status.account.display_name,
+            backendUrl,
+          )
+    if (acctEmojis.length > 0) {
+      syncProfileCustomEmojis(db, profileId, serverId, acctEmojis)
     }
 
     let postId: number | undefined
@@ -531,12 +564,30 @@ export function handleUpsertStatus(
       }
     }
 
+    const statusEmojisResolved =
+      status.emojis?.length > 0
+        ? status.emojis
+        : resolveEmojisFromDb(
+            db,
+            serverId,
+            status.plain_content ?? null,
+            backendUrl,
+          )
+    const accountEmojisResolved =
+      status.account?.emojis?.length > 0
+        ? status.account.emojis
+        : resolveEmojisFromDb(
+            db,
+            serverId,
+            status.account?.display_name ?? null,
+            backendUrl,
+          )
     syncPostCustomEmojis(
       db,
       postId,
       serverId,
-      status.emojis ?? [],
-      status.account?.emojis ?? [],
+      statusEmojisResolved,
+      accountEmojisResolved,
     )
     syncPostHashtags(db, postId, status.tags)
     syncPollData(db, postId, status.poll)
@@ -608,8 +659,17 @@ export function handleBulkUpsertStatuses(
       const visibilityId = resolveVisibilityId(db, cols.visibility)
       const profileId = ensureProfile(db, status.account)
       ensureProfileAlias(db, profileId, serverId, status.account.id)
-      if (status.account.emojis.length > 0) {
-        syncProfileCustomEmojis(db, profileId, serverId, status.account.emojis)
+      const bulkAcctEmojis =
+        status.account.emojis.length > 0
+          ? status.account.emojis
+          : resolveEmojisFromDb(
+              db,
+              serverId,
+              status.account.display_name,
+              backendUrl,
+            )
+      if (bulkAcctEmojis.length > 0) {
+        syncProfileCustomEmojis(db, profileId, serverId, bulkAcctEmojis)
       }
 
       let postId: number | undefined = normalizedUri
@@ -766,12 +826,30 @@ export function handleBulkUpsertStatuses(
         }
       }
 
+      const bulkStatusEmojis =
+        status.emojis?.length > 0
+          ? status.emojis
+          : resolveEmojisFromDb(
+              db,
+              serverId,
+              status.plain_content ?? null,
+              backendUrl,
+            )
+      const bulkAccountEmojis =
+        status.account?.emojis?.length > 0
+          ? status.account.emojis
+          : resolveEmojisFromDb(
+              db,
+              serverId,
+              status.account?.display_name ?? null,
+              backendUrl,
+            )
       syncPostCustomEmojis(
         db,
         postId,
         serverId,
-        status.emojis ?? [],
-        status.account?.emojis ?? [],
+        bulkStatusEmojis,
+        bulkAccountEmojis,
       )
       syncPostHashtags(db, postId, status.tags)
       syncPollData(db, postId, status.poll)
@@ -1240,6 +1318,38 @@ export function handleEnsureLocalAccount(
        last_authenticated_at = datetime('now');`,
     { bind: [serverId, profileId] },
   )
+  return { changedTables: [] }
+}
+
+// ================================================================
+// カスタム絵文字カタログの一括登録
+// ================================================================
+
+export function handleBulkUpsertCustomEmojis(
+  db: DbExec,
+  backendUrl: string,
+  emojisJson: string,
+): HandlerResult {
+  const emojis = JSON.parse(emojisJson) as {
+    shortcode: string
+    url: string
+    static_url?: string | null
+    visible_in_picker?: boolean
+  }[]
+  if (emojis.length === 0) return { changedTables: [] }
+
+  db.exec('BEGIN;')
+  try {
+    const serverId = ensureServer(db, backendUrl)
+    for (const emoji of emojis) {
+      ensureCustomEmoji(db, serverId, emoji)
+    }
+    db.exec('COMMIT;')
+  } catch (e) {
+    db.exec('ROLLBACK;')
+    throw e
+  }
+
   return { changedTables: [] }
 }
 
