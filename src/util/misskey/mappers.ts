@@ -415,7 +415,7 @@ function mfmToHtml(text: string, instanceHost?: string): string {
 
   // メンションをリンク化 (@user@host or @user)
   escaped = escaped.replace(
-    /@(\w[\w.-]*)(?:@([\w.-]+\.\w+))?/g,
+    /(?<![\w.])@(\w[\w.-]*)(?:@([\w.-]+\.\w+))?/g,
     (_match, username: string, mentionHost?: string) => {
       const acct = mentionHost ? `${username}@${mentionHost}` : username
       const href = mentionHost
@@ -433,10 +433,11 @@ function mfmToHtml(text: string, instanceHost?: string): string {
   )
 
   // URL プレースホルダーを復元
-  escaped = escaped.replace(
-    /__MFM_URL_(\d+)__/g,
-    (_match, index: string) => urlPlaceholders[Number(index)],
-  )
+  escaped = escaped.replace(/__MFM_URL_(\d+)__/g, (match, index: string) => {
+    const url = urlPlaceholders[Number(index)]
+    // 未知のプレースホルダーはそのまま残す
+    return url !== undefined ? url : match
+  })
 
   // 改行を <br> に変換
   escaped = escaped.replace(/\n/g, '<br>')
@@ -449,13 +450,13 @@ function mfmToHtml(text: string, instanceHost?: string): string {
  */
 function parseMentionsFromText(
   text: string,
-  mentionIds: string[],
+  _mentionIds: string[],
   instanceHost?: string,
 ): Entity.Mention[] {
   const host = instanceHost ?? ''
   // URL 内のメンションを除外するため、URL を除去してからパース
   const textWithoutUrls = text.replace(/https?:\/\/[^\s)]+/g, '')
-  const mentionRegex = /@(\w[\w.-]*)(?:@([\w.-]+\.\w+))?/g
+  const mentionRegex = /(?<![\w.])@(\w[\w.-]*)(?:@([\w.-]+\.\w+))?/g
   const mentions: Entity.Mention[] = []
   let match: RegExpExecArray | null
 
@@ -467,9 +468,9 @@ function parseMentionsFromText(
     const url = mentionHost
       ? `https://${mentionHost}/@${username}`
       : `${host}/@${username}`
-    // mentionIds がある場合、順番にIDを割り当て
-    const id =
-      mentions.length < mentionIds.length ? mentionIds[mentions.length] : ''
+    // Misskey の note.mentions はテキスト内の出現順と対応しないため、
+    // 安全に紐付けできる情報がない場合は id を空にしておく
+    const id = ''
     mentions.push({ acct, id, url, username })
   }
 

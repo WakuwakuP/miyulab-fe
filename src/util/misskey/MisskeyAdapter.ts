@@ -160,9 +160,18 @@ export class MisskeyAdapter implements MegalodonInterface {
       )
     } catch (e) {
       // NO_SUCH_USER (404) の場合のみ username として検索をフォールバック
+      const err = e as {
+        status?: number
+        statusCode?: number
+        code?: string
+        message?: string
+      }
       const isNotFound =
         e instanceof Error &&
-        ('status' in e || /NO_SUCH_USER|not found|404/i.test(e.message))
+        (err.status === 404 ||
+          err.statusCode === 404 ||
+          err.code === 'NO_SUCH_USER' ||
+          /NO_SUCH_USER|not found|404/i.test(e.message))
       if (!isNotFound) throw e
 
       try {
