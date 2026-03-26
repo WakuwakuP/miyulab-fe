@@ -1,9 +1,10 @@
+---
+name: manage-query-params
+description: "nuqsライブラリを使用した型安全なクエリパラメータ管理スキル。Next.js App RouterでServer/Client Component間の一貫したクエリパラメータ管理を実現します。Use when: クエリパラメータ管理、検索フィルタ、ページネーション、URL状態管理"
+argument-hint: "管理するクエリパラメータの要件や対象ページを指定"
+---
+
 # Manage Query Parameters Skill
-
-## メタデータ
-
-- **title**: ManageQueryParams
-- **description**: nuqsライブラリを使用した型安全なクエリパラメータ管理スキル。Next.js App RouterでServer/Client Component間の一貫したクエリパラメータ管理を実現します。
 
 ## スキルの目的
 

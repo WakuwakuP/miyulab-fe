@@ -1,9 +1,10 @@
+---
+name: create-component
+description: "Next.js 16 + ZenStack v3環境でのコンポーネント作成スキル。Server Component優先の原則に基づき、shadcn/uiを活用した型安全なUIコンポーネントを作成します。Use when: コンポーネント作成、UI実装、ページ作成、Server/Client Component"
+argument-hint: "作成するコンポーネントの要件や配置先を指定"
+---
+
 # Create Component Skill
-
-## メタデータ
-
-- **title**: CreateComponent
-- **description**: Next.js 16 + ZenStack v3環境でのコンポーネント作成スキル。Server Component優先の原則に基づき、shadcn/uiを活用した型安全なUIコンポーネントを作成します。
 
 ## スキルの目的
 
