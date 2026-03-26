@@ -37,7 +37,8 @@
       "!**/v0/**/*",
       "!**/tests/**/*",
       "!**/.storybook/MockAuth.tsx",
-      "!**/plans/**/*"
+      "!**/plans/**/*",
+      "!**/.github/prompts/**/*"
     ]
   },
   "formatter": {
