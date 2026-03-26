@@ -291,9 +291,12 @@ export function cancelStaleRequests(
  * キューで直列化し、タイムアウトは実際に送信した時点から計測する。
  *
  * kind='timeline' の場合、同一クエリが既にキューにあれば新たに積まず
- * 既存リクエストの結果を共有する。
- * ただし sessionTag 付きの timeline リクエストは dedup をスキップする
- * （キャンセル時に dedup マップとの整合性が複雑になるため）。
+ * 既存リクエストの結果を共有する（dedup）。
+ *
+ * sessionTag 付きの timeline リクエストは dedup をスキップするが、
+ * 同じ sessionTag のアイテムがキューに残っていれば **インプレース置換** する。
+ * これにより cancelStaleRequests + 末尾追加パターンで発生する
+ * タイムラインキューのスターベーション（飢餓）を防ぐ。
  */
 function sendRequest(
   message: {
@@ -346,6 +349,34 @@ function sendRequest(
           resolve: sharedResolve,
         })
         reportEnqueue('timeline')
+        processQueue()
+        return
+      }
+    }
+
+    // sessionTag 付きタイムラインリクエスト: 同じ sessionTag のキュー内アイテムを
+    // インプレース置換する。
+    // cancelStaleRequests で削除 → 末尾に追加 のパターンでは、ストリーミング
+    // イベントが高頻度で到着するとアイテムが常に末尾に押し戻され、
+    // いつまでも処理されないスターベーション（飢餓）が発生する。
+    // インプレース置換によりキュー内の位置を保持し、確実に処理順が回ってくるようにする。
+    if (kind === 'timeline' && sessionTag) {
+      const existingIndex = timelineQueue.findIndex(
+        (item) => item.sessionTag === sessionTag,
+      )
+      if (existingIndex !== -1) {
+        const old = timelineQueue[existingIndex]
+        // 古いアイテムの Promise を undefined で解決（キャンセル扱い）
+        old.resolve(undefined)
+        // 同じ位置に新しいアイテムを配置（末尾に押し出さない）
+        timelineQueue[existingIndex] = {
+          kind,
+          message,
+          reject,
+          resolve,
+          sessionTag,
+        }
+        // reportEnqueue/reportDequeue は不要（キューサイズの純増減なし）
         processQueue()
         return
       }

@@ -218,8 +218,9 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
     try {
       const handle = await getSqliteDb()
 
-      // 前回の fetchData で積んだ未処理クエリをキャンセル
-      handle.cancelStaleRequests(sessionTag)
+      // 前回の fetchData で積んだ未処理クエリは sendRequest の
+      // インプレース置換で自動的にキャンセルされるため、
+      // cancelStaleRequests の明示呼び出しは不要
 
       // サニタイズ: DML/DDL拒否, セミコロン除去, LIMIT/OFFSET除去
       const forbidden =
@@ -362,7 +363,7 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
             returnValue: 'resultRows',
             sessionTag,
           })
-        // cancelStaleRequests がキュー内リクエストを resolve(undefined) するため
+        // sendRequest のインプレース置換でキャンセルされた場合 result は undefined になる
         if (!notifIdRowsRaw) return
         const notifIdRows = notifIdRowsRaw as (string | number | null)[][]
 
@@ -439,7 +440,7 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
             returnValue: 'resultRows',
             sessionTag,
           })
-        // cancelStaleRequests がキュー内リクエストを resolve(undefined) するため
+        // sendRequest のインプレース置換でキャンセルされた場合 result は undefined になる
         if (!statusIdRowsRaw) return
         const statusIdRows = statusIdRowsRaw as (string | number | null)[][]
 
@@ -491,7 +492,7 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
               returnValue: 'resultRows',
               sessionTag,
             })
-          // cancelStaleRequests がキュー内リクエストを resolve(undefined) するため
+          // sendRequest のインプレース置換でキャンセルされた場合 result は undefined になる
           if (!statusBaseRowsRaw) return
           const statusBaseRows = statusBaseRowsRaw as (
             | string
@@ -541,7 +542,7 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
               sessionTag,
             })
           notifPhase2Dur = dur
-          // cancelStaleRequests がキュー内リクエストを resolve(undefined) するため
+          // sendRequest のインプレース置換でキャンセルされた場合 result は undefined になる
           if (!notifDetailRowsRaw) return
           const notifDetailRows = notifDetailRowsRaw as (
             | string
@@ -591,7 +592,7 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
             sessionTag,
           },
         )
-        // cancelStaleRequests がキュー内リクエストを resolve(undefined) するため
+        // sendRequest のインプレース置換でキャンセルされた場合 result は undefined になる
         if (!rowsRaw) return
         const rows = rowsRaw as (string | number | null)[][]
         recordDuration(durationMs)
@@ -741,7 +742,7 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           sessionTag,
         )
 
-        // cancelStaleRequests がキュー内リクエストを resolve(undefined) するため
+        // sendRequest のインプレース置換でキャンセルされた場合 result は undefined になる
         if (!fetchResult) return
         const idRows = fetchResult.phase1Rows
 
