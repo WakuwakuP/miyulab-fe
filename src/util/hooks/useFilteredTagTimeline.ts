@@ -253,6 +253,9 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
         sessionTag,
       )
 
+      // cancelStaleRequests がキュー内リクエストを resolve(undefined) するため
+      if (!result) return
+
       const idRows = result.phase1Rows
 
       const postIds = idRows.map((row) => row[0] as number)
