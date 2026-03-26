@@ -11,13 +11,17 @@ import {
   useMemo,
   useRef,
 } from 'react'
-import type { App, TimelineConfigV2 } from 'types/types'
+import type { App, Backend, TimelineConfigV2 } from 'types/types'
 import type { TimelineType as DbTimelineType } from 'util/db/sqlite/statusStore'
 import {
   handleDeleteEvent,
   updateStatus,
   upsertStatus,
 } from 'util/db/sqlite/statusStore'
+import {
+  captureStreamEvent,
+  isRawDataCaptureEnabled,
+} from 'util/debug/rawDataCapture'
 import { GetClient } from 'util/GetClient'
 import {
   getRetryDelay,
@@ -140,20 +144,54 @@ export const StreamingManagerProvider = ({
       key: string,
       type: StreamType,
       backendUrl: string,
-      options?: { tag?: string },
+      options?: { tag?: string; backend?: Backend },
     ): void => {
       const timelineType = type as DbTimelineType // 'local' | 'public' | 'tag'
       const tag = options?.tag
+      const backend = options?.backend ?? 'mastodon'
 
       stream.on('update', async (status: Entity.Status) => {
+        if (isRawDataCaptureEnabled()) {
+          captureStreamEvent({
+            backend,
+            backendUrl,
+            eventType: 'update',
+            origin: 'megalodon',
+            rawData: status,
+            streamType: timelineType,
+            tag,
+          })
+        }
         await upsertStatus(status, backendUrl, timelineType, tag)
       })
 
       stream.on('status_update', async (status: Entity.Status) => {
+        if (isRawDataCaptureEnabled()) {
+          captureStreamEvent({
+            backend,
+            backendUrl,
+            eventType: 'status_update',
+            origin: 'megalodon',
+            rawData: status,
+            streamType: timelineType,
+            tag,
+          })
+        }
         await updateStatus(status, backendUrl)
       })
 
       stream.on('delete', async (id: string) => {
+        if (isRawDataCaptureEnabled()) {
+          captureStreamEvent({
+            backend,
+            backendUrl,
+            eventType: 'delete',
+            origin: 'megalodon',
+            rawData: id,
+            streamType: timelineType,
+            tag,
+          })
+        }
         await handleDeleteEvent(backendUrl, id, timelineType, tag)
       })
 
@@ -184,7 +222,7 @@ export const StreamingManagerProvider = ({
       type: StreamType,
       backendUrl: string,
       app: App,
-      options?: { tag?: string },
+      options?: { tag?: string; backend?: Backend },
       initId?: number,
     ): Promise<void> => {
       try {
@@ -386,7 +424,14 @@ export const StreamingManagerProvider = ({
             status: 'connecting',
             stream: null,
           })
-          initializeStream(key, type, backendUrl, app, { tag }, initId)
+          initializeStream(
+            key,
+            type,
+            backendUrl,
+            app,
+            { backend: app.backend, tag },
+            initId,
+          )
         }
       }
     }

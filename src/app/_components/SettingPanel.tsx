@@ -9,11 +9,20 @@ import {
   type ReactNode,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
 } from 'react'
 import { createPortal } from 'react-dom'
 import { RiAddLine, RiCloseLine } from 'react-icons/ri'
+import {
+  buildExport,
+  type CaptureStats,
+  clearCaptureData,
+  downloadJson,
+  type ExportFilter,
+  getCaptureStats,
+} from 'util/debug/rawDataCapture'
 import { EmojiContext } from 'util/provider/ResourceProvider'
 import {
   SetSettingContext,
@@ -112,6 +121,85 @@ const SettingSelect = ({
     </select>
   </SettingItem>
 )
+
+const CaptureDataSection = () => {
+  const [stats, setStats] = useState<CaptureStats>({
+    api: 0,
+    stream: 0,
+    total: 0,
+  })
+  const [exporting, setExporting] = useState(false)
+
+  useEffect(() => {
+    const refresh = () => {
+      getCaptureStats()
+        .then(setStats)
+        .catch(() => {})
+    }
+    refresh()
+    const interval = setInterval(refresh, 5000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const handleDownload = async (filter: ExportFilter) => {
+    setExporting(true)
+    try {
+      const data = await buildExport(filter)
+      downloadJson(data)
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  const handleClear = async () => {
+    if (!confirm('Clear all captured raw data?')) return
+    await clearCaptureData()
+    setStats({ api: 0, stream: 0, total: 0 })
+  }
+
+  return (
+    <div className="mt-1 space-y-2 pl-1">
+      <p className="text-sm text-gray-400">
+        Captured: {stats.total} events (stream: {stats.stream}, api: {stats.api}
+        )
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <button
+          className="rounded bg-gray-700 px-2 py-1 text-sm hover:bg-gray-600 disabled:opacity-50"
+          disabled={exporting || stats.total === 0}
+          onClick={() => handleDownload('all')}
+          type="button"
+        >
+          📥 All
+        </button>
+        <button
+          className="rounded bg-gray-700 px-2 py-1 text-sm hover:bg-gray-600 disabled:opacity-50"
+          disabled={exporting || stats.stream === 0}
+          onClick={() => handleDownload('stream')}
+          type="button"
+        >
+          📥 Stream
+        </button>
+        <button
+          className="rounded bg-gray-700 px-2 py-1 text-sm hover:bg-gray-600 disabled:opacity-50"
+          disabled={exporting || stats.api === 0}
+          onClick={() => handleDownload('api')}
+          type="button"
+        >
+          📥 API
+        </button>
+        <button
+          className="rounded bg-red-900 px-2 py-1 text-sm hover:bg-red-800 disabled:opacity-50"
+          disabled={stats.total === 0}
+          onClick={handleClear}
+          type="button"
+        >
+          🗑 Clear
+        </button>
+      </div>
+    </div>
+  )
+}
 
 const ReactionEmojisSetting = () => {
   const setting = useContext(SettingContext)
@@ -327,6 +415,22 @@ export const SettingPanel = () => {
         value={setting.recentHashtagsCount}
       />
       <ReactionEmojisSetting />
+
+      <div className="mt-6 border-t border-gray-600 pt-4">
+        <p className="mb-2 text-lg font-semibold text-gray-400">Developer</p>
+        <SettingCheckbox
+          checked={setting.captureRawData}
+          id="captureRawData"
+          label="Capture raw API responses (for debugging)"
+          onChange={(e) =>
+            setSetting({
+              ...setting,
+              captureRawData: e.target.checked,
+            })
+          }
+        />
+        {setting.captureRawData && <CaptureDataSection />}
+      </div>
     </div>
   )
 }
