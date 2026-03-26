@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
+  getQueuePriority,
   getSnapshots,
   type QueueSnapshot,
   subscribeQueueStats,
@@ -19,8 +20,12 @@ const PLOT_H = GRAPH_HEIGHT - PADDING.top - PADDING.bottom
 
 const OTHER_COLOR = '#f97316' // orange-500
 const TIMELINE_COLOR = '#3b82f6' // blue-500
+const ADAPTIVE_COLOR = '#a855f7' // purple-500
 const GRID_COLOR = '#374151' // gray-700
 const LABEL_COLOR = '#9ca3af' // gray-400
+
+/** maxConsecutiveOther の固定 Y 軸上限 */
+const ADAPTIVE_MAX_Y = 8
 
 // ================================================================
 // ユーティリティ
@@ -47,6 +52,42 @@ function toPolylinePoints(
       return `${x.toFixed(1)},${y.toFixed(1)}`
     })
     .join(' ')
+}
+
+// ================================================================
+// コンポーネント
+// ================================================================
+
+/** maxConsecutiveOther 用の polyline points (右 Y 軸スケール 0–8) */
+function toAdaptivePoints(
+  data: readonly QueueSnapshot[],
+  timeMin: number,
+  timeRange: number,
+): string {
+  if (data.length === 0) return ''
+  return data
+    .map((s) => {
+      const x =
+        PADDING.left +
+        (timeRange > 0 ? ((s.time - timeMin) / timeRange) * PLOT_W : PLOT_W)
+      const y =
+        PADDING.top +
+        (1 - Math.min(s.maxConsecutiveOther, ADAPTIVE_MAX_Y) / ADAPTIVE_MAX_Y) *
+          PLOT_H
+      return `${x.toFixed(1)},${y.toFixed(1)}`
+    })
+    .join(' ')
+}
+
+// ================================================================
+// プリセット表示名
+// ================================================================
+
+const PRESET_LABELS: Record<string, string> = {
+  auto: 'Auto',
+  balanced: 'Balanced',
+  default: 'Default',
+  'other-first': 'Other First',
 }
 
 // ================================================================
@@ -114,6 +155,11 @@ export const QueueStatsGraph = () => {
     timeMin,
     timeRange,
   )
+  const adaptivePoints = toAdaptivePoints(snapshots, timeMin, timeRange)
+
+  // 現在の優先度設定
+  const priority = getQueuePriority()
+  const presetLabel = PRESET_LABELS[priority.preset] ?? priority.preset
 
   // 時間ラベル (秒表記)
   const timeLabels: { label: string; x: number }[] = []
@@ -132,7 +178,7 @@ export const QueueStatsGraph = () => {
       <h3 className="pb-2 text-lg font-bold">Queue Stats</h3>
 
       {/* 凡例 */}
-      <div className="flex gap-4 pb-2 text-xs">
+      <div className="flex flex-wrap gap-x-4 gap-y-1 pb-2 text-xs">
         <span className="flex items-center gap-1">
           <span
             className="inline-block h-2 w-3 rounded-sm"
@@ -147,6 +193,14 @@ export const QueueStatsGraph = () => {
           />
           Timeline ({lastSnap?.timeline ?? 0} pending / {readDelta} processed)
         </span>
+        <span className="flex items-center gap-1">
+          <span
+            className="inline-block h-2 w-3 rounded-sm"
+            style={{ backgroundColor: ADAPTIVE_COLOR }}
+          />
+          MaxConsec ({priority.maxConsecutiveOther})
+          <span className="text-gray-500">— {presetLabel}</span>
+        </span>
       </div>
 
       {/* SVG グラフ */}
@@ -157,6 +211,26 @@ export const QueueStatsGraph = () => {
         viewBox={`0 0 ${GRAPH_WIDTH} ${GRAPH_HEIGHT}`}
         xmlns="http://www.w3.org/2000/svg"
       >
+        {/* 右 Y 軸ラベル (maxConsecutiveOther: 0–8) */}
+        {[0, 4, 8].map((tick) => {
+          const y =
+            PADDING.top +
+            (ADAPTIVE_MAX_Y > 0 ? (1 - tick / ADAPTIVE_MAX_Y) * PLOT_H : PLOT_H)
+          return (
+            <text
+              fill={ADAPTIVE_COLOR}
+              fontSize="8"
+              key={`r-${tick}`}
+              opacity={0.6}
+              textAnchor="start"
+              x={GRAPH_WIDTH - PADDING.right + 2}
+              y={y + 3}
+            >
+              {tick}
+            </text>
+          )
+        })}
+
         {/* グリッド線 + Y 軸ラベル */}
         {yTicks.map((tick) => {
           const y =
@@ -215,6 +289,19 @@ export const QueueStatsGraph = () => {
             fill="none"
             points={timelinePoints}
             stroke={TIMELINE_COLOR}
+            strokeLinejoin="round"
+            strokeWidth="1.5"
+          />
+        )}
+
+        {/* maxConsecutiveOther 適応値ライン */}
+        {adaptivePoints && (
+          <polyline
+            fill="none"
+            opacity={0.7}
+            points={adaptivePoints}
+            stroke={ADAPTIVE_COLOR}
+            strokeDasharray="4,2"
             strokeLinejoin="round"
             strokeWidth="1.5"
           />
