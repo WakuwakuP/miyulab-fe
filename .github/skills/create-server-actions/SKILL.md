@@ -1,9 +1,10 @@
+---
+name: create-server-actions
+description: "ZenStack v3を活用したNext.js 16環境でのServer Actions作成スキル。透過的キャッシュによる自動キャッシュ管理とデータCRUD操作を実装します。Use when: Server Actions作成、CRUD操作、データ操作、認証認可"
+argument-hint: "作成するServer Actionの対象モデルや操作内容を指定"
+---
+
 # Create Server Actions Skill
-
-## メタデータ
-
-- **title**: CreateServerActions
-- **description**: ZenStack v3を活用したNext.js 16環境でのServer Actions作成スキル。透過的キャッシュによる自動キャッシュ管理とデータCRUD操作を実装します。
 
 ## スキルの目的
 

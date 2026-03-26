@@ -1,9 +1,10 @@
+---
+name: create-storybook
+description: "Storybookを使用したNext.js 16コンポーネントのドキュメント作成スキル。UIコンポーネントとアプリケーションコンポーネントのStoryを実装します。Use when: Storybook作成、Story実装、コンポーネントドキュメント、UIカタログ"
+argument-hint: "Story を作成するコンポーネントのファイルパスを指定"
+---
+
 # Create Storybook Skill
-
-## メタデータ
-
-- **title**: CreateStorybook
-- **description**: Storybookを使用したNext.js 16コンポーネントのドキュメント作成スキル。UIコンポーネントとアプリケーションコンポーネントのStoryを実装します。
 
 ## スキルの目的
 
