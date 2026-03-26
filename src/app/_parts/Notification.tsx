@@ -7,7 +7,12 @@ import * as emoji from 'node-emoji'
 import { useContext, useMemo } from 'react'
 import { RiStarFill } from 'react-icons/ri'
 import type { NotificationAddAppIndex, StatusAddAppIndex } from 'types/types'
+import { AppsContext } from 'util/provider/AppsProvider'
 import { SetDetailContext } from 'util/provider/DetailProvider'
+import {
+  EmojiCatalogContext,
+  EmojiContext,
+} from 'util/provider/ResourceProvider'
 
 const AvatarPlaceholder = () => (
   <div className="h-12 w-12 flex-none rounded-lg bg-gray-600" />
@@ -21,6 +26,53 @@ export const Notification = ({
   scrolling?: boolean
 }) => {
   const setDetail = useContext(SetDetailContext)
+  const apps = useContext(AppsContext)
+  const emojiCatalog = useContext(EmojiCatalogContext)
+  const emojiFallback = useContext(EmojiContext)
+
+  // リアクションがカスタム絵文字の場合、URLが空でもカタログから解決する
+  const resolvedReactionUrl = useMemo(() => {
+    const reaction = notification.reaction
+    if (!reaction) return null
+    if (reaction.static_url || reaction.url)
+      return reaction.static_url ?? reaction.url ?? null
+
+    // カスタム絵文字 (:name:) でURLが無い場合 — 絵文字カタログから解決
+    const name = reaction.name
+    if (!name.startsWith(':') || !name.endsWith(':') || name.length <= 2)
+      return null
+
+    const shortcode = name.slice(1, -1)
+    const backendUrl =
+      notification.appIndex != null
+        ? apps[notification.appIndex]?.backendUrl
+        : undefined
+
+    if (backendUrl) {
+      const catalog = emojiCatalog.get(backendUrl)
+      if (catalog) {
+        const found = catalog.find((e) => e.shortcode === shortcode)
+        if (found) return found.url
+      }
+    }
+
+    // フォールバック: デフォルト EmojiContext
+    const fallbackFound = emojiFallback.find((e) => e.shortcode === shortcode)
+    if (fallbackFound) return fallbackFound.url
+
+    // Misskey URL パターンフォールバック
+    if (backendUrl) {
+      return `${backendUrl}/emoji/${encodeURIComponent(shortcode)}.webp`
+    }
+
+    return null
+  }, [
+    notification.reaction,
+    notification.appIndex,
+    apps,
+    emojiCatalog,
+    emojiFallback,
+  ])
 
   const displayName = useMemo(() => {
     if (notification.account == null) return ''
@@ -234,7 +286,7 @@ export const Notification = ({
               </div>
             </div>
             <div className="min-w-12">
-              {notification.reaction?.static_url != null ? (
+              {resolvedReactionUrl != null ? (
                 scrolling ? (
                   <div className="h-12 w-12 flex-none rounded-lg" />
                 ) : (
@@ -242,7 +294,7 @@ export const Notification = ({
                     alt="emoji"
                     className="h-12 max-w-full flex-none rounded-lg object-contain"
                     height={48}
-                    src={notification.reaction?.static_url}
+                    src={resolvedReactionUrl}
                     title={notification.reaction?.name}
                     width={48}
                   />
