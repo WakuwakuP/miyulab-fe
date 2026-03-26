@@ -54,6 +54,26 @@ let cachedPostItemKindId: number | null = null
 // 内部ヘルパー
 // ================================================================
 
+/**
+ * アカウントのドメインを統一的に取得する。
+ * - acct に @ が含まれる場合（リモートユーザー）: @ 以降を使用
+ * - acct に @ がない場合（ローカルユーザー）: account.url からホスト名を抽出
+ *
+ * Pleroma はローカルユーザーの acct にドメインを含めないが、
+ * Misskey マッパーは常に `username@host` 形式を返す。
+ * この関数で両者を統一的に扱う。
+ */
+function deriveAccountDomain(account: Entity.Account): string {
+  if (account.acct.includes('@')) {
+    return account.acct.split('@')[1]
+  }
+  try {
+    return new URL(account.url).hostname
+  } catch {
+    return ''
+  }
+}
+
 function resolvePostIdInternal(
   db: DbExec,
   backendUrl: string,
@@ -449,19 +469,36 @@ export function handleUpsertStatus(
     // クロスサーバーリブログの重複検出:
     // 異なるバックエンドから同一リブログが届いた場合（例: Pleroma では URI が
     // 元投稿と同一になり空で保存される一方、Misskey では Announce URI が付与される）、
-    // 同一の元投稿URI＋同一投稿者の既存リブログを検索してマージする
+    // 同一の元投稿URI＋同一投稿者の既存リブログを検索してマージする。
+    // author_profile_id はバックエンドごとに URL 形式が異なるため一致しない
+    // ことがある（例: Pleroma /users/X vs Misskey /@X）ため、
+    // username + domain で照合する。
     let foundViaReblogDedup = false
     if (postId === undefined && cols.is_reblog === 1 && cols.reblog_of_uri) {
-      const existingReblog = db.exec(
-        `SELECT post_id FROM posts
-         WHERE is_reblog = 1 AND reblog_of_uri = ? AND author_profile_id = ?
-         LIMIT 1;`,
-        { bind: [cols.reblog_of_uri, profileId], returnValue: 'resultRows' },
-      ) as number[][]
-      if (existingReblog.length > 0) {
-        postId = existingReblog[0][0]
-        existingIsOriginal = false
-        foundViaReblogDedup = true
+      const rebloggerDomain = deriveAccountDomain(status.account)
+      if (rebloggerDomain) {
+        const existingReblog = db.exec(
+          `SELECT p.post_id FROM posts p
+           JOIN profiles pr ON pr.profile_id = p.author_profile_id
+           WHERE p.is_reblog = 1 AND p.reblog_of_uri = ?
+             AND pr.username = ?
+             AND (pr.domain = ? OR pr.actor_uri LIKE ?)
+           LIMIT 1;`,
+          {
+            bind: [
+              cols.reblog_of_uri,
+              status.account.username,
+              rebloggerDomain,
+              `https://${rebloggerDomain}/%`,
+            ],
+            returnValue: 'resultRows',
+          },
+        ) as number[][]
+        if (existingReblog.length > 0) {
+          postId = existingReblog[0][0]
+          existingIsOriginal = false
+          foundViaReblogDedup = true
+        }
       }
     }
 
@@ -757,16 +794,30 @@ export function handleBulkUpsertStatuses(
       // クロスサーバーリブログの重複検出（handleUpsertStatus と同一ロジック）
       let foundViaReblogDedup = false
       if (postId === undefined && cols.is_reblog === 1 && cols.reblog_of_uri) {
-        const existingReblog = db.exec(
-          `SELECT post_id FROM posts
-           WHERE is_reblog = 1 AND reblog_of_uri = ? AND author_profile_id = ?
-           LIMIT 1;`,
-          { bind: [cols.reblog_of_uri, profileId], returnValue: 'resultRows' },
-        ) as number[][]
-        if (existingReblog.length > 0) {
-          postId = existingReblog[0][0]
-          existingIsOriginal = false
-          foundViaReblogDedup = true
+        const rebloggerDomain = deriveAccountDomain(status.account)
+        if (rebloggerDomain) {
+          const existingReblog = db.exec(
+            `SELECT p.post_id FROM posts p
+             JOIN profiles pr ON pr.profile_id = p.author_profile_id
+             WHERE p.is_reblog = 1 AND p.reblog_of_uri = ?
+               AND pr.username = ?
+               AND (pr.domain = ? OR pr.actor_uri LIKE ?)
+             LIMIT 1;`,
+            {
+              bind: [
+                cols.reblog_of_uri,
+                status.account.username,
+                rebloggerDomain,
+                `https://${rebloggerDomain}/%`,
+              ],
+              returnValue: 'resultRows',
+            },
+          ) as number[][]
+          if (existingReblog.length > 0) {
+            postId = existingReblog[0][0]
+            existingIsOriginal = false
+            foundViaReblogDedup = true
+          }
         }
       }
 
