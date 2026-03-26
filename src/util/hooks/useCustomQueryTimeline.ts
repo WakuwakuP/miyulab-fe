@@ -362,6 +362,8 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
             returnValue: 'resultRows',
             sessionTag,
           })
+        // cancelStaleRequests がキュー内リクエストを resolve(undefined) するため
+        if (!notifIdRowsRaw) return
         const notifIdRows = notifIdRowsRaw as (string | number | null)[][]
 
         // Notification が queryLimit 件以上 → 時間下限を導出
@@ -437,6 +439,8 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
             returnValue: 'resultRows',
             sessionTag,
           })
+        // cancelStaleRequests がキュー内リクエストを resolve(undefined) するため
+        if (!statusIdRowsRaw) return
         const statusIdRows = statusIdRowsRaw as (string | number | null)[][]
 
         // Phase1 結果を統合・ソートして上位 queryLimit 件を選定
@@ -487,6 +491,8 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
               returnValue: 'resultRows',
               sessionTag,
             })
+          // cancelStaleRequests がキュー内リクエストを resolve(undefined) するため
+          if (!statusBaseRowsRaw) return
           const statusBaseRows = statusBaseRowsRaw as (
             | string
             | number
@@ -535,6 +541,8 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
               sessionTag,
             })
           notifPhase2Dur = dur
+          // cancelStaleRequests がキュー内リクエストを resolve(undefined) するため
+          if (!notifDetailRowsRaw) return
           const notifDetailRows = notifDetailRowsRaw as (
             | string
             | number
@@ -583,6 +591,8 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
             sessionTag,
           },
         )
+        // cancelStaleRequests がキュー内リクエストを resolve(undefined) するため
+        if (!rowsRaw) return
         const rows = rowsRaw as (string | number | null)[][]
         recordDuration(durationMs)
 
@@ -731,6 +741,8 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           sessionTag,
         )
 
+        // cancelStaleRequests がキュー内リクエストを resolve(undefined) するため
+        if (!fetchResult) return
         const idRows = fetchResult.phase1Rows
 
         const backendUrlMap = new Map<number, string>()
