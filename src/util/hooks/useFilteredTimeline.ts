@@ -17,9 +17,9 @@ import {
 import type { TimelineType as DbTimelineType } from 'util/db/sqlite/statusStore'
 import {
   assembleStatusFromBatch,
-  BATCH_SQL_TEMPLATES,
   buildBatchMapsFromResults,
   buildPhase2Template,
+  buildScopedBatchTemplates,
   buildSpbFilter,
   PHASE2_BASE_TEMPLATE,
   type SqliteStoredStatus,
@@ -206,6 +206,18 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
         ...filterConditions,
       ]
 
+      // Home タイムラインは local_account_id でスコープする。
+      // 同一サーバーに複数アカウントがある場合、各アカウントの
+      // ホームタイムラインが混ざらないようにする。
+      if (configType === 'home') {
+        const quotedUrls = targetBackendUrls
+          .map((u) => `'${u.replace(/'/g, "''")}'`)
+          .join(',')
+        whereConditions.push(
+          `t.local_account_id IN (SELECT la.local_account_id FROM local_accounts la INNER JOIN servers sv ON la.server_id = sv.server_id WHERE sv.base_url IN (${quotedUrls}))`,
+        )
+      }
+
       const phase1Sql = `
         SELECT p.post_id, json_group_array(DISTINCT ck.code) AS timelineTypes, MIN(pb.backendUrl) AS backendUrl
         FROM channel_kinds ck
@@ -238,7 +250,7 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
 
       const result = await handle.fetchTimeline(
         {
-          batchSqls: BATCH_SQL_TEMPLATES,
+          batchSqls: buildScopedBatchTemplates(targetBackendUrls),
           phase1: { bind: phase1Binds, sql: phase1Sql },
           phase2BaseSql,
         },

@@ -16,9 +16,9 @@ import {
 } from 'util/db/sqlite/connection'
 import {
   assembleStatusFromBatch,
-  BATCH_SQL_TEMPLATES,
   buildBatchMapsFromResults,
   buildPhase2Template,
+  buildScopedBatchTemplates,
   buildSpbFilter,
   PHASE2_BASE_TEMPLATE,
   type SqliteStoredStatus,
@@ -259,7 +259,7 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
 
       const result = await handle.fetchTimeline(
         {
-          batchSqls: BATCH_SQL_TEMPLATES,
+          batchSqls: buildScopedBatchTemplates(targetBackendUrls),
           phase1: { bind: phase1Binds, sql: phase1Sql },
           phase2BaseSql,
         },

@@ -804,6 +804,7 @@ export function replacePlaceholders(sql: string, count: number): string {
 export async function executeBatchQueries(
   handle: SqliteHandle,
   allPostIds: number[],
+  options?: { engagementsSql?: string },
 ): Promise<BatchMaps> {
   if (allPostIds.length === 0) {
     return {
@@ -834,11 +835,17 @@ export async function executeBatchQueries(
     emojiRows,
     pollRows,
   ] = await Promise.all([
-    handle.execAsync(replacePlaceholders(BATCH_ENGAGEMENTS_SQL, count), {
-      bind: allPostIds,
-      kind: 'timeline',
-      returnValue: 'resultRows',
-    }) as Promise<(string | number | null)[][]>,
+    handle.execAsync(
+      replacePlaceholders(
+        options?.engagementsSql ?? BATCH_ENGAGEMENTS_SQL,
+        count,
+      ),
+      {
+        bind: allPostIds,
+        kind: 'timeline',
+        returnValue: 'resultRows',
+      },
+    ) as Promise<(string | number | null)[][]>,
     handle.execAsync(replacePlaceholders(BATCH_MEDIA_SQL, count), {
       bind: allPostIds,
       kind: 'timeline',
@@ -1196,6 +1203,52 @@ export function buildSpbFilter(backendUrls: string[]): string {
   if (backendUrls.length === 0) return ''
   const quoted = backendUrls.map((u) => `'${u.replace(/'/g, "''")}'`).join(',')
   return `AND spb_min.server_id IN (SELECT sv.server_id FROM servers sv WHERE sv.base_url IN (${quoted}))`
+}
+
+/**
+ * local_account_id でスコープされたエンゲージメントバッチ SQL を構築する。
+ *
+ * post_engagements にはアカウントごとにお気に入り/ブースト/ブックマークが
+ * 記録されるため、対象アカウントのエンゲージメントのみを返すようにフィルタする。
+ *
+ * @param backendUrls — 対象バックエンド URL（安全にエスケープされる）
+ * @param placeholder — SQL プレースホルダ文字列。fetchTimeline 用は `'{IDS}'`、executeBatchQueries 用は `'__PH__'`
+ */
+export function buildScopedEngagementsSql(
+  backendUrls: string[],
+  placeholder = '{IDS}',
+): string {
+  if (backendUrls.length === 0) {
+    return placeholder === '{IDS}'
+      ? BATCH_SQL_TEMPLATES.engagements
+      : BATCH_ENGAGEMENTS_SQL
+  }
+  const quoted = backendUrls.map((u) => `'${u.replace(/'/g, "''")}'`).join(',')
+  return `
+  SELECT pe.post_id, group_concat(et.code, ',') AS engagements_csv
+  FROM post_engagements pe
+  INNER JOIN engagement_types et ON pe.engagement_type_id = et.engagement_type_id
+  WHERE pe.post_id IN (${placeholder})
+    AND pe.local_account_id IN (
+      SELECT la.local_account_id FROM local_accounts la
+      INNER JOIN servers sv ON la.server_id = sv.server_id
+      WHERE sv.base_url IN (${quoted})
+    )
+  GROUP BY pe.post_id`
+}
+
+/**
+ * local_account_id でスコープされたバッチ SQL テンプレートを構築する。
+ *
+ * engagements のみがスコープ対象。他のバッチクエリは共通テンプレートをそのまま使う。
+ */
+export function buildScopedBatchTemplates(backendUrls: string[]): {
+  [K in keyof typeof BATCH_SQL_TEMPLATES]: string
+} {
+  return {
+    ...BATCH_SQL_TEMPLATES,
+    engagements: buildScopedEngagementsSql(backendUrls),
+  }
 }
 
 /**
