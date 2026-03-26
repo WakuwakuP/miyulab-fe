@@ -32,7 +32,7 @@
 import type { SchemaDbHandle as DbHandle } from './worker/workerSchema'
 
 /** 現在のスキーマバージョン */
-const SCHEMA_VERSION = 24
+const SCHEMA_VERSION = 25
 
 /**
  * スキーマの初期化・マイグレーション
@@ -296,6 +296,11 @@ export function ensureSchema(handle: DbHandle): void {
     // v23→v24: notifications に reaction_name / reaction_url カラム追加
     if (currentVersion < 24) {
       migrateV23toV24(handle)
+    }
+
+    // v24→v25: posts_reblogs の PK を post_id → (post_id, reblogger_acct) に変更
+    if (currentVersion < 25) {
+      migrateV24toV25(handle)
     }
 
     db.exec(`PRAGMA user_version = ${SCHEMA_VERSION};`)
@@ -562,10 +567,11 @@ function createSchemaV7(handle: DbHandle): void {
   // ============================================
   db.exec(`
     CREATE TABLE IF NOT EXISTS posts_reblogs (
-      post_id         INTEGER PRIMARY KEY,
+      post_id         INTEGER NOT NULL,
       original_uri    TEXT NOT NULL DEFAULT '',
       reblogger_acct  TEXT NOT NULL DEFAULT '',
       reblogged_at_ms INTEGER NOT NULL,
+      PRIMARY KEY (post_id, reblogger_acct),
       FOREIGN KEY (post_id) REFERENCES posts(post_id) ON DELETE CASCADE
     );
   `)
@@ -2661,6 +2667,42 @@ function migrateV23toV24(handle: DbHandle): void {
  * profile_custom_emojis テーブルを作成し、プロフィール（通知アクター等）に
  * カスタム絵文字を紐付けられるようにする。
  */
+/**
+ * posts_reblogs の PRIMARY KEY を post_id 単体から
+ * (post_id, reblogger_acct) の複合キーに変更する。
+ * 同一投稿を複数アカウントが reblog するケースに対応。
+ */
+function migrateV24toV25(handle: DbHandle): void {
+  const { db } = handle
+
+  db.exec(`
+    CREATE TABLE posts_reblogs_new (
+      post_id         INTEGER NOT NULL,
+      original_uri    TEXT NOT NULL DEFAULT '',
+      reblogger_acct  TEXT NOT NULL DEFAULT '',
+      reblogged_at_ms INTEGER NOT NULL,
+      PRIMARY KEY (post_id, reblogger_acct),
+      FOREIGN KEY (post_id) REFERENCES posts(post_id) ON DELETE CASCADE
+    );
+  `)
+
+  db.exec(`
+    INSERT OR IGNORE INTO posts_reblogs_new (post_id, original_uri, reblogger_acct, reblogged_at_ms)
+    SELECT post_id, original_uri, reblogger_acct, reblogged_at_ms
+    FROM posts_reblogs;
+  `)
+
+  db.exec('DROP TABLE posts_reblogs;')
+  db.exec('ALTER TABLE posts_reblogs_new RENAME TO posts_reblogs;')
+
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_pr_original_uri ON posts_reblogs(original_uri);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_pr_reblogger_acct ON posts_reblogs(reblogger_acct);',
+  )
+}
+
 function migrateV17toV18(handle: DbHandle): void {
   const { db } = handle
 
