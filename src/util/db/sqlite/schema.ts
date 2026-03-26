@@ -32,7 +32,7 @@
 import type { SchemaDbHandle as DbHandle } from './worker/workerSchema'
 
 /** 現在のスキーマバージョン */
-const SCHEMA_VERSION = 25
+const SCHEMA_VERSION = 26
 
 /**
  * スキーマの初期化・マイグレーション
@@ -301,6 +301,11 @@ export function ensureSchema(handle: DbHandle): void {
     // v24→v25: posts_reblogs の PK を post_id → (post_id, reblogger_acct) に変更
     if (currentVersion < 25) {
       migrateV24toV25(handle)
+    }
+
+    // v25→v26: クロスサーバーリブログ重複検出用インデックス追加
+    if (currentVersion < 26) {
+      migrateV25toV26(handle)
     }
 
     db.exec(`PRAGMA user_version = ${SCHEMA_VERSION};`)
@@ -2700,6 +2705,24 @@ function migrateV24toV25(handle: DbHandle): void {
   )
   db.exec(
     'CREATE INDEX IF NOT EXISTS idx_pr_reblogger_acct ON posts_reblogs(reblogger_acct);',
+  )
+}
+
+/**
+ * v25→v26: クロスサーバーリブログ重複検出用インデックス追加
+ *
+ * 異なるバックエンドから同一リブログが届いた場合（Pleroma では reblog の URI が
+ * 元投稿と同一になり空で保存される一方、Misskey では Announce URI が付与される）、
+ * (reblog_of_uri, author_profile_id) で既存リブログを検索してマージする。
+ * このクエリを高速化するための部分インデックスを追加する。
+ */
+function migrateV25toV26(handle: DbHandle): void {
+  const { db } = handle
+
+  db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_posts_reblog_dedup
+     ON posts(reblog_of_uri, author_profile_id)
+     WHERE is_reblog = 1 AND reblog_of_uri IS NOT NULL;`,
   )
 }
 

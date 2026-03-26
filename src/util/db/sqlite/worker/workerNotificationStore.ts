@@ -241,6 +241,31 @@ function upsertNotification(
     }
   }
 
+  // リアクション名・URL を解決（カスタム絵文字の URL が欠落している場合は DB / Misskey フォールバックで補完）
+  const reactionName = notification.reaction?.name ?? null
+  let reactionUrl =
+    notification.reaction?.url ?? notification.reaction?.static_url ?? null
+
+  if (
+    reactionUrl == null &&
+    reactionName != null &&
+    reactionName.startsWith(':') &&
+    reactionName.endsWith(':') &&
+    reactionName.length > 2
+  ) {
+    const shortcode = reactionName.slice(1, -1)
+    const emojiRows = db.exec(
+      'SELECT image_url, static_url FROM custom_emojis WHERE server_id = ? AND shortcode = ?;',
+      { bind: [serverId, shortcode], returnValue: 'resultRows' },
+    ) as (string | null)[][]
+    if (emojiRows.length > 0) {
+      reactionUrl = (emojiRows[0][1] ?? emojiRows[0][0]) as string
+    } else {
+      // Misskey URL パターンフォールバック
+      reactionUrl = `${backendUrl}/emoji/${encodeURIComponent(shortcode)}.webp`
+    }
+  }
+
   // (server_id, local_id) で既存チェック
   const existing = db.exec(
     'SELECT notification_id FROM notifications WHERE server_id = ? AND local_id = ?;',
@@ -266,10 +291,8 @@ function upsertNotification(
           relatedPostId,
           created_at_ms,
           now,
-          notification.reaction?.name ?? null,
-          notification.reaction?.url ??
-            notification.reaction?.static_url ??
-            null,
+          reactionName,
+          reactionUrl,
           notificationId,
         ],
       },
@@ -290,10 +313,8 @@ function upsertNotification(
           relatedPostId,
           created_at_ms,
           now,
-          notification.reaction?.name ?? null,
-          notification.reaction?.url ??
-            notification.reaction?.static_url ??
-            null,
+          reactionName,
+          reactionUrl,
         ],
       },
     )

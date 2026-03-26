@@ -446,6 +446,25 @@ export function handleUpsertStatus(
       existingIsOriginal = true
     }
 
+    // クロスサーバーリブログの重複検出:
+    // 異なるバックエンドから同一リブログが届いた場合（例: Pleroma では URI が
+    // 元投稿と同一になり空で保存される一方、Misskey では Announce URI が付与される）、
+    // 同一の元投稿URI＋同一投稿者の既存リブログを検索してマージする
+    let foundViaReblogDedup = false
+    if (postId === undefined && cols.is_reblog === 1 && cols.reblog_of_uri) {
+      const existingReblog = db.exec(
+        `SELECT post_id FROM posts
+         WHERE is_reblog = 1 AND reblog_of_uri = ? AND author_profile_id = ?
+         LIMIT 1;`,
+        { bind: [cols.reblog_of_uri, profileId], returnValue: 'resultRows' },
+      ) as number[][]
+      if (existingReblog.length > 0) {
+        postId = existingReblog[0][0]
+        existingIsOriginal = false
+        foundViaReblogDedup = true
+      }
+    }
+
     if (postId !== undefined) {
       db.exec(
         `UPDATE posts SET
@@ -522,6 +541,19 @@ export function handleUpsertStatus(
         },
       )
       postId = getLastInsertRowId(db)
+    }
+
+    // リブログマージ時: 既存行の object_uri が空で、新しい URI が
+    // 有効な Announce URI の場合は補完する
+    if (
+      foundViaReblogDedup &&
+      normalizedUri &&
+      normalizedUri !== cols.reblog_of_uri
+    ) {
+      db.exec(
+        `UPDATE posts SET object_uri = ? WHERE post_id = ? AND object_uri = '';`,
+        { bind: [normalizedUri, postId] },
+      )
     }
 
     db.exec(
@@ -722,6 +754,22 @@ export function handleBulkUpsertStatuses(
         existingIsOriginal = true
       }
 
+      // クロスサーバーリブログの重複検出（handleUpsertStatus と同一ロジック）
+      let foundViaReblogDedup = false
+      if (postId === undefined && cols.is_reblog === 1 && cols.reblog_of_uri) {
+        const existingReblog = db.exec(
+          `SELECT post_id FROM posts
+           WHERE is_reblog = 1 AND reblog_of_uri = ? AND author_profile_id = ?
+           LIMIT 1;`,
+          { bind: [cols.reblog_of_uri, profileId], returnValue: 'resultRows' },
+        ) as number[][]
+        if (existingReblog.length > 0) {
+          postId = existingReblog[0][0]
+          existingIsOriginal = false
+          foundViaReblogDedup = true
+        }
+      }
+
       if (postId !== undefined) {
         db.exec(
           `UPDATE posts SET
@@ -798,6 +846,19 @@ export function handleBulkUpsertStatuses(
           },
         )
         postId = getLastInsertRowId(db)
+      }
+
+      // リブログマージ時: 既存行の object_uri が空の場合、実 Announce URI を補完する
+      if (
+        foundViaReblogDedup &&
+        normalizedUri &&
+        normalizedUri !== cols.reblog_of_uri
+      ) {
+        db.exec(
+          `UPDATE posts SET object_uri = ? WHERE post_id = ? AND object_uri = '';`,
+          { bind: [normalizedUri, postId] },
+        )
+        uriCache.set(normalizedUri, postId)
       }
 
       // 同一 URI リブログの場合はキャッシュしない（元投稿が URI を使えるようにする）
