@@ -92,7 +92,8 @@ const EMPTY_S = `(SELECT
     LIMIT 0)`
 
 const EMPTY_PTT = '(SELECT NULL AS post_id, NULL AS timelineType LIMIT 0)'
-const EMPTY_PBT = '(SELECT NULL AS post_id, NULL AS tag LIMIT 0)'
+const EMPTY_PHT = '(SELECT NULL AS post_id, NULL AS hashtag_id LIMIT 0)'
+const EMPTY_HT = '(SELECT NULL AS hashtag_id, NULL AS normalized_name LIMIT 0)'
 const EMPTY_PME = '(SELECT NULL AS post_id, NULL AS acct LIMIT 0)'
 const EMPTY_PB =
   '(SELECT NULL AS post_id, NULL AS backendUrl, NULL AS local_id LIMIT 0)'
@@ -271,13 +272,13 @@ function buildTagTimelineQuery(
     buildFilterConditions(config, targetBackendUrls)
 
   const backendPlaceholders = targetBackendUrls.map(() => '?').join(',')
-  const tagPlaceholders = tags.map(() => '?').join(',')
+  const tagPlaceholders = tags.map(() => 'LOWER(?)').join(',')
 
   const binds: (string | number)[] = []
 
   if (tagMode === 'or') {
     const whereConditions = [
-      `pbt.tag IN (${tagPlaceholders})`,
+      `ht.normalized_name IN (${tagPlaceholders})`,
       `pb.backendUrl IN (${backendPlaceholders})`,
       ...filterConditions,
     ]
@@ -286,8 +287,10 @@ function buildTagTimelineQuery(
       SELECT ${STATUS_SELECT}
       FROM posts p
       ${STATUS_BASE_JOINS}
-      INNER JOIN posts_belonging_tags pbt
-        ON p.post_id = pbt.post_id
+      INNER JOIN post_hashtags pht
+        ON p.post_id = pht.post_id
+      INNER JOIN hashtags ht
+        ON pht.hashtag_id = ht.hashtag_id
       WHERE ${whereConditions.join('\n        AND ')}
       GROUP BY p.post_id
       ORDER BY p.created_at_ms DESC
@@ -304,7 +307,7 @@ function buildTagTimelineQuery(
 
   // AND mode
   const whereConditions = [
-    `pbt.tag IN (${tagPlaceholders})`,
+    `ht.normalized_name IN (${tagPlaceholders})`,
     `pb.backendUrl IN (${backendPlaceholders})`,
     ...filterConditions,
   ]
@@ -313,11 +316,13 @@ function buildTagTimelineQuery(
     SELECT ${STATUS_SELECT}
     FROM posts p
     ${STATUS_BASE_JOINS}
-    INNER JOIN posts_belonging_tags pbt
-      ON p.post_id = pbt.post_id
+    INNER JOIN post_hashtags pht
+      ON p.post_id = pht.post_id
+    INNER JOIN hashtags ht
+      ON pht.hashtag_id = ht.hashtag_id
     WHERE ${whereConditions.join('\n        AND ')}
     GROUP BY p.post_id
-    HAVING COUNT(DISTINCT pbt.tag) = ?
+    HAVING COUNT(DISTINCT ht.normalized_name) = ?
     ORDER BY p.created_at_ms DESC
     LIMIT ?;
   `
@@ -460,10 +465,14 @@ function buildCustomMixedQuery(
     statusJoinLines.push(
       `LEFT JOIN (SELECT ti2.post_id, ck2.code AS timelineType FROM timeline_items ti2 INNER JOIN timelines t2 ON t2.timeline_id = ti2.timeline_id INNER JOIN channel_kinds ck2 ON ck2.channel_kind_id = t2.channel_kind_id WHERE ti2.post_id IS NOT NULL) ptt\n              ON p.post_id = ptt.post_id`,
     )
-  if (refs.pbt)
+  if (refs.pbt) {
     statusJoinLines.push(
-      'LEFT JOIN posts_belonging_tags pbt\n              ON p.post_id = pbt.post_id',
+      'LEFT JOIN post_hashtags pht\n              ON p.post_id = pht.post_id',
     )
+    statusJoinLines.push(
+      'LEFT JOIN hashtags ht\n              ON pht.hashtag_id = ht.hashtag_id',
+    )
+  }
   if (refs.pme)
     statusJoinLines.push(
       'LEFT JOIN posts_mentions pme\n              ON p.post_id = pme.post_id',
@@ -486,7 +495,8 @@ function buildCustomMixedQuery(
   const notifDummyJoins = [
     `LEFT JOIN ${EMPTY_S} p ON 1 = 1`,
     `LEFT JOIN ${EMPTY_PTT} ptt ON 1 = 1`,
-    `LEFT JOIN ${EMPTY_PBT} pbt ON 1 = 1`,
+    `LEFT JOIN ${EMPTY_PHT} pht ON 1 = 1`,
+    `LEFT JOIN ${EMPTY_HT} ht ON 1 = 1`,
     `LEFT JOIN ${EMPTY_PME} pme ON 1 = 1`,
     `LEFT JOIN ${EMPTY_PB} pb ON 1 = 1`,
     `LEFT JOIN ${EMPTY_PRB} prb ON 1 = 1`,
@@ -560,10 +570,14 @@ function buildCustomStatusQuery(
     joinLines.push(
       `LEFT JOIN (SELECT ti2.post_id, ck2.code AS timelineType FROM timeline_items ti2 INNER JOIN timelines t2 ON t2.timeline_id = ti2.timeline_id INNER JOIN channel_kinds ck2 ON ck2.channel_kind_id = t2.channel_kind_id WHERE ti2.post_id IS NOT NULL) ptt\n          ON p.post_id = ptt.post_id`,
     )
-  if (refs.pbt)
+  if (refs.pbt) {
     joinLines.push(
-      'LEFT JOIN posts_belonging_tags pbt\n          ON p.post_id = pbt.post_id',
+      'LEFT JOIN post_hashtags pht\n          ON p.post_id = pht.post_id',
     )
+    joinLines.push(
+      'LEFT JOIN hashtags ht\n          ON pht.hashtag_id = ht.hashtag_id',
+    )
+  }
   if (refs.pme)
     joinLines.push(
       'LEFT JOIN posts_mentions pme\n          ON p.post_id = pme.post_id',

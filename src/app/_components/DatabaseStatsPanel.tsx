@@ -13,7 +13,7 @@ const TABLE_NAMES = [
   'posts',
   'timeline_items',
   'timelines',
-  'posts_belonging_tags',
+  'post_hashtags',
   'posts_mentions',
   'posts_backends',
   'notifications',

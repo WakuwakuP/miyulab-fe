@@ -177,8 +177,9 @@ export const UnifiedTimeline = ({
                 `SELECT pb2.local_id
                  FROM posts p
                  INNER JOIN posts_backends pb2 ON pb2.post_id = p.post_id
-                 INNER JOIN posts_belonging_tags pbt ON p.post_id = pbt.post_id
-                 WHERE pbt.tag = ? AND pb2.backendUrl = ?
+                 INNER JOIN post_hashtags pht ON p.post_id = pht.post_id
+                 INNER JOIN hashtags ht ON pht.hashtag_id = ht.hashtag_id
+                 WHERE ht.normalized_name = LOWER(?) AND pb2.server_id = (SELECT server_id FROM servers WHERE base_url = ?)
                  ORDER BY p.created_at_ms ASC
                  LIMIT 1;`,
                 {

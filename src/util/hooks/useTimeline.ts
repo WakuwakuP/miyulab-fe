@@ -125,7 +125,7 @@ export function useTimeline(timelineType: TimelineType): StatusAddAppIndex[] {
  * タグに応じた Status をリアクティブに取得する Hook（SQLite 版）。
  *
  * @deprecated `useFilteredTagTimeline` を使用してください。
- * @param tag — 検索するタグ（`posts_belonging_tags.tag` と一致）
+ * @param tag — 検索するタグ（`hashtags.normalized_name` と一致、LOWER() で正規化）
  * @param options — 省略可。`onlyMedia: true` のときメディア付き投稿のみ残す（JS 側フィルタ）
  * @returns `appIndex` 付きの `StatusAddAppIndex[]`。`backendUrl` が apps に無い行は除外される
  * @see {@link useFilteredTagTimeline}
@@ -156,10 +156,10 @@ export function useTagTimeline(
         SELECT ${STATUS_SELECT}
         FROM posts p
         ${statusBaseJoinsTag}
-        INNER JOIN posts_belonging_tags pbt
-          ON p.post_id = pbt.post_id
-        WHERE pbt.tag = ?
-          AND pb.backendUrl IN (${placeholders})
+        INNER JOIN post_hashtags pht ON p.post_id = pht.post_id
+        INNER JOIN hashtags ht ON pht.hashtag_id = ht.hashtag_id
+        WHERE ht.normalized_name = LOWER(?)
+          AND pb.server_id IN (SELECT sv.server_id FROM servers sv WHERE sv.base_url IN (${placeholders}))
         GROUP BY p.post_id
         ORDER BY p.created_at_ms DESC
         LIMIT ?;

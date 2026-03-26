@@ -48,7 +48,9 @@ export function resolvePostId(
   localId: string,
 ): number | null {
   const rows = db.exec(
-    'SELECT post_id FROM posts_backends WHERE backendUrl = ? AND local_id = ?;',
+    `SELECT post_id FROM posts_backends
+     WHERE server_id = (SELECT server_id FROM servers WHERE base_url = ?)
+       AND local_id = ?;`,
     { bind: [backendUrl, localId], returnValue: 'resultRows' },
   ) as number[][]
   return rows.length > 0 ? rows[0][0] : null

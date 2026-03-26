@@ -15,7 +15,7 @@ type MutedAccount = {
 async function getMutedAccounts(backendUrl: string): Promise<MutedAccount[]> {
   const handle = await getSqliteDb()
   const rows = (await handle.execAsync(
-    'SELECT account_acct, muted_at FROM muted_accounts WHERE backendUrl = ? ORDER BY muted_at DESC;',
+    'SELECT account_acct, muted_at FROM muted_accounts WHERE server_id = (SELECT server_id FROM servers WHERE base_url = ?) ORDER BY muted_at DESC;',
     { bind: [backendUrl], returnValue: 'resultRows' },
   )) as (string | number)[][]
 
@@ -34,8 +34,8 @@ async function muteAccount(
 ): Promise<void> {
   const handle = await getSqliteDb()
   await handle.execAsync(
-    `INSERT OR IGNORE INTO muted_accounts (backendUrl, account_acct, muted_at)
-     VALUES (?, ?, ?);`,
+    `INSERT OR IGNORE INTO muted_accounts (server_id, account_acct, muted_at)
+     VALUES ((SELECT server_id FROM servers WHERE base_url = ?), ?, ?);`,
     { bind: [backendUrl, accountAcct, Date.now()] },
   )
   notifyChange('posts') // タイムラインの再クエリをトリガー
@@ -50,7 +50,7 @@ async function unmuteAccount(
 ): Promise<void> {
   const handle = await getSqliteDb()
   await handle.execAsync(
-    'DELETE FROM muted_accounts WHERE backendUrl = ? AND account_acct = ?;',
+    'DELETE FROM muted_accounts WHERE server_id = (SELECT server_id FROM servers WHERE base_url = ?) AND account_acct = ?;',
     { bind: [backendUrl, accountAcct] },
   )
   notifyChange('posts')

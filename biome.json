@@ -36,7 +36,8 @@
       "!**/src/components/ui/**/*",
       "!**/v0/**/*",
       "!**/tests/**/*",
-      "!**/.storybook/MockAuth.tsx"
+      "!**/.storybook/MockAuth.tsx",
+      "!**/plans/**/*"
     ]
   },
   "formatter": {
