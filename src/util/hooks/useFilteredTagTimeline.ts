@@ -9,13 +9,17 @@ import {
   useState,
 } from 'react'
 import type { StatusAddAppIndex, TimelineConfigV2 } from 'types/types'
-import { getSqliteDb, subscribe } from 'util/db/sqlite/connection'
+import {
+  type ChangeHint,
+  getSqliteDb,
+  subscribe,
+} from 'util/db/sqlite/connection'
 import {
   assembleStatusFromBatch,
-  executeBatchQueries,
+  BATCH_SQL_TEMPLATES,
+  buildBatchMapsFromResults,
+  PHASE2_BASE_TEMPLATE,
   type SqliteStoredStatus,
-  STATUS_BASE_JOINS,
-  STATUS_BASE_SELECT,
 } from 'util/db/sqlite/statusStore'
 import { TIMELINE_QUERY_LIMIT } from 'util/environment'
 import { buildFilterConditions } from 'util/hooks/timelineFilterBuilder'
@@ -156,6 +160,7 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
   )
   const configType = config.type
   const customQuery = config.customQuery
+  const sessionTag = `tag-${configId}`
 
   const fetchData = useCallback(async () => {
     void refreshToken
@@ -175,6 +180,9 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
 
     try {
       const handle = await getSqliteDb()
+
+      // 前回の fetchData で積んだ未処理クエリをキャンセル
+      handle.cancelStaleRequests(sessionTag)
 
       const backendPlaceholders = targetBackendUrls.map(() => '?').join(',')
       const tagPlaceholders = tags.map(() => '?').join(',')
@@ -235,13 +243,17 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
         )
       }
 
-      const { result: idRowsRaw, durationMs: phase1Duration } =
-        await handle.execAsyncTimed(phase1Sql, {
-          bind: phase1Binds,
-          kind: 'timeline',
-          returnValue: 'resultRows',
-        })
-      const idRows = idRowsRaw as (string | number | null)[][]
+      // === 一括取得: Phase1 → Phase2 → Batch×7 を Worker 内で実行 ===
+      const result = await handle.fetchTimeline(
+        {
+          batchSqls: BATCH_SQL_TEMPLATES,
+          phase1: { bind: phase1Binds, sql: phase1Sql },
+          phase2BaseSql: PHASE2_BASE_TEMPLATE,
+        },
+        sessionTag,
+      )
+
+      const idRows = result.phase1Rows
 
       const postIds = idRows.map((row) => row[0] as number)
       const backendUrlMap = new Map<number, string>()
@@ -251,45 +263,18 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
         }
       }
       if (postIds.length === 0) {
-        recordDuration(phase1Duration)
+        recordDuration(result.totalDurationMs)
         if (fetchVersionRef.current !== version) return
         setStatuses([])
         return
       }
 
-      // === 第2段階: 詳細情報の取得（バッチクエリ版） ===
-      const placeholders = postIds.map(() => '?').join(',')
-      const phase2BaseSql = `
-        SELECT ${STATUS_BASE_SELECT}
-        FROM posts p
-        ${STATUS_BASE_JOINS}
-        WHERE p.post_id IN (${placeholders})
-        GROUP BY p.post_id
-        ORDER BY p.created_at_ms DESC;
-      `
+      // バッチ結果を Map に変換
+      const maps = buildBatchMapsFromResults(result.batchResults)
 
-      const { result: baseRowsRaw, durationMs: phase2Duration } =
-        await handle.execAsyncTimed(phase2BaseSql, {
-          bind: postIds,
-          kind: 'timeline',
-          returnValue: 'resultRows',
-        })
-      const baseRows = baseRowsRaw as (string | number | null)[][]
+      recordDuration(result.totalDurationMs)
 
-      // リブログ元の post_id を収集
-      const reblogPostIds: number[] = []
-      for (const row of baseRows) {
-        const rbPostId = row[27] as number | null
-        if (rbPostId !== null) reblogPostIds.push(rbPostId)
-      }
-      const allPostIds = [...new Set([...postIds, ...reblogPostIds])]
-
-      // 子テーブルバッチクエリを並列実行
-      const maps = await executeBatchQueries(handle, allPostIds)
-
-      recordDuration(phase1Duration + phase2Duration)
-
-      const results: SqliteStoredStatus[] = baseRows.map((row) => {
+      const results: SqliteStoredStatus[] = result.phase2Rows.map((row) => {
         const status = assembleStatusFromBatch(row, maps)
         const postId = row[0] as number
         status.backendUrl = backendUrlMap.get(postId) ?? status.backendUrl
@@ -312,13 +297,37 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
     queryLimit,
     recordDuration,
     refreshToken,
+    sessionTag,
   ])
+
+  // ヒント付きリスナー: 該当する変更のときだけ fetchData を実行
+  const handleChange = useCallback(
+    (hints: ChangeHint[]) => {
+      // ヒントが空 = ヒントなし通知（ユーザー操作等）→ 常に再取得
+      if (hints.length === 0) {
+        fetchData()
+        return
+      }
+      // ヒントがある場合: 自パネルに関係する変更かチェック
+      const isRelevant = hints.some((hint) => {
+        if (hint.backendUrl && !targetBackendUrls.includes(hint.backendUrl))
+          return false
+        // tag ヒントがあれば自パネルの対象タグと照合
+        if (hint.tag && !tags.includes(hint.tag)) return false
+        return true
+      })
+      if (isRelevant) {
+        fetchData()
+      }
+    },
+    [fetchData, targetBackendUrls, tags],
+  )
 
   // 初回取得 + 変更通知で再取得
   useEffect(() => {
     fetchData()
-    return subscribe('posts', fetchData)
-  }, [fetchData])
+    return subscribe('posts', handleChange)
+  }, [fetchData, handleChange])
 
   const data = useMemo(
     () =>

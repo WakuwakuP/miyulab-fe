@@ -17,9 +17,12 @@ import {
   startSnapshotRecording,
   stopSnapshotRecording,
 } from '../dbQueue'
+import type { ChangeHint } from './connection'
 import type {
   ExecBatchRequest,
   ExecRequest,
+  FetchTimelineRequest,
+  FetchTimelineResult,
   SendCommandPayload,
   TableName,
   WorkerMessage,
@@ -41,6 +44,7 @@ type QueuedRequest = {
   resolve: (value: unknown) => void
   reject: (reason: Error) => void
   kind: QueueKind
+  sessionTag?: string
 }
 
 let worker: Worker | null = null
@@ -63,7 +67,9 @@ const timelineDedup = new Map<
 let activeRequest = false
 /** other キューを連続処理した回数（timeline 飢餓防止用） */
 let consecutiveOther = 0
-let notifyChangeCallback: ((table: TableName) => void) | null = null
+let notifyChangeCallback:
+  | ((table: TableName, hint?: ChangeHint) => void)
+  | null = null
 let initResolve: ((persistence: 'opfs' | 'memory') => void) | null = null
 let initReject: ((reason: Error) => void) | null = null
 let initPromise: Promise<'opfs' | 'memory'> | null = null
@@ -84,7 +90,7 @@ const INIT_TIMEOUT_MS = 15_000
  * @returns 永続化方式 ('opfs' | 'memory')
  */
 export function initWorker(
-  onNotify: (table: TableName) => void,
+  onNotify: (table: TableName, hint?: ChangeHint) => void,
 ): Promise<'opfs' | 'memory'> {
   if (initPromise) return initPromise
 
@@ -169,7 +175,7 @@ function handleMessage(event: MessageEvent<WorkerMessage>): void {
         // changedTables があれば notifyChange を発火
         if (msg.changedTables) {
           for (const table of msg.changedTables) {
-            notifyChangeCallback?.(table)
+            notifyChangeCallback?.(table, msg.changeHint)
           }
         }
         if (msg.durationMs != null) {
@@ -217,19 +223,59 @@ function handleMessage(event: MessageEvent<WorkerMessage>): void {
 function makeTimelineDedupKey(message: {
   [key: string]: unknown
 }): string | null {
-  if (message.type !== 'exec') return null
-  const sql = message.sql as string
-  const bind = message.bind as unknown[] | undefined
-  const returnValue = message.returnValue as string | undefined
+  if (message.type === 'exec') {
+    const sql = message.sql as string
+    const bind = message.bind as unknown[] | undefined
+    const returnValue = message.returnValue as string | undefined
 
-  const parts: string[] = [sql]
-  if (bind !== undefined) {
-    parts.push(JSON.stringify(bind))
+    const parts: string[] = [sql]
+    if (bind !== undefined) {
+      parts.push(JSON.stringify(bind))
+    }
+    if (returnValue !== undefined) {
+      parts.push(returnValue)
+    }
+    return parts.join('\0')
   }
-  if (returnValue !== undefined) {
-    parts.push(returnValue)
+  if (message.type === 'fetchTimeline') {
+    const phase1 = message.phase1 as { sql: string; bind?: unknown[] }
+    const parts = ['fetchTimeline', phase1.sql]
+    if (phase1.bind) parts.push(JSON.stringify(phase1.bind))
+    return parts.join('\0')
   }
-  return parts.join('\0')
+  return null
+}
+
+// ================================================================
+// Stale キャンセル API
+// ================================================================
+
+/**
+ * 指定した sessionTag を持つ未処理の timeline キューアイテムを除去する。
+ * 除去されたアイテムの Promise は staleValue で即時 resolve される。
+ *
+ * activeRequest（Worker に送信済み）のアイテムはキャンセルできない。
+ * キューに待機中のアイテムのみが対象。
+ *
+ * @param sessionTag - 除去対象のセッションタグ
+ * @param staleValue - 除去されたリクエストの resolve に渡す値（デフォルト: undefined）
+ * @returns 除去されたアイテム数
+ */
+export function cancelStaleRequests(
+  sessionTag: string,
+  staleValue?: unknown,
+): number {
+  let cancelled = 0
+  for (let i = timelineQueue.length - 1; i >= 0; i--) {
+    const item = timelineQueue[i]
+    if (item.sessionTag === sessionTag) {
+      timelineQueue.splice(i, 1)
+      reportDequeue('timeline')
+      item.resolve(staleValue)
+      cancelled++
+    }
+  }
+  return cancelled
 }
 
 // ================================================================
@@ -246,6 +292,8 @@ function makeTimelineDedupKey(message: {
  *
  * kind='timeline' の場合、同一クエリが既にキューにあれば新たに積まず
  * 既存リクエストの結果を共有する。
+ * ただし sessionTag 付きの timeline リクエストは dedup をスキップする
+ * （キャンセル時に dedup マップとの整合性が複雑になるため）。
  */
 function sendRequest(
   message: {
@@ -254,14 +302,15 @@ function sendRequest(
     [key: string]: unknown
   },
   kind: QueueKind = 'other',
+  sessionTag?: string,
 ): Promise<unknown> {
   if (!worker) {
     return Promise.reject(new Error('Worker not initialized'))
   }
 
   return new Promise<unknown>((resolve, reject) => {
-    // タイムラインキューの重複排除
-    if (kind === 'timeline') {
+    // タイムラインキューの重複排除（sessionTag 付きはスキップ）
+    if (kind === 'timeline' && !sessionTag) {
       const dedupKey = makeTimelineDedupKey(message)
       if (dedupKey != null) {
         const existing = timelineDedup.get(dedupKey)
@@ -303,7 +352,7 @@ function sendRequest(
     }
 
     const queue = kind === 'other' ? otherQueue : timelineQueue
-    queue.push({ kind, message, reject, resolve })
+    queue.push({ kind, message, reject, resolve, sessionTag })
     reportEnqueue(kind)
     processQueue()
   })
@@ -380,6 +429,7 @@ export function execAsync(
     bind?: (string | number | null)[]
     returnValue?: 'resultRows'
     kind?: QueueKind
+    sessionTag?: string
   },
 ): Promise<unknown> {
   const id = nextId++
@@ -390,7 +440,7 @@ export function execAsync(
     sql,
     type: 'exec',
   }
-  return sendRequest(request, opts?.kind ?? 'other')
+  return sendRequest(request, opts?.kind ?? 'other', opts?.sessionTag)
 }
 
 /**
@@ -403,6 +453,7 @@ export async function execAsyncTimed(
     bind?: (string | number | null)[]
     returnValue?: 'resultRows'
     kind?: QueueKind
+    sessionTag?: string
   },
 ): Promise<{ result: unknown; durationMs: number }> {
   const id = nextId++
@@ -413,7 +464,11 @@ export async function execAsyncTimed(
     sql,
     type: 'exec',
   }
-  const result = await sendRequest(request, opts?.kind ?? 'other')
+  const result = await sendRequest(
+    request,
+    opts?.kind ?? 'other',
+    opts?.sessionTag,
+  )
   const durationMs = durationForId.get(id) ?? 0
   durationForId.delete(id)
   return { durationMs, result }
@@ -442,6 +497,27 @@ export function execBatch(
     type: 'execBatch',
   }
   return sendRequest(request, 'other') as Promise<Record<number, unknown>>
+}
+
+/**
+ * タイムラインを一括取得する。
+ * Phase1 → Phase2 → Batch×7 を Worker 内で一括実行し、1 回の postMessage で結果を返す。
+ */
+export function fetchTimeline(
+  request: Omit<FetchTimelineRequest, 'type' | 'id'>,
+  sessionTag?: string,
+): Promise<FetchTimelineResult> {
+  const id = nextId++
+  const message = { ...request, id, type: 'fetchTimeline' } as {
+    type: string
+    id: number
+    [key: string]: unknown
+  }
+  return sendRequest(
+    message,
+    'timeline',
+    sessionTag,
+  ) as Promise<FetchTimelineResult>
 }
 
 /**

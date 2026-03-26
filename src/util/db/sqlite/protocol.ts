@@ -171,6 +171,47 @@ export type ToggleReactionRequest = {
   emoji: string // ':blobcat:' or '👍'
 }
 
+/** タイムライン一括取得リクエスト */
+export type FetchTimelineRequest = {
+  type: 'fetchTimeline'
+  id: number
+  /** Phase1 クエリ */
+  phase1: {
+    sql: string
+    bind: BindValue[]
+  }
+  /** Phase2 ベース SQL テンプレート（{IDS} プレースホルダを含む） */
+  phase2BaseSql: string
+  /** Batch SQL テンプレート群（{IDS} プレースホルダを含む） */
+  batchSqls: {
+    engagements: string
+    media: string
+    mentions: string
+    timelineTypes: string
+    belongingTags: string
+    customEmojis: string
+    polls: string
+  }
+  /** Phase2 結果から reblog_of_post_id を抽出するカラムインデックス */
+  reblogPostIdColumnIndex?: number
+}
+
+/** タイムライン一括取得の結果 */
+export type FetchTimelineResult = {
+  phase1Rows: (string | number | null)[][]
+  phase2Rows: (string | number | null)[][]
+  batchResults: {
+    engagements: (string | number | null)[][]
+    media: (string | number | null)[][]
+    mentions: (string | number | null)[][]
+    timelineTypes: (string | number | null)[][]
+    belongingTags: (string | number | null)[][]
+    customEmojis: (string | number | null)[][]
+    polls: (string | number | null)[][]
+  }
+  totalDurationMs: number
+}
+
 // ================================================================
 // Union 型
 // ================================================================
@@ -193,6 +234,7 @@ export type WorkerRequest =
   | ExportDatabaseRequest
   | EnsureLocalAccountRequest
   | ToggleReactionRequest
+  | FetchTimelineRequest
 
 // ================================================================
 // Worker → Main Thread (レスポンス)
@@ -204,6 +246,12 @@ export type SuccessResponse = {
   id: number
   result: unknown
   changedTables?: TableName[]
+  /** 変更のコンテキスト情報（Plan B: スマート無効化） */
+  changeHint?: {
+    timelineType?: string
+    backendUrl?: string
+    tag?: string
+  }
   durationMs?: number
 }
 
@@ -234,6 +282,9 @@ type DistributiveOmit<T, K extends PropertyKey> = T extends unknown
   : never
 
 export type SendCommandPayload = DistributiveOmit<
-  Exclude<WorkerRequest, ExecRequest | ExecBatchRequest | ReadyRequest>,
+  Exclude<
+    WorkerRequest,
+    ExecRequest | ExecBatchRequest | ReadyRequest | FetchTimelineRequest
+  >,
   'id'
 >

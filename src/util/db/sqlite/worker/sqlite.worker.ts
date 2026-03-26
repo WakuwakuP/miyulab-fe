@@ -204,9 +204,11 @@ function sendResponse(
   result: unknown,
   changedTables?: TableName[],
   durationMs?: number,
+  changeHint?: { timelineType?: string; backendUrl?: string; tag?: string },
 ): void {
   const response: WorkerMessage = {
     changedTables,
+    changeHint,
     durationMs,
     id,
     result,
@@ -297,7 +299,11 @@ self.onmessage = (
           msg.timelineType,
           msg.tag,
         )
-        sendResponse(msg.id, { ok: true }, r.changedTables)
+        sendResponse(msg.id, { ok: true }, r.changedTables, undefined, {
+          backendUrl: msg.backendUrl,
+          tag: msg.tag,
+          timelineType: msg.timelineType,
+        })
         break
       }
 
@@ -309,7 +315,11 @@ self.onmessage = (
           msg.timelineType,
           msg.tag,
         )
-        sendResponse(msg.id, { ok: true }, r.changedTables)
+        sendResponse(msg.id, { ok: true }, r.changedTables, undefined, {
+          backendUrl: msg.backendUrl,
+          tag: msg.tag,
+          timelineType: msg.timelineType,
+        })
         break
       }
 
@@ -339,7 +349,11 @@ self.onmessage = (
           msg.sourceTimelineType,
           msg.tag,
         )
-        sendResponse(msg.id, { ok: true }, r.changedTables)
+        sendResponse(msg.id, { ok: true }, r.changedTables, undefined, {
+          backendUrl: msg.backendUrl,
+          tag: msg.tag,
+          timelineType: msg.sourceTimelineType,
+        })
         break
       }
 
@@ -351,7 +365,11 @@ self.onmessage = (
           msg.timelineType,
           msg.tag,
         )
-        sendResponse(msg.id, { ok: true }, r.changedTables)
+        sendResponse(msg.id, { ok: true }, r.changedTables, undefined, {
+          backendUrl: msg.backendUrl,
+          tag: msg.tag,
+          timelineType: msg.timelineType,
+        })
         break
       }
 
@@ -419,6 +437,81 @@ self.onmessage = (
           msg.emoji,
         )
         sendResponse(msg.id, { ok: true }, r.changedTables)
+        break
+      }
+
+      // ---- Timeline 一括取得 ----
+      case 'fetchTimeline': {
+        const start = performance.now()
+
+        // Phase1
+        const phase1Rows = db.exec(msg.phase1.sql, {
+          bind: msg.phase1.bind,
+          returnValue: 'resultRows',
+        }) as (string | number | null)[][]
+
+        const postIds = phase1Rows.map(
+          (row: (string | number | null)[]) => row[0] as number,
+        )
+        if (postIds.length === 0) {
+          sendResponse(msg.id, {
+            batchResults: {
+              belongingTags: [],
+              customEmojis: [],
+              engagements: [],
+              media: [],
+              mentions: [],
+              polls: [],
+              timelineTypes: [],
+            },
+            phase1Rows,
+            phase2Rows: [],
+            totalDurationMs: performance.now() - start,
+          })
+          break
+        }
+
+        // Phase2
+        const placeholders = postIds.map(() => '?').join(',')
+        const phase2Sql = msg.phase2BaseSql.replaceAll('{IDS}', placeholders)
+        const phase2Rows = db.exec(phase2Sql, {
+          bind: postIds,
+          returnValue: 'resultRows',
+        }) as (string | number | null)[][]
+
+        // reblog post_id を収集
+        const reblogColIdx = msg.reblogPostIdColumnIndex ?? 27
+        const reblogPostIds: number[] = []
+        for (const row of phase2Rows) {
+          const rbId = row[reblogColIdx] as number | null
+          if (rbId !== null) reblogPostIds.push(rbId)
+        }
+        const allPostIds = [...new Set([...postIds, ...reblogPostIds])]
+        const allPlaceholders = allPostIds.map(() => '?').join(',')
+
+        // Batch 7本を同期実行
+        const runBatch = (sql: string) =>
+          db.exec(sql.replaceAll('{IDS}', allPlaceholders), {
+            bind: allPostIds,
+            returnValue: 'resultRows',
+          }) as (string | number | null)[][]
+
+        const batchResults = {
+          belongingTags: runBatch(msg.batchSqls.belongingTags),
+          customEmojis: runBatch(msg.batchSqls.customEmojis),
+          engagements: runBatch(msg.batchSqls.engagements),
+          media: runBatch(msg.batchSqls.media),
+          mentions: runBatch(msg.batchSqls.mentions),
+          polls: runBatch(msg.batchSqls.polls),
+          timelineTypes: runBatch(msg.batchSqls.timelineTypes),
+        }
+
+        sendResponse(msg.id, {
+          batchResults,
+          phase1Rows,
+          phase2Rows,
+          totalDurationMs: performance.now() - start,
+        })
         break
       }
 

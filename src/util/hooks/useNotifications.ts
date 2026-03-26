@@ -9,7 +9,11 @@ import {
   useState,
 } from 'react'
 import type { NotificationAddAppIndex, TimelineConfigV2 } from 'types/types'
-import { getSqliteDb, subscribe } from 'util/db/sqlite/connection'
+import {
+  type ChangeHint,
+  getSqliteDb,
+  subscribe,
+} from 'util/db/sqlite/connection'
 import {
   addNotification,
   NOTIFICATION_BASE_JOINS,
@@ -193,10 +197,19 @@ export function useNotifications(config?: TimelineConfigV2): {
   ])
 
   // 初回取得 + 変更通知で再取得
+  // ChangeListener 型は (hints: ChangeHint[]) => void だが、
+  // notifications テーブルのリスナーではヒントフィルタ不要なので引数を無視する
+  const handleChange = useCallback(
+    (_hints: ChangeHint[]) => {
+      fetchData()
+    },
+    [fetchData],
+  )
+
   useEffect(() => {
     fetchData()
-    return subscribe('notifications', fetchData)
-  }, [fetchData])
+    return subscribe('notifications', handleChange)
+  }, [fetchData, handleChange])
 
   // status が欠けている通知を検出して API から再取得
   const fetchedIdsRef = useRef(new Set<string>())
