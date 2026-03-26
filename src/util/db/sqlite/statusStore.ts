@@ -802,7 +802,6 @@ export function replacePlaceholders(sql: string, count: number): string {
 export async function executeBatchQueries(
   handle: SqliteHandle,
   allPostIds: number[],
-  sessionTag?: string,
 ): Promise<BatchMaps> {
   if (allPostIds.length === 0) {
     return {
@@ -821,6 +820,9 @@ export async function executeBatchQueries(
   const count = allPostIds.length
 
   // 全バッチクエリを並列実行
+  // NOTE: sessionTag を渡さない。7 本のクエリが同一 sessionTag を共有すると、
+  // workerClient の sendRequest インプレース置換により後続リクエストが先行を
+  // キャンセル (undefined で resolve) し、"s is not iterable" エラーになる。
   const [
     engagementRows,
     mediaRows,
@@ -834,43 +836,36 @@ export async function executeBatchQueries(
       bind: allPostIds,
       kind: 'timeline',
       returnValue: 'resultRows',
-      sessionTag,
     }) as Promise<(string | number | null)[][]>,
     handle.execAsync(replacePlaceholders(BATCH_MEDIA_SQL, count), {
       bind: allPostIds,
       kind: 'timeline',
       returnValue: 'resultRows',
-      sessionTag,
     }) as Promise<(string | number | null)[][]>,
     handle.execAsync(replacePlaceholders(BATCH_MENTIONS_SQL, count), {
       bind: allPostIds,
       kind: 'timeline',
       returnValue: 'resultRows',
-      sessionTag,
     }) as Promise<(string | number | null)[][]>,
     handle.execAsync(replacePlaceholders(BATCH_TIMELINE_TYPES_SQL, count), {
       bind: allPostIds,
       kind: 'timeline',
       returnValue: 'resultRows',
-      sessionTag,
     }) as Promise<(string | number | null)[][]>,
     handle.execAsync(replacePlaceholders(BATCH_BELONGING_TAGS_SQL, count), {
       bind: allPostIds,
       kind: 'timeline',
       returnValue: 'resultRows',
-      sessionTag,
     }) as Promise<(string | number | null)[][]>,
     handle.execAsync(replacePlaceholders(BATCH_CUSTOM_EMOJIS_SQL, count), {
       bind: allPostIds,
       kind: 'timeline',
       returnValue: 'resultRows',
-      sessionTag,
     }) as Promise<(string | number | null)[][]>,
     handle.execAsync(replacePlaceholders(BATCH_POLLS_SQL, count), {
       bind: allPostIds,
       kind: 'timeline',
       returnValue: 'resultRows',
-      sessionTag,
     }) as Promise<(string | number | null)[][]>,
   ])
 

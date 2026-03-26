@@ -509,7 +509,7 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           const allPostIds = [...new Set([...postIdsToFetch, ...reblogPostIds])]
 
           // 子テーブルバッチクエリを並列実行
-          const maps = await executeBatchQueries(handle, allPostIds, sessionTag)
+          const maps = await executeBatchQueries(handle, allPostIds)
 
           statusPhase2Dur = dur
           statusResults = statusBaseRows.map((row) => {
