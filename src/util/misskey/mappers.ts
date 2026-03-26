@@ -2,6 +2,41 @@ import type { Entity } from 'megalodon'
 import type * as Misskey from 'misskey-js'
 
 // ========================================
+// Misskey Note Extension Fields
+// misskey-js の型定義に含まれないが実データに存在するフィールド
+// ========================================
+
+interface MisskeyNoteExtensions {
+  /** 投稿編集日時 (Misskey 13+) */
+  updatedAt?: string | null
+  /** 自分がお気に入り済みか (API レスポンスのみ、ストリーミングでは欠落) */
+  isFavorited?: boolean
+  /** 自分がリノートした際のノート ID (API レスポンスのみ) */
+  myRenoteId?: string | null
+}
+
+type MisskeyNoteWithExtensions = Misskey.entities.Note & MisskeyNoteExtensions
+
+// ========================================
+// Misskey UserDetailed Extension Fields
+// misskey-js の型定義と実データの差異を吸収するフィールド
+// ========================================
+
+interface MisskeyUserDetailedExtensions {
+  createdAt?: string
+  description?: string | null
+  followersCount?: number
+  followingCount?: number
+  notesCount?: number
+  isLocked?: boolean
+  fields?: Array<{ name: string; value: string }>
+  bannerUrl?: string | null
+}
+
+type MisskeyUserDetailedWithExtensions = Misskey.entities.UserDetailed &
+  MisskeyUserDetailedExtensions
+
+// ========================================
 // Visibility Mapping
 // ========================================
 
@@ -139,17 +174,7 @@ export function mapUserDetailedToAccount(
   instanceHost?: string,
 ): Entity.Account {
   const base = mapUserLiteToAccount(user, instanceHost)
-  // UserDetailed has additional fields
-  const detailed = user as Misskey.entities.UserDetailed & {
-    createdAt?: string
-    description?: string | null
-    followersCount?: number
-    followingCount?: number
-    notesCount?: number
-    isLocked?: boolean
-    fields?: Array<{ name: string; value: string }>
-    bannerUrl?: string | null
-  }
+  const detailed = user as MisskeyUserDetailedWithExtensions
 
   return {
     ...base,
@@ -183,10 +208,26 @@ function normalizeReaction(
   name: string,
   reactionEmojis?: Record<string, string>,
 ): { name: string; url: string | null } {
-  const isCustom = name.startsWith(':') && name.endsWith(':')
-  const shortcode = isCustom ? name.slice(1, -1).replace(/@\.$/, '') : name
-  const url = reactionEmojis?.[shortcode] ?? null
-  return { name: isCustom ? `:${shortcode}:` : name, url }
+  // Custom emoji: `:name@.:` (local) or `:name@host:` (remote)
+  const customMatch = name.match(/^:(.+?)@(.+?):$/)
+  if (customMatch) {
+    const shortcode = customMatch[1]
+    const url =
+      reactionEmojis?.[shortcode] ??
+      reactionEmojis?.[`${shortcode}@${customMatch[2]}`] ??
+      null
+    return { name: `:${shortcode}:`, url }
+  }
+
+  // Custom emoji without host: `:name:` (already normalized)
+  if (name.startsWith(':') && name.endsWith(':')) {
+    const shortcode = name.slice(1, -1)
+    const url = reactionEmojis?.[shortcode] ?? null
+    return { name, url }
+  }
+
+  // Unicode emoji — return as-is
+  return { name, url: null }
 }
 
 export function mapReactions(
@@ -216,6 +257,7 @@ export function mapNoteToStatus(
   note: Misskey.entities.Note,
   instanceHost?: string,
 ): Entity.Status {
+  const ext = note as MisskeyNoteWithExtensions
   const account = mapUserLiteToAccount(note.user, instanceHost)
   const host = instanceHost ?? ''
   const uri = note.uri ?? `${host}/notes/${note.id}`
@@ -245,11 +287,11 @@ export function mapNoteToStatus(
   return {
     account,
     application: null,
-    bookmarked: false,
+    bookmarked: ext.isFavorited ?? false,
     card: null,
     content,
     created_at: note.createdAt,
-    edited_at: null,
+    edited_at: ext.updatedAt ?? null,
     emoji_reactions: mapReactions(
       note.reactions ?? {},
       note.myReaction,
@@ -259,7 +301,7 @@ export function mapNoteToStatus(
     favourited: note.myReaction != null ? true : null,
     favourites_count: note.reactionCount ?? 0,
     id: note.id,
-    in_reply_to_account_id: null,
+    in_reply_to_account_id: note.reply?.userId ?? null,
     in_reply_to_id: note.replyId ?? null,
     language: null,
     media_attachments: (note.files ?? []).map(mapDriveFileToAttachment),
@@ -269,7 +311,9 @@ export function mapNoteToStatus(
     plain_content: note.text ?? null,
     poll: note.poll
       ? {
-          expired: false,
+          expired: note.poll.expiresAt
+            ? new Date(note.poll.expiresAt).getTime() < Date.now()
+            : false,
           expires_at: note.poll.expiresAt ?? null,
           id: note.id,
           multiple: note.poll.multiple,
@@ -278,7 +322,10 @@ export function mapNoteToStatus(
             votes_count: c.votes,
           })),
           voted: note.poll.choices.some((c) => c.isVoted),
-          votes_count: note.poll.choices.reduce((sum, c) => sum + c.votes, 0),
+          votes_count: note.poll.choices.reduce(
+            (sum, c) => sum + (c.votes ?? 0),
+            0,
+          ),
         }
       : null,
     quote:
@@ -290,7 +337,7 @@ export function mapNoteToStatus(
         : null,
     quote_approval: null as unknown as Entity.Status['quote_approval'],
     reblog,
-    reblogged: null,
+    reblogged: ext.myRenoteId != null ? true : null,
     reblogs_count: note.renoteCount ?? 0,
     replies_count: note.repliesCount ?? 0,
     sensitive: (note.files ?? []).some((f) => f.isSensitive),
@@ -324,9 +371,16 @@ function mapNotificationType(type: string): string {
     case 'reaction':
       return 'reaction'
     case 'pollEnded':
+    case 'pollVoted':
       return 'poll'
     case 'note':
       return 'status'
+    case 'followRequestAccepted':
+      return 'follow'
+    case 'achievementEarned':
+      return 'achievement'
+    case 'app':
+      return 'app'
     default:
       return type
   }
@@ -395,16 +449,49 @@ function escapeHtml(text: string): string {
 
 /**
  * MFM テキストを基本的な HTML に変換する。
- * メンション (@user, @user@host)、ハッシュタグ (#tag)、URL をリンク化し、
- * 改行を <br> に変換する。
+ *
+ * 対応する MFM 構文:
+ * - URL のリンク化
+ * - メンション (@user, @user@host) のリンク化
+ * - ハッシュタグ (#tag) のリンク化
+ * - **bold** → <strong>
+ * - ~~strikethrough~~ → <del>
+ * - `inline code` → <code>
+ * - ```code block``` → <pre><code>
+ * - <center> → text-align:center
+ * - <small> → <small>
+ * - 改行 → <br>
  */
 function mfmToHtml(text: string, instanceHost?: string): string {
   const host = instanceHost ?? ''
   let escaped = escapeHtml(text)
 
-  // URL をプレースホルダーに置換して後続のメンション/ハッシュタグ変換から保護
   // 衝突を避けるためランダムな nonce をプレースホルダーに含める
   const nonce = Math.random().toString(36).slice(2, 10)
+
+  // コードブロック（```lang\n...\n```）をプレースホルダーに退避
+  // コード内の MFM 構文が変換されないよう保護する
+  const codePlaceholders: string[] = []
+  escaped = escaped.replace(
+    /```(\w*)\n([\s\S]*?)```/g,
+    (_match, lang: string, code: string) => {
+      const index = codePlaceholders.length
+      const langAttr = lang ? ` class="language-${lang}"` : ''
+      codePlaceholders.push(
+        `<pre><code${langAttr}>${code.replace(/\n$/, '')}</code></pre>`,
+      )
+      return `\x00MFM_CODE_${nonce}_${index}\x00`
+    },
+  )
+
+  // インラインコード（`code`）をプレースホルダーに退避
+  escaped = escaped.replace(/`([^`\n]+)`/g, (_match, code: string) => {
+    const index = codePlaceholders.length
+    codePlaceholders.push(`<code>${code}</code>`)
+    return `\x00MFM_CODE_${nonce}_${index}\x00`
+  })
+
+  // URL をプレースホルダーに置換して後続のメンション/ハッシュタグ変換から保護
   const urlPlaceholders: string[] = []
   escaped = escaped.replace(/https?:\/\/[^\s<>&)"']+/g, (url) => {
     const index = urlPlaceholders.length
@@ -414,6 +501,34 @@ function mfmToHtml(text: string, instanceHost?: string): string {
     )
     return `\x00MFM_URL_${nonce}_${index}\x00`
   })
+
+  // MFM テキスト装飾
+  // **bold** → <strong>
+  escaped = escaped.replace(
+    /\*\*(.+?)\*\*/g,
+    (_match, content: string) => `<strong>${content}</strong>`,
+  )
+
+  // ~~strikethrough~~ → <del>
+  escaped = escaped.replace(
+    /~~(.+?)~~/g,
+    (_match, content: string) => `<del>${content}</del>`,
+  )
+
+  // <center>text</center> → <div style="text-align:center">text</div>
+  // escapeHtml により &lt;center&gt; に変換済み
+  escaped = escaped.replace(
+    /&lt;center&gt;([\s\S]*?)&lt;\/center&gt;/g,
+    (_match, content: string) =>
+      `<div style="text-align:center">${content}</div>`,
+  )
+
+  // <small>text</small> → <small>text</small>
+  // escapeHtml により &lt;small&gt; に変換済み
+  escaped = escaped.replace(
+    /&lt;small&gt;([\s\S]*?)&lt;\/small&gt;/g,
+    (_match, content: string) => `<small>${content}</small>`,
+  )
 
   // メンションをリンク化 (@user@host or @user)
   escaped = escaped.replace(
@@ -440,6 +555,13 @@ function mfmToHtml(text: string, instanceHost?: string): string {
     const url = urlPlaceholders[Number(index)]
     // 未知のプレースホルダーはそのまま残す
     return url !== undefined ? url : match
+  })
+
+  // コードプレースホルダーを復元
+  const codeRegex = new RegExp(`\x00MFM_CODE_${nonce}_(\\d+)\x00`, 'g')
+  escaped = escaped.replace(codeRegex, (match, index: string) => {
+    const code = codePlaceholders[Number(index)]
+    return code !== undefined ? code : match
   })
 
   // 改行を <br> に変換

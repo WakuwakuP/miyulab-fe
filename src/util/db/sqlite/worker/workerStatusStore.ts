@@ -109,14 +109,58 @@ function upsertMentionsInternal(
   db: DbExec,
   postId: number,
   mentions: Entity.Mention[],
+  serverId: number,
 ): void {
-  db.exec('DELETE FROM posts_mentions WHERE post_id = ?;', {
-    bind: [postId],
-  })
+  const keepAccts: string[] = []
+
   for (const mention of mentions) {
+    // Try to resolve profile_id from acct
+    let profileId: number | null = null
+
+    // First try: look up by remote_account_id in profile_aliases
+    if (mention.id) {
+      const aliasRows = db.exec(
+        `SELECT pa.profile_id FROM profile_aliases pa
+         WHERE pa.server_id = ? AND pa.remote_account_id = ?
+         LIMIT 1;`,
+        { bind: [serverId, mention.id], returnValue: 'resultRows' },
+      ) as number[][]
+      if (aliasRows.length > 0) {
+        profileId = aliasRows[0][0]
+      }
+    }
+
+    // Second try: look up by acct in profiles
+    if (profileId === null && mention.acct) {
+      const profileRows = db.exec(
+        'SELECT profile_id FROM profiles WHERE acct = ? LIMIT 1;',
+        { bind: [mention.acct], returnValue: 'resultRows' },
+      ) as number[][]
+      if (profileRows.length > 0) {
+        profileId = profileRows[0][0]
+      }
+    }
+
     db.exec(
-      'INSERT OR IGNORE INTO posts_mentions (post_id, acct) VALUES (?, ?);',
-      { bind: [postId, mention.acct] },
+      `INSERT INTO posts_mentions (post_id, acct, profile_id)
+       VALUES (?, ?, ?)
+       ON CONFLICT(post_id, acct) DO UPDATE SET
+         profile_id = COALESCE(excluded.profile_id, posts_mentions.profile_id);`,
+      { bind: [postId, mention.acct, profileId] },
+    )
+    keepAccts.push(mention.acct)
+  }
+
+  // Remove stale mentions
+  if (keepAccts.length === 0) {
+    db.exec('DELETE FROM posts_mentions WHERE post_id = ?;', {
+      bind: [postId],
+    })
+  } else {
+    const ph = keepAccts.map(() => '?').join(',')
+    db.exec(
+      `DELETE FROM posts_mentions WHERE post_id = ? AND acct NOT IN (${ph});`,
+      { bind: [postId, ...keepAccts] },
     )
   }
 }
@@ -146,7 +190,6 @@ function syncPostMedia(
   mediaAttachments: Entity.Attachment[],
   isSensitive: boolean,
 ): void {
-  db.exec('DELETE FROM post_media WHERE post_id = ?;', { bind: [postId] })
   for (let i = 0; i < mediaAttachments.length; i++) {
     const media = mediaAttachments[i]
     const mediaTypeId = resolveMediaTypeId(db, media.type)
@@ -154,7 +197,15 @@ function syncPostMedia(
       `INSERT INTO post_media (
         post_id, media_type_id, remote_media_id, url, preview_url,
         description, blurhash, sort_order, is_sensitive
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(post_id, sort_order) DO UPDATE SET
+        media_type_id  = excluded.media_type_id,
+        remote_media_id = excluded.remote_media_id,
+        url            = excluded.url,
+        preview_url    = excluded.preview_url,
+        description    = excluded.description,
+        blurhash       = excluded.blurhash,
+        is_sensitive   = excluded.is_sensitive;`,
       {
         bind: [
           postId,
@@ -170,6 +221,84 @@ function syncPostMedia(
       },
     )
   }
+
+  // Remove excess media (in case attachments decreased)
+  db.exec('DELETE FROM post_media WHERE post_id = ? AND sort_order >= ?;', {
+    bind: [postId, mediaAttachments.length],
+  })
+}
+
+/**
+ * in_reply_to_id (server-local ID) から reply_to_post_id (internal FK) を解決する。
+ * posts_backends 経由で post_id を逆引きする。
+ */
+function resolveReplyToPostId(
+  db: DbExec,
+  inReplyToId: string | null,
+  serverId: number,
+): number | null {
+  if (!inReplyToId) return null
+  const rows = db.exec(
+    'SELECT post_id FROM posts_backends WHERE server_id = ? AND local_id = ? LIMIT 1;',
+    { bind: [serverId, inReplyToId], returnValue: 'resultRows' },
+  ) as number[][]
+  return rows.length > 0 ? rows[0][0] : null
+}
+
+/**
+ * reblog_of_uri (ActivityPub URI) から repost_of_post_id (internal FK) を解決する。
+ * posts.object_uri 経由で post_id を逆引きする。
+ */
+function resolveRepostOfPostId(
+  db: DbExec,
+  reblogOfUri: string | null,
+): number | null {
+  if (!reblogOfUri) return null
+  const rows = db.exec(
+    "SELECT post_id FROM posts WHERE object_uri = ? AND object_uri != '' LIMIT 1;",
+    { bind: [reblogOfUri], returnValue: 'resultRows' },
+  ) as number[][]
+  return rows.length > 0 ? rows[0][0] : null
+}
+
+/**
+ * 新しい投稿が到着した時、この投稿を in_reply_to_id で参照している
+ * 既存投稿の reply_to_post_id を遅延解決で更新する。
+ */
+function resolveDelayedReplyReferences(
+  db: DbExec,
+  postId: number,
+  localId: string,
+  serverId: number,
+): void {
+  // この投稿の local_id を in_reply_to_id として持つ既存投稿を更新
+  db.exec(
+    `UPDATE posts SET reply_to_post_id = ?
+     WHERE reply_to_post_id IS NULL
+       AND in_reply_to_id = ?
+       AND post_id IN (
+         SELECT pb.post_id FROM posts_backends pb WHERE pb.server_id = ?
+       );`,
+    { bind: [postId, localId, serverId] },
+  )
+}
+
+/**
+ * 新しい投稿が到着した時、この投稿の object_uri を reblog_of_uri で参照している
+ * 既存投稿の repost_of_post_id を遅延解決で更新する。
+ */
+function resolveDelayedRepostReferences(
+  db: DbExec,
+  postId: number,
+  objectUri: string,
+): void {
+  if (!objectUri) return
+  db.exec(
+    `UPDATE posts SET repost_of_post_id = ?
+     WHERE repost_of_post_id IS NULL
+       AND reblog_of_uri = ?;`,
+    { bind: [postId, objectUri] },
+  )
 }
 
 function syncPostStats(
@@ -268,6 +397,9 @@ function ensureReblogOriginalPost(
       resolvePostIdInternal(db, backendUrl, originalStatus.id) ?? undefined
   }
 
+  const replyToPostId = resolveReplyToPostId(db, cols.in_reply_to_id, serverId)
+  const repostOfPostId = resolveRepostOfPostId(db, cols.reblog_of_uri)
+
   if (postId !== undefined) {
     // author_profile_id は更新しない（handleUpsertStatus と同一方針）
     db.exec(
@@ -285,7 +417,9 @@ function ensureReblogOriginalPost(
         is_sensitive       = ?,
         has_spoiler        = ?,
         in_reply_to_id     = ?,
-        edited_at          = ?
+        edited_at          = ?,
+        reply_to_post_id   = ?,
+        repost_of_post_id  = ?
       WHERE post_id = ?;`,
       {
         bind: [
@@ -301,6 +435,8 @@ function ensureReblogOriginalPost(
           cols.has_spoiler,
           cols.in_reply_to_id,
           cols.edited_at,
+          replyToPostId,
+          repostOfPostId,
           postId,
         ],
       },
@@ -313,8 +449,9 @@ function ensureReblogOriginalPost(
         content_html, spoiler_text, canonical_url,
         has_media, media_count, is_reblog, reblog_of_uri,
         is_sensitive, has_spoiler, in_reply_to_id,
-        is_local_only, edited_at
-      ) VALUES (?,?,?,?, ?,?,?, ?,?,?, ?,?,0,NULL, ?,?,?, ?,?);`,
+        is_local_only, edited_at,
+        reply_to_post_id, repost_of_post_id
+      ) VALUES (?,?,?,?, ?,?,?, ?,?,?, ?,?,0,NULL, ?,?,?, ?,?, ?,?);`,
       {
         bind: [
           normalizedUri,
@@ -334,6 +471,8 @@ function ensureReblogOriginalPost(
           cols.in_reply_to_id,
           0,
           cols.edited_at,
+          replyToPostId,
+          repostOfPostId,
         ],
       },
     )
@@ -346,7 +485,13 @@ function ensureReblogOriginalPost(
     { bind: [serverId, originalStatus.id, postId, backendUrl] },
   )
 
-  upsertMentionsInternal(db, postId, originalStatus.mentions)
+  // Delayed resolution: update other posts that reference this post
+  resolveDelayedReplyReferences(db, postId, originalStatus.id, serverId)
+  if (normalizedUri) {
+    resolveDelayedRepostReferences(db, postId, normalizedUri)
+  }
+
+  upsertMentionsInternal(db, postId, originalStatus.mentions, serverId)
   syncPostMedia(
     db,
     postId,
@@ -384,15 +529,22 @@ function ensureReblogOriginalPost(
   syncPostLinkCard(db, postId, originalStatus.card)
 
   // エンゲージメント同期（サーバーから返されたフラグをDBに反映）
+  // === true で設定、=== false で解除、null/undefined はスキップ（データなし）
   if (localAccountId !== null) {
-    if (originalStatus.favourited) {
+    if (originalStatus.favourited === true) {
       toggleEngagement(db, localAccountId, postId, 'favourite', true)
+    } else if (originalStatus.favourited === false) {
+      toggleEngagement(db, localAccountId, postId, 'favourite', false)
     }
-    if (originalStatus.reblogged) {
+    if (originalStatus.reblogged === true) {
       toggleEngagement(db, localAccountId, postId, 'reblog', true)
+    } else if (originalStatus.reblogged === false) {
+      toggleEngagement(db, localAccountId, postId, 'reblog', false)
     }
-    if (originalStatus.bookmarked) {
+    if (originalStatus.bookmarked === true) {
       toggleEngagement(db, localAccountId, postId, 'bookmark', true)
+    } else if (originalStatus.bookmarked === false) {
+      toggleEngagement(db, localAccountId, postId, 'bookmark', false)
     }
   }
 }
@@ -504,6 +656,16 @@ export function handleUpsertStatus(
       }
     }
 
+    const replyToPostId = resolveReplyToPostId(
+      db,
+      cols.in_reply_to_id,
+      serverId,
+    )
+    const repostOfPostId =
+      cols.is_reblog === 1
+        ? resolveRepostOfPostId(db, cols.reblog_of_uri)
+        : null
+
     if (postId !== undefined) {
       // author_profile_id は更新しない:
       // ActivityPub では投稿の著者は不変であり、同一バックエンドからの
@@ -527,7 +689,9 @@ export function handleUpsertStatus(
           is_sensitive       = ?,
           has_spoiler        = ?,
           in_reply_to_id     = ?,
-          edited_at          = ?
+          edited_at          = ?,
+          reply_to_post_id   = ?,
+          repost_of_post_id  = ?
         WHERE post_id = ?;`,
         {
           bind: [
@@ -545,6 +709,8 @@ export function handleUpsertStatus(
             cols.has_spoiler,
             cols.in_reply_to_id,
             cols.edited_at,
+            replyToPostId,
+            repostOfPostId,
             postId,
           ],
         },
@@ -558,8 +724,9 @@ export function handleUpsertStatus(
           content_html, spoiler_text, canonical_url,
           has_media, media_count, is_reblog, reblog_of_uri,
           is_sensitive, has_spoiler, in_reply_to_id,
-          is_local_only, edited_at
-        ) VALUES (?,?,?,?, ?,?,?, ?,?,?, ?,?,?,?, ?,?,?, ?,?);`,
+          is_local_only, edited_at,
+          reply_to_post_id, repost_of_post_id
+        ) VALUES (?,?,?,?, ?,?,?, ?,?,?, ?,?,?,?, ?,?,?, ?,?, ?,?);`,
         {
           bind: [
             insertUri,
@@ -581,6 +748,8 @@ export function handleUpsertStatus(
             cols.in_reply_to_id,
             0,
             cols.edited_at,
+            replyToPostId,
+            repostOfPostId,
           ],
         },
       )
@@ -606,8 +775,23 @@ export function handleUpsertStatus(
       { bind: [serverId, status.id, postId, backendUrl] },
     )
 
+    // Delayed resolution: update other posts that reference this post
+    resolveDelayedReplyReferences(db, postId, status.id, serverId)
+    if (normalizedUri) {
+      resolveDelayedRepostReferences(db, postId, normalizedUri)
+    }
+
     // timeline_items に登録（timelines が未作成なら自動作成）
-    const timelineId = ensureTimeline(db, serverId, timelineType, tag)
+    const localAccountId = resolveLocalAccountId(db, backendUrl)
+    const isAccountSpecificTimeline =
+      timelineType === 'home' || timelineType === 'notification'
+    const timelineId = ensureTimeline(
+      db,
+      serverId,
+      timelineType,
+      tag,
+      isAccountSpecificTimeline ? localAccountId : null,
+    )
     if (cachedPostItemKindId === null) {
       cachedPostItemKindId = resolvePostItemKindId(db)
     }
@@ -618,21 +802,27 @@ export function handleUpsertStatus(
       { bind: [timelineId, postItemKindId, postId, created_at_ms, now] },
     )
 
-    upsertMentionsInternal(db, postId, status.mentions)
+    upsertMentionsInternal(db, postId, status.mentions, serverId)
     syncPostMedia(db, postId, status.media_attachments, status.sensitive)
     syncPostStats(db, postId, status)
 
     // エンゲージメント同期（サーバーから返されたフラグをDBに反映）
-    const localAccountId = resolveLocalAccountId(db, backendUrl)
+    // === true で設定、=== false で解除、null/undefined はスキップ（データなし）
     if (localAccountId !== null) {
-      if (status.favourited) {
+      if (status.favourited === true) {
         toggleEngagement(db, localAccountId, postId, 'favourite', true)
+      } else if (status.favourited === false) {
+        toggleEngagement(db, localAccountId, postId, 'favourite', false)
       }
-      if (status.reblogged) {
+      if (status.reblogged === true) {
         toggleEngagement(db, localAccountId, postId, 'reblog', true)
+      } else if (status.reblogged === false) {
+        toggleEngagement(db, localAccountId, postId, 'reblog', false)
       }
-      if (status.bookmarked) {
+      if (status.bookmarked === true) {
         toggleEngagement(db, localAccountId, postId, 'bookmark', true)
+      } else if (status.bookmarked === false) {
+        toggleEngagement(db, localAccountId, postId, 'bookmark', false)
       }
     }
 
@@ -736,7 +926,15 @@ export function handleBulkUpsertStatuses(
   try {
     const serverId = ensureServer(db, backendUrl)
     const localAccountId = resolveLocalAccountId(db, backendUrl)
-    const timelineId = ensureTimeline(db, serverId, timelineType, tag)
+    const isAccountSpecificTimeline =
+      timelineType === 'home' || timelineType === 'notification'
+    const timelineId = ensureTimeline(
+      db,
+      serverId,
+      timelineType,
+      tag,
+      isAccountSpecificTimeline ? localAccountId : null,
+    )
     if (cachedPostItemKindId === null) {
       cachedPostItemKindId = resolvePostItemKindId(db)
     }
@@ -831,6 +1029,16 @@ export function handleBulkUpsertStatuses(
         }
       }
 
+      const replyToPostId = resolveReplyToPostId(
+        db,
+        cols.in_reply_to_id,
+        serverId,
+      )
+      const repostOfPostId =
+        cols.is_reblog === 1
+          ? resolveRepostOfPostId(db, cols.reblog_of_uri)
+          : null
+
       if (postId !== undefined) {
         // author_profile_id は更新しない（handleUpsertStatus と同一方針）
         db.exec(
@@ -848,7 +1056,9 @@ export function handleBulkUpsertStatuses(
             is_sensitive       = ?,
             has_spoiler        = ?,
             in_reply_to_id     = ?,
-            edited_at          = ?
+            edited_at          = ?,
+            reply_to_post_id   = ?,
+            repost_of_post_id  = ?
           WHERE post_id = ?;`,
           {
             bind: [
@@ -866,6 +1076,8 @@ export function handleBulkUpsertStatuses(
               cols.has_spoiler,
               cols.in_reply_to_id,
               cols.edited_at,
+              replyToPostId,
+              repostOfPostId,
               postId,
             ],
           },
@@ -879,8 +1091,9 @@ export function handleBulkUpsertStatuses(
             content_html, spoiler_text, canonical_url,
             has_media, media_count, is_reblog, reblog_of_uri,
             is_sensitive, has_spoiler, in_reply_to_id,
-            is_local_only, edited_at
-          ) VALUES (?,?,?,?, ?,?,?, ?,?,?, ?,?,?,?, ?,?,?, ?,?);`,
+            is_local_only, edited_at,
+            reply_to_post_id, repost_of_post_id
+          ) VALUES (?,?,?,?, ?,?,?, ?,?,?, ?,?,?,?, ?,?,?, ?,?, ?,?);`,
           {
             bind: [
               insertUri,
@@ -902,6 +1115,8 @@ export function handleBulkUpsertStatuses(
               cols.in_reply_to_id,
               0,
               cols.edited_at,
+              replyToPostId,
+              repostOfPostId,
             ],
           },
         )
@@ -935,6 +1150,12 @@ export function handleBulkUpsertStatuses(
         { bind: [serverId, status.id, postId, backendUrl] },
       )
 
+      // Delayed resolution: update other posts that reference this post
+      resolveDelayedReplyReferences(db, postId, status.id, serverId)
+      if (normalizedUri) {
+        resolveDelayedRepostReferences(db, postId, normalizedUri)
+      }
+
       // timeline_items に登録
       db.exec(
         `INSERT OR IGNORE INTO timeline_items (timeline_id, timeline_item_kind_id, post_id, sort_key, inserted_at)
@@ -942,20 +1163,27 @@ export function handleBulkUpsertStatuses(
         { bind: [timelineId, postItemKindId, postId, created_at_ms, now] },
       )
 
-      upsertMentionsInternal(db, postId, status.mentions)
+      upsertMentionsInternal(db, postId, status.mentions, serverId)
       syncPostMedia(db, postId, status.media_attachments, status.sensitive)
       syncPostStats(db, postId, status)
 
       // エンゲージメント同期（サーバーから返されたフラグをDBに反映）
+      // === true で設定、=== false で解除、null/undefined はスキップ（データなし）
       if (localAccountId !== null) {
-        if (status.favourited) {
+        if (status.favourited === true) {
           toggleEngagement(db, localAccountId, postId, 'favourite', true)
+        } else if (status.favourited === false) {
+          toggleEngagement(db, localAccountId, postId, 'favourite', false)
         }
-        if (status.reblogged) {
+        if (status.reblogged === true) {
           toggleEngagement(db, localAccountId, postId, 'reblog', true)
+        } else if (status.reblogged === false) {
+          toggleEngagement(db, localAccountId, postId, 'reblog', false)
         }
-        if (status.bookmarked) {
+        if (status.bookmarked === true) {
           toggleEngagement(db, localAccountId, postId, 'bookmark', true)
+        } else if (status.bookmarked === false) {
+          toggleEngagement(db, localAccountId, postId, 'bookmark', false)
         }
       }
 
@@ -1307,6 +1535,16 @@ export function handleUpdateStatus(
       syncProfileCustomEmojis(db, profileId, serverId, status.account.emojis)
     }
 
+    const replyToPostId = resolveReplyToPostId(
+      db,
+      cols.in_reply_to_id,
+      serverId,
+    )
+    const repostOfPostId =
+      cols.is_reblog === 1
+        ? resolveRepostOfPostId(db, cols.reblog_of_uri)
+        : null
+
     // object_uri / created_at_ms / author_profile_id は編集で変わらないため更新しない
     // author_profile_id: ActivityPub では著者は不変。クロスバックエンド到着時の
     // profile_id 不整合を防ぐため INSERT 時にのみ設定する。
@@ -1325,7 +1563,9 @@ export function handleUpdateStatus(
          is_sensitive       = ?,
          has_spoiler        = ?,
          in_reply_to_id     = ?,
-         edited_at          = ?
+         edited_at          = ?,
+         reply_to_post_id   = ?,
+         repost_of_post_id  = ?
        WHERE post_id = ?;`,
       {
         bind: [
@@ -1343,12 +1583,14 @@ export function handleUpdateStatus(
           cols.has_spoiler,
           cols.in_reply_to_id,
           cols.edited_at,
+          replyToPostId,
+          repostOfPostId,
           postId,
         ],
       },
     )
 
-    upsertMentionsInternal(db, postId, status.mentions)
+    upsertMentionsInternal(db, postId, status.mentions, serverId)
     syncPostMedia(db, postId, status.media_attachments, status.sensitive)
     syncPostStats(db, postId, status)
 

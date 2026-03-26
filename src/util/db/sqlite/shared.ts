@@ -158,8 +158,9 @@ export function ensureTimeline(
   serverId: number,
   channelKindCode: string,
   tag?: string | null,
+  localAccountId?: number | null,
 ): number {
-  const cacheKey = `${serverId}\0${channelKindCode}\0${tag ?? ''}`
+  const cacheKey = `${serverId}\0${localAccountId ?? 0}\0${channelKindCode}\0${tag ?? ''}`
   const cached = timelineCache.get(cacheKey)
   if (cached !== undefined) return cached
 
@@ -170,12 +171,12 @@ export function ensureTimeline(
 
   const tagValue = tag ?? null
 
-  // COALESCE(tag, '') でユニーク制約に合わせて検索
+  // COALESCE でユニーク制約に合わせて検索
   const existing = db.exec(
     `SELECT timeline_id FROM timelines
-     WHERE server_id = ? AND channel_kind_id = ? AND COALESCE(tag, '') = ?;`,
+     WHERE server_id = ? AND COALESCE(local_account_id, 0) = ? AND channel_kind_id = ? AND COALESCE(tag, '') = ?;`,
     {
-      bind: [serverId, channelKindId, tagValue ?? ''],
+      bind: [serverId, localAccountId ?? 0, channelKindId, tagValue ?? ''],
       returnValue: 'resultRows',
     },
   ) as number[][]
@@ -186,16 +187,16 @@ export function ensureTimeline(
   }
 
   db.exec(
-    `INSERT INTO timelines (server_id, channel_kind_id, tag, created_at)
-     VALUES (?, ?, ?, datetime('now'));`,
-    { bind: [serverId, channelKindId, tagValue] },
+    `INSERT INTO timelines (server_id, local_account_id, channel_kind_id, tag, created_at)
+     VALUES (?, ?, ?, ?, datetime('now'));`,
+    { bind: [serverId, localAccountId ?? null, channelKindId, tagValue] },
   )
 
   const rows = db.exec(
     `SELECT timeline_id FROM timelines
-     WHERE server_id = ? AND channel_kind_id = ? AND COALESCE(tag, '') = ?;`,
+     WHERE server_id = ? AND COALESCE(local_account_id, 0) = ? AND channel_kind_id = ? AND COALESCE(tag, '') = ?;`,
     {
-      bind: [serverId, channelKindId, tagValue ?? ''],
+      bind: [serverId, localAccountId ?? 0, channelKindId, tagValue ?? ''],
       returnValue: 'resultRows',
     },
   ) as number[][]
@@ -483,9 +484,8 @@ export function syncPostCustomEmojis(
     visible_in_picker?: boolean
   }[],
 ): void {
-  db.exec('DELETE FROM post_custom_emojis WHERE post_id = ?;', {
-    bind: [postId],
-  })
+  // First, collect all (emoji_id, usage_context) pairs we want to keep
+  const keepPairs: [number, string][] = []
 
   for (const emoji of statusEmojis) {
     const emojiId = ensureCustomEmoji(db, serverId, emoji)
@@ -494,6 +494,7 @@ export function syncPostCustomEmojis(
        VALUES (?, ?, 'status');`,
       { bind: [postId, emojiId] },
     )
+    keepPairs.push([emojiId, 'status'])
   }
 
   for (const emoji of accountEmojis) {
@@ -503,6 +504,48 @@ export function syncPostCustomEmojis(
        VALUES (?, ?, 'account');`,
       { bind: [postId, emojiId] },
     )
+    keepPairs.push([emojiId, 'account'])
+  }
+
+  // Remove stale entries
+  if (keepPairs.length === 0) {
+    db.exec('DELETE FROM post_custom_emojis WHERE post_id = ?;', {
+      bind: [postId],
+    })
+  } else {
+    // Delete where emoji_id NOT IN the kept ids for each context
+    const statusEmojiIds = keepPairs
+      .filter((p) => p[1] === 'status')
+      .map((p) => p[0])
+    const accountEmojiIds = keepPairs
+      .filter((p) => p[1] === 'account')
+      .map((p) => p[0])
+
+    if (statusEmojiIds.length > 0) {
+      const ph = statusEmojiIds.map(() => '?').join(',')
+      db.exec(
+        `DELETE FROM post_custom_emojis WHERE post_id = ? AND usage_context = 'status' AND emoji_id NOT IN (${ph});`,
+        { bind: [postId, ...statusEmojiIds] },
+      )
+    } else {
+      db.exec(
+        `DELETE FROM post_custom_emojis WHERE post_id = ? AND usage_context = 'status';`,
+        { bind: [postId] },
+      )
+    }
+
+    if (accountEmojiIds.length > 0) {
+      const ph = accountEmojiIds.map(() => '?').join(',')
+      db.exec(
+        `DELETE FROM post_custom_emojis WHERE post_id = ? AND usage_context = 'account' AND emoji_id NOT IN (${ph});`,
+        { bind: [postId, ...accountEmojiIds] },
+      )
+    } else {
+      db.exec(
+        `DELETE FROM post_custom_emojis WHERE post_id = ? AND usage_context = 'account';`,
+        { bind: [postId] },
+      )
+    }
   }
 }
 
@@ -528,9 +571,7 @@ export function syncProfileCustomEmojis(
     visible_in_picker?: boolean
   }[],
 ): void {
-  db.exec('DELETE FROM profile_custom_emojis WHERE profile_id = ?;', {
-    bind: [profileId],
-  })
+  const keepIds: number[] = []
 
   for (const emoji of emojis) {
     const emojiId = ensureCustomEmoji(db, serverId, emoji)
@@ -538,6 +579,20 @@ export function syncProfileCustomEmojis(
       `INSERT OR IGNORE INTO profile_custom_emojis (profile_id, emoji_id)
        VALUES (?, ?);`,
       { bind: [profileId, emojiId] },
+    )
+    keepIds.push(emojiId)
+  }
+
+  // Remove stale
+  if (keepIds.length === 0) {
+    db.exec('DELETE FROM profile_custom_emojis WHERE profile_id = ?;', {
+      bind: [profileId],
+    })
+  } else {
+    const ph = keepIds.map(() => '?').join(',')
+    db.exec(
+      `DELETE FROM profile_custom_emojis WHERE profile_id = ? AND emoji_id NOT IN (${ph});`,
+      { bind: [profileId, ...keepIds] },
     )
   }
 }
@@ -636,16 +691,13 @@ export function syncPostHashtags(
   postId: number,
   tags: { name: string; url?: string }[],
 ): void {
-  db.exec('DELETE FROM post_hashtags WHERE post_id = ?;', {
-    bind: [postId],
-  })
+  const keepHashtagIds: number[] = []
 
   for (let i = 0; i < tags.length; i++) {
     const tag = tags[i]
     const normalizedName = tag.name.toLowerCase()
     const displayName = tag.name
 
-    // hashtags テーブルに UPSERT（display_name は最新の表記で更新）
     db.exec(
       `INSERT INTO hashtags (normalized_name, display_name)
        VALUES (?, ?)
@@ -654,18 +706,30 @@ export function syncPostHashtags(
       { bind: [normalizedName, displayName] },
     )
 
-    // hashtag_id を取得
     const rows = db.exec(
       'SELECT hashtag_id FROM hashtags WHERE normalized_name = ?;',
       { bind: [normalizedName], returnValue: 'resultRows' },
     ) as number[][]
     const hashtagId = rows[0][0]
+    keepHashtagIds.push(hashtagId)
 
-    // post_hashtags に INSERT
     db.exec(
-      `INSERT OR IGNORE INTO post_hashtags (post_id, hashtag_id, sort_order)
-       VALUES (?, ?, ?);`,
+      `INSERT INTO post_hashtags (post_id, hashtag_id, sort_order)
+       VALUES (?, ?, ?)
+       ON CONFLICT(post_id, hashtag_id) DO UPDATE SET
+         sort_order = excluded.sort_order;`,
       { bind: [postId, hashtagId, i] },
+    )
+  }
+
+  // Remove stale
+  if (keepHashtagIds.length === 0) {
+    db.exec('DELETE FROM post_hashtags WHERE post_id = ?;', { bind: [postId] })
+  } else {
+    const ph = keepHashtagIds.map(() => '?').join(',')
+    db.exec(
+      `DELETE FROM post_hashtags WHERE post_id = ? AND hashtag_id NOT IN (${ph});`,
+      { bind: [postId, ...keepHashtagIds] },
     )
   }
 }
@@ -696,13 +760,13 @@ export function syncPostLinkCard(
     provider_name: string | null
   } | null,
 ): void {
-  db.exec('DELETE FROM post_links WHERE post_id = ?;', {
-    bind: [postId],
-  })
+  if (!card || !card.url) {
+    // No card - delete all links for this post
+    db.exec('DELETE FROM post_links WHERE post_id = ?;', { bind: [postId] })
+    return
+  }
 
-  if (!card || !card.url) return
-
-  // link_cards テーブルに UPSERT（title / description / image は最新で更新）
+  // UPSERT the link card
   db.exec(
     `INSERT INTO link_cards (canonical_url, title, description, image_url, provider_name, fetched_at)
      VALUES (?, ?, ?, ?, ?, datetime('now'))
@@ -723,19 +787,23 @@ export function syncPostLinkCard(
     },
   )
 
-  // link_card_id を取得
   const rows = db.exec(
     'SELECT link_card_id FROM link_cards WHERE canonical_url = ?;',
     { bind: [card.url], returnValue: 'resultRows' },
   ) as number[][]
   const linkCardId = rows[0][0]
 
-  // post_links に INSERT
   db.exec(
-    `INSERT OR IGNORE INTO post_links (post_id, link_card_id, url_in_post, sort_order)
-     VALUES (?, ?, ?, 0);`,
+    `INSERT INTO post_links (post_id, link_card_id, url_in_post, sort_order)
+     VALUES (?, ?, ?, 0)
+     ON CONFLICT(post_id, link_card_id, url_in_post) DO NOTHING;`,
     { bind: [postId, linkCardId, card.url] },
   )
+
+  // Remove stale links (links to other cards)
+  db.exec(`DELETE FROM post_links WHERE post_id = ? AND link_card_id != ?;`, {
+    bind: [postId, linkCardId],
+  })
 }
 
 /**
@@ -783,13 +851,21 @@ export function syncPollData(
   }) as number[][]
   const pollId = pollRows[0][0]
 
-  db.exec('DELETE FROM poll_options WHERE poll_id = ?;', { bind: [pollId] })
+  // Poll options: UPSERT instead of delete-all
   for (let i = 0; i < poll.options.length; i++) {
     const opt = poll.options[i]
     db.exec(
       `INSERT INTO poll_options (poll_id, option_index, title, votes_count)
-       VALUES (?, ?, ?, ?);`,
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(poll_id, option_index) DO UPDATE SET
+         title = excluded.title,
+         votes_count = excluded.votes_count;`,
       { bind: [pollId, i, opt.title, opt.votes_count] },
     )
   }
+
+  // Remove excess options (in case the number of options decreased)
+  db.exec('DELETE FROM poll_options WHERE poll_id = ? AND option_index >= ?;', {
+    bind: [pollId, poll.options.length],
+  })
 }

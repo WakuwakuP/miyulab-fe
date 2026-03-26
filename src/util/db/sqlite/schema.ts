@@ -1,8 +1,8 @@
 /**
- * SQLite スキーマ定義 (v27)
+ * SQLite スキーマ定義 (v28)
  *
- * 最新バージョン以外の DB はすべてリセット（全テーブル DROP → 再作成）する。
- * 段階的マイグレーションは廃止。キャッシュ DB のためデータロスは許容される。
+ * マイグレーションランナー (migrations/) を用いたインクリメンタル更新に対応。
+ * フレッシュインストール時は全テーブルを一括作成する。
  *
  * テーブル一覧 (35 tables):
  * - posts                   投稿
@@ -42,41 +42,17 @@
  * - profile_custom_emojis    プロファイル×カスタム絵文字
  */
 
+import { runMigrations } from './migrations'
 import type { SchemaDbHandle as DbHandle } from './worker/workerSchema'
-
-/** 現在のスキーマバージョン */
-const SCHEMA_VERSION = 27
 
 /**
  * スキーマの初期化
  *
  * user_version PRAGMA を用いてバージョン管理する。
- * 現在のバージョンと一致しない場合は全テーブルを DROP して再作成する。
+ * マイグレーションランナーに委譲し、インクリメンタル更新またはフォールバックを行う。
  */
 export function ensureSchema(handle: DbHandle): void {
-  const { db } = handle
-
-  const currentVersion = (
-    db.exec('PRAGMA user_version;', { returnValue: 'resultRows' }) as number[][]
-  )[0][0]
-
-  if (currentVersion === SCHEMA_VERSION) return
-
-  db.exec('BEGIN;')
-  try {
-    if (currentVersion > 0) {
-      // 既存 DB だがバージョンが異なる → 全テーブル DROP してリセット
-      dropAllTables(handle)
-    }
-
-    createFreshSchema(handle)
-
-    db.exec(`PRAGMA user_version = ${SCHEMA_VERSION};`)
-  } catch (e) {
-    db.exec('ROLLBACK;')
-    throw e
-  }
-  db.exec('COMMIT;')
+  runMigrations(handle, dropAllTables, createFreshSchema)
 }
 
 // ================================================================
@@ -86,7 +62,7 @@ export function ensureSchema(handle: DbHandle): void {
 /**
  * DB 内の全ユーザーテーブル・インデックス・トリガーを削除する
  */
-function dropAllTables(handle: DbHandle): void {
+export function dropAllTables(handle: DbHandle): void {
   const { db } = handle
 
   // トリガー削除
@@ -121,11 +97,11 @@ function dropAllTables(handle: DbHandle): void {
 // ================================================================
 
 /**
- * v27 スキーマの完全作成
+ * v28 スキーマの完全作成
  *
  * 全テーブル・インデックス・シードデータを一括作成する。
  */
-function createFreshSchema(handle: DbHandle): void {
+export function createFreshSchema(handle: DbHandle): void {
   createMasterTables(handle)
   createCoreTables(handle)
   createProfileTables(handle)
@@ -310,6 +286,8 @@ function createCoreTables(handle: DbHandle): void {
       is_sensitive      INTEGER NOT NULL DEFAULT 0,
       has_spoiler       INTEGER NOT NULL DEFAULT 0,
       in_reply_to_id    TEXT,
+      reply_to_post_id  INTEGER REFERENCES posts(post_id),
+      repost_of_post_id INTEGER REFERENCES posts(post_id),
       is_local_only     INTEGER NOT NULL DEFAULT 0,
       edited_at         TEXT,
       FOREIGN KEY (origin_server_id) REFERENCES servers(server_id),
@@ -344,19 +322,29 @@ function createCoreTables(handle: DbHandle): void {
   db.exec(
     'CREATE INDEX idx_posts_reblog_dedup ON posts(reblog_of_uri, author_profile_id) WHERE is_reblog = 1 AND reblog_of_uri IS NOT NULL;',
   )
+  db.exec(
+    'CREATE INDEX idx_posts_reply_to ON posts(reply_to_post_id) WHERE reply_to_post_id IS NOT NULL;',
+  )
+  db.exec(
+    'CREATE INDEX idx_posts_repost_of ON posts(repost_of_post_id) WHERE repost_of_post_id IS NOT NULL;',
+  )
 
   // ============================================
   // posts_mentions
   // ============================================
   db.exec(`
     CREATE TABLE posts_mentions (
-      post_id  INTEGER NOT NULL,
-      acct     TEXT NOT NULL,
+      post_id     INTEGER NOT NULL,
+      acct        TEXT NOT NULL,
+      profile_id  INTEGER REFERENCES profiles(profile_id),
       PRIMARY KEY (post_id, acct),
       FOREIGN KEY (post_id) REFERENCES posts(post_id) ON DELETE CASCADE
     );
   `)
   db.exec('CREATE INDEX idx_pm_acct ON posts_mentions(acct);')
+  db.exec(
+    'CREATE INDEX idx_pm_profile ON posts_mentions(profile_id) WHERE profile_id IS NOT NULL;',
+  )
 
   // ============================================
   // posts_backends (v27 shape: PK = server_id, local_id)
@@ -436,6 +424,7 @@ function createCoreTables(handle: DbHandle): void {
       is_read              INTEGER NOT NULL DEFAULT 0,
       reaction_name        TEXT,
       reaction_url         TEXT,
+      local_account_id     INTEGER REFERENCES local_accounts(local_account_id),
       FOREIGN KEY (server_id) REFERENCES servers(server_id),
       FOREIGN KEY (notification_type_id) REFERENCES notification_types(notification_type_id),
       FOREIGN KEY (actor_profile_id) REFERENCES profiles(profile_id),
@@ -462,6 +451,9 @@ function createCoreTables(handle: DbHandle): void {
   )
   db.exec(
     'CREATE INDEX idx_notifications_type_actor ON notifications(notification_type_id, actor_profile_id, created_at_ms DESC);',
+  )
+  db.exec(
+    'CREATE INDEX idx_notifications_local_account ON notifications(local_account_id) WHERE local_account_id IS NOT NULL;',
   )
 }
 
@@ -536,6 +528,8 @@ function createProfileTables(handle: DbHandle): void {
       profile_id              INTEGER NOT NULL,
       is_default_post_account INTEGER NOT NULL DEFAULT 0,
       last_authenticated_at   TEXT,
+      is_active               INTEGER NOT NULL DEFAULT 1,
+      last_used_at_ms         INTEGER,
       UNIQUE (server_id, profile_id),
       FOREIGN KEY (server_id) REFERENCES servers(server_id),
       FOREIGN KEY (profile_id) REFERENCES profiles(profile_id)
@@ -729,13 +723,14 @@ function createTimelineTables(handle: DbHandle): void {
     CREATE TABLE timelines (
       timeline_id      INTEGER NOT NULL PRIMARY KEY,
       server_id        INTEGER NOT NULL REFERENCES servers(server_id),
+      local_account_id INTEGER REFERENCES local_accounts(local_account_id),
       channel_kind_id  INTEGER NOT NULL REFERENCES channel_kinds(channel_kind_id),
       tag              TEXT,
       created_at       TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `)
   db.exec(
-    "CREATE UNIQUE INDEX idx_timelines_identity ON timelines(server_id, channel_kind_id, COALESCE(tag, ''));",
+    "CREATE UNIQUE INDEX idx_timelines_identity ON timelines(server_id, COALESCE(local_account_id, 0), channel_kind_id, COALESCE(tag, ''));",
   )
   db.exec(
     'CREATE INDEX idx_timelines_channel_kind ON timelines(channel_kind_id);',
