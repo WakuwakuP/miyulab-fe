@@ -64,8 +64,8 @@ export const NOTIFICATION_SELECT = `
   COALESCE(rppr.avatar_url, '') AS rp_author_avatar,
   COALESCE(rppr.actor_uri, '') AS rp_author_url,
   COALESCE(
-    (SELECT rpb.local_id FROM posts_backends rpb WHERE rpb.post_id = rp.post_id AND rpb.backendUrl = sv.base_url LIMIT 1),
-    (SELECT rpb.local_id FROM posts_backends rpb WHERE rpb.post_id = rp.post_id ORDER BY rpb.backendUrl LIMIT 1)
+    (SELECT rpb.local_id FROM posts_backends rpb WHERE rpb.post_id = rp.post_id AND rpb.server_id = sv.server_id LIMIT 1),
+    (SELECT rpb.local_id FROM posts_backends rpb WHERE rpb.post_id = rp.post_id ORDER BY rpb.server_id LIMIT 1)
   ) AS rp_local_id,
   rp.in_reply_to_id AS rp_in_reply_to_id,
   rp.edited_at AS rp_edited_at,

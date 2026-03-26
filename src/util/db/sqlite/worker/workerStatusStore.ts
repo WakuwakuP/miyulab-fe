@@ -17,7 +17,6 @@ import {
   extractStatusColumns,
   resolveEmojisFromDb,
   resolveLocalAccountId,
-  resolvePostId,
   resolvePostItemKindId,
   syncPollData,
   syncPostCustomEmojis,
@@ -79,7 +78,11 @@ function resolvePostIdInternal(
   backendUrl: string,
   localId: string,
 ): number | null {
-  return resolvePostId(db, backendUrl, localId)
+  const rows = db.exec(
+    'SELECT post_id FROM posts_backends WHERE server_id = (SELECT server_id FROM servers WHERE base_url = ?) AND local_id = ?;',
+    { bind: [backendUrl, localId], returnValue: 'resultRows' },
+  ) as number[][]
+  return rows.length > 0 ? rows[0][0] : null
 }
 
 function getLastInsertRowId(db: DbExec): number {
@@ -338,9 +341,9 @@ function ensureReblogOriginalPost(
   }
 
   db.exec(
-    `INSERT OR IGNORE INTO posts_backends (post_id, backendUrl, local_id, server_id)
+    `INSERT OR IGNORE INTO posts_backends (server_id, local_id, post_id, backendUrl)
      VALUES (?, ?, ?, ?);`,
-    { bind: [postId, backendUrl, originalStatus.id, serverId] },
+    { bind: [serverId, originalStatus.id, postId, backendUrl] },
   )
 
   upsertMentionsInternal(db, postId, originalStatus.mentions)
@@ -598,9 +601,9 @@ export function handleUpsertStatus(
     }
 
     db.exec(
-      `INSERT OR IGNORE INTO posts_backends (post_id, backendUrl, local_id, server_id)
+      `INSERT OR IGNORE INTO posts_backends (server_id, local_id, post_id, backendUrl)
        VALUES (?, ?, ?, ?);`,
-      { bind: [postId, backendUrl, status.id, serverId] },
+      { bind: [serverId, status.id, postId, backendUrl] },
     )
 
     // timeline_items に登録（timelines が未作成なら自動作成）
@@ -614,22 +617,6 @@ export function handleUpsertStatus(
        VALUES (?, ?, ?, ?, ?);`,
       { bind: [timelineId, postItemKindId, postId, created_at_ms, now] },
     )
-
-    for (const t of status.tags) {
-      db.exec(
-        `INSERT OR IGNORE INTO posts_belonging_tags (post_id, tag)
-         VALUES (?, ?);`,
-        { bind: [postId, t.name] },
-      )
-    }
-
-    if (tag) {
-      db.exec(
-        `INSERT OR IGNORE INTO posts_belonging_tags (post_id, tag)
-         VALUES (?, ?);`,
-        { bind: [postId, tag] },
-      )
-    }
 
     upsertMentionsInternal(db, postId, status.mentions)
     syncPostMedia(db, postId, status.media_attachments, status.sensitive)
@@ -675,6 +662,25 @@ export function handleUpsertStatus(
       accountEmojisResolved,
     )
     syncPostHashtags(db, postId, status.tags)
+
+    // If a specific tag was provided (e.g. from tag timeline), ensure it's in post_hashtags too
+    if (tag) {
+      const normalizedTag = tag.toLowerCase()
+      db.exec(
+        `INSERT OR IGNORE INTO hashtags (normalized_name, display_name) VALUES (?, ?);`,
+        { bind: [normalizedTag, tag] },
+      )
+      const tagRows = db.exec(
+        'SELECT hashtag_id FROM hashtags WHERE normalized_name = ?;',
+        { bind: [normalizedTag], returnValue: 'resultRows' },
+      ) as number[][]
+      if (tagRows.length > 0) {
+        db.exec(
+          'INSERT OR IGNORE INTO post_hashtags (post_id, hashtag_id) VALUES (?, ?);',
+          { bind: [postId, tagRows[0][0]] },
+        )
+      }
+    }
     syncPollData(db, postId, status.poll)
     syncPostLinkCard(db, postId, status.card)
 
@@ -924,9 +930,9 @@ export function handleBulkUpsertStatuses(
       }
 
       db.exec(
-        `INSERT OR IGNORE INTO posts_backends (post_id, backendUrl, local_id, server_id)
+        `INSERT OR IGNORE INTO posts_backends (server_id, local_id, post_id, backendUrl)
          VALUES (?, ?, ?, ?);`,
-        { bind: [postId, backendUrl, status.id, serverId] },
+        { bind: [serverId, status.id, postId, backendUrl] },
       )
 
       // timeline_items に登録
@@ -935,22 +941,6 @@ export function handleBulkUpsertStatuses(
          VALUES (?, ?, ?, ?, ?);`,
         { bind: [timelineId, postItemKindId, postId, created_at_ms, now] },
       )
-
-      for (const t of status.tags) {
-        db.exec(
-          `INSERT OR IGNORE INTO posts_belonging_tags (post_id, tag)
-           VALUES (?, ?);`,
-          { bind: [postId, t.name] },
-        )
-      }
-
-      if (tag) {
-        db.exec(
-          `INSERT OR IGNORE INTO posts_belonging_tags (post_id, tag)
-           VALUES (?, ?);`,
-          { bind: [postId, tag] },
-        )
-      }
 
       upsertMentionsInternal(db, postId, status.mentions)
       syncPostMedia(db, postId, status.media_attachments, status.sensitive)
@@ -995,6 +985,25 @@ export function handleBulkUpsertStatuses(
         bulkAccountEmojis,
       )
       syncPostHashtags(db, postId, status.tags)
+
+      // If a specific tag was provided (e.g. from tag timeline), ensure it's in post_hashtags too
+      if (tag) {
+        const normalizedTag = tag.toLowerCase()
+        db.exec(
+          `INSERT OR IGNORE INTO hashtags (normalized_name, display_name) VALUES (?, ?);`,
+          { bind: [normalizedTag, tag] },
+        )
+        const tagRows = db.exec(
+          'SELECT hashtag_id FROM hashtags WHERE normalized_name = ?;',
+          { bind: [normalizedTag], returnValue: 'resultRows' },
+        ) as number[][]
+        if (tagRows.length > 0) {
+          db.exec(
+            'INSERT OR IGNORE INTO post_hashtags (post_id, hashtag_id) VALUES (?, ?);',
+            { bind: [postId, tagRows[0][0]] },
+          )
+        }
+      }
       syncPollData(db, postId, status.poll)
       syncPostLinkCard(db, postId, status.card)
 
@@ -1065,9 +1074,12 @@ export function handleRemoveFromTimeline(
     }
 
     if (timelineType === 'tag' && tag) {
+      const normalizedTag = tag.toLowerCase()
       db.exec(
-        'DELETE FROM posts_belonging_tags WHERE post_id = ? AND tag = ?;',
-        { bind: [postId, tag] },
+        `DELETE FROM post_hashtags WHERE post_id = ? AND hashtag_id = (
+          SELECT hashtag_id FROM hashtags WHERE normalized_name = ?
+        );`,
+        { bind: [postId, normalizedTag] },
       )
     }
 
@@ -1109,7 +1121,7 @@ export function handleDeleteEvent(
   db.exec('BEGIN;')
   try {
     db.exec(
-      'DELETE FROM posts_backends WHERE backendUrl = ? AND local_id = ?;',
+      'DELETE FROM posts_backends WHERE server_id = (SELECT server_id FROM servers WHERE base_url = ?) AND local_id = ?;',
       { bind: [backendUrl, statusId] },
     )
 
@@ -1144,9 +1156,12 @@ export function handleDeleteEvent(
       }
 
       if (sourceTimelineType === 'tag' && tag) {
+        const normalizedTag = tag.toLowerCase()
         db.exec(
-          'DELETE FROM posts_belonging_tags WHERE post_id = ? AND tag = ?;',
-          { bind: [postId, tag] },
+          `DELETE FROM post_hashtags WHERE post_id = ? AND hashtag_id = (
+            SELECT hashtag_id FROM hashtags WHERE normalized_name = ?
+          );`,
+          { bind: [postId, normalizedTag] },
         )
       }
 
@@ -1332,17 +1347,6 @@ export function handleUpdateStatus(
         ],
       },
     )
-
-    db.exec('DELETE FROM posts_belonging_tags WHERE post_id = ?;', {
-      bind: [postId],
-    })
-    for (const t of status.tags) {
-      db.exec(
-        `INSERT OR IGNORE INTO posts_belonging_tags (post_id, tag)
-         VALUES (?, ?);`,
-        { bind: [postId, t.name] },
-      )
-    }
 
     upsertMentionsInternal(db, postId, status.mentions)
     syncPostMedia(db, postId, status.media_attachments, status.sensitive)

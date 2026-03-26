@@ -32,7 +32,7 @@
 import type { SchemaDbHandle as DbHandle } from './worker/workerSchema'
 
 /** 現在のスキーマバージョン */
-const SCHEMA_VERSION = 26
+const SCHEMA_VERSION = 27
 
 /**
  * スキーマの初期化・マイグレーション
@@ -308,6 +308,11 @@ export function ensureSchema(handle: DbHandle): void {
       migrateV25toV26(handle)
     }
 
+    // v26→v27: posts_backends PK正規化 + posts_belonging_tags 廃止 + muted_accounts server_id化
+    if (currentVersion < 27) {
+      migrateV26toV27(handle)
+    }
+
     db.exec(`PRAGMA user_version = ${SCHEMA_VERSION};`)
   } catch (e) {
     db.exec('ROLLBACK;')
@@ -334,6 +339,7 @@ function createSchemaV19(handle: DbHandle): void {
   migrateV16toV17(handle)
   migrateV17toV18(handle)
   migrateV18toV19(handle)
+  migrateV26toV27(handle)
 }
 
 // ================================================================
@@ -2723,6 +2729,90 @@ function migrateV25toV26(handle: DbHandle): void {
     `CREATE INDEX IF NOT EXISTS idx_posts_reblog_dedup
      ON posts(reblog_of_uri, author_profile_id)
      WHERE is_reblog = 1 AND reblog_of_uri IS NOT NULL;`,
+  )
+}
+
+function migrateV26toV27(handle: DbHandle): void {
+  const { db } = handle
+
+  // === Plan 1: posts_backends PK normalization ===
+  // Rebuild posts_backends with (server_id, local_id) as PK instead of (backendUrl, local_id)
+  db.exec(`
+    CREATE TABLE posts_backends_new (
+      server_id  INTEGER NOT NULL,
+      local_id   TEXT    NOT NULL,
+      post_id    INTEGER NOT NULL,
+      backendUrl TEXT,
+      PRIMARY KEY (server_id, local_id),
+      FOREIGN KEY (post_id)   REFERENCES posts(post_id) ON DELETE CASCADE,
+      FOREIGN KEY (server_id) REFERENCES servers(server_id)
+    );
+  `)
+
+  db.exec(`
+    INSERT INTO posts_backends_new (server_id, local_id, post_id, backendUrl)
+    SELECT server_id, local_id, post_id, backendUrl
+    FROM posts_backends
+    WHERE server_id IS NOT NULL;
+  `)
+
+  db.exec('DROP TABLE posts_backends;')
+  db.exec('ALTER TABLE posts_backends_new RENAME TO posts_backends;')
+
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_pb_post_id ON posts_backends(post_id);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_pb_server_key ON posts_backends(server_id, post_id);',
+  )
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_pb_server_id ON posts_backends(server_id);',
+  )
+
+  // === Plan 2: posts_belonging_tags drop ===
+  // Backfill any data from posts_belonging_tags that's not yet in post_hashtags
+  db.exec(`
+    INSERT OR IGNORE INTO hashtags (normalized_name, display_name)
+    SELECT DISTINCT LOWER(tag), tag FROM posts_belonging_tags
+    WHERE LOWER(tag) NOT IN (SELECT normalized_name FROM hashtags);
+  `)
+
+  db.exec(`
+    INSERT OR IGNORE INTO post_hashtags (post_id, hashtag_id)
+    SELECT pbt.post_id, h.hashtag_id
+    FROM posts_belonging_tags pbt
+    INNER JOIN hashtags h ON LOWER(pbt.tag) = h.normalized_name
+    WHERE NOT EXISTS (
+      SELECT 1 FROM post_hashtags ph
+      WHERE ph.post_id = pbt.post_id AND ph.hashtag_id = h.hashtag_id
+    );
+  `)
+
+  db.exec('DROP TABLE IF EXISTS posts_belonging_tags;')
+
+  // === Rebuild muted_accounts with server_id PK ===
+  // (Prep for Plan 3, but already normalizing backendUrl -> server_id here)
+  db.exec(`
+    CREATE TABLE muted_accounts_new (
+      server_id    INTEGER NOT NULL,
+      account_acct TEXT    NOT NULL,
+      muted_at     INTEGER NOT NULL,
+      PRIMARY KEY (server_id, account_acct),
+      FOREIGN KEY (server_id) REFERENCES servers(server_id)
+    );
+  `)
+
+  db.exec(`
+    INSERT OR IGNORE INTO muted_accounts_new (server_id, account_acct, muted_at)
+    SELECT sv.server_id, ma.account_acct, ma.muted_at
+    FROM muted_accounts ma
+    INNER JOIN servers sv ON sv.base_url = ma.backendUrl;
+  `)
+
+  db.exec('DROP TABLE muted_accounts;')
+  db.exec('ALTER TABLE muted_accounts_new RENAME TO muted_accounts;')
+  db.exec(
+    'CREATE INDEX IF NOT EXISTS idx_muted_server ON muted_accounts(server_id);',
   )
 }
 

@@ -83,9 +83,9 @@ function ensurePostForNotification(
       const postId = uriRows[0][0]
       // posts_backends マッピングを追加
       db.exec(
-        `INSERT OR IGNORE INTO posts_backends (post_id, backendUrl, local_id, server_id)
+        `INSERT OR IGNORE INTO posts_backends (server_id, local_id, post_id, backendUrl)
          VALUES (?, ?, ?, ?);`,
-        { bind: [postId, backendUrl, status.id, serverId] },
+        { bind: [serverId, status.id, postId, backendUrl] },
       )
       if (status.poll) {
         syncPollData(db, postId, status.poll)
@@ -145,9 +145,9 @@ function ensurePostForNotification(
 
   // posts_backends マッピング
   db.exec(
-    `INSERT OR IGNORE INTO posts_backends (post_id, backendUrl, local_id, server_id)
+    `INSERT OR IGNORE INTO posts_backends (server_id, local_id, post_id, backendUrl)
      VALUES (?, ?, ?, ?);`,
-    { bind: [postId, backendUrl, status.id, serverId] },
+    { bind: [serverId, status.id, postId, backendUrl] },
   )
 
   // カスタム絵文字を同期

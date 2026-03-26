@@ -196,17 +196,19 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
 
       if (tagMode === 'or') {
         const whereConditions = [
-          `pbt.tag IN (${tagPlaceholders})`,
-          `pb.backendUrl IN (${backendPlaceholders})`,
+          `ht.normalized_name IN (${tagPlaceholders})`,
+          `sv.base_url IN (${backendPlaceholders})`,
           ...filterConditions,
         ]
 
         phase1Sql = `
-          SELECT p.post_id, MIN(pb.backendUrl) AS backendUrl
+          SELECT p.post_id, MIN(sv.base_url) AS backendUrl
           FROM posts p
           INNER JOIN posts_backends pb ON p.post_id = pb.post_id
+          INNER JOIN servers sv ON pb.server_id = sv.server_id
           LEFT JOIN profiles pr ON p.author_profile_id = pr.profile_id
-          INNER JOIN posts_belonging_tags pbt ON p.post_id = pbt.post_id
+          INNER JOIN post_hashtags pht ON p.post_id = pht.post_id
+          INNER JOIN hashtags ht ON pht.hashtag_id = ht.hashtag_id
           WHERE ${whereConditions.join('\n            AND ')}
           GROUP BY p.post_id
           ORDER BY p.created_at_ms DESC
@@ -220,20 +222,22 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
         )
       } else {
         const whereConditions = [
-          `pbt.tag IN (${tagPlaceholders})`,
-          `pb.backendUrl IN (${backendPlaceholders})`,
+          `ht.normalized_name IN (${tagPlaceholders})`,
+          `sv.base_url IN (${backendPlaceholders})`,
           ...filterConditions,
         ]
 
         phase1Sql = `
-          SELECT p.post_id, MIN(pb.backendUrl) AS backendUrl
+          SELECT p.post_id, MIN(sv.base_url) AS backendUrl
           FROM posts p
           INNER JOIN posts_backends pb ON p.post_id = pb.post_id
+          INNER JOIN servers sv ON pb.server_id = sv.server_id
           LEFT JOIN profiles pr ON p.author_profile_id = pr.profile_id
-          INNER JOIN posts_belonging_tags pbt ON p.post_id = pbt.post_id
+          INNER JOIN post_hashtags pht ON p.post_id = pht.post_id
+          INNER JOIN hashtags ht ON pht.hashtag_id = ht.hashtag_id
           WHERE ${whereConditions.join('\n            AND ')}
           GROUP BY p.post_id
-          HAVING COUNT(DISTINCT pbt.tag) = ?
+          HAVING COUNT(DISTINCT ht.normalized_name) = ?
           ORDER BY p.created_at_ms DESC
           LIMIT ?;
         `

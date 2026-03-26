@@ -131,7 +131,8 @@ const EMPTY_S = `(SELECT
 const PTT_COMPAT = `(SELECT ti2.post_id, ck2.code AS timelineType FROM timeline_items ti2 INNER JOIN timelines t2 ON t2.timeline_id = ti2.timeline_id INNER JOIN channel_kinds ck2 ON ck2.channel_kind_id = t2.channel_kind_id WHERE ti2.post_id IS NOT NULL)`
 
 const EMPTY_PTT = `(SELECT NULL AS post_id, NULL AS timelineType LIMIT 0)`
-const EMPTY_PBT = `(SELECT NULL AS post_id, NULL AS tag LIMIT 0)`
+const EMPTY_PHT = `(SELECT NULL AS post_id, NULL AS hashtag_id LIMIT 0)`
+const EMPTY_HT = `(SELECT NULL AS hashtag_id, NULL AS normalized_name LIMIT 0)`
 const EMPTY_PME = `(SELECT NULL AS post_id, NULL AS acct LIMIT 0)`
 const EMPTY_PB = `(SELECT NULL AS post_id, NULL AS backendUrl, NULL AS local_id LIMIT 0)`
 const EMPTY_PRB = `(SELECT NULL AS post_id, NULL AS original_uri, NULL AS reblogger_acct, NULL AS reblogged_at_ms LIMIT 0)`
@@ -288,7 +289,7 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           )
         if (refs.pbt)
           statusPhase1JoinLines.push(
-            'LEFT JOIN posts_belonging_tags pbt\n              ON p.post_id = pbt.post_id',
+            'LEFT JOIN post_hashtags pht ON p.post_id = pht.post_id\n              LEFT JOIN hashtags ht ON pht.hashtag_id = ht.hashtag_id',
           )
         if (refs.pme)
           statusPhase1JoinLines.push(
@@ -334,7 +335,8 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         const notifDummyJoins = [
           `LEFT JOIN ${EMPTY_S} p ON 1 = 1`,
           `LEFT JOIN ${EMPTY_PTT} ptt ON 1 = 1`,
-          `LEFT JOIN ${EMPTY_PBT} pbt ON 1 = 1`,
+          `LEFT JOIN ${EMPTY_PHT} pht ON 1 = 1`,
+          `LEFT JOIN ${EMPTY_HT} ht ON 1 = 1`,
           `LEFT JOIN ${EMPTY_PME} pme ON 1 = 1`,
           `LEFT JOIN ${EMPTY_PB} pb ON 1 = 1`,
           `LEFT JOIN ${EMPTY_PRB} prb ON 1 = 1`,
@@ -640,7 +642,7 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           )
         if (refs.pbt)
           joinLines.push(
-            'LEFT JOIN posts_belonging_tags pbt\n            ON p.post_id = pbt.post_id',
+            'LEFT JOIN post_hashtags pht ON p.post_id = pht.post_id\n            LEFT JOIN hashtags ht ON pht.hashtag_id = ht.hashtag_id',
           )
         if (refs.pme)
           joinLines.push(

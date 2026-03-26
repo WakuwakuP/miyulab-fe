@@ -330,7 +330,7 @@ export function rowToStoredStatus(
  */
 export const STATUS_SELECT = `
   p.post_id,
-  MIN(pb.backendUrl) AS backendUrl,
+  COALESCE((SELECT sv2.base_url FROM servers sv2 WHERE sv2.server_id = spb.server_id), '') AS backendUrl,
   spb.local_id AS local_id,
   p.created_at_ms,
   p.stored_at,
@@ -360,7 +360,7 @@ export const STATUS_SELECT = `
   CASE WHEN p.has_media = 1 THEN (SELECT json_group_array(json_object('id', pm.remote_media_id, 'type', COALESCE((SELECT mt.code FROM media_types mt WHERE mt.media_type_id = pm.media_type_id), 'unknown'), 'url', pm.url, 'preview_url', pm.preview_url, 'description', pm.description, 'blurhash', pm.blurhash, 'remote_url', pm.url)) FROM post_media pm WHERE pm.post_id = p.post_id ORDER BY pm.sort_order) ELSE NULL END AS media_json,
   (SELECT json_group_array(json_object('acct', pme.acct)) FROM posts_mentions pme WHERE pme.post_id = p.post_id) AS mentions_json,
   (SELECT json_group_array(ck.code) FROM timeline_items ti INNER JOIN timelines t ON t.timeline_id = ti.timeline_id INNER JOIN channel_kinds ck ON ck.channel_kind_id = t.channel_kind_id WHERE ti.post_id = p.post_id) AS timelineTypes,
-  (SELECT json_group_array(tag) FROM posts_belonging_tags WHERE post_id = p.post_id) AS belongingTags,
+  (SELECT json_group_array(ht.display_name) FROM post_hashtags pht INNER JOIN hashtags ht ON pht.hashtag_id = ht.hashtag_id WHERE pht.post_id = p.post_id) AS belongingTags,
   (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.image_url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM post_custom_emojis pce INNER JOIN custom_emojis ce ON pce.emoji_id = ce.emoji_id WHERE pce.post_id = p.post_id AND pce.usage_context = 'status') AS status_emojis_json,
   (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.image_url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM post_custom_emojis pce INNER JOIN custom_emojis ce ON pce.emoji_id = ce.emoji_id WHERE pce.post_id = p.post_id AND pce.usage_context = 'account') AS account_emojis_json,
   (SELECT json_object('id', pl.poll_id, 'expires_at', pl.expires_at, 'multiple', pl.multiple, 'votes_count', pl.votes_count, 'options', (SELECT json_group_array(json_object('title', po.title, 'votes_count', po.votes_count)) FROM poll_options po WHERE po.poll_id = pl.poll_id ORDER BY po.option_index)) FROM polls pl WHERE pl.post_id = p.post_id) AS poll_json,
@@ -409,8 +409,8 @@ export const STATUS_SELECT = `
   END AS rb_poll_json,
   CASE WHEN rs.post_id IS NOT NULL
     THEN COALESCE(
-      (SELECT rpb.local_id FROM posts_backends rpb WHERE rpb.post_id = rs.post_id AND rpb.backendUrl = spb.backendUrl LIMIT 1),
-      (SELECT rpb.local_id FROM posts_backends rpb WHERE rpb.post_id = rs.post_id ORDER BY rpb.backendUrl LIMIT 1)
+      (SELECT rpb.local_id FROM posts_backends rpb WHERE rpb.post_id = rs.post_id AND rpb.server_id = spb.server_id LIMIT 1),
+      (SELECT rpb.local_id FROM posts_backends rpb WHERE rpb.post_id = rs.post_id ORDER BY rpb.server_id LIMIT 1)
     )
     ELSE NULL
   END AS rb_local_id,
@@ -451,7 +451,7 @@ export const STATUS_SELECT = `
  */
 export const STATUS_BASE_SELECT = `
   p.post_id,
-  MIN(pb.backendUrl) AS backendUrl,
+  COALESCE((SELECT sv2.base_url FROM servers sv2 WHERE sv2.server_id = spb.server_id), '') AS backendUrl,
   spb.local_id AS local_id,
   p.created_at_ms,
   p.stored_at,
@@ -501,8 +501,8 @@ export const STATUS_BASE_SELECT = `
   COALESCE(rps.favourites_count, 0) AS rb_favourites_count,
   CASE WHEN rs.post_id IS NOT NULL
     THEN COALESCE(
-      (SELECT rpb.local_id FROM posts_backends rpb WHERE rpb.post_id = rs.post_id AND rpb.backendUrl = spb.backendUrl LIMIT 1),
-      (SELECT rpb.local_id FROM posts_backends rpb WHERE rpb.post_id = rs.post_id ORDER BY rpb.backendUrl LIMIT 1)
+      (SELECT rpb.local_id FROM posts_backends rpb WHERE rpb.post_id = rs.post_id AND rpb.server_id = spb.server_id LIMIT 1),
+      (SELECT rpb.local_id FROM posts_backends rpb WHERE rpb.post_id = rs.post_id ORDER BY rpb.server_id LIMIT 1)
     )
     ELSE NULL
   END AS rb_local_id,
@@ -558,11 +558,12 @@ const BATCH_TIMELINE_TYPES_SQL = `
 
 /** post_id → belongingTags JSON のバッチクエリ */
 const BATCH_BELONGING_TAGS_SQL = `
-  SELECT pbt.post_id,
-    json_group_array(pbt.tag) AS belongingTags
-  FROM posts_belonging_tags pbt
-  WHERE pbt.post_id IN (__PH__)
-  GROUP BY pbt.post_id`
+  SELECT pht.post_id,
+    json_group_array(ht.display_name) AS belongingTags
+  FROM post_hashtags pht
+  INNER JOIN hashtags ht ON pht.hashtag_id = ht.hashtag_id
+  WHERE pht.post_id IN (__PH__)
+  GROUP BY pht.post_id`
 
 /** post_id → custom_emojis JSON (status / account 両方) のバッチクエリ */
 const BATCH_CUSTOM_EMOJIS_SQL = `
@@ -607,11 +608,12 @@ const BATCH_POLLS_SQL = `
 /** Batch SQL テンプレート群（{IDS} を post_id IN 句に置換して使用） */
 export const BATCH_SQL_TEMPLATES = {
   belongingTags: `
-  SELECT pbt.post_id,
-    json_group_array(pbt.tag) AS belongingTags
-  FROM posts_belonging_tags pbt
-  WHERE pbt.post_id IN ({IDS})
-  GROUP BY pbt.post_id`,
+  SELECT pht.post_id,
+    json_group_array(ht.display_name) AS belongingTags
+  FROM post_hashtags pht
+  INNER JOIN hashtags ht ON pht.hashtag_id = ht.hashtag_id
+  WHERE pht.post_id IN ({IDS})
+  GROUP BY pht.post_id`,
   customEmojis: `
   SELECT pce.post_id, pce.usage_context,
     json_group_array(
@@ -1193,7 +1195,7 @@ export function assembleStatusFromBatch(
 export function buildSpbFilter(backendUrls: string[]): string {
   if (backendUrls.length === 0) return ''
   const quoted = backendUrls.map((u) => `'${u.replace(/'/g, "''")}'`).join(',')
-  return `AND spb_min.backendUrl IN (${quoted})`
+  return `AND spb_min.server_id IN (SELECT sv.server_id FROM servers sv WHERE sv.base_url IN (${quoted}))`
 }
 
 /**
@@ -1216,8 +1218,8 @@ export function buildStatusBaseJoins(spbFilter = ''): string {
   LEFT JOIN post_stats rps ON rs.post_id = rps.post_id
   LEFT JOIN posts_backends spb
     ON spb.post_id = p.post_id
-    AND spb.backendUrl = (
-      SELECT MIN(spb_min.backendUrl)
+    AND spb.server_id = (
+      SELECT MIN(spb_min.server_id)
       FROM posts_backends spb_min
       WHERE spb_min.post_id = p.post_id
         ${spbFilter}
@@ -1597,7 +1599,7 @@ export async function getStatusesByTimelineType(
   let backendFilter = ''
   if (backendUrls && backendUrls.length > 0) {
     const placeholders = backendUrls.map(() => '?').join(',')
-    backendFilter = `AND pb.backendUrl IN (${placeholders})`
+    backendFilter = `AND pb.server_id IN (SELECT sv.server_id FROM servers sv WHERE sv.base_url IN (${placeholders}))`
     phase1Binds.push(...backendUrls)
   }
 
@@ -1650,7 +1652,7 @@ export async function getStatusesByTag(
   let backendFilter = ''
   if (backendUrls && backendUrls.length > 0) {
     const placeholders = backendUrls.map(() => '?').join(',')
-    backendFilter = `AND pb.backendUrl IN (${placeholders})`
+    backendFilter = `AND pb.server_id IN (SELECT sv.server_id FROM servers sv WHERE sv.base_url IN (${placeholders}))`
     phase1Binds.push(...backendUrls)
   }
 
@@ -1659,8 +1661,9 @@ export async function getStatusesByTag(
     SELECT DISTINCT p.post_id
     FROM posts p
     INNER JOIN posts_backends pb ON p.post_id = pb.post_id
-    INNER JOIN posts_belonging_tags pbt ON p.post_id = pbt.post_id
-    WHERE pbt.tag = ?
+    INNER JOIN post_hashtags pht ON p.post_id = pht.post_id
+    INNER JOIN hashtags ht ON pht.hashtag_id = ht.hashtag_id
+    WHERE ht.normalized_name = LOWER(?)
       ${backendFilter}
     ORDER BY p.created_at_ms DESC
     LIMIT ?;
@@ -1692,7 +1695,7 @@ export async function getBookmarkedStatuses(
   let backendFilter = ''
   if (backendUrls && backendUrls.length > 0) {
     const placeholders = backendUrls.map(() => '?').join(',')
-    backendFilter = `AND pb.backendUrl IN (${placeholders})`
+    backendFilter = `AND pb.server_id IN (SELECT sv.server_id FROM servers sv WHERE sv.base_url IN (${placeholders}))`
     phase1Binds.push(...backendUrls)
   }
 
@@ -1765,7 +1768,7 @@ function sanitizeWhereClause(input: string): string {
  * カスタム WHERE 句で Status を取得（advanced query 用）
  *
  * limit / offset はクエリ文字列を無視して自動設定する。
- * WHERE 句は posts_timeline_types (ptt), posts_belonging_tags (pbt),
+ * WHERE 句は posts_timeline_types (ptt), hashtags (pbt),
  * posts (p) テーブルを参照できる。
  *
  * ※ この関数はクライアントサイド SQLite DB に対してのみ実行される。
@@ -1798,7 +1801,7 @@ export async function getStatusesByCustomQuery(
     )
   if (refs.pbt)
     joinLines.push(
-      'LEFT JOIN posts_belonging_tags pbt\n      ON p.post_id = pbt.post_id',
+      'LEFT JOIN post_hashtags pht ON p.post_id = pht.post_id\n      LEFT JOIN hashtags ht ON pht.hashtag_id = ht.hashtag_id',
     )
   if (refs.pme)
     joinLines.push(
@@ -1818,7 +1821,7 @@ export async function getStatusesByCustomQuery(
 
   if (backendUrls && backendUrls.length > 0) {
     const placeholders = backendUrls.map(() => '?').join(',')
-    backendFilter = `AND pb.backendUrl IN (${placeholders})`
+    backendFilter = `AND pb.server_id IN (SELECT sv.server_id FROM servers sv WHERE sv.base_url IN (${placeholders}))`
     phase1Binds.push(...backendUrls)
   }
 
@@ -1911,8 +1914,8 @@ export const QUERY_COMPLETIONS = {
       'reblogs_count',
       'replies_count',
     ],
-    pb: ['post_id', 'backendUrl', 'local_id'],
-    pbt: ['post_id', 'tag'],
+    pb: ['post_id', 'backendUrl', 'local_id', 'server_id'],
+    pbt: ['post_id', 'tag', 'normalized_name', 'display_name'],
     pe: ['post_id', 'local_account_id', 'engagement_type_id', 'emoji_id'],
     pme: ['post_id', 'acct'],
     prb: ['post_id', 'original_uri', 'reblogger_acct', 'reblogged_at_ms'],
@@ -2123,8 +2126,10 @@ export async function validateCustomQuery(
           ) p
           LEFT JOIN ${pttCompat} ptt
             ON p.post_id = ptt.post_id
-          LEFT JOIN posts_belonging_tags pbt
-            ON p.post_id = pbt.post_id
+          LEFT JOIN post_hashtags pht
+            ON p.post_id = pht.post_id
+          LEFT JOIN hashtags ht
+            ON pht.hashtag_id = ht.hashtag_id
           LEFT JOIN posts_mentions pme
             ON p.post_id = pme.post_id
           LEFT JOIN posts_backends pb
@@ -2156,7 +2161,9 @@ export async function validateCustomQuery(
           ) p ON 0 = 1
           LEFT JOIN ${pttCompat} ptt
             ON 0 = 1
-          LEFT JOIN posts_belonging_tags pbt
+          LEFT JOIN post_hashtags pht
+            ON 0 = 1
+          LEFT JOIN hashtags ht
             ON 0 = 1
           LEFT JOIN posts_mentions pme
             ON 0 = 1
@@ -2198,8 +2205,10 @@ export async function validateCustomQuery(
         ) p
         LEFT JOIN ${pttCompat} ptt
           ON p.post_id = ptt.post_id
-        LEFT JOIN posts_belonging_tags pbt
-          ON p.post_id = pbt.post_id
+        LEFT JOIN post_hashtags pht
+          ON p.post_id = pht.post_id
+        LEFT JOIN hashtags ht
+          ON pht.hashtag_id = ht.hashtag_id
         LEFT JOIN posts_mentions pme
           ON p.post_id = pme.post_id
         LEFT JOIN posts_backends pb
@@ -2225,7 +2234,7 @@ export async function getDistinctTags(): Promise<string[]> {
   try {
     const handle = await getSqliteDb()
     const rows = (await handle.execAsync(
-      'SELECT DISTINCT tag FROM posts_belonging_tags ORDER BY tag;',
+      'SELECT DISTINCT ht.display_name FROM post_hashtags pht INNER JOIN hashtags ht ON pht.hashtag_id = ht.hashtag_id ORDER BY ht.display_name;',
       { returnValue: 'resultRows' },
     )) as string[][]
     return rows.map((r) => r[0])
@@ -2258,10 +2267,10 @@ export async function getDistinctTimelineTypes(): Promise<string[]> {
 /** 許可リスト（安全なテーブル＋カラムの組み合わせ） */
 const ALLOWED_COLUMN_VALUES: Record<string, string[]> = {
   channel_kinds: ['code'],
+  hashtags: ['normalized_name', 'display_name'],
   notification_types: ['code'],
   posts: ['object_uri', 'language'],
-  posts_backends: ['backendUrl', 'local_id'],
-  posts_belonging_tags: ['tag'],
+  posts_backends: ['backendUrl', 'local_id', 'server_id'],
   posts_mentions: ['acct'],
   posts_reblogs: ['original_uri', 'reblogger_acct'],
   profiles: ['acct'],
@@ -2290,14 +2299,15 @@ export const ALIAS_TO_TABLE: Record<
       backend_url: 'backendUrl',
       backendUrl: 'backendUrl',
       local_id: 'local_id',
+      server_id: 'server_id',
     },
     table: 'posts_backends',
   },
   pbt: {
     columns: {
-      tag: 'tag',
+      tag: 'normalized_name',
     },
-    table: 'posts_belonging_tags',
+    table: 'hashtags',
   },
   pe: {
     columns: {

@@ -72,7 +72,7 @@ export function detectReferencedAliases(whereClause: string): {
   return {
     n: /\bn\.\w+/.test(whereClause),
     pb: /\bpb\.\w+/.test(whereClause),
-    pbt: /\bpbt\.\w+/.test(whereClause),
+    pbt: /\b(pbt|pht|ht)\.\w+/.test(whereClause),
     pe: /\bpe\.\w+/.test(whereClause),
     pme: /\bpme\.\w+/.test(whereClause),
     prb: /\bprb\.\w+/.test(whereClause),
@@ -152,6 +152,11 @@ const LEGACY_COLUMN_REWRITES: {
     expression: 'COALESCE(ps_c.replies_count, 0)',
     joinKey: 'post_stats',
     pattern: /\bp\.replies_count\b/g,
+  },
+  {
+    expression: 'ht.normalized_name',
+    joinKey: null,
+    pattern: /\bpbt\.tag\b/g,
   },
 ]
 
@@ -679,23 +684,26 @@ function buildTagCondition(tagConfig: TagConfig): string {
 
   if (tags.length === 0) return ''
   if (tags.length === 1) {
-    return `pbt.tag = '${escapeSqlString(tags[0])}'`
+    return `ht.normalized_name = '${escapeSqlString(tags[0].toLowerCase())}'`
   }
 
-  const tagList = tags.map((t) => `'${escapeSqlString(t)}'`).join(', ')
+  const tagList = tags
+    .map((t) => `'${escapeSqlString(t.toLowerCase())}'`)
+    .join(', ')
 
   if (mode === 'or') {
-    return `pbt.tag IN (${tagList})`
+    return `ht.normalized_name IN (${tagList})`
   }
 
   // AND mode: 全タグを含む投稿のみ (GROUP BY + HAVING は WHERE 句内では表現不可)
   // サブクエリで表現する
   return `p.post_id IN (
-    SELECT pbt_inner.post_id
-    FROM posts_belonging_tags pbt_inner
-    WHERE pbt_inner.tag IN (${tagList})
-    GROUP BY pbt_inner.post_id
-    HAVING COUNT(DISTINCT pbt_inner.tag) = ${tags.length}
+    SELECT pht_inner.post_id
+    FROM post_hashtags pht_inner
+    INNER JOIN hashtags ht_inner ON pht_inner.hashtag_id = ht_inner.hashtag_id
+    WHERE ht_inner.normalized_name IN (${tagList})
+    GROUP BY pht_inner.post_id
+    HAVING COUNT(DISTINCT ht_inner.normalized_name) = ${tags.length}
   )`
 }
 
@@ -771,7 +779,7 @@ export function buildMuteCondition(
     binds: [...backendUrls],
     sql: `${acctExpr}
   NOT IN (
-      SELECT account_acct FROM muted_accounts WHERE backendUrl IN (${placeholders})
+      SELECT account_acct FROM muted_accounts WHERE server_id IN (SELECT sv.server_id FROM servers sv WHERE sv.base_url IN (${placeholders}))
     )`,
   }
 }
@@ -1054,12 +1062,14 @@ export function parseQueryToConfig(
   // ========================================
   // タグ条件の検出（既存ロジック、変更なし）
   // ========================================
-  const singleTagMatch = query.match(/pbt\.tag\s*=\s*'([^']+)'/i)
+  const singleTagMatch = query.match(
+    /(?:pbt\.tag|ht\.normalized_name)\s*=\s*'([^']+)'/i,
+  )
   const multiTagMatch = query.match(
-    /pbt\.tag\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
+    /(?:pbt\.tag|ht\.normalized_name)\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
   )
   const andTagMatch = query.match(
-    /HAVING\s+COUNT\s*\(\s*DISTINCT\s+\w+\.tag\s*\)\s*=\s*(\d+)/i,
+    /HAVING\s+COUNT\s*\(\s*DISTINCT\s+\w+\.(?:tag|normalized_name)\s*\)\s*=\s*(\d+)/i,
   )
 
   if (singleTagMatch) {
@@ -1129,6 +1139,10 @@ export function upgradeQueryToV2(query: string): string {
   result = result.replace(/\bp\.backendUrl\b/g, 'pb.backendUrl')
   result = result.replace(/\bp\.origin_backend_url\b/g, 'pb.backendUrl')
   result = result.replace(/\bpb\.backend_url\b/g, 'pb.backendUrl')
+
+  // DB正規化: pbt.tag → ht.normalized_name (posts_belonging_tags → hashtags)
+  result = result.replace(/\bpbt\.tag\b/g, 'ht.normalized_name')
+  result = result.replace(/\bposts_belonging_tags\b/g, 'post_hashtags')
 
   // メディア: json_extract(p.json, '$.media_attachments') != '[]'
   result = result.replace(
