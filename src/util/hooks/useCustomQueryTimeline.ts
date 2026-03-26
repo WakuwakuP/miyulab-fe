@@ -26,8 +26,9 @@ import {
 } from 'util/db/sqlite/notificationStore'
 import {
   assembleStatusFromBatch,
-  BATCH_SQL_TEMPLATES,
   buildBatchMapsFromResults,
+  buildScopedBatchTemplates,
+  buildScopedEngagementsSql,
   executeBatchQueries,
   PHASE2_BASE_TEMPLATE,
   type SqliteStoredStatus,
@@ -206,6 +207,9 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
   }, [customQuery])
 
   const sessionTag = `custom-${configId}`
+
+  // エンゲージメントスコープ用: 全バックエンド URL を安定した参照で保持
+  const allBackendUrls = useMemo(() => apps.map((a) => a.backendUrl), [apps])
 
   const fetchData = useCallback(async () => {
     void refreshToken
@@ -511,7 +515,9 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           const allPostIds = [...new Set([...postIdsToFetch, ...reblogPostIds])]
 
           // 子テーブルバッチクエリを並列実行
-          const maps = await executeBatchQueries(handle, allPostIds)
+          const maps = await executeBatchQueries(handle, allPostIds, {
+            engagementsSql: buildScopedEngagementsSql(allBackendUrls, '__PH__'),
+          })
 
           statusPhase2Dur = dur
           statusResults = statusBaseRows.map((row) => {
@@ -737,7 +743,7 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         // === 一括取得: Phase1 → Phase2 → Batch×7 を Worker 内で実行 ===
         const fetchResult = await handle.fetchTimeline(
           {
-            batchSqls: BATCH_SQL_TEMPLATES,
+            batchSqls: buildScopedBatchTemplates(allBackendUrls),
             phase1: { bind: phase1Binds, sql: phase1Sql },
             phase2BaseSql: PHASE2_BASE_TEMPLATE,
           },
@@ -793,6 +799,7 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
     recordDuration,
     refreshToken,
     sessionTag,
+    allBackendUrls,
   ])
 
   // 施策 C: subscribe コールバックのデバウンス (500ms)
