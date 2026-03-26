@@ -540,6 +540,81 @@ export function syncProfileCustomEmojis(
   }
 }
 
+// ================================================================
+// 絵文字フォールバック解決（Misskey ストリーミング対応）
+// ================================================================
+
+/** :shortcode: または :shortcode@host: パターンを抽出する正規表現 */
+const CUSTOM_EMOJI_RE = /:([a-zA-Z0-9_]+)(?:@[\w.-]+)?:/g
+
+/**
+ * テキスト中の :shortcode: パターンから DB 上のカスタム絵文字を解決する。
+ *
+ * Misskey 系ストリーミングで note.emojis が空の場合のフォールバックとして使用。
+ * DB にヒットしなかった shortcode は Misskey URL パターン
+ * (`${backendUrl}/emoji/${shortcode}.webp`) で推定する。
+ */
+export function resolveEmojisFromDb(
+  db: {
+    exec: (
+      sql: string,
+      opts?: {
+        bind?: (string | number | null)[]
+        returnValue?: 'resultRows'
+      },
+    ) => unknown
+  },
+  serverId: number,
+  text: string | null | undefined,
+  backendUrl: string,
+): {
+  shortcode: string
+  url: string
+  static_url: string | null
+  visible_in_picker: boolean
+}[] {
+  if (!text) return []
+
+  const matches = [...text.matchAll(CUSTOM_EMOJI_RE)]
+  const shortcodes = [...new Set(matches.map((m) => m[1]))]
+  if (shortcodes.length === 0) return []
+
+  const result: {
+    shortcode: string
+    url: string
+    static_url: string | null
+    visible_in_picker: boolean
+  }[] = []
+
+  for (const shortcode of shortcodes) {
+    // DB から検索（custom_emojis テーブル）
+    const rows = db.exec(
+      'SELECT image_url, static_url, visible_in_picker FROM custom_emojis WHERE server_id = ? AND shortcode = ?;',
+      { bind: [serverId, shortcode], returnValue: 'resultRows' },
+    ) as (string | number | null)[][]
+
+    if (rows.length > 0) {
+      result.push({
+        shortcode,
+        static_url: rows[0][1] as string | null,
+        url: rows[0][0] as string,
+        visible_in_picker: rows[0][2] === 1,
+      })
+    } else {
+      // Misskey URL パターンでフォールバック
+      const fallbackUrl = `${backendUrl}/emoji/${encodeURIComponent(shortcode)}.webp`
+      result.push({
+        shortcode,
+        static_url: fallbackUrl,
+        url: fallbackUrl,
+        visible_in_picker: true,
+      })
+    }
+  }
+
+  return result
+}
+
 /**
  * 投稿のハッシュタグを hashtags / post_hashtags に同期する。
  *

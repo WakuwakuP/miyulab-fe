@@ -1521,6 +1521,25 @@ export async function toggleReactionInDb(
   })
 }
 
+/**
+ * カスタム絵文字カタログを DB に一括登録する
+ *
+ * ResourceProvider が getInstanceCustomEmojis() で取得した絵文字一覧を
+ * custom_emojis テーブルに UPSERT し、ストリーミング時のフォールバック解決に備える。
+ */
+export async function bulkUpsertCustomEmojis(
+  backendUrl: string,
+  emojis: { shortcode: string; url: string; static_url: string }[],
+): Promise<void> {
+  if (emojis.length === 0) return
+  const handle = await getSqliteDb()
+  await handle.sendCommand({
+    backendUrl,
+    emojisJson: JSON.stringify(emojis),
+    type: 'bulkUpsertCustomEmojis',
+  })
+}
+
 // ================================================================
 // クエリ API
 // ================================================================

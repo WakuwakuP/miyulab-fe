@@ -14,6 +14,7 @@ import {
 } from 'react'
 import unicodeEmojiData from 'unicode-emoji-json/data-by-emoji.json'
 
+import { bulkUpsertCustomEmojis } from 'util/db/sqlite/statusStore'
 import { GetClient } from 'util/GetClient'
 
 import { AppsContext } from './AppsProvider'
@@ -94,16 +95,35 @@ export const ResourceProvider = ({
 
   useEffect(() => {
     if (apps.length <= 0) return
-    const client = GetClient(apps[0])
-    client
-      .getInstanceCustomEmojis()
-      .then((res) => {
-        setEmojis([...res.data, ...emojiList])
-      })
-      .catch((error) => {
-        console.error('Failed to fetch custom emojis:', error)
-      })
 
+    // 全アカウントのサーバからカスタム絵文字を取得し DB にキャッシュ
+    const fetchedServers = new Set<string>()
+    for (const app of apps) {
+      if (fetchedServers.has(app.backendUrl)) continue
+      fetchedServers.add(app.backendUrl)
+
+      const client = GetClient(app)
+      client
+        .getInstanceCustomEmojis()
+        .then((res) => {
+          // 最初のアカウントの絵文字はピッカー用 React state にも反映
+          if (app === apps[0]) {
+            setEmojis([...res.data, ...emojiList])
+          }
+          // 全サーバの絵文字を DB にキャッシュ（ストリーミング時のフォールバック解決用）
+          bulkUpsertCustomEmojis(app.backendUrl, res.data).catch((error) => {
+            console.error(
+              `Failed to cache custom emojis for ${app.backendUrl}:`,
+              error,
+            )
+          })
+        })
+        .catch((error) => {
+          console.error('Failed to fetch custom emojis:', error)
+        })
+    }
+
+    const client = GetClient(apps[0])
     client
       .getInstance()
       .then((res) => {
