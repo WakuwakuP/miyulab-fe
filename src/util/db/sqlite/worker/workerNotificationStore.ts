@@ -103,6 +103,27 @@ function ensurePostForNotification(
   const now = Date.now()
   const created_at_ms = new Date(status.created_at).getTime()
 
+  // Resolve FK references
+  const replyToPostId = cols.in_reply_to_id
+    ? (() => {
+        const rows = db.exec(
+          'SELECT post_id FROM posts_backends WHERE server_id = ? AND local_id = ? LIMIT 1;',
+          { bind: [serverId, cols.in_reply_to_id], returnValue: 'resultRows' },
+        ) as number[][]
+        return rows.length > 0 ? rows[0][0] : null
+      })()
+    : null
+
+  const repostOfPostId = cols.reblog_of_uri
+    ? (() => {
+        const rows = db.exec(
+          "SELECT post_id FROM posts WHERE object_uri = ? AND object_uri != '' LIMIT 1;",
+          { bind: [cols.reblog_of_uri], returnValue: 'resultRows' },
+        ) as number[][]
+        return rows.length > 0 ? rows[0][0] : null
+      })()
+    : null
+
   db.exec(
     `INSERT INTO posts (
       object_uri, origin_server_id, created_at_ms, stored_at,
@@ -110,8 +131,9 @@ function ensurePostForNotification(
       content_html, spoiler_text, canonical_url,
       has_media, media_count, is_reblog, reblog_of_uri,
       is_sensitive, has_spoiler, in_reply_to_id,
-      is_local_only, edited_at
-    ) VALUES (?,?,?,?, ?,?,?, ?,?,?, ?,?,?,?, ?,?,?, ?,?);`,
+      is_local_only, edited_at,
+      reply_to_post_id, repost_of_post_id
+    ) VALUES (?,?,?,?, ?,?,?, ?,?,?, ?,?,?,?, ?,?,?, ?,?, ?,?);`,
     {
       bind: [
         cols.uri,
@@ -133,6 +155,8 @@ function ensurePostForNotification(
         cols.in_reply_to_id,
         0,
         cols.edited_at,
+        replyToPostId,
+        repostOfPostId,
       ],
     },
   )
@@ -266,6 +290,9 @@ function upsertNotification(
     }
   }
 
+  // Resolve localAccountId for this notification
+  const localAccountId = resolveLocalAccountId(db, backendUrl)
+
   // (server_id, local_id) で既存チェック
   const existing = db.exec(
     'SELECT notification_id FROM notifications WHERE server_id = ? AND local_id = ?;',
@@ -282,7 +309,8 @@ function upsertNotification(
         created_at_ms        = ?,
         stored_at            = ?,
         reaction_name        = ?,
-        reaction_url         = ?
+        reaction_url         = ?,
+        local_account_id     = ?
       WHERE notification_id = ?;`,
       {
         bind: [
@@ -293,6 +321,7 @@ function upsertNotification(
           now,
           reactionName,
           reactionUrl,
+          localAccountId,
           notificationId,
         ],
       },
@@ -302,8 +331,8 @@ function upsertNotification(
       `INSERT INTO notifications (
         server_id, local_id, notification_type_id, actor_profile_id,
         related_post_id, created_at_ms, stored_at,
-        reaction_name, reaction_url
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+        reaction_name, reaction_url, local_account_id
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
       {
         bind: [
           serverId,
@@ -315,6 +344,7 @@ function upsertNotification(
           now,
           reactionName,
           reactionUrl,
+          localAccountId,
         ],
       },
     )

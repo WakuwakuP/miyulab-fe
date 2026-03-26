@@ -343,6 +343,7 @@ export async function bulkAddNotifications(
 export async function getNotifications(
   backendUrls?: string[],
   limit?: number,
+  localAccountId?: number | null,
 ): Promise<SqliteStoredNotification[]> {
   const handle = await getSqliteDb()
 
@@ -354,11 +355,18 @@ export async function getNotifications(
     binds.push(...backendUrls)
   }
 
+  let localAccountFilter = ''
+  if (localAccountId != null) {
+    localAccountFilter = `${backendFilter ? 'AND' : 'WHERE'} n.local_account_id = ?`
+    binds.push(localAccountId)
+  }
+
   const sql = `
     SELECT ${NOTIFICATION_SELECT}
     FROM notifications n
     ${NOTIFICATION_BASE_JOINS}
     ${backendFilter}
+    ${localAccountFilter}
     ORDER BY n.created_at_ms DESC
     LIMIT ?;
   `

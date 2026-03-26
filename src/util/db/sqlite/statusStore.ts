@@ -1212,7 +1212,10 @@ export function buildStatusBaseJoins(spbFilter = ''): string {
   LEFT JOIN visibility_types vt ON p.visibility_id = vt.visibility_id
   LEFT JOIN posts_backends pb ON p.post_id = pb.post_id
   LEFT JOIN post_stats ps ON p.post_id = ps.post_id
-  LEFT JOIN posts rs ON p.reblog_of_uri = rs.object_uri AND rs.object_uri != ''
+  LEFT JOIN posts rs ON (
+    (p.repost_of_post_id IS NOT NULL AND rs.post_id = p.repost_of_post_id)
+    OR (p.repost_of_post_id IS NULL AND p.reblog_of_uri IS NOT NULL AND rs.object_uri = p.reblog_of_uri AND rs.object_uri != '')
+  )
   LEFT JOIN profiles rpr ON rs.author_profile_id = rpr.profile_id
   LEFT JOIN visibility_types rvt ON rs.visibility_id = rvt.visibility_id
   LEFT JOIN post_stats rps ON rs.post_id = rps.post_id
