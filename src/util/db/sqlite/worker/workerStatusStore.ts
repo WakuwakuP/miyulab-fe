@@ -230,12 +230,12 @@ function ensureReblogOriginalPost(
 
   let postId: number | undefined
 
-  // URI で既存投稿を検索
+  // URI で既存投稿を検索（リブログ行は対象外 — 同一 URI のリブログを上書きしない）
   const existingRows = db.exec(
-    'SELECT post_id FROM posts WHERE object_uri = ?;',
+    'SELECT post_id, is_reblog FROM posts WHERE object_uri = ?;',
     { bind: [normalizedUri], returnValue: 'resultRows' },
   ) as number[][]
-  if (existingRows.length > 0) {
+  if (existingRows.length > 0 && existingRows[0][1] === 0) {
     postId = existingRows[0][0]
   }
 
@@ -432,6 +432,18 @@ export function handleUpsertStatus(
     // URI で見つからない場合、posts_backends で検索
     if (postId === undefined && !existingIsOriginal) {
       postId = resolvePostIdInternal(db, backendUrl, status.id) ?? undefined
+    }
+
+    // Pleroma/Misskey: リブログの URI が元投稿と同一の場合、
+    // リブログ行に元投稿の URI を割り当てない（元投稿側が URI を保持する）
+    if (
+      postId === undefined &&
+      !existingIsOriginal &&
+      cols.is_reblog === 1 &&
+      normalizedUri !== '' &&
+      normalizedUri === cols.reblog_of_uri
+    ) {
+      existingIsOriginal = true
     }
 
     if (postId !== undefined) {
@@ -698,6 +710,18 @@ export function handleBulkUpsertStatuses(
         postId = resolvePostIdInternal(db, backendUrl, status.id) ?? undefined
       }
 
+      // Pleroma/Misskey: リブログの URI が元投稿と同一の場合、
+      // リブログ行に元投稿の URI を割り当てない
+      if (
+        postId === undefined &&
+        !existingIsOriginal &&
+        cols.is_reblog === 1 &&
+        normalizedUri !== '' &&
+        normalizedUri === cols.reblog_of_uri
+      ) {
+        existingIsOriginal = true
+      }
+
       if (postId !== undefined) {
         db.exec(
           `UPDATE posts SET
@@ -776,7 +800,11 @@ export function handleBulkUpsertStatuses(
         postId = getLastInsertRowId(db)
       }
 
-      if (normalizedUri) {
+      // 同一 URI リブログの場合はキャッシュしない（元投稿が URI を使えるようにする）
+      if (
+        normalizedUri &&
+        !(cols.is_reblog === 1 && normalizedUri === cols.reblog_of_uri)
+      ) {
         uriCache.set(normalizedUri, postId)
       }
 
