@@ -5,6 +5,22 @@
  * other キューを優先して処理する。
  * timeline キューは同じクエリ(SQL + bind + returnValue)が未処理なら新しく積まない。
  * キューの変化をスナップショットとして記録し、グラフ表示に利用する。
+ *
+ * 処理優先度はプリセットで動的に変更可能。
+ * - auto:         キュー状態に応じて自動調整 (デフォルト)
+ * - balanced:     タイムライン更新を重視 (maxConsecutiveOther = 2)
+ * - default:      標準バランス             (maxConsecutiveOther = 4)
+ * - other-first:  書き込み・管理操作優先   (maxConsecutiveOther = 8)
+ *
+ * auto モードでは両キューの待機数比率から maxConsecutiveOther を算出する。
+ *
+ * | other/timeline 比率 | maxConsecutiveOther | 狙い                         |
+ * |---------------------|---------------------|------------------------------|
+ * | ≥ 3.0               | 8                   | other を集中処理して解消      |
+ * | ≥ 1.5               | 6                   | other 寄り                   |
+ * | 0.67 – 1.5          | 4                   | 従来どおり                   |
+ * | ≥ 0.33              | 2                   | timeline に頻繁に譲る        |
+ * | < 0.33              | 1                   | ほぼ交互処理                 |
  */
 
 // ================================================================
@@ -12,6 +28,21 @@
 // ================================================================
 
 export type QueueKind = 'other' | 'timeline'
+
+/** キュー処理優先度プリセット名 */
+export type QueuePriorityPreset =
+  | 'auto'
+  | 'balanced'
+  | 'default'
+  | 'other-first'
+
+/** キュー処理優先度の設定値 */
+export type QueuePriorityConfig = {
+  /** プリセット名 */
+  preset: QueuePriorityPreset
+  /** other キューを連続処理する最大回数 (auto の場合は直近の算出値) */
+  maxConsecutiveOther: number
+}
 
 /** スナップショット1件 */
 export type QueueSnapshot = {
@@ -25,6 +56,8 @@ export type QueueSnapshot = {
   otherProcessed: number
   /** 処理完了したタイムライン取得数の累計 */
   timelineProcessed: number
+  /** スナップショット記録時点の maxConsecutiveOther 値 */
+  maxConsecutiveOther: number
 }
 
 /** キュー変更リスナー */
@@ -39,6 +72,31 @@ const MAX_SNAPSHOTS = 200
 
 /** スナップショット記録間隔 (ms) */
 const SNAPSHOT_INTERVAL_MS = 500
+
+/** 固定プリセットごとの maxConsecutiveOther 定義 */
+const FIXED_PRESETS: Record<Exclude<QueuePriorityPreset, 'auto'>, number> = {
+  balanced: 2,
+  default: 4,
+  'other-first': 8,
+}
+
+/**
+ * auto モードの適応テーブル。
+ * other/timeline 比率の閾値 (降順) と対応する maxConsecutiveOther。
+ * 上から順に評価し、最初にマッチしたものを採用する。
+ */
+const ADAPTIVE_TABLE: readonly { minRatio: number; value: number }[] = [
+  { minRatio: 3.0, value: 8 },
+  { minRatio: 1.5, value: 6 },
+  { minRatio: 0.67, value: 4 },
+  { minRatio: 0.33, value: 2 },
+]
+
+/** adaptive テーブルのどの閾値にもマッチしなかった場合のフォールバック */
+const ADAPTIVE_FLOOR = 1
+
+/** auto モードでキューサイズ不明時のデフォルト値 */
+const ADAPTIVE_DEFAULT = 4
 
 // ================================================================
 // 内部状態
@@ -68,12 +126,44 @@ let snapshotTimerId: ReturnType<typeof setInterval> | null = null
 /** 変更リスナー */
 const listeners = new Set<QueueChangeListener>()
 
+/** 現在の優先度プリセット */
+let currentPriorityPreset: QueuePriorityPreset = 'auto'
+
+/** 直近の auto 算出値 (スナップショット記録・getQueuePriority 用) */
+let lastAutoValue: number = ADAPTIVE_DEFAULT
+
+// ================================================================
+// 適応アルゴリズム
+// ================================================================
+
+/**
+ * 両キューの待機数から maxConsecutiveOther を算出する。
+ *
+ * - timeline が空 → other を最大限連続処理 (8)
+ * - other が空    → 値は使われないがデフォルト (4) を返す
+ * - 両方にアイテムがある場合は比率テーブルで決定
+ */
+function computeAdaptiveMax(otherLen: number, timelineLen: number): number {
+  if (timelineLen === 0) return 8
+  if (otherLen === 0) return ADAPTIVE_DEFAULT
+
+  const ratio = otherLen / timelineLen
+  for (const { minRatio, value } of ADAPTIVE_TABLE) {
+    if (ratio >= minRatio) return value
+  }
+  return ADAPTIVE_FLOOR
+}
+
 // ================================================================
 // スナップショット管理
 // ================================================================
 
 function recordSnapshot(): void {
   const snapshot: QueueSnapshot = {
+    maxConsecutiveOther:
+      currentPriorityPreset === 'auto'
+        ? lastAutoValue
+        : FIXED_PRESETS[currentPriorityPreset],
     other: otherQueueSize,
     otherProcessed: otherProcessedTotal,
     time: performance.now(),
@@ -172,6 +262,54 @@ export function getSnapshots(): readonly QueueSnapshot[] {
  */
 export function getCurrentQueueSizes(): { other: number; timeline: number } {
   return { other: otherQueueSize, timeline: timelineQueueSize }
+}
+
+/**
+ * 現在の優先度設定を返す。
+ * auto モードの場合、maxConsecutiveOther は直近の算出値を返す。
+ */
+export function getQueuePriority(): QueuePriorityConfig {
+  if (currentPriorityPreset === 'auto') {
+    return {
+      maxConsecutiveOther: lastAutoValue,
+      preset: 'auto',
+    }
+  }
+  return {
+    maxConsecutiveOther: FIXED_PRESETS[currentPriorityPreset],
+    preset: currentPriorityPreset,
+  }
+}
+
+/**
+ * 優先度プリセットを変更する。
+ * 変更は次回の processQueue 呼び出しから即座に反映される。
+ */
+export function setQueuePriority(preset: QueuePriorityPreset): void {
+  currentPriorityPreset = preset
+  notifyListeners()
+}
+
+/**
+ * 現在の maxConsecutiveOther 値を返す。
+ * workerClient の processQueue から呼ばれる。
+ *
+ * auto モードの場合、実際のキュー待機数を渡して適応値を算出する。
+ * 固定プリセットの場合、引数は無視してプリセット値を返す。
+ *
+ * @param otherQueueLen  - other キューの現在の待機数
+ * @param timelineQueueLen - timeline キューの現在の待機数
+ */
+export function getMaxConsecutiveOther(
+  otherQueueLen: number,
+  timelineQueueLen: number,
+): number {
+  if (currentPriorityPreset !== 'auto') {
+    return FIXED_PRESETS[currentPriorityPreset]
+  }
+  const value = computeAdaptiveMax(otherQueueLen, timelineQueueLen)
+  lastAutoValue = value
+  return value
 }
 
 /**
