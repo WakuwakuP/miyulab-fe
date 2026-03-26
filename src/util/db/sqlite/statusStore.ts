@@ -601,6 +601,170 @@ const BATCH_POLLS_SQL = `
   WHERE pl.post_id IN (__PH__)`
 
 // ================================================================
+// fetchTimeline 用 SQL テンプレート（{IDS} プレースホルダ版）
+// ================================================================
+
+/** Batch SQL テンプレート群（{IDS} を post_id IN 句に置換して使用） */
+export const BATCH_SQL_TEMPLATES = {
+  belongingTags: `
+  SELECT pbt.post_id,
+    json_group_array(pbt.tag) AS belongingTags
+  FROM posts_belonging_tags pbt
+  WHERE pbt.post_id IN ({IDS})
+  GROUP BY pbt.post_id`,
+  customEmojis: `
+  SELECT pce.post_id, pce.usage_context,
+    json_group_array(
+      json_object(
+        'shortcode', ce.shortcode,
+        'url', ce.image_url,
+        'static_url', ce.static_url,
+        'visible_in_picker', ce.visible_in_picker
+      )
+    ) AS emojis_json
+  FROM post_custom_emojis pce
+  INNER JOIN custom_emojis ce ON pce.emoji_id = ce.emoji_id
+  WHERE pce.post_id IN ({IDS})
+  GROUP BY pce.post_id, pce.usage_context`,
+  engagements: `
+  SELECT pe.post_id, group_concat(et.code, ',') AS engagements_csv
+  FROM post_engagements pe
+  INNER JOIN engagement_types et ON pe.engagement_type_id = et.engagement_type_id
+  WHERE pe.post_id IN ({IDS})
+  GROUP BY pe.post_id`,
+  media: `
+  SELECT pm.post_id,
+    json_group_array(
+      json_object(
+        'id', pm.remote_media_id,
+        'type', COALESCE((SELECT mt.code FROM media_types mt WHERE mt.media_type_id = pm.media_type_id), 'unknown'),
+        'url', pm.url,
+        'preview_url', pm.preview_url,
+        'description', pm.description,
+        'blurhash', pm.blurhash,
+        'remote_url', pm.url
+      )
+    ) AS media_json
+  FROM post_media pm
+  WHERE pm.post_id IN ({IDS})
+  GROUP BY pm.post_id
+  ORDER BY pm.post_id, pm.sort_order`,
+  mentions: `
+  SELECT pme.post_id,
+    json_group_array(json_object('acct', pme.acct)) AS mentions_json
+  FROM posts_mentions pme
+  WHERE pme.post_id IN ({IDS})
+  GROUP BY pme.post_id`,
+  polls: `
+  SELECT pl.post_id,
+    json_object(
+      'id', pl.poll_id,
+      'expires_at', pl.expires_at,
+      'multiple', pl.multiple,
+      'votes_count', pl.votes_count,
+      'options', (
+        SELECT json_group_array(
+          json_object('title', po.title, 'votes_count', po.votes_count)
+        )
+        FROM poll_options po
+        WHERE po.poll_id = pl.poll_id
+        ORDER BY po.option_index
+      )
+    ) AS poll_json
+  FROM polls pl
+  WHERE pl.post_id IN ({IDS})`,
+  timelineTypes: `
+  SELECT ti.post_id,
+    json_group_array(ck.code) AS timelineTypes
+  FROM timeline_items ti
+  INNER JOIN timelines t ON t.timeline_id = ti.timeline_id
+  INNER JOIN channel_kinds ck ON ck.channel_kind_id = t.channel_kind_id
+  WHERE ti.post_id IN ({IDS})
+  GROUP BY ti.post_id`,
+} as const
+
+/** FetchTimelineResult.batchResults の型（Worker からの生行データ） */
+export type BatchResultRows = {
+  engagements: (string | number | null)[][]
+  media: (string | number | null)[][]
+  mentions: (string | number | null)[][]
+  timelineTypes: (string | number | null)[][]
+  belongingTags: (string | number | null)[][]
+  customEmojis: (string | number | null)[][]
+  polls: (string | number | null)[][]
+}
+
+/**
+ * FetchTimelineResult.batchResults の生行データから BatchMaps を構築する。
+ *
+ * executeBatchQueries 内の Map 構築ロジックと同一の変換を行う。
+ * Worker 側で一括取得した結果をメインスレッドで Map に変換するために使用する。
+ */
+export function buildBatchMapsFromResults(
+  batchResults: BatchResultRows,
+): BatchMaps {
+  const engagementsMap = new Map<number, string>()
+  for (const row of batchResults.engagements) {
+    engagementsMap.set(row[0] as number, row[1] as string)
+  }
+
+  const mediaMap = new Map<number, string>()
+  for (const row of batchResults.media) {
+    mediaMap.set(row[0] as number, row[1] as string)
+  }
+
+  const mentionsMap = new Map<number, string>()
+  for (const row of batchResults.mentions) {
+    mentionsMap.set(row[0] as number, row[1] as string)
+  }
+
+  const timelineTypesMap = new Map<number, string>()
+  for (const row of batchResults.timelineTypes) {
+    timelineTypesMap.set(row[0] as number, row[1] as string)
+  }
+
+  const belongingTagsMap = new Map<number, string>()
+  for (const row of batchResults.belongingTags) {
+    belongingTagsMap.set(row[0] as number, row[1] as string)
+  }
+
+  // emojis は usage_context ごとに分ける: [post_id, usage_context, emojis_json]
+  const statusEmojisMap = new Map<number, string>()
+  const accountEmojisMap = new Map<number, string>()
+  for (const row of batchResults.customEmojis) {
+    const postId = row[0] as number
+    const context = row[1] as string
+    const json = row[2] as string
+    if (context === 'status') {
+      statusEmojisMap.set(postId, json)
+    } else if (context === 'account') {
+      accountEmojisMap.set(postId, json)
+    }
+  }
+
+  const pollsMap = new Map<number, string>()
+  for (const row of batchResults.polls) {
+    pollsMap.set(row[0] as number, row[1] as string)
+  }
+
+  // emoji_reactions は Phase2-A の基本行に含まれるため、バッチクエリ不要。
+  // assembleStatusFromBatch 内で row[52] / row[53] から直接読み取る。
+  const emojiReactionsMap = new Map<number, string>()
+
+  return {
+    accountEmojisMap,
+    belongingTagsMap,
+    emojiReactionsMap,
+    engagementsMap,
+    mediaMap,
+    mentionsMap,
+    pollsMap,
+    statusEmojisMap,
+    timelineTypesMap,
+  }
+}
+
+// ================================================================
 // バッチクエリ結果の Map 型
 // ================================================================
 
@@ -638,6 +802,7 @@ export function replacePlaceholders(sql: string, count: number): string {
 export async function executeBatchQueries(
   handle: SqliteHandle,
   allPostIds: number[],
+  sessionTag?: string,
 ): Promise<BatchMaps> {
   if (allPostIds.length === 0) {
     return {
@@ -669,36 +834,43 @@ export async function executeBatchQueries(
       bind: allPostIds,
       kind: 'timeline',
       returnValue: 'resultRows',
+      sessionTag,
     }) as Promise<(string | number | null)[][]>,
     handle.execAsync(replacePlaceholders(BATCH_MEDIA_SQL, count), {
       bind: allPostIds,
       kind: 'timeline',
       returnValue: 'resultRows',
+      sessionTag,
     }) as Promise<(string | number | null)[][]>,
     handle.execAsync(replacePlaceholders(BATCH_MENTIONS_SQL, count), {
       bind: allPostIds,
       kind: 'timeline',
       returnValue: 'resultRows',
+      sessionTag,
     }) as Promise<(string | number | null)[][]>,
     handle.execAsync(replacePlaceholders(BATCH_TIMELINE_TYPES_SQL, count), {
       bind: allPostIds,
       kind: 'timeline',
       returnValue: 'resultRows',
+      sessionTag,
     }) as Promise<(string | number | null)[][]>,
     handle.execAsync(replacePlaceholders(BATCH_BELONGING_TAGS_SQL, count), {
       bind: allPostIds,
       kind: 'timeline',
       returnValue: 'resultRows',
+      sessionTag,
     }) as Promise<(string | number | null)[][]>,
     handle.execAsync(replacePlaceholders(BATCH_CUSTOM_EMOJIS_SQL, count), {
       bind: allPostIds,
       kind: 'timeline',
       returnValue: 'resultRows',
+      sessionTag,
     }) as Promise<(string | number | null)[][]>,
     handle.execAsync(replacePlaceholders(BATCH_POLLS_SQL, count), {
       bind: allPostIds,
       kind: 'timeline',
       returnValue: 'resultRows',
+      sessionTag,
     }) as Promise<(string | number | null)[][]>,
   ])
 
@@ -1041,6 +1213,16 @@ export const STATUS_BASE_JOINS = `
   ) spb ON spb.post_id = p.post_id
   LEFT JOIN profile_aliases pra ON pra.profile_id = pr.profile_id AND pra.server_id = spb.server_id
   LEFT JOIN profile_aliases rpra ON rpra.profile_id = rpr.profile_id AND rpra.server_id = spb.server_id`
+
+/** Phase2 テンプレート（{IDS} を post_id IN 句に置換して使用） */
+export const PHASE2_BASE_TEMPLATE = `
+  SELECT ${STATUS_BASE_SELECT}
+  FROM posts p
+  ${STATUS_BASE_JOINS}
+  WHERE p.post_id IN ({IDS})
+  GROUP BY p.post_id
+  ORDER BY p.created_at_ms DESC;
+`
 
 // ================================================================
 // 2段階クエリ: post_id リストから詳細情報を取得する共通ヘルパー

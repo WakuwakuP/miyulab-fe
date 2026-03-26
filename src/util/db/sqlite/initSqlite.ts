@@ -7,6 +7,7 @@
  * いずれの場合も同一の DbHandle インターフェースを提供する。
  */
 
+import type { ChangeHint } from './connection'
 import { logSlowQueryExplain } from './explainLogger'
 import type { TableName } from './protocol'
 import type { DbHandle } from './types'
@@ -21,14 +22,16 @@ let dbPromise: Promise<DbHandle> | null = null
  * @param onNotify - changedTables 通知コールバック（connection.ts から渡される）
  */
 export async function getDb(
-  onNotify: (table: TableName) => void,
+  onNotify: (table: TableName, hint?: ChangeHint) => void,
 ): Promise<DbHandle> {
   if (dbPromise) return dbPromise
   dbPromise = initDb(onNotify)
   return dbPromise
 }
 
-async function initDb(onNotify: (table: TableName) => void): Promise<DbHandle> {
+async function initDb(
+  onNotify: (table: TableName, hint?: ChangeHint) => void,
+): Promise<DbHandle> {
   // Worker が使えるなら Worker モードを試行
   if (typeof Worker !== 'undefined') {
     try {
@@ -50,17 +53,26 @@ async function initDb(onNotify: (table: TableName) => void): Promise<DbHandle> {
 // ================================================================
 
 async function initWorkerMode(
-  onNotify: (table: TableName) => void,
+  onNotify: (table: TableName, hint?: ChangeHint) => void,
 ): Promise<DbHandle> {
-  const { initWorker, execAsync, execAsyncTimed, execBatch, sendCommand } =
-    await import('./workerClient')
+  const {
+    initWorker,
+    execAsync,
+    execAsyncTimed,
+    execBatch,
+    sendCommand,
+    cancelStaleRequests,
+    fetchTimeline,
+  } = await import('./workerClient')
 
   const persistence = await initWorker(onNotify)
 
   return {
+    cancelStaleRequests,
     execAsync,
     execAsyncTimed,
     execBatch,
+    fetchTimeline,
     persistence,
     sendCommand,
   }
@@ -71,7 +83,7 @@ async function initWorkerMode(
 // ================================================================
 
 async function initMainThreadFallback(
-  onNotify: (table: TableName) => void,
+  onNotify: (table: TableName, hint?: ChangeHint) => void,
 ): Promise<DbHandle> {
   // Turbopack が import.meta.url を無効なスキームに書き換えるため、
   // Emscripten 内部の XHR/fetch が失敗する。
@@ -124,6 +136,7 @@ async function initMainThreadFallback(
   } = await import('./worker/workerNotificationStore')
   const { handleEnforceMaxLength } = await import('./worker/workerCleanup')
   const handle: DbHandle = {
+    cancelStaleRequests: () => 0,
     execAsync: async (sql, opts) => {
       const start = performance.now()
       let result: unknown
@@ -191,6 +204,78 @@ async function initMainThreadFallback(
           }
         }
         throw e
+      }
+    },
+
+    fetchTimeline: async (request) => {
+      const start = performance.now()
+
+      // Phase1
+      const phase1Rows = db.exec(request.phase1.sql, {
+        bind: request.phase1.bind ?? undefined,
+        returnValue: 'resultRows',
+      }) as (string | number | null)[][]
+
+      const postIds = phase1Rows.map(
+        (row: (string | number | null)[]) => row[0] as number,
+      )
+      if (postIds.length === 0) {
+        return {
+          batchResults: {
+            belongingTags: [],
+            customEmojis: [],
+            engagements: [],
+            media: [],
+            mentions: [],
+            polls: [],
+            timelineTypes: [],
+          },
+          phase1Rows,
+          phase2Rows: [],
+          totalDurationMs: performance.now() - start,
+        }
+      }
+
+      // Phase2
+      const placeholders = postIds.map(() => '?').join(',')
+      const phase2Sql = request.phase2BaseSql.replaceAll('{IDS}', placeholders)
+      const phase2Rows = db.exec(phase2Sql, {
+        bind: postIds,
+        returnValue: 'resultRows',
+      }) as (string | number | null)[][]
+
+      // reblog post_id を収集
+      const reblogColIdx = request.reblogPostIdColumnIndex ?? 27
+      const reblogPostIds: number[] = []
+      for (const row of phase2Rows) {
+        const rbId = row[reblogColIdx] as number | null
+        if (rbId !== null) reblogPostIds.push(rbId)
+      }
+      const allPostIds = [...new Set([...postIds, ...reblogPostIds])]
+      const allPlaceholders = allPostIds.map(() => '?').join(',')
+
+      // Batch 7本を同期実行
+      const runBatch = (sql: string) =>
+        db.exec(sql.replaceAll('{IDS}', allPlaceholders), {
+          bind: allPostIds,
+          returnValue: 'resultRows',
+        }) as (string | number | null)[][]
+
+      const batchResults = {
+        belongingTags: runBatch(request.batchSqls.belongingTags),
+        customEmojis: runBatch(request.batchSqls.customEmojis),
+        engagements: runBatch(request.batchSqls.engagements),
+        media: runBatch(request.batchSqls.media),
+        mentions: runBatch(request.batchSqls.mentions),
+        polls: runBatch(request.batchSqls.polls),
+        timelineTypes: runBatch(request.batchSqls.timelineTypes),
+      }
+
+      return {
+        batchResults,
+        phase1Rows,
+        phase2Rows,
+        totalDurationMs: performance.now() - start,
       }
     },
 
@@ -312,10 +397,36 @@ async function initMainThreadFallback(
             `Unknown command type: ${(command as { type: string }).type}`,
           )
       }
-      // changedTables があれば notifyChange を発火
+      // changedTables があれば notifyChange を発火（Plan B: ヒント付き）
       if (result?.changedTables) {
+        // コマンドの種類に応じてヒントを生成
+        let hint: ChangeHint | undefined
+        switch (command.type) {
+          case 'upsertStatus':
+          case 'bulkUpsertStatuses':
+            hint = {
+              backendUrl: command.backendUrl,
+              tag: command.tag,
+              timelineType: command.timelineType,
+            }
+            break
+          case 'handleDeleteEvent':
+            hint = {
+              backendUrl: command.backendUrl,
+              tag: command.tag,
+              timelineType: command.sourceTimelineType,
+            }
+            break
+          case 'removeFromTimeline':
+            hint = {
+              backendUrl: command.backendUrl,
+              tag: command.tag,
+              timelineType: command.timelineType,
+            }
+            break
+        }
         for (const table of result.changedTables as TableName[]) {
-          onNotify(table)
+          onNotify(table, hint)
         }
       }
       return result

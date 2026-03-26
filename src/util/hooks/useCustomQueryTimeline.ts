@@ -13,7 +13,11 @@ import type {
   StatusAddAppIndex,
   TimelineConfigV2,
 } from 'types/types'
-import { getSqliteDb, subscribe } from 'util/db/sqlite/connection'
+import {
+  type ChangeHint,
+  getSqliteDb,
+  subscribe,
+} from 'util/db/sqlite/connection'
 import {
   NOTIFICATION_BASE_JOINS,
   NOTIFICATION_SELECT,
@@ -22,7 +26,10 @@ import {
 } from 'util/db/sqlite/notificationStore'
 import {
   assembleStatusFromBatch,
+  BATCH_SQL_TEMPLATES,
+  buildBatchMapsFromResults,
   executeBatchQueries,
+  PHASE2_BASE_TEMPLATE,
   type SqliteStoredStatus,
   STATUS_BASE_JOINS,
   STATUS_BASE_SELECT,
@@ -197,6 +204,8 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
     return 'status' as const
   }, [customQuery])
 
+  const sessionTag = `custom-${configId}`
+
   const fetchData = useCallback(async () => {
     void refreshToken
     if (!customQuery.trim()) {
@@ -208,6 +217,9 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
 
     try {
       const handle = await getSqliteDb()
+
+      // 前回の fetchData で積んだ未処理クエリをキャンセル
+      handle.cancelStaleRequests(sessionTag)
 
       // サニタイズ: DML/DDL拒否, セミコロン除去, LIMIT/OFFSET除去
       const forbidden =
@@ -348,6 +360,7 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
             bind: [queryLimit],
             kind: 'timeline',
             returnValue: 'resultRows',
+            sessionTag,
           })
         const notifIdRows = notifIdRowsRaw as (string | number | null)[][]
 
@@ -422,6 +435,7 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
             bind: [...statusMediaBinds, ...statusTimeBoundBinds, queryLimit],
             kind: 'timeline',
             returnValue: 'resultRows',
+            sessionTag,
           })
         const statusIdRows = statusIdRowsRaw as (string | number | null)[][]
 
@@ -471,6 +485,7 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
               bind: postIdsToFetch,
               kind: 'timeline',
               returnValue: 'resultRows',
+              sessionTag,
             })
           const statusBaseRows = statusBaseRowsRaw as (
             | string
@@ -487,7 +502,7 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           const allPostIds = [...new Set([...postIdsToFetch, ...reblogPostIds])]
 
           // 子テーブルバッチクエリを並列実行
-          const maps = await executeBatchQueries(handle, allPostIds)
+          const maps = await executeBatchQueries(handle, allPostIds, sessionTag)
 
           statusPhase2Dur = dur
           statusResults = statusBaseRows.map((row) => {
@@ -517,6 +532,7 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
               bind: notifIdsToFetch,
               kind: 'timeline',
               returnValue: 'resultRows',
+              sessionTag,
             })
           notifPhase2Dur = dur
           const notifDetailRows = notifDetailRowsRaw as (
@@ -564,6 +580,7 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
             bind: binds,
             kind: 'timeline',
             returnValue: 'resultRows',
+            sessionTag,
           },
         )
         const rows = rowsRaw as (string | number | null)[][]
@@ -704,13 +721,17 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           queryLimit,
         ]
 
-        const { result: idRowsRaw, durationMs: phase1Duration } =
-          await handle.execAsyncTimed(phase1Sql, {
-            bind: phase1Binds,
-            kind: 'timeline',
-            returnValue: 'resultRows',
-          })
-        const idRows = idRowsRaw as (string | number | null)[][]
+        // === 一括取得: Phase1 → Phase2 → Batch×7 を Worker 内で実行 ===
+        const fetchResult = await handle.fetchTimeline(
+          {
+            batchSqls: BATCH_SQL_TEMPLATES,
+            phase1: { bind: phase1Binds, sql: phase1Sql },
+            phase2BaseSql: PHASE2_BASE_TEMPLATE,
+          },
+          sessionTag,
+        )
+
+        const idRows = fetchResult.phase1Rows
 
         const backendUrlMap = new Map<number, string>()
         if (refs.pb) {
@@ -723,45 +744,18 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         const postIds = idRows.map((row) => row[0] as number)
 
         if (postIds.length === 0) {
-          recordDuration(phase1Duration)
+          recordDuration(fetchResult.totalDurationMs)
           if (fetchVersionRef.current !== version) return
           setResults([])
           return
         }
 
-        // Phase2: 詳細情報取得 (バッチクエリ版)
-        const placeholders = postIds.map(() => '?').join(',')
-        const phase2BaseSql = `
-          SELECT ${STATUS_BASE_SELECT}
-          FROM posts p
-          ${STATUS_BASE_JOINS}
-          WHERE p.post_id IN (${placeholders})
-          GROUP BY p.post_id
-          ORDER BY p.created_at_ms DESC;
-        `
+        // バッチ結果を Map に変換
+        const maps = buildBatchMapsFromResults(fetchResult.batchResults)
 
-        const { result: baseRowsRaw, durationMs: phase2Duration } =
-          await handle.execAsyncTimed(phase2BaseSql, {
-            bind: postIds,
-            kind: 'timeline',
-            returnValue: 'resultRows',
-          })
-        const baseRows = baseRowsRaw as (string | number | null)[][]
+        recordDuration(fetchResult.totalDurationMs)
 
-        // リブログ元の post_id を収集
-        const reblogPostIds: number[] = []
-        for (const row of baseRows) {
-          const rbPostId = row[27] as number | null
-          if (rbPostId !== null) reblogPostIds.push(rbPostId)
-        }
-        const allPostIds = [...new Set([...postIds, ...reblogPostIds])]
-
-        // 子テーブルバッチクエリを並列実行
-        const maps = await executeBatchQueries(handle, allPostIds)
-
-        recordDuration(phase1Duration + phase2Duration)
-
-        const statusResults = baseRows.map((row) => {
+        const statusResults = fetchResult.phase2Rows.map((row) => {
           const status = assembleStatusFromBatch(row, maps)
           const postId = row[0] as number
           status.backendUrl = backendUrlMap.get(postId) ?? status.backendUrl
@@ -783,6 +777,7 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
     queryLimit,
     recordDuration,
     refreshToken,
+    sessionTag,
   ])
 
   // 施策 C: subscribe コールバックのデバウンス (500ms)
@@ -796,7 +791,7 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
     fetchData() // 初回は即時実行
 
     // subscribe コールバック用のデバウンスラッパー
-    const debouncedFetch = () => {
+    const debouncedFetch = (_hints: ChangeHint[]) => {
       if (debouncedFetchTimerRef.current != null) {
         clearTimeout(debouncedFetchTimerRef.current)
       }

@@ -4,7 +4,12 @@
  * Worker モードとフォールバックモードの両方で同一の API を提供する。
  */
 
-import type { BindValue, SendCommandPayload } from './protocol'
+import type {
+  BindValue,
+  FetchTimelineRequest,
+  FetchTimelineResult,
+  SendCommandPayload,
+} from './protocol'
 
 /** SQL 実行オプション */
 export type ExecOpts = {
@@ -12,6 +17,8 @@ export type ExecOpts = {
   returnValue?: 'resultRows'
   /** キュー振り分け: 'timeline' はタイムライン取得キュー（低優先・重複排除あり）、'other' はそれ以外（優先処理） */
   kind?: 'timeline' | 'other'
+  /** キャンセル用セッションタグ。同じタグの未処理キューアイテムを cancelStaleRequests で一括除去できる */
+  sessionTag?: string
 }
 
 /** バッチ SQL ステートメント */
@@ -48,6 +55,22 @@ export type DbHandle = {
 
   /** 専用ハンドラ呼び出し（Worker に委譲） */
   sendCommand: (command: SendCommandPayload) => Promise<unknown>
+
+  /**
+   * 指定した sessionTag を持つ未処理の timeline キューアイテムを除去する。
+   * 除去されたアイテムの Promise は staleValue で即時 resolve される。
+   * フォールバックモード（キューなし）では no-op (return 0)。
+   */
+  cancelStaleRequests: (sessionTag: string, staleValue?: unknown) => number
+
+  /**
+   * タイムラインを一括取得する。
+   * Phase1 → Phase2 → Batch×7 を Worker 内で一括実行し、1 回の postMessage で結果を返す。
+   */
+  fetchTimeline: (
+    request: Omit<FetchTimelineRequest, 'type' | 'id'>,
+    sessionTag?: string,
+  ) => Promise<FetchTimelineResult>
 
   /** 永続化モード */
   persistence: 'opfs' | 'memory'

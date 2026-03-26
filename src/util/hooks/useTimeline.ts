@@ -2,7 +2,11 @@
 
 import { useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import type { StatusAddAppIndex } from 'types/types'
-import { getSqliteDb, subscribe } from 'util/db/sqlite/connection'
+import {
+  type ChangeHint,
+  getSqliteDb,
+  subscribe,
+} from 'util/db/sqlite/connection'
 import type { TimelineType } from 'util/db/sqlite/statusStore'
 import {
   rowToStoredStatus,
@@ -87,10 +91,19 @@ export function useTimeline(timelineType: TimelineType): StatusAddAppIndex[] {
     }
   }, [backendUrls, timelineType])
 
+  // ChangeListener 型は (hints: ChangeHint[]) => void だが、
+  // deprecated Hook ではヒントフィルタ不要なので引数を無視する
+  const handleChange = useCallback(
+    (_hints: ChangeHint[]) => {
+      fetchData()
+    },
+    [fetchData],
+  )
+
   useEffect(() => {
     fetchData()
-    return subscribe('posts', fetchData)
-  }, [fetchData])
+    return subscribe('posts', handleChange)
+  }, [fetchData, handleChange])
 
   // appIndex を都度算出して付与し、解決できなかったレコードは除外する
   return useMemo(
@@ -172,10 +185,19 @@ export function useTagTimeline(
     }
   }, [backendUrls, tag, onlyMedia])
 
+  // ChangeListener 型は (hints: ChangeHint[]) => void だが、
+  // deprecated Hook ではヒントフィルタ不要なので引数を無視する
+  const handleChange = useCallback(
+    (_hints: ChangeHint[]) => {
+      fetchData()
+    },
+    [fetchData],
+  )
+
   useEffect(() => {
     fetchData()
-    return subscribe('posts', fetchData)
-  }, [fetchData])
+    return subscribe('posts', handleChange)
+  }, [fetchData, handleChange])
 
   // appIndex を都度算出して付与し、解決できなかったレコードは除外する
   return useMemo(

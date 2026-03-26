@@ -10,6 +10,14 @@
  * notifyChange には 80ms の debounce が適用されており、ストリーミングの
  * バースト（数十 ms 間隔で複数テーブルが変更される）を吸収して
  * リスナーの発火回数を削減する。
+ *
+ * ## ChangeHint (Plan B: スマート無効化)
+ *
+ * notifyChange にはオプションで ChangeHint を付与できる。
+ * debounce 期間中に複数のストリームイベントが到着した場合、ヒントは配列として蓄積され
+ * フラッシュ時にまとめてリスナーに渡される。
+ * Hook 側で hints を検査し、自パネルに関係する変更かどうかを判定して
+ * 不要な再クエリを抑制する。
  */
 
 import { getDb } from './initSqlite'
@@ -18,8 +26,18 @@ import type { DbHandle } from './types'
 
 export type { DbHandle, TableName }
 
+/** 変更通知に付与するヒント情報 */
+export type ChangeHint = {
+  /** 変更が発生した timelineType ('home' | 'local' | 'public' | 'tag') */
+  timelineType?: string
+  /** 変更が発生した backendUrl */
+  backendUrl?: string
+  /** 変更に関連するタグ名 */
+  tag?: string
+}
+
 /** 変更リスナー */
-type ChangeListener = () => void
+type ChangeListener = (hints: ChangeHint[]) => void
 
 const listeners = new Map<TableName, Set<ChangeListener>>()
 
@@ -27,6 +45,8 @@ const listeners = new Map<TableName, Set<ChangeListener>>()
  * テーブル変更を subscribe する
  *
  * 戻り値は unsubscribe 関数。
+ * リスナーには debounce 期間中に蓄積された ChangeHint の配列が渡される。
+ * ヒントが空配列の場合はヒントなし通知（ユーザー操作等）を意味する。
  */
 export function subscribe(table: TableName, fn: ChangeListener): () => void {
   let set = listeners.get(table)
@@ -49,22 +69,28 @@ const DEBOUNCE_MS = 80
 /** debounce 用: フラッシュ待ちのテーブル名セット */
 const pendingNotifications = new Set<TableName>()
 
+/** debounce 用: フラッシュ待ちのヒント蓄積配列 */
+const pendingHints: ChangeHint[] = []
+
 /** debounce 用: スケジュール済みタイマー ID */
 let timerId: ReturnType<typeof setTimeout> | null = null
 
 /**
  * 保留中の通知をフラッシュし、リスナーを発火する。
+ * 蓄積されたヒントをまとめてリスナーに渡す。
  */
 function flushNotifications(): void {
   timerId = null
   const tables = [...pendingNotifications]
+  const hints = [...pendingHints]
   pendingNotifications.clear()
+  pendingHints.length = 0
   for (const t of tables) {
     const set = listeners.get(t)
     if (set) {
       for (const fn of set) {
         try {
-          fn()
+          fn(hints)
         } catch (e) {
           console.error('Change listener error:', e)
         }
@@ -82,9 +108,15 @@ function flushNotifications(): void {
  *
  * 短時間に複数回呼ばれた場合、80ms 以内の呼び出しをまとめて
  * 1 回のリスナー発火にバッチ化する。
+ *
+ * @param table - 変更されたテーブル名
+ * @param hint - オプションの変更ヒント（timelineType / backendUrl / tag）
  */
-export function notifyChange(table: TableName): void {
+export function notifyChange(table: TableName, hint?: ChangeHint): void {
   pendingNotifications.add(table)
+  if (hint) {
+    pendingHints.push(hint)
+  }
   if (timerId != null) return
   timerId = setTimeout(flushNotifications, DEBOUNCE_MS)
 }
