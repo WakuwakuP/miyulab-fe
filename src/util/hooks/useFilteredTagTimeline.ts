@@ -181,8 +181,9 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
     try {
       const handle = await getSqliteDb()
 
-      // 前回の fetchData で積んだ未処理クエリをキャンセル
-      handle.cancelStaleRequests(sessionTag)
+      // 前回の fetchData で積んだ未処理クエリは sendRequest の
+      // インプレース置換で自動的にキャンセルされるため、
+      // cancelStaleRequests の明示呼び出しは不要
 
       const backendPlaceholders = targetBackendUrls.map(() => '?').join(',')
       const tagPlaceholders = tags.map(() => '?').join(',')
@@ -253,7 +254,7 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
         sessionTag,
       )
 
-      // cancelStaleRequests がキュー内リクエストを resolve(undefined) するため
+      // sendRequest のインプレース置換でキャンセルされた場合 result は undefined になる
       if (!result) return
 
       const idRows = result.phase1Rows
