@@ -9,9 +9,10 @@ import {
 } from 'util/db/sqlite/connection'
 import type { TimelineType } from 'util/db/sqlite/statusStore'
 import {
+  buildSpbFilter,
+  buildStatusBaseJoins,
   rowToStoredStatus,
   type SqliteStoredStatus,
-  STATUS_BASE_JOINS,
   STATUS_SELECT,
 } from 'util/db/sqlite/statusStore'
 import { TIMELINE_QUERY_LIMIT } from 'util/environment'
@@ -58,10 +59,12 @@ export function useTimeline(timelineType: TimelineType): StatusAddAppIndex[] {
       const handle = await getSqliteDb()
 
       const placeholders = backendUrls.map(() => '?').join(',')
+      const spbFilter = buildSpbFilter(backendUrls)
+      const statusBaseJoins = buildStatusBaseJoins(spbFilter)
       const sql = `
         SELECT ${STATUS_SELECT}
         FROM posts p
-        ${STATUS_BASE_JOINS}
+        ${statusBaseJoins}
         INNER JOIN timeline_items ti ON p.post_id = ti.post_id
         INNER JOIN timelines t ON t.timeline_id = ti.timeline_id
         INNER JOIN channel_kinds ck ON ck.channel_kind_id = t.channel_kind_id
@@ -147,10 +150,12 @@ export function useTagTimeline(
       const handle = await getSqliteDb()
 
       const placeholders = backendUrls.map(() => '?').join(',')
+      const spbFilterTag = buildSpbFilter(backendUrls)
+      const statusBaseJoinsTag = buildStatusBaseJoins(spbFilterTag)
       const sql = `
         SELECT ${STATUS_SELECT}
         FROM posts p
-        ${STATUS_BASE_JOINS}
+        ${statusBaseJoinsTag}
         INNER JOIN posts_belonging_tags pbt
           ON p.post_id = pbt.post_id
         WHERE pbt.tag = ?
