@@ -188,6 +188,7 @@ export const Actions = ({
           </button>
           {showReactionPicker && triggerRect && (
             <EmojiReactionPicker
+              backendUrl={statusApp.backendUrl}
               onClose={closePicker}
               onSelect={handleReaction}
               reactions={setting.reactionEmojis}

@@ -12,7 +12,10 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 import { RiAddLine } from 'react-icons/ri'
-import { EmojiContext } from 'util/provider/ResourceProvider'
+import {
+  EmojiCatalogContext,
+  EmojiContext,
+} from 'util/provider/ResourceProvider'
 
 const EmojiPicker = dynamic(() => import('emoji-picker-react'), { ssr: false })
 
@@ -28,19 +31,34 @@ export const EmojiReactionPicker = ({
   onClose,
   triggerRect,
   reactions,
+  backendUrl,
 }: {
   onSelect: (emoji: string) => void
   onClose: () => void
   triggerRect: DOMRect
   reactions?: string[]
+  backendUrl?: string
 }) => {
-  const emojis = useContext(EmojiContext)
+  const fallbackEmojis = useContext(EmojiContext)
+  const emojiCatalog = useContext(EmojiCatalogContext)
   const pickerRef = useRef<HTMLDivElement>(null)
   const [expanded, setExpanded] = useState(false)
   const [position, setPosition] = useState<{ left: number; top: number }>({
     left: 0,
     top: 0,
   })
+
+  // backendUrl が指定されていればカタログからそのサーバの絵文字を使う
+  // なければ従来の EmojiContext にフォールバック
+  const emojis = useMemo(() => {
+    if (backendUrl) {
+      const serverEmojis = emojiCatalog.get(backendUrl)
+      if (serverEmojis && serverEmojis.length > 0) {
+        return serverEmojis
+      }
+    }
+    return fallbackEmojis
+  }, [backendUrl, emojiCatalog, fallbackEmojis])
 
   const reactionCount = reactions?.length ?? 0
   const compactBarWidth =

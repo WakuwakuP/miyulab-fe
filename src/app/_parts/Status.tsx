@@ -19,9 +19,13 @@ import { useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { RiRepeatFill, RiVideoLine } from 'react-icons/ri'
 import type { PollAddAppIndex, StatusAddAppIndex } from 'types/types'
 import { canPlay } from 'util/PlayerUtils'
+import { AppsContext } from 'util/provider/AppsProvider'
 import { SetDetailContext } from 'util/provider/DetailProvider'
 import { SetPlayerContext } from 'util/provider/PlayerProvider'
-import { EmojiContext } from 'util/provider/ResourceProvider'
+import {
+  EmojiCatalogContext,
+  EmojiContext,
+} from 'util/provider/ResourceProvider'
 
 export const Status = ({
   status,
@@ -36,7 +40,9 @@ export const Status = ({
 }) => {
   const setDetail = useContext(SetDetailContext)
   const setPlayer = useContext(SetPlayerContext)
-  const emojis = useContext(EmojiContext)
+  const apps = useContext(AppsContext)
+  const emojiCatalog = useContext(EmojiCatalogContext)
+  const emojiFallback = useContext(EmojiContext)
 
   const [localReactions, setLocalReactions] = useState<Entity.Reaction[]>(
     (status.reblog?.emoji_reactions ?? status.emoji_reactions) || [],
@@ -47,6 +53,17 @@ export const Status = ({
       (status.reblog?.emoji_reactions ?? status.emoji_reactions) || [],
     )
   }, [status.emoji_reactions, status.reblog?.emoji_reactions])
+
+  // status が属するサーバの絵文字一覧を取得（カタログ優先、フォールバックで旧 EmojiContext）
+  const serverEmojis = useMemo(() => {
+    const backendUrl =
+      status.appIndex != null ? apps[status.appIndex]?.backendUrl : undefined
+    if (backendUrl) {
+      const catalog = emojiCatalog.get(backendUrl)
+      if (catalog && catalog.length > 0) return catalog
+    }
+    return emojiFallback
+  }, [status.appIndex, apps, emojiCatalog, emojiFallback])
 
   const handleReactionAdd = useCallback(
     (emoji: string) => {
@@ -65,7 +82,7 @@ export const Status = ({
         let url: string | undefined
         let static_url: string | undefined
         if (isCustom) {
-          const found = emojis.find((e) => e.shortcode === name)
+          const found = serverEmojis.find((e) => e.shortcode === name)
           if (found) {
             url = found.url
             static_url = found.static_url
@@ -75,7 +92,7 @@ export const Status = ({
         return [...prev, { count: 1, me: true, name, static_url, url }]
       })
     },
-    [emojis],
+    [serverEmojis],
   )
 
   const handleReactionToggle = useCallback(

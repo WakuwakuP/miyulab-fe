@@ -7,6 +7,7 @@ import {
   type Dispatch,
   type ReactNode,
   type SetStateAction,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -28,6 +29,17 @@ type PleromaInstance =
 export const InstanceContext = createContext<PleromaInstance>(null)
 
 export const EmojiContext = createContext<Entity.Emoji[]>([])
+
+/**
+ * サーバ別カスタム絵文字カタログ
+ *
+ * backendUrl をキーとして各サーバのカスタム絵文字一覧を保持する。
+ * マルチアカウント環境で、Status が属するサーバの絵文字を正しく解決するために使用する。
+ */
+export const EmojiCatalogContext = createContext<Map<string, Entity.Emoji[]>>(
+  new Map(),
+)
+
 export const UsersContext = createContext<
   Pick<Entity.Account, 'id' | 'acct' | 'avatar' | 'display_name'>[]
 >([])
@@ -71,6 +83,9 @@ export const ResourceProvider = ({
 
   const [instance, setInstance] = useState<PleromaInstance>(null)
   const [emojis, setEmojis] = useState<Entity.Emoji[]>([])
+  const [emojiCatalog, setEmojiCatalog] = useState<Map<string, Entity.Emoji[]>>(
+    () => new Map(),
+  )
   const [users, setUsers] = useState<
     Pick<Entity.Account, 'id' | 'acct' | 'avatar' | 'display_name'>[]
   >(JSON.parse(localStorage.getItem('users') ?? '[]'))
@@ -93,10 +108,22 @@ export const ResourceProvider = ({
     localStorage.setItem('tags', JSON.stringify(tags))
   }, [tags])
 
+  /** カタログに 1 サーバ分を追加（immutable 更新） */
+  const addToCatalog = useCallback(
+    (backendUrl: string, serverEmojis: Entity.Emoji[]) => {
+      setEmojiCatalog((prev) => {
+        const next = new Map(prev)
+        next.set(backendUrl, serverEmojis)
+        return next
+      })
+    },
+    [],
+  )
+
   useEffect(() => {
     if (apps.length <= 0) return
 
-    // 全アカウントのサーバからカスタム絵文字を取得し DB にキャッシュ
+    // 全アカウントのサーバからカスタム絵文字を取得し DB + カタログにキャッシュ
     const fetchedServers = new Set<string>()
     for (const app of apps) {
       if (fetchedServers.has(app.backendUrl)) continue
@@ -106,11 +133,15 @@ export const ResourceProvider = ({
       client
         .getInstanceCustomEmojis()
         .then((res) => {
-          // 最初のアカウントの絵文字はピッカー用 React state にも反映
+          // 最初のアカウントの絵文字はピッカー用 React state にも反映（従来互換）
           if (app === apps[0]) {
             setEmojis([...res.data, ...emojiList])
           }
-          // 全サーバの絵文字を DB にキャッシュ（ストリーミング時のフォールバック解決用）
+
+          // サーバ別カタログに登録
+          addToCatalog(app.backendUrl, res.data)
+
+          // DB にキャッシュ（ストリーミング時のフォールバック解決用）
           bulkUpsertCustomEmojis(app.backendUrl, res.data).catch((error) => {
             console.error(
               `Failed to cache custom emojis for ${app.backendUrl}:`,
@@ -132,20 +163,22 @@ export const ResourceProvider = ({
       .catch((error) => {
         console.error('Failed to fetch instance:', error)
       })
-  }, [apps, emojiList])
+  }, [apps, emojiList, addToCatalog])
 
   return (
     <InstanceContext.Provider value={instance}>
       <EmojiContext.Provider value={emojis}>
-        <UsersContext.Provider value={users}>
-          <SetUsersContext.Provider value={setUsers}>
-            <TagsContext.Provider value={sortedTags}>
-              <SetTagsContext.Provider value={setTags}>
-                {children}
-              </SetTagsContext.Provider>
-            </TagsContext.Provider>
-          </SetUsersContext.Provider>
-        </UsersContext.Provider>
+        <EmojiCatalogContext.Provider value={emojiCatalog}>
+          <UsersContext.Provider value={users}>
+            <SetUsersContext.Provider value={setUsers}>
+              <TagsContext.Provider value={sortedTags}>
+                <SetTagsContext.Provider value={setTags}>
+                  {children}
+                </SetTagsContext.Provider>
+              </TagsContext.Provider>
+            </SetUsersContext.Provider>
+          </UsersContext.Provider>
+        </EmojiCatalogContext.Provider>
       </EmojiContext.Provider>
     </InstanceContext.Provider>
   )
