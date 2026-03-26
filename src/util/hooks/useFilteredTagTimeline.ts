@@ -18,6 +18,8 @@ import {
   assembleStatusFromBatch,
   BATCH_SQL_TEMPLATES,
   buildBatchMapsFromResults,
+  buildPhase2Template,
+  buildSpbFilter,
   PHASE2_BASE_TEMPLATE,
   type SqliteStoredStatus,
 } from 'util/db/sqlite/statusStore'
@@ -245,11 +247,17 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
       }
 
       // === 一括取得: Phase1 → Phase2 → Batch×7 を Worker 内で実行 ===
+      // spb をパネルのバックエンドに限定し、正しい local_id / account.id を返す
+      const spbFilter = buildSpbFilter(targetBackendUrls)
+      const phase2BaseSql = spbFilter
+        ? buildPhase2Template(spbFilter)
+        : PHASE2_BASE_TEMPLATE
+
       const result = await handle.fetchTimeline(
         {
           batchSqls: BATCH_SQL_TEMPLATES,
           phase1: { bind: phase1Binds, sql: phase1Sql },
-          phase2BaseSql: PHASE2_BASE_TEMPLATE,
+          phase2BaseSql,
         },
         sessionTag,
       )

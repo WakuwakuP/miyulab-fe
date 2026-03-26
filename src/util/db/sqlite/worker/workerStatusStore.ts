@@ -266,6 +266,7 @@ function ensureReblogOriginalPost(
   }
 
   if (postId !== undefined) {
+    // author_profile_id は更新しない（handleUpsertStatus と同一方針）
     db.exec(
       `UPDATE posts SET
         stored_at          = ?,
@@ -281,8 +282,7 @@ function ensureReblogOriginalPost(
         is_sensitive       = ?,
         has_spoiler        = ?,
         in_reply_to_id     = ?,
-        edited_at          = ?,
-        author_profile_id  = ?
+        edited_at          = ?
       WHERE post_id = ?;`,
       {
         bind: [
@@ -298,7 +298,6 @@ function ensureReblogOriginalPost(
           cols.has_spoiler,
           cols.in_reply_to_id,
           cols.edited_at,
-          profileId,
           postId,
         ],
       },
@@ -503,6 +502,13 @@ export function handleUpsertStatus(
     }
 
     if (postId !== undefined) {
+      // author_profile_id は更新しない:
+      // ActivityPub では投稿の著者は不変であり、同一バックエンドからの
+      // 再取得では同じ profile_id が返るため no-op。
+      // 異なるバックエンドからの到着時は actor_uri の URL 形式差異
+      // (例: /users/X vs /@X) により別プロファイルが生成されるため、
+      // 上書きすると spb が選択するバックエンドの profile_aliases が
+      // 存在しなくなる。INSERT 時にのみ設定する。
       db.exec(
         `UPDATE posts SET
           stored_at          = ?,
@@ -518,8 +524,7 @@ export function handleUpsertStatus(
           is_sensitive       = ?,
           has_spoiler        = ?,
           in_reply_to_id     = ?,
-          edited_at          = ?,
-          author_profile_id  = ?
+          edited_at          = ?
         WHERE post_id = ?;`,
         {
           bind: [
@@ -537,7 +542,6 @@ export function handleUpsertStatus(
             cols.has_spoiler,
             cols.in_reply_to_id,
             cols.edited_at,
-            profileId,
             postId,
           ],
         },
@@ -822,6 +826,7 @@ export function handleBulkUpsertStatuses(
       }
 
       if (postId !== undefined) {
+        // author_profile_id は更新しない（handleUpsertStatus と同一方針）
         db.exec(
           `UPDATE posts SET
             stored_at          = ?,
@@ -837,8 +842,7 @@ export function handleBulkUpsertStatuses(
             is_sensitive       = ?,
             has_spoiler        = ?,
             in_reply_to_id     = ?,
-            edited_at          = ?,
-            author_profile_id  = ?
+            edited_at          = ?
           WHERE post_id = ?;`,
           {
             bind: [
@@ -856,7 +860,6 @@ export function handleBulkUpsertStatuses(
               cols.has_spoiler,
               cols.in_reply_to_id,
               cols.edited_at,
-              profileId,
               postId,
             ],
           },
@@ -1289,8 +1292,9 @@ export function handleUpdateStatus(
       syncProfileCustomEmojis(db, profileId, serverId, status.account.emojis)
     }
 
-    // object_uri と created_at_ms は編集で変わらないため更新しない
-    // （handleUpsertStatus の UPDATE 分岐と同じ方針）
+    // object_uri / created_at_ms / author_profile_id は編集で変わらないため更新しない
+    // author_profile_id: ActivityPub では著者は不変。クロスバックエンド到着時の
+    // profile_id 不整合を防ぐため INSERT 時にのみ設定する。
     db.exec(
       `UPDATE posts SET
          stored_at          = ?,
@@ -1306,8 +1310,7 @@ export function handleUpdateStatus(
          is_sensitive       = ?,
          has_spoiler        = ?,
          in_reply_to_id     = ?,
-         edited_at          = ?,
-         author_profile_id  = ?
+         edited_at          = ?
        WHERE post_id = ?;`,
       {
         bind: [
@@ -1325,7 +1328,6 @@ export function handleUpdateStatus(
           cols.has_spoiler,
           cols.in_reply_to_id,
           cols.edited_at,
-          profileId,
           postId,
         ],
       },

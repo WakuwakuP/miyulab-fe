@@ -1179,9 +1179,33 @@ export function assembleStatusFromBatch(
 }
 
 /**
- * 正規化テーブルの基本 JOIN 句（profiles, visibility_types, posts_backends）
+ * spb バックエンドフィルタを構築する。
+ *
+ * パネルが特定のバックエンドにフィルタされている場合、spb サブクエリに
+ * AND 条件を追加して、そのバックエンド群の中から MIN を取る。
+ * これにより local_id / profile_aliases がパネルのバックエンドに対応する。
+ *
+ * backendUrls が空の場合はフィルタなし（全バックエンドから MIN を取る従来動作）。
+ *
+ * NOTE: バックエンド URL はアプリ設定由来であり、ユーザー入力ではないため
+ * リテラル埋め込みは安全。bind パラメータ変更を避けるためこの方式を採用。
  */
-export const STATUS_BASE_JOINS = `
+export function buildSpbFilter(backendUrls: string[]): string {
+  if (backendUrls.length === 0) return ''
+  const quoted = backendUrls.map((u) => `'${u.replace(/'/g, "''")}'`).join(',')
+  return `AND spb_min.backendUrl IN (${quoted})`
+}
+
+/**
+ * 正規化テーブルの基本 JOIN 句（profiles, visibility_types, posts_backends）
+ *
+ * spbFilter を渡すと、spb（Selected Posts Backend）のバックエンド選択を
+ * 指定されたバックエンド群に限定する。パネルごとに異なるバックエンドで
+ * フィルタされたタイムラインが同時に存在する場合、各パネルに正しい
+ * local_id / account.id が返るようになる。
+ */
+export function buildStatusBaseJoins(spbFilter = ''): string {
+  return `
   LEFT JOIN profiles pr ON p.author_profile_id = pr.profile_id
   LEFT JOIN visibility_types vt ON p.visibility_id = vt.visibility_id
   LEFT JOIN posts_backends pb ON p.post_id = pb.post_id
@@ -1196,19 +1220,34 @@ export const STATUS_BASE_JOINS = `
       SELECT MIN(spb_min.backendUrl)
       FROM posts_backends spb_min
       WHERE spb_min.post_id = p.post_id
+        ${spbFilter}
     )
   LEFT JOIN profile_aliases pra ON pra.profile_id = pr.profile_id AND pra.server_id = spb.server_id
   LEFT JOIN profile_aliases rpra ON rpra.profile_id = rpr.profile_id AND rpra.server_id = spb.server_id`
+}
 
-/** Phase2 テンプレート（{IDS} を post_id IN 句に置換して使用） */
-export const PHASE2_BASE_TEMPLATE = `
+/** フィルタなしのデフォルト JOIN（後方互換） */
+export const STATUS_BASE_JOINS = buildStatusBaseJoins()
+
+/**
+ * Phase2 テンプレートを構築する。
+ *
+ * spbFilter を渡すと spb のバックエンド選択がフィルタされる。
+ * {IDS} プレースホルダは Worker 側で post_id IN 句に置換される。
+ */
+export function buildPhase2Template(spbFilter = ''): string {
+  return `
   SELECT ${STATUS_BASE_SELECT}
   FROM posts p
-  ${STATUS_BASE_JOINS}
+  ${buildStatusBaseJoins(spbFilter)}
   WHERE p.post_id IN ({IDS})
   GROUP BY p.post_id
   ORDER BY p.created_at_ms DESC;
 `
+}
+
+/** フィルタなしのデフォルトテンプレート（後方互換） */
+export const PHASE2_BASE_TEMPLATE = buildPhase2Template()
 
 // ================================================================
 // 2段階クエリ: post_id リストから詳細情報を取得する共通ヘルパー
