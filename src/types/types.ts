@@ -157,9 +157,9 @@ export type TimelineConfigV2 = {
   /**
    * カスタム SQL WHERE 句（advanced option）
    *
-   * posts (p), timeline_items/timelines/channel_kinds (ptt),
-   * post_hashtags/hashtags (pht/ht), posts_mentions (pme),
-   * posts_backends (pb), notifications (n) テーブルを参照可能。
+   * posts (p), timeline_entries (ptt),
+   * post_hashtags/hashtags (pht/ht), post_mentions (pme),
+   * post_backend_ids (pb), notifications (n) テーブルを参照可能。
    * LIMIT / OFFSET は自動設定されるため指定不要。
    *
    * posts 関連テーブル (p, ptt, pht/ht, pme, pb) と notifications テーブル (n) を

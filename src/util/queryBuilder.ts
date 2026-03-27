@@ -685,7 +685,7 @@ function buildTagCondition(tagConfig: TagConfig): string {
 
   if (tags.length === 0) return ''
   if (tags.length === 1) {
-    return `ht.normalized_name = '${escapeSqlString(tags[0].toLowerCase())}'`
+    return `ht.name = '${escapeSqlString(tags[0].toLowerCase())}'`
   }
 
   const tagList = tags
@@ -693,7 +693,7 @@ function buildTagCondition(tagConfig: TagConfig): string {
     .join(', ')
 
   if (mode === 'or') {
-    return `ht.normalized_name IN (${tagList})`
+    return `ht.name IN (${tagList})`
   }
 
   // AND mode: 全タグを含む投稿のみ (GROUP BY + HAVING は WHERE 句内では表現不可)
@@ -1142,8 +1142,8 @@ export function upgradeQueryToV2(query: string): string {
   result = result.replace(/\bp\.origin_backend_url\b/g, 'pb.backendUrl')
   result = result.replace(/\bpb\.backend_url\b/g, 'pb.backendUrl')
 
-  // DB正規化: pbt.tag → ht.normalized_name (posts_belonging_tags → hashtags)
-  result = result.replace(/\bpbt\.tag\b/g, 'ht.normalized_name')
+  // DB正規化: pbt.tag → ht.name (posts_belonging_tags → hashtags)
+  result = result.replace(/\bpbt\.tag\b/g, 'ht.name')
   result = result.replace(/\bposts_belonging_tags\b/g, 'post_hashtags')
 
   // notification_types: code → name (v2 スキーマでカラム名変更)

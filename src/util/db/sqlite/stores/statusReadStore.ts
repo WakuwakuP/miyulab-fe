@@ -9,6 +9,7 @@ import {
   detectReferencedAliases,
   isMixedQuery,
   isNotificationQuery,
+  upgradeQueryToV2,
 } from 'util/queryBuilder'
 import { getSqliteDb } from '../connection'
 import {
@@ -51,7 +52,7 @@ export async function getStatusesByTimelineType(
   let backendFilter = ''
   if (backendUrls && backendUrls.length > 0) {
     const placeholders = backendUrls.map(() => '?').join(',')
-    backendFilter = `AND pb.server_id IN (SELECT sv.server_id FROM servers sv WHERE sv.base_url IN (${placeholders}))`
+    backendFilter = `AND pb.server_id IN (SELECT sv.id FROM servers sv WHERE sv.base_url IN (${placeholders}))`
     phase1Binds.push(...backendUrls)
   }
 
@@ -101,7 +102,7 @@ export async function getStatusesByTag(
   let backendFilter = ''
   if (backendUrls && backendUrls.length > 0) {
     const placeholders = backendUrls.map(() => '?').join(',')
-    backendFilter = `AND pb.server_id IN (SELECT sv.server_id FROM servers sv WHERE sv.base_url IN (${placeholders}))`
+    backendFilter = `AND pb.server_id IN (SELECT sv.id FROM servers sv WHERE sv.base_url IN (${placeholders}))`
     phase1Binds.push(...backendUrls)
   }
 
@@ -144,7 +145,7 @@ export async function getBookmarkedStatuses(
   let backendFilter = ''
   if (backendUrls && backendUrls.length > 0) {
     const placeholders = backendUrls.map(() => '?').join(',')
-    backendFilter = `AND pb.server_id IN (SELECT sv.server_id FROM servers sv WHERE sv.base_url IN (${placeholders}))`
+    backendFilter = `AND pb.server_id IN (SELECT sv.id FROM servers sv WHERE sv.base_url IN (${placeholders}))`
     phase1Binds.push(...backendUrls)
   }
 
@@ -201,11 +202,8 @@ export async function getStatusesByCustomQuery(
   // WHERE 句で参照されているテーブルのみ JOIN する（不要な JOIN を除外）
   const refs = detectReferencedAliases(sanitized)
 
-  // 旧カラム名 backend_url を正しい backendUrl に修正
-  const rewrittenWhere = sanitized.replace(
-    /\bpb\.backend_url\b/g,
-    'pb.backendUrl',
-  )
+  // 旧スキーマのカラム名・テーブル名を v2 に変換
+  const rewrittenWhere = upgradeQueryToV2(sanitized)
 
   const joinLines: string[] = []
   if (refs.ptt)
@@ -230,7 +228,7 @@ export async function getStatusesByCustomQuery(
 
   if (backendUrls && backendUrls.length > 0) {
     const placeholders = backendUrls.map(() => '?').join(',')
-    backendFilter = `AND pb.server_id IN (SELECT sv.server_id FROM servers sv WHERE sv.base_url IN (${placeholders}))`
+    backendFilter = `AND pb.server_id IN (SELECT sv.id FROM servers sv WHERE sv.base_url IN (${placeholders}))`
     phase1Binds.push(...backendUrls)
   }
 
@@ -242,7 +240,7 @@ export async function getStatusesByCustomQuery(
     SELECT DISTINCT p.id AS post_id
     FROM (
       SELECT p_inner.*,
-        COALESCE((SELECT sv.base_url FROM servers sv WHERE sv.server_id = p_inner.origin_server_id), '') AS origin_backend_url,
+        COALESCE((SELECT sv.base_url FROM servers sv WHERE sv.id = p_inner.origin_server_id), '') AS origin_backend_url,
         COALESCE((SELECT pr2.acct FROM profiles pr2 WHERE pr2.id = p_inner.author_profile_id), '') AS account_acct,
         '' AS account_id,
         COALESCE((SELECT vt2.name FROM visibility_types vt2 WHERE vt2.id = p_inner.visibility_id), 'public') AS visibility,
@@ -306,8 +304,8 @@ export async function validateCustomQuery(
     const isMixed = isMixedQuery(sanitized)
     const isNotifQuery = !isMixed && isNotificationQuery(sanitized)
 
-    // 旧カラム名 backend_url を正しい backendUrl に修正
-    const rewritten = sanitized.replace(/\bpb\.backend_url\b/g, 'pb.backendUrl')
+    // 旧スキーマのカラム名・テーブル名を v2 に変換
+    const rewritten = upgradeQueryToV2(sanitized)
 
     /** ptt 互換サブクエリ: timeline_entries → (post_id, timelineType) */
     const pttCompat =
@@ -321,7 +319,7 @@ export async function validateCustomQuery(
           SELECT p.post_id, p.created_at_ms
           FROM (
             SELECT p_inner.*,
-              COALESCE((SELECT sv.base_url FROM servers sv WHERE sv.server_id = p_inner.origin_server_id), '') AS origin_backend_url,
+              COALESCE((SELECT sv.base_url FROM servers sv WHERE sv.id = p_inner.origin_server_id), '') AS origin_backend_url,
               COALESCE((SELECT pr2.acct FROM profiles pr2 WHERE pr2.id = p_inner.author_profile_id), '') AS account_acct,
               COALESCE((SELECT vt2.name FROM visibility_types vt2 WHERE vt2.id = p_inner.visibility_id), 'public') AS visibility,
               COALESCE((SELECT ps2.favourites_count FROM post_stats ps2 WHERE ps2.post_id = p_inner.id), 0) AS favourites_count,
@@ -343,7 +341,7 @@ export async function validateCustomQuery(
             ON p.id = prb.post_id
           LEFT JOIN (
             SELECT n2.*,
-              COALESCE((SELECT sv2.base_url FROM servers sv2 WHERE sv2.server_id = n2.server_id), '') AS backend_url,
+              COALESCE((SELECT la2.backend_url FROM local_accounts la2 WHERE la2.id = n2.local_account_id), '') AS backend_url,
               COALESCE((SELECT nt2.name FROM notification_types nt2 WHERE nt2.id = n2.notification_type_id), '') AS notification_type,
               COALESCE((SELECT pr3.acct FROM profiles pr3 WHERE pr3.id = n2.actor_profile_id), '') AS account_acct
             FROM notifications n2
@@ -353,14 +351,14 @@ export async function validateCustomQuery(
           SELECT n.id AS notification_id, n.created_at_ms
           FROM (
             SELECT n2.*,
-              COALESCE((SELECT sv2.base_url FROM servers sv2 WHERE sv2.server_id = n2.server_id), '') AS backend_url,
+              COALESCE((SELECT la2.backend_url FROM local_accounts la2 WHERE la2.id = n2.local_account_id), '') AS backend_url,
               COALESCE((SELECT nt2.name FROM notification_types nt2 WHERE nt2.id = n2.notification_type_id), '') AS notification_type,
               COALESCE((SELECT pr3.acct FROM profiles pr3 WHERE pr3.id = n2.actor_profile_id), '') AS account_acct
             FROM notifications n2
           ) n
           LEFT JOIN (
             SELECT p2.*,
-              COALESCE((SELECT sv3.base_url FROM servers sv3 WHERE sv3.server_id = p2.origin_server_id), '') AS origin_backend_url,
+              COALESCE((SELECT sv3.base_url FROM servers sv3 WHERE sv3.id = p2.origin_server_id), '') AS origin_backend_url,
               COALESCE((SELECT pr4.acct FROM profiles pr4 WHERE pr4.id = p2.author_profile_id), '') AS account_acct
             FROM posts p2
           ) p ON 0 = 1
@@ -386,7 +384,7 @@ export async function validateCustomQuery(
         SELECT DISTINCT n.id
         FROM (
           SELECT n2.*,
-            COALESCE((SELECT sv2.base_url FROM servers sv2 WHERE sv2.server_id = n2.server_id), '') AS backend_url,
+            COALESCE((SELECT la2.backend_url FROM local_accounts la2 WHERE la2.id = n2.local_account_id), '') AS backend_url,
             COALESCE((SELECT nt2.name FROM notification_types nt2 WHERE nt2.id = n2.notification_type_id), '') AS notification_type,
             COALESCE((SELECT pr3.acct FROM profiles pr3 WHERE pr3.id = n2.actor_profile_id), '') AS account_acct
           FROM notifications n2
@@ -400,7 +398,7 @@ export async function validateCustomQuery(
         SELECT DISTINCT p.id
         FROM (
           SELECT p_inner.*,
-            COALESCE((SELECT sv.base_url FROM servers sv WHERE sv.server_id = p_inner.origin_server_id), '') AS origin_backend_url,
+            COALESCE((SELECT sv.base_url FROM servers sv WHERE sv.id = p_inner.origin_server_id), '') AS origin_backend_url,
             COALESCE((SELECT pr2.acct FROM profiles pr2 WHERE pr2.id = p_inner.author_profile_id), '') AS account_acct,
             COALESCE((SELECT vt2.name FROM visibility_types vt2 WHERE vt2.id = p_inner.visibility_id), 'public') AS visibility,
             COALESCE((SELECT ps2.favourites_count FROM post_stats ps2 WHERE ps2.post_id = p_inner.id), 0) AS favourites_count,
@@ -443,7 +441,7 @@ export async function getDistinctTags(): Promise<string[]> {
   try {
     const handle = await getSqliteDb()
     const rows = (await handle.execAsync(
-      'SELECT DISTINCT ht.display_name FROM post_hashtags pht INNER JOIN hashtags ht ON pht.hashtag_id = ht.hashtag_id ORDER BY ht.display_name;',
+      'SELECT DISTINCT ht.name FROM post_hashtags pht INNER JOIN hashtags ht ON pht.hashtag_id = ht.id ORDER BY ht.name;',
       { returnValue: 'resultRows' },
     )) as string[][]
     return rows.map((r) => r[0])

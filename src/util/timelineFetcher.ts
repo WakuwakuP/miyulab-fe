@@ -109,10 +109,12 @@ export async function fetchMoreData(
         const { getSqliteDb } = await import('util/db/sqlite/connection')
         const handle = await getSqliteDb()
         const rows = (await handle.execAsync(
-          `SELECT p.json FROM posts p
-           INNER JOIN post_hashtags pht ON p.post_id = pht.post_id
-           INNER JOIN hashtags ht ON pht.hashtag_id = ht.hashtag_id
-           WHERE ht.normalized_name = LOWER(?) AND p.origin_backend_url = ?
+          `SELECT pbi.local_id FROM posts p
+           INNER JOIN post_hashtags pht ON p.id = pht.post_id
+           INNER JOIN hashtags ht ON pht.hashtag_id = ht.id
+           INNER JOIN post_backend_ids pbi ON p.id = pbi.post_id
+           INNER JOIN local_accounts la ON pbi.local_account_id = la.id
+           WHERE ht.name = LOWER(?) AND la.backend_url = ?
            ORDER BY p.created_at_ms ASC
            LIMIT 1;`,
           {
@@ -125,8 +127,7 @@ export async function fetchMoreData(
 
         let tagMaxId = maxId
         if (rows.length > 0) {
-          const oldest = JSON.parse(rows[0][0]) as { id: string }
-          tagMaxId = oldest.id
+          tagMaxId = rows[0][0] as string
         }
 
         const res = await client.getTagTimeline(tag, {

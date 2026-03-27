@@ -113,11 +113,11 @@ export const QUERY_COMPLETIONS = {
     },
     {
       description: '添付メディアが存在する投稿を取得する',
-      query: 'p.has_media = 1',
+      query: 'EXISTS(SELECT 1 FROM post_media WHERE post_id = p.id)',
     },
     {
       description: 'メディアが2枚以上ある投稿を取得する',
-      query: 'p.media_count >= 2',
+      query: '(SELECT COUNT(*) FROM post_media WHERE post_id = p.id) >= 2',
     },
     {
       description: 'ブーストされた投稿を取得する',
@@ -129,11 +129,11 @@ export const QUERY_COMPLETIONS = {
     },
     {
       description: 'CW（Content Warning）付きの投稿を取得する',
-      query: 'p.has_spoiler = 1',
+      query: "p.spoiler_text != ''",
     },
     {
       description: 'リプライを除外する',
-      query: 'p.in_reply_to_id IS NULL',
+      query: 'p.in_reply_to_uri IS NULL',
     },
     {
       description: '日本語の投稿のみ取得する',

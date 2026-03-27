@@ -146,7 +146,7 @@ const PRB_COMPAT_SUBQUERY =
 
 const EMPTY_PTT = `(SELECT NULL AS post_id, NULL AS timelineType LIMIT 0)`
 const EMPTY_PHT = `(SELECT NULL AS post_id, NULL AS hashtag_id LIMIT 0)`
-const EMPTY_HT = `(SELECT NULL AS hashtag_id, NULL AS normalized_name LIMIT 0)`
+const EMPTY_HT = `(SELECT NULL AS hashtag_id, NULL AS name LIMIT 0)`
 const EMPTY_PME = `(SELECT NULL AS post_id, NULL AS acct LIMIT 0)`
 const EMPTY_PB = `(SELECT NULL AS post_id, NULL AS backendUrl, NULL AS local_id LIMIT 0)`
 const EMPTY_PRB = `(SELECT NULL AS post_id, NULL AS original_uri, NULL AS reblogger_acct, NULL AS reblogged_at_ms LIMIT 0)`
@@ -339,10 +339,12 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         let statusMediaConditions = ''
         const statusMediaBinds: (string | number)[] = []
         if (minMediaCount != null && minMediaCount > 0) {
-          statusMediaConditions += '\n              AND p.media_count >= ?'
+          statusMediaConditions +=
+            '\n              AND (SELECT COUNT(*) FROM post_media WHERE post_id = p.id) >= ?'
           statusMediaBinds.push(minMediaCount)
         } else if (onlyMedia) {
-          statusMediaConditions += '\n              AND p.has_media = 1'
+          statusMediaConditions +=
+            '\n              AND EXISTS(SELECT 1 FROM post_media WHERE post_id = p.id)'
         }
 
         // 施策 A: サブクエリ廃止 → FROM posts p 直接参照
@@ -689,10 +691,12 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         const additionalBinds: (string | number)[] = []
 
         if (minMediaCount != null && minMediaCount > 0) {
-          additionalConditions += '\n          AND p.media_count >= ?'
+          additionalConditions +=
+            '\n          AND (SELECT COUNT(*) FROM post_media WHERE post_id = p.id) >= ?'
           additionalBinds.push(minMediaCount)
         } else if (onlyMedia) {
-          additionalConditions += '\n          AND p.has_media = 1'
+          additionalConditions +=
+            '\n          AND EXISTS(SELECT 1 FROM post_media WHERE post_id = p.id)'
         }
 
         // Phase1: 軽量な post_id のみ取得（施策 A: サブクエリ廃止）

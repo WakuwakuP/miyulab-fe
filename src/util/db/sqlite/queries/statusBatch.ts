@@ -37,7 +37,7 @@ export const BATCH_MEDIA_SQL = `
     json_group_array(
       json_object(
         'id', pm.media_local_id,
-        'type', COALESCE((SELECT mt.code FROM media_types mt WHERE mt.id = pm.media_type_id), 'unknown'),
+        'type', COALESCE((SELECT mt.name FROM media_types mt WHERE mt.id = pm.media_type_id), 'unknown'),
         'url', pm.url,
         'preview_url', pm.preview_url,
         'description', pm.description,
@@ -162,7 +162,7 @@ export const BATCH_SQL_TEMPLATES = {
     json_group_array(
       json_object(
         'id', pm.media_local_id,
-        'type', COALESCE((SELECT mt.code FROM media_types mt WHERE mt.id = pm.media_type_id), 'unknown'),
+        'type', COALESCE((SELECT mt.name FROM media_types mt WHERE mt.id = pm.media_type_id), 'unknown'),
         'url', pm.url,
         'preview_url', pm.preview_url,
         'description', pm.description,
