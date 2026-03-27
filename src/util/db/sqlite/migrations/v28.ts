@@ -133,5 +133,5 @@ export const v28Migration: Migration = {
       hasColumn('local_accounts', 'last_used_at_ms')
     )
   },
-  version: 28,
+  version: { major: 0, minor: 0, patch: 28 },
 }

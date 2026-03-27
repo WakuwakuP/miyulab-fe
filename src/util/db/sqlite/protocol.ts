@@ -11,7 +11,15 @@
 
 export type BindValue = string | number | null
 
-export type TableName = 'posts' | 'notifications'
+export type TableName =
+  | 'posts'
+  | 'notifications'
+  | 'timeline_entries'
+  | 'post_interactions'
+  | 'post_backend_ids'
+  | 'post_mentions'
+  | 'profiles'
+  | 'local_accounts'
 
 // ================================================================
 // Main Thread → Worker (リクエスト)
@@ -192,7 +200,7 @@ export type FetchTimelineRequest = {
   phase2BaseSql: string
   /** Batch SQL テンプレート群（{IDS} プレースホルダを含む） */
   batchSqls: {
-    engagements: string
+    interactions: string
     media: string
     mentions: string
     timelineTypes: string
@@ -209,7 +217,7 @@ export type FetchTimelineResult = {
   phase1Rows: (string | number | null)[][]
   phase2Rows: (string | number | null)[][]
   batchResults: {
-    engagements: (string | number | null)[][]
+    interactions: (string | number | null)[][]
     media: (string | number | null)[][]
     mentions: (string | number | null)[][]
     timelineTypes: (string | number | null)[][]

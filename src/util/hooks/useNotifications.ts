@@ -144,7 +144,7 @@ export function useNotifications(config?: TimelineConfigV2): {
 
       // バックエンドフィルタ
       const placeholders = targetBackendUrls.map(() => '?').join(',')
-      conditions.push(`sv.base_url IN (${placeholders})`)
+      conditions.push(`la.backend_url IN (${placeholders})`)
       binds.push(...targetBackendUrls)
 
       // 通知タイプフィルタ
@@ -153,7 +153,7 @@ export function useNotifications(config?: TimelineConfigV2): {
       )
       if (notificationFilter != null && notificationFilter.length > 0) {
         const typePlaceholders = notificationFilter.map(() => '?').join(',')
-        conditions.push(`nt.code IN (${typePlaceholders})`)
+        conditions.push(`nt.name IN (${typePlaceholders})`)
         binds.push(...notificationFilter)
       }
 

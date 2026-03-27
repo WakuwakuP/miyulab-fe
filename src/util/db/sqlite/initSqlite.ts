@@ -9,8 +9,10 @@
 
 import type { ChangeHint } from './connection'
 import { logSlowQueryExplain } from './explainLogger'
+import { buildTimelineKey, resolveLocalAccountId } from './helpers'
 import type { TableName } from './protocol'
 import type { DbHandle } from './types'
+import { resolvePostIdInternal } from './worker/handlers/statusHelpers'
 
 export type { DbHandle }
 
@@ -125,7 +127,6 @@ async function initMainThreadFallback(
     handleUpdateStatus,
     handleDeleteEvent,
     handleRemoveFromTimeline,
-    handleSyncFollows,
     handleEnsureLocalAccount,
     handleToggleReaction,
     handleBulkUpsertCustomEmojis,
@@ -225,7 +226,7 @@ async function initMainThreadFallback(
           batchResults: {
             belongingTags: [],
             customEmojis: [],
-            engagements: [],
+            interactions: [],
             media: [],
             mentions: [],
             polls: [],
@@ -265,7 +266,7 @@ async function initMainThreadFallback(
       const batchResults = {
         belongingTags: runBatch(request.batchSqls.belongingTags),
         customEmojis: runBatch(request.batchSqls.customEmojis),
-        engagements: runBatch(request.batchSqls.engagements),
+        interactions: runBatch(request.batchSqls.interactions),
         media: runBatch(request.batchSqls.media),
         mentions: runBatch(request.batchSqls.mentions),
         polls: runBatch(request.batchSqls.polls),
@@ -304,15 +305,21 @@ async function initMainThreadFallback(
             command.tag,
           )
           break
-        case 'updateStatusAction':
+        case 'updateStatusAction': {
+          const localAccountId = resolveLocalAccountId(db, command.backendUrl)
+          if (localAccountId == null) {
+            result = { changedTables: [] }
+            break
+          }
           result = handleUpdateStatusAction(
             db,
-            command.backendUrl,
+            localAccountId,
             command.statusId,
             command.action,
             command.value,
           )
           break
+        }
         case 'updateStatus':
           result = handleUpdateStatus(
             db,
@@ -320,24 +327,41 @@ async function initMainThreadFallback(
             command.backendUrl,
           )
           break
-        case 'handleDeleteEvent':
-          result = handleDeleteEvent(
-            db,
-            command.backendUrl,
-            command.statusId,
-            command.sourceTimelineType,
-            command.tag,
-          )
+        case 'handleDeleteEvent': {
+          const localAccountId = resolveLocalAccountId(db, command.backendUrl)
+          if (localAccountId == null) {
+            result = { changedTables: [] }
+            break
+          }
+          result = handleDeleteEvent(db, localAccountId, command.statusId)
           break
-        case 'removeFromTimeline':
+        }
+        case 'removeFromTimeline': {
+          const localAccountId = resolveLocalAccountId(db, command.backendUrl)
+          if (localAccountId == null) {
+            result = { changedTables: [] }
+            break
+          }
+          const timelineKey = buildTimelineKey(command.timelineType, {
+            tag: command.tag,
+          })
+          const postId = resolvePostIdInternal(
+            db,
+            localAccountId,
+            command.statusId,
+          )
+          if (postId == null) {
+            result = { changedTables: [] }
+            break
+          }
           result = handleRemoveFromTimeline(
             db,
-            command.backendUrl,
-            command.statusId,
-            command.timelineType,
-            command.tag,
+            localAccountId,
+            timelineKey,
+            postId,
           )
           break
+        }
         case 'addNotification':
           result = handleAddNotification(
             db,
@@ -364,13 +388,6 @@ async function initMainThreadFallback(
         case 'enforceMaxLength':
           result = handleEnforceMaxLength(db)
           break
-        case 'syncFollows':
-          result = handleSyncFollows(
-            db,
-            command.backendUrl,
-            command.accountsJson,
-          )
-          break
         case 'ensureLocalAccount':
           result = handleEnsureLocalAccount(
             db,
@@ -379,15 +396,21 @@ async function initMainThreadFallback(
           )
           break
 
-        case 'toggleReaction':
+        case 'toggleReaction': {
+          const localAccountId = resolveLocalAccountId(db, command.backendUrl)
+          if (localAccountId == null) {
+            result = { changedTables: [] }
+            break
+          }
           result = handleToggleReaction(
             db,
-            command.backendUrl,
+            localAccountId,
             command.statusId,
             command.value,
             command.emoji,
           )
           break
+        }
 
         case 'bulkUpsertCustomEmojis':
           result = handleBulkUpsertCustomEmojis(

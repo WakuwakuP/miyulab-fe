@@ -18,8 +18,6 @@ export {
   getNotifications,
   updateNotificationStatusAction,
 } from './notificationStore'
-// Shared pure functions
-export { createCompositeKey } from './shared'
 export type { SqliteStoredStatus } from './statusStore'
 // Status store
 export {
