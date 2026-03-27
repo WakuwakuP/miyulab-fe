@@ -39,7 +39,7 @@ function resolveAppIndex(
  * タイムライン種類に応じた Status をリアクティブに取得する Hook（SQLite 版）。
  *
  * @deprecated `useFilteredTimeline` を使用してください。
- * @param timelineType — DB の `channel_kinds.code` に対応するタイムライン種別
+ * @param timelineType — DB の `timeline_entries.timeline_key` に対応するタイムライン種別
  * @returns `appIndex` 付きの `StatusAddAppIndex[]`。`backendUrl` が apps に無い行は除外される
  * @see {@link useFilteredTimeline}
  */
@@ -65,12 +65,10 @@ export function useTimeline(timelineType: TimelineType): StatusAddAppIndex[] {
         SELECT ${STATUS_SELECT}
         FROM posts p
         ${statusBaseJoins}
-        INNER JOIN timeline_items ti ON p.post_id = ti.post_id
-        INNER JOIN timelines t ON t.timeline_id = ti.timeline_id
-        INNER JOIN channel_kinds ck ON ck.channel_kind_id = t.channel_kind_id
-        WHERE ck.code = ?
-          AND pb.backendUrl IN (${placeholders})
-        GROUP BY p.post_id
+        INNER JOIN timeline_entries te ON p.id = te.post_id
+        WHERE te.timeline_key = ?
+          AND pb.local_account_id IN (SELECT la.id FROM local_accounts la WHERE la.backend_url IN (${placeholders}))
+        GROUP BY p.id
         ORDER BY p.created_at_ms DESC
         LIMIT ?;
       `
@@ -125,7 +123,7 @@ export function useTimeline(timelineType: TimelineType): StatusAddAppIndex[] {
  * タグに応じた Status をリアクティブに取得する Hook（SQLite 版）。
  *
  * @deprecated `useFilteredTagTimeline` を使用してください。
- * @param tag — 検索するタグ（`hashtags.normalized_name` と一致、LOWER() で正規化）
+ * @param tag — 検索するタグ（`hashtags.name` と一致、LOWER() で正規化）
  * @param options — 省略可。`onlyMedia: true` のときメディア付き投稿のみ残す（JS 側フィルタ）
  * @returns `appIndex` 付きの `StatusAddAppIndex[]`。`backendUrl` が apps に無い行は除外される
  * @see {@link useFilteredTagTimeline}
@@ -156,11 +154,11 @@ export function useTagTimeline(
         SELECT ${STATUS_SELECT}
         FROM posts p
         ${statusBaseJoinsTag}
-        INNER JOIN post_hashtags pht ON p.post_id = pht.post_id
-        INNER JOIN hashtags ht ON pht.hashtag_id = ht.hashtag_id
-        WHERE ht.normalized_name = LOWER(?)
-          AND pb.server_id IN (SELECT sv.server_id FROM servers sv WHERE sv.base_url IN (${placeholders}))
-        GROUP BY p.post_id
+        INNER JOIN post_hashtags pht ON p.id = pht.post_id
+        INNER JOIN hashtags ht ON pht.hashtag_id = ht.id
+        WHERE ht.name = LOWER(?)
+          AND pb.local_account_id IN (SELECT la.id FROM local_accounts la WHERE la.backend_url IN (${placeholders}))
+        GROUP BY p.id
         ORDER BY p.created_at_ms DESC
         LIMIT ?;
       `

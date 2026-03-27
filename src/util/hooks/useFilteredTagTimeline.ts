@@ -196,21 +196,21 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
 
       if (tagMode === 'or') {
         const whereConditions = [
-          `ht.normalized_name IN (${tagPlaceholders})`,
-          `sv.base_url IN (${backendPlaceholders})`,
+          `ht.name IN (${tagPlaceholders})`,
+          `la.backend_url IN (${backendPlaceholders})`,
           ...filterConditions,
         ]
 
         phase1Sql = `
-          SELECT p.post_id, MIN(sv.base_url) AS backendUrl
+          SELECT p.id, MIN(la.backend_url) AS backendUrl
           FROM posts p
-          INNER JOIN posts_backends pb ON p.post_id = pb.post_id
-          INNER JOIN servers sv ON pb.server_id = sv.server_id
-          LEFT JOIN profiles pr ON p.author_profile_id = pr.profile_id
-          INNER JOIN post_hashtags pht ON p.post_id = pht.post_id
-          INNER JOIN hashtags ht ON pht.hashtag_id = ht.hashtag_id
+          LEFT JOIN post_backend_ids pbi ON p.id = pbi.post_id
+          LEFT JOIN local_accounts la ON pbi.local_account_id = la.id
+          LEFT JOIN profiles pr ON p.author_profile_id = pr.id
+          INNER JOIN post_hashtags pht ON p.id = pht.post_id
+          INNER JOIN hashtags ht ON pht.hashtag_id = ht.id
           WHERE ${whereConditions.join('\n            AND ')}
-          GROUP BY p.post_id
+          GROUP BY p.id
           ORDER BY p.created_at_ms DESC
           LIMIT ?;
         `
@@ -222,22 +222,22 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
         )
       } else {
         const whereConditions = [
-          `ht.normalized_name IN (${tagPlaceholders})`,
-          `sv.base_url IN (${backendPlaceholders})`,
+          `ht.name IN (${tagPlaceholders})`,
+          `la.backend_url IN (${backendPlaceholders})`,
           ...filterConditions,
         ]
 
         phase1Sql = `
-          SELECT p.post_id, MIN(sv.base_url) AS backendUrl
+          SELECT p.id, MIN(la.backend_url) AS backendUrl
           FROM posts p
-          INNER JOIN posts_backends pb ON p.post_id = pb.post_id
-          INNER JOIN servers sv ON pb.server_id = sv.server_id
-          LEFT JOIN profiles pr ON p.author_profile_id = pr.profile_id
-          INNER JOIN post_hashtags pht ON p.post_id = pht.post_id
-          INNER JOIN hashtags ht ON pht.hashtag_id = ht.hashtag_id
+          LEFT JOIN post_backend_ids pbi ON p.id = pbi.post_id
+          LEFT JOIN local_accounts la ON pbi.local_account_id = la.id
+          LEFT JOIN profiles pr ON p.author_profile_id = pr.id
+          INNER JOIN post_hashtags pht ON p.id = pht.post_id
+          INNER JOIN hashtags ht ON pht.hashtag_id = ht.id
           WHERE ${whereConditions.join('\n            AND ')}
-          GROUP BY p.post_id
-          HAVING COUNT(DISTINCT ht.normalized_name) = ?
+          GROUP BY p.id
+          HAVING COUNT(DISTINCT ht.name) = ?
           ORDER BY p.created_at_ms DESC
           LIMIT ?;
         `

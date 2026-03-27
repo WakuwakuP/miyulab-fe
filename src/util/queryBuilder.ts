@@ -91,11 +91,11 @@ export function detectReferencedAliases(whereClause: string): {
  * 必要な場合のみ明示的に追加するためのマッピング。
  */
 const COMPAT_JOINS: Record<string, string> = {
-  post_stats: 'LEFT JOIN post_stats ps_c ON ps_c.post_id = p.post_id',
-  profiles: 'LEFT JOIN profiles pr_c ON pr_c.profile_id = p.author_profile_id',
-  servers: 'LEFT JOIN servers sv_c ON sv_c.server_id = p.origin_server_id',
+  post_stats: 'LEFT JOIN post_stats ps_c ON ps_c.post_id = p.id',
+  profiles: 'LEFT JOIN profiles pr_c ON pr_c.id = p.author_profile_id',
+  servers: 'LEFT JOIN servers sv_c ON sv_c.id = p.origin_server_id',
   visibility_types:
-    'LEFT JOIN visibility_types vt_c ON vt_c.visibility_id = p.visibility_id',
+    'LEFT JOIN visibility_types vt_c ON vt_c.id = p.visibility_id',
 }
 
 /**
@@ -129,7 +129,7 @@ const LEGACY_COLUMN_REWRITES: {
     pattern: /\bp\.account_id\b/g,
   },
   {
-    expression: "COALESCE(vt_c.code, 'public')",
+    expression: "COALESCE(vt_c.name, 'public')",
     joinKey: 'visibility_types',
     pattern: /\bp\.visibility\b/g,
   },
@@ -154,7 +154,7 @@ const LEGACY_COLUMN_REWRITES: {
     pattern: /\bp\.replies_count\b/g,
   },
   {
-    expression: 'ht.normalized_name',
+    expression: 'ht.name',
     joinKey: null,
     pattern: /\bpbt\.tag\b/g,
   },

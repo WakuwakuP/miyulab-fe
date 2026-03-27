@@ -42,13 +42,15 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@types/slick-carousel": "^1.6.40",
+    "@vitest/coverage-v8": "^4.1.2",
     "babel-plugin-react-compiler": "^1.0.0",
     "globals": "^17.4.0",
     "husky": "9.1.7",
     "lint-staged": "^16.4.0",
     "postcss": "^8.5.8",
     "tailwindcss": "^4.2.2",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "vitest": "^4.1.2"
   },
   "license": "MIT",
   "name": "miyulab-fe",
@@ -64,7 +66,10 @@
     "check:fix": "biome check --write .",
     "dev": "next dev --experimental-https",
     "prepare": "husky install",
-    "start": "next start"
+    "start": "next start",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest"
   },
   "version": "0.1.0"
 }

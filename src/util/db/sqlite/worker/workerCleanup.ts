@@ -19,42 +19,37 @@ type HandlerResult = { changedTables: TableName[] }
 /**
  * MAX_LENGTH を超えるデータを削除
  *
- * MAX_LENGTH は Worker 側には環境変数がないため、引数で受け取る。
- * デフォルト値は 100000。
+ * タイムラインと通知それぞれに個別の上限を設定可能。
+ * Worker 側には環境変数がないため、引数で受け取る。
+ * デフォルト値はそれぞれ 100000。
  */
 export function handleEnforceMaxLength(
   db: DbExec,
-  maxLength = 100000,
+  maxTimeline = 100000,
+  maxNotifications = 100000,
 ): HandlerResult {
   const changedTables: TableName[] = []
 
   db.exec('BEGIN;')
   try {
-    // 全 timeline を取得してそれぞれ上限チェック
-    const timelines = db.exec('SELECT timeline_id FROM timelines;', {
-      returnValue: 'resultRows',
-    }) as number[][]
+    // 1. timeline_entries: 各 (local_account_id, timeline_key) グループで上限チェック
+    const groups = db.exec(
+      'SELECT local_account_id, timeline_key, COUNT(*) as cnt FROM timeline_entries GROUP BY local_account_id, timeline_key HAVING cnt > ?;',
+      { bind: [maxTimeline], returnValue: 'resultRows' },
+    ) as (number | string)[][]
 
     let postsDeleted = false
-    for (const [timelineId] of timelines) {
-      const countRows = db.exec(
-        'SELECT COUNT(*) FROM timeline_items WHERE timeline_id = ?;',
-        { bind: [timelineId], returnValue: 'resultRows' },
-      ) as number[][]
-      const count = countRows[0][0]
-
-      if (count > maxLength) {
-        // 1. timeline_items から最古のエントリを除去 (sort_key ASC)
+    for (const [laId, tlKey, cnt] of groups) {
+      const excess = (cnt as number) - maxTimeline
+      if (excess > 0) {
         db.exec(
-          `DELETE FROM timeline_items
-           WHERE timeline_item_id IN (
-             SELECT timeline_item_id
-             FROM timeline_items
-             WHERE timeline_id = ?
-             ORDER BY sort_key ASC
-             LIMIT ?
-           );`,
-          { bind: [timelineId, count - maxLength] },
+          `DELETE FROM timeline_entries WHERE id IN (
+            SELECT id FROM timeline_entries
+            WHERE local_account_id = ? AND timeline_key = ?
+            ORDER BY created_at_ms ASC
+            LIMIT ?
+          );`,
+          { bind: [laId, tlKey, excess] },
         )
         postsDeleted = true
       }
@@ -62,52 +57,48 @@ export function handleEnforceMaxLength(
 
     // どのタイムラインにも属さなくなった孤立 posts を削除
     // notifications.related_post_id の FK は ON DELETE CASCADE がないため、
-    // notifications から参照されている posts も除外する（NOT EXISTS で高速化）
+    // notifications から参照されている posts も除外する
     if (postsDeleted) {
       db.exec(
-        `DELETE FROM posts
-         WHERE NOT EXISTS (
-           SELECT 1 FROM timeline_items ti
-           WHERE ti.post_id = posts.post_id
-         )
-         AND NOT EXISTS (
-           SELECT 1 FROM notifications n
-           WHERE n.related_post_id = posts.post_id
-         );`,
+        `DELETE FROM posts WHERE id NOT IN (
+          SELECT post_id FROM timeline_entries
+        ) AND id NOT IN (
+          SELECT related_post_id FROM notifications WHERE related_post_id IS NOT NULL
+        );`,
       )
       changedTables.push('posts')
     }
 
-    // notifications の上限チェック
-    const notifCount = (
-      db.exec('SELECT COUNT(*) FROM notifications;', {
-        returnValue: 'resultRows',
-      }) as number[][]
-    )[0][0]
+    // 2. notifications: 各 local_account_id で上限チェック
+    const notifGroups = db.exec(
+      'SELECT local_account_id, COUNT(*) as cnt FROM notifications GROUP BY local_account_id HAVING cnt > ?;',
+      { bind: [maxNotifications], returnValue: 'resultRows' },
+    ) as number[][]
 
-    if (notifCount > maxLength) {
+    for (const [laId, cnt] of notifGroups) {
+      const excess = cnt - maxNotifications
+      if (excess > 0) {
+        db.exec(
+          `DELETE FROM notifications WHERE id IN (
+            SELECT id FROM notifications
+            WHERE local_account_id = ?
+            ORDER BY created_at_ms ASC
+            LIMIT ?
+          );`,
+          { bind: [laId, excess] },
+        )
+      }
+    }
+
+    if (notifGroups.length > 0) {
+      // 通知削除後、孤立 posts も削除する
       db.exec(
-        `DELETE FROM notifications WHERE notification_id IN (
-          SELECT notification_id FROM notifications
-          ORDER BY created_at_ms ASC
-          LIMIT ?
+        `DELETE FROM posts WHERE id NOT IN (
+          SELECT post_id FROM timeline_entries
+        ) AND id NOT IN (
+          SELECT related_post_id FROM notifications WHERE related_post_id IS NOT NULL
         );`,
-        { bind: [notifCount - maxLength] },
       )
-
-      // 通知削除後、通知だけが参照していた孤立 posts も削除する
-      db.exec(
-        `DELETE FROM posts
-         WHERE NOT EXISTS (
-           SELECT 1 FROM timeline_items ti
-           WHERE ti.post_id = posts.post_id
-         )
-         AND NOT EXISTS (
-           SELECT 1 FROM notifications n
-           WHERE n.related_post_id = posts.post_id
-         );`,
-      )
-
       if (!changedTables.includes('notifications')) {
         changedTables.push('notifications')
       }
