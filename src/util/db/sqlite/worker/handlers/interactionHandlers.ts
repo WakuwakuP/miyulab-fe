@@ -1,89 +1,68 @@
 /**
  * インタラクション関連のハンドラ群
  *
- * workerStatusStore.ts から分割。ロジック変更なし。
+ * 新スキーマ (v2) 対応版:
+ *   - updateInteraction / toggleReaction を helpers から使用
+ *   - resolvePostIdInternal(db, localAccountId, localId) で post_id 解決
+ *   - posts.reblog_of_post_id でリブログチェーン処理
+ *   - custom_emojis.id（旧 emoji_id）
  */
 
-import {
-  ACTION_TO_ENGAGEMENT,
-  ensureServer,
-  resolveLocalAccountId,
-  toggleEngagement,
-  toggleReaction,
-} from '../../shared'
+import { toggleReaction, updateInteraction } from '../../helpers'
 import { resolvePostIdInternal } from './statusHelpers'
 import type { DbExec, HandlerResult } from './types'
 
+/** 旧アクション名 → 新アクション名のマッピング */
+const ACTION_NAME_MAP: Record<string, string> = {
+  bookmarked: 'bookmark',
+  favourited: 'favourite',
+  reblogged: 'reblog',
+}
+
 export function handleUpdateStatusAction(
   db: DbExec,
-  backendUrl: string,
-  statusId: string,
+  localAccountId: number,
+  localId: string,
   action: 'reblogged' | 'favourited' | 'bookmarked',
   value: boolean,
 ): HandlerResult {
-  const postId = resolvePostIdInternal(db, backendUrl, statusId)
-  if (postId === null) return { changedTables: [] }
+  const postId = resolvePostIdInternal(db, localAccountId, localId)
+  if (postId === undefined) return { changedTables: [] }
 
-  db.exec('BEGIN;')
-  try {
-    const localAccountId = resolveLocalAccountId(db, backendUrl)
-    if (localAccountId !== null) {
-      const engagementCode = ACTION_TO_ENGAGEMENT[action]
-      if (engagementCode) {
-        // 自分自身のエンゲージメントをトグル
-        toggleEngagement(db, localAccountId, postId, engagementCode, value)
+  const normalizedAction = ACTION_NAME_MAP[action]
+  if (!normalizedAction) return { changedTables: [] }
 
-        // reblog チェーン: object_uri と reblog_of_uri から関連投稿を更新
-        const postInfo = db.exec(
-          'SELECT object_uri, reblog_of_uri FROM posts WHERE post_id = ?;',
-          { bind: [postId], returnValue: 'resultRows' },
-        ) as (string | null)[][]
+  // 自分自身のインタラクションを更新
+  updateInteraction(db, postId, localAccountId, normalizedAction, value)
 
-        if (postInfo.length > 0) {
-          const objectUri = postInfo[0][0] as string
-          const reblogOfUri = postInfo[0][1] as string | null
+  // リブログチェーン: reblog_of_post_id から関連投稿を更新
+  const postInfo = db.exec(
+    'SELECT reblog_of_post_id FROM posts WHERE id = ?;',
+    { bind: [postId], returnValue: 'resultRows' },
+  ) as (number | null)[][]
 
-          // reblog 元の投稿もトグル
-          if (reblogOfUri) {
-            const originalRows = db.exec(
-              'SELECT post_id FROM posts WHERE object_uri = ?;',
-              { bind: [reblogOfUri], returnValue: 'resultRows' },
-            ) as number[][]
-            if (originalRows.length > 0) {
-              toggleEngagement(
-                db,
-                localAccountId,
-                originalRows[0][0],
-                engagementCode,
-                value,
-              )
-            }
-          }
+  if (postInfo.length > 0) {
+    const reblogOfPostId = postInfo[0][0]
 
-          // この投稿を reblog として持つ他の投稿もトグル
-          if (objectUri) {
-            const reblogRows = db.exec(
-              `SELECT pr.post_id FROM posts_reblogs pr WHERE pr.original_uri = ?;`,
-              { bind: [objectUri], returnValue: 'resultRows' },
-            ) as number[][]
-            for (const row of reblogRows) {
-              toggleEngagement(
-                db,
-                localAccountId,
-                row[0],
-                engagementCode,
-                value,
-              )
-            }
-          }
-        }
-      }
+    // リブログ元の投稿もインタラクションを伝播
+    if (reblogOfPostId != null) {
+      updateInteraction(
+        db,
+        reblogOfPostId,
+        localAccountId,
+        normalizedAction,
+        value,
+      )
     }
 
-    db.exec('COMMIT;')
-  } catch (e) {
-    db.exec('ROLLBACK;')
-    throw e
+    // このポストを reblog している他の投稿にも伝播
+    const reblogRows = db.exec(
+      'SELECT id FROM posts WHERE reblog_of_post_id = ?;',
+      { bind: [postId], returnValue: 'resultRows' },
+    ) as number[][]
+    for (const row of reblogRows) {
+      updateInteraction(db, row[0], localAccountId, normalizedAction, value)
+    }
   }
 
   return { changedTables: ['posts'] }
@@ -91,42 +70,36 @@ export function handleUpdateStatusAction(
 
 export function handleToggleReaction(
   db: DbExec,
-  backendUrl: string,
-  statusId: string,
+  localAccountId: number,
+  localId: string,
   value: boolean,
   emoji: string,
 ): HandlerResult {
-  const postId = resolvePostIdInternal(db, backendUrl, statusId)
-  if (postId === null) return { changedTables: [] }
+  const postId = resolvePostIdInternal(db, localAccountId, localId)
+  if (postId === undefined) return { changedTables: [] }
 
-  const localAccountId = resolveLocalAccountId(db, backendUrl)
-  if (localAccountId === null) return { changedTables: [] }
+  // value=false の場合はリアクションをクリア
+  if (!value) {
+    toggleReaction(db, postId, localAccountId, null, null)
+    return { changedTables: ['posts'] }
+  }
 
   const isCustom = emoji.startsWith(':') && emoji.endsWith(':')
 
-  let emojiId: number | null = null
-  let emojiText: string | null = null
-
   if (isCustom) {
-    // カスタム絵文字: shortcode から custom_emojis を検索
+    // カスタム絵文字: shortcode から custom_emojis を検索して url を解決
     const shortcode = emoji.slice(1, -1)
-    const serverId = ensureServer(db, backendUrl)
     const rows = db.exec(
-      'SELECT emoji_id FROM custom_emojis WHERE server_id = ? AND shortcode = ?;',
-      { bind: [serverId, shortcode], returnValue: 'resultRows' },
-    ) as number[][]
-    if (rows.length > 0) {
-      emojiId = rows[0][0]
-    } else {
-      // custom_emojis に見つからない場合は shortcode を emoji_text に保存
-      emojiText = shortcode
-    }
+      'SELECT id, url FROM custom_emojis WHERE server_id = (SELECT server_id FROM local_accounts WHERE id = ?) AND shortcode = ?;',
+      { bind: [localAccountId, shortcode], returnValue: 'resultRows' },
+    ) as (number | string)[][]
+
+    const url = rows.length > 0 ? (rows[0][1] as string) : null
+    toggleReaction(db, postId, localAccountId, shortcode, url)
   } else {
     // Unicode 絵文字
-    emojiText = emoji
+    toggleReaction(db, postId, localAccountId, emoji, null)
   }
-
-  toggleReaction(db, localAccountId, postId, value, emojiId, emojiText)
 
   return { changedTables: ['posts'] }
 }

@@ -6,7 +6,6 @@
 export {
   handleBulkUpsertCustomEmojis,
   handleEnsureLocalAccount,
-  handleSyncFollows,
 } from './handlers/accountHandlers'
 export {
   handleToggleReaction,

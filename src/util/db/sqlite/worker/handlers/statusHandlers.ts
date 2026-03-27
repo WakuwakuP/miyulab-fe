@@ -1,45 +1,403 @@
 /**
  * Status 関連のハンドラ群
  *
- * workerStatusStore.ts から分割。ロジック変更なし。
+ * 新スキーマ (v2) 対応版:
+ *   - posts PK: post_id → id
+ *   - posts カラム: stored_at/has_media/media_count/has_spoiler/reblog_of_uri 削除
+ *   - 新カラム: last_fetched_at/edited_at_ms/plain_content/in_reply_to_account_acct/
+ *     reblog_of_post_id/quote_of_post_id/quote_state/application_name
+ *   - posts_backends → post_backend_ids (local_account_id 必須)
+ *   - timeline_items → timeline_entries (buildTimelineKey 使用)
+ *   - posts_reblogs テーブル廃止
+ *   - ensureProfileAlias 削除
+ *   - toggleEngagement → updateInteraction
+ *   - extractStatusColumns → extractPostColumns
+ *   - ensureServer(db, host) / ensureProfile(db, account, serverId)
+ *   - resolveDelayedReplyReferences / resolveDelayedRepostReferences 削除
+ *   - cachedPostItemKindId / setCachedPostItemKindId 削除
  */
 
 import type { Entity } from 'megalodon'
 import {
+  buildTimelineKey,
   ensureProfile,
-  ensureProfileAlias,
   ensureServer,
-  ensureTimeline,
-  extractStatusColumns,
+  extractPostColumns,
   resolveEmojisFromDb,
   resolveLocalAccountId,
-  resolvePostItemKindId,
+  syncLinkCard,
   syncPollData,
   syncPostCustomEmojis,
   syncPostHashtags,
-  syncPostLinkCard,
   syncProfileCustomEmojis,
-  toggleEngagement,
-} from '../../shared'
+  updateInteraction,
+} from '../../helpers'
 import {
   ensureReblogOriginalPost,
-  resolveDelayedReplyReferences,
-  resolveDelayedRepostReferences,
   syncPostMedia,
   syncPostStats,
   upsertMentionsInternal,
 } from './postSync'
 import {
-  cachedPostItemKindId,
   deriveAccountDomain,
   getLastInsertRowId,
   resolvePostIdInternal,
-  resolveReplyToPostId,
   resolveRepostOfPostId,
   resolveVisibilityId,
-  setCachedPostItemKindId,
 } from './statusHelpers'
 import type { DbExec, HandlerResult } from './types'
+
+// ================================================================
+// 内部ヘルパー: エンゲージメント同期
+// ================================================================
+
+/**
+ * サーバーから返されたフラグをDBに反映する。
+ * === true で設定、=== false で解除、null/undefined はスキップ（データなし）。
+ */
+function syncInteractions(
+  db: DbExec,
+  postId: number,
+  localAccountId: number,
+  status: Entity.Status,
+): void {
+  if (status.favourited === true) {
+    updateInteraction(db, postId, localAccountId, 'favourite', true)
+  } else if (status.favourited === false) {
+    updateInteraction(db, postId, localAccountId, 'favourite', false)
+  }
+  if (status.reblogged === true) {
+    updateInteraction(db, postId, localAccountId, 'reblog', true)
+  } else if (status.reblogged === false) {
+    updateInteraction(db, postId, localAccountId, 'reblog', false)
+  }
+  if (status.bookmarked === true) {
+    updateInteraction(db, postId, localAccountId, 'bookmark', true)
+  } else if (status.bookmarked === false) {
+    updateInteraction(db, postId, localAccountId, 'bookmark', false)
+  }
+}
+
+// ================================================================
+// 内部ヘルパー: 投稿の UPSERT コアロジック
+// ================================================================
+
+/**
+ * 単一投稿の UPSERT 処理。
+ * handleUpsertStatus / handleBulkUpsertStatuses の共通ロジック。
+ *
+ * @returns 保存された postId
+ */
+function upsertSingleStatus(
+  db: DbExec,
+  status: Entity.Status,
+  serverId: number,
+  localAccountId: number | null,
+  now: number,
+  timelineKey: string,
+  uriCache?: Map<string, number>,
+): number {
+  const normalizedUri = status.uri?.trim() || ''
+  const cols = extractPostColumns(status)
+  const visibilityId = resolveVisibilityId(db, cols.visibility_id.toString())
+  const profileId = ensureProfile(db, status.account, serverId)
+
+  const accountDomain = deriveAccountDomain(status.account)
+  const acctEmojis =
+    status.account.emojis.length > 0
+      ? status.account.emojis
+      : resolveEmojisFromDb(
+          db,
+          serverId,
+          status.account.display_name,
+          accountDomain,
+        )
+  if (acctEmojis.length > 0) {
+    syncProfileCustomEmojis(db, profileId, serverId, acctEmojis)
+  }
+
+  const isReblog = status.reblog != null ? 1 : 0
+  const reblogOfUri = status.reblog?.uri ?? null
+
+  // リブログ元投稿を先に保存（reblog_of_post_id 解決のため）
+  if (isReblog === 1 && status.reblog) {
+    ensureReblogOriginalPost(
+      db,
+      status.reblog,
+      '',
+      serverId,
+      now,
+      localAccountId,
+    )
+  }
+
+  // ================================================================
+  // 既存投稿の検索
+  // ================================================================
+
+  let postId: number | undefined = normalizedUri
+    ? uriCache?.get(normalizedUri)
+    : undefined
+  let existingIsOriginal = false
+
+  // URI で既存投稿を検索（リブログ行は対象外 — 同一 URI のリブログを上書きしない）
+  if (postId === undefined && normalizedUri) {
+    const existingRows = db.exec(
+      'SELECT id, is_reblog FROM posts WHERE object_uri = ?;',
+      { bind: [normalizedUri], returnValue: 'resultRows' },
+    ) as number[][]
+    if (existingRows.length > 0) {
+      if (isReblog === 1 && existingRows[0][1] === 0) {
+        existingIsOriginal = true
+      } else {
+        postId = existingRows[0][0]
+      }
+    }
+  }
+
+  // URI で見つからない場合、post_backend_ids で検索
+  if (postId === undefined && !existingIsOriginal && localAccountId !== null) {
+    postId = resolvePostIdInternal(db, localAccountId, status.id) ?? undefined
+  }
+
+  // Pleroma/Misskey: リブログの URI が元投稿と同一の場合、
+  // リブログ行に元投稿の URI を割り当てない（元投稿側が URI を保持する）
+  if (
+    postId === undefined &&
+    !existingIsOriginal &&
+    isReblog === 1 &&
+    normalizedUri !== '' &&
+    normalizedUri === reblogOfUri
+  ) {
+    existingIsOriginal = true
+  }
+
+  // クロスサーバーリブログの重複検出:
+  // 異なるバックエンドから同一リブログが届いた場合、
+  // 同一の元投稿URI＋同一投稿者の既存リブログを検索してマージする。
+  let foundViaReblogDedup = false
+  if (postId === undefined && isReblog === 1 && reblogOfUri) {
+    const rebloggerDomain = deriveAccountDomain(status.account)
+    if (rebloggerDomain) {
+      const existingReblog = db.exec(
+        `SELECT p.id FROM posts p
+         JOIN profiles pr ON pr.id = p.author_profile_id
+         JOIN servers s ON s.id = pr.server_id
+         JOIN posts orig ON orig.id = p.reblog_of_post_id
+         WHERE p.is_reblog = 1
+           AND orig.object_uri = ?
+           AND pr.username = ?
+           AND (s.host = ? OR pr.actor_uri LIKE ?)
+         LIMIT 1;`,
+        {
+          bind: [
+            reblogOfUri,
+            status.account.username,
+            rebloggerDomain,
+            `https://${rebloggerDomain}/%`,
+          ],
+          returnValue: 'resultRows',
+        },
+      ) as number[][]
+      if (existingReblog.length > 0) {
+        postId = existingReblog[0][0]
+        existingIsOriginal = false
+        foundViaReblogDedup = true
+      }
+    }
+  }
+
+  // ================================================================
+  // reblog_of_post_id の解決
+  // ================================================================
+  const reblogOfPostId =
+    isReblog === 1 ? resolveRepostOfPostId(db, reblogOfUri) : null
+
+  // ================================================================
+  // INSERT or UPDATE
+  // ================================================================
+
+  if (postId !== undefined) {
+    // author_profile_id は更新しない:
+    // ActivityPub では投稿の著者は不変。異なるバックエンドからの到着時は
+    // actor_uri の URL 形式差異により別プロファイルが生成されるため、
+    // 上書きすると不整合が起きる。INSERT 時にのみ設定する。
+    db.exec(
+      `UPDATE posts SET
+        last_fetched_at        = ?,
+        visibility_id          = ?,
+        language               = ?,
+        content_html           = ?,
+        spoiler_text           = ?,
+        canonical_url          = ?,
+        is_reblog              = ?,
+        is_sensitive           = ?,
+        in_reply_to_uri        = ?,
+        in_reply_to_account_acct = ?,
+        edited_at_ms           = ?,
+        plain_content          = ?,
+        quote_state            = ?,
+        is_local_only          = ?,
+        application_name       = ?,
+        reblog_of_post_id      = ?,
+        quote_of_post_id       = ?
+      WHERE id = ?;`,
+      {
+        bind: [
+          now,
+          visibilityId ?? cols.visibility_id,
+          cols.language,
+          cols.content_html,
+          cols.spoiler_text,
+          cols.canonical_url,
+          isReblog,
+          cols.is_sensitive,
+          cols.in_reply_to_uri,
+          cols.in_reply_to_account_acct,
+          cols.edited_at_ms,
+          cols.plain_content,
+          cols.quote_state,
+          cols.is_local_only,
+          cols.application_name,
+          reblogOfPostId,
+          null, // quote_of_post_id: 将来拡張用
+          postId,
+        ],
+      },
+    )
+  } else {
+    const insertUri = existingIsOriginal ? '' : normalizedUri
+    db.exec(
+      `INSERT INTO posts (
+        object_uri, origin_server_id, created_at_ms, last_fetched_at,
+        author_profile_id, visibility_id, language,
+        content_html, spoiler_text, canonical_url,
+        is_reblog, is_sensitive,
+        in_reply_to_uri, in_reply_to_account_acct,
+        is_local_only, edited_at_ms,
+        plain_content, quote_state, application_name,
+        reblog_of_post_id, quote_of_post_id
+      ) VALUES (?,?,?,?, ?,?,?, ?,?,?, ?,?, ?,?, ?,?, ?,?,?, ?,?);`,
+      {
+        bind: [
+          insertUri,
+          serverId,
+          cols.created_at_ms,
+          now,
+          profileId,
+          visibilityId ?? cols.visibility_id,
+          cols.language,
+          cols.content_html,
+          cols.spoiler_text,
+          cols.canonical_url,
+          isReblog,
+          cols.is_sensitive,
+          cols.in_reply_to_uri,
+          cols.in_reply_to_account_acct,
+          cols.is_local_only,
+          cols.edited_at_ms,
+          cols.plain_content,
+          cols.quote_state,
+          cols.application_name,
+          reblogOfPostId,
+          null, // quote_of_post_id
+        ],
+      },
+    )
+    postId = getLastInsertRowId(db)
+  }
+
+  // リブログマージ時: 既存行の object_uri が空で、新しい URI が
+  // 有効な Announce URI の場合は補完する
+  if (foundViaReblogDedup && normalizedUri && normalizedUri !== reblogOfUri) {
+    db.exec(
+      `UPDATE posts SET object_uri = ? WHERE id = ? AND object_uri = '';`,
+      { bind: [normalizedUri, postId] },
+    )
+    uriCache?.set(normalizedUri, postId)
+  }
+
+  // 同一 URI リブログの場合はキャッシュしない（元投稿が URI を使えるようにする）
+  if (
+    uriCache &&
+    normalizedUri &&
+    !(isReblog === 1 && normalizedUri === reblogOfUri)
+  ) {
+    uriCache.set(normalizedUri, postId)
+  }
+
+  // ================================================================
+  // post_backend_ids に登録
+  // ================================================================
+  if (localAccountId !== null) {
+    db.exec(
+      `INSERT OR IGNORE INTO post_backend_ids (post_id, local_account_id, local_id, server_id)
+       VALUES (?, ?, ?, ?);`,
+      { bind: [postId, localAccountId, status.id, serverId] },
+    )
+  }
+
+  // ================================================================
+  // timeline_entries に登録
+  // ================================================================
+  if (localAccountId !== null) {
+    const displayPostId = isReblog === 1 ? reblogOfPostId : null
+    db.exec(
+      `INSERT OR IGNORE INTO timeline_entries (local_account_id, timeline_key, post_id, display_post_id, created_at_ms)
+       VALUES (?, ?, ?, ?, ?);`,
+      {
+        bind: [
+          localAccountId,
+          timelineKey,
+          postId,
+          displayPostId,
+          cols.created_at_ms,
+        ],
+      },
+    )
+  }
+
+  // ================================================================
+  // 関連データの同期
+  // ================================================================
+  upsertMentionsInternal(db, postId, status.mentions)
+  syncPostMedia(db, postId, status.media_attachments)
+  syncPostStats(db, postId, status)
+
+  // エンゲージメント同期
+  if (localAccountId !== null) {
+    syncInteractions(db, postId, localAccountId, status)
+  }
+
+  // カスタム絵文字
+  const statusEmojisResolved =
+    status.emojis?.length > 0
+      ? status.emojis
+      : resolveEmojisFromDb(
+          db,
+          serverId,
+          status.plain_content ?? null,
+          accountDomain,
+        )
+  const accountEmojisResolved =
+    status.account?.emojis?.length > 0
+      ? status.account.emojis
+      : resolveEmojisFromDb(
+          db,
+          serverId,
+          status.account?.display_name ?? null,
+          accountDomain,
+        )
+  syncPostCustomEmojis(db, postId, serverId, [
+    ...statusEmojisResolved,
+    ...accountEmojisResolved,
+  ])
+  syncPostHashtags(db, postId, status.tags)
+  syncPollData(db, postId, status.poll)
+  syncLinkCard(db, postId, status.card)
+
+  return postId
+}
 
 // ================================================================
 // 公開ハンドラ
@@ -53,344 +411,27 @@ export function handleUpsertStatus(
   tag?: string,
 ): HandlerResult {
   const status = JSON.parse(statusJson) as Entity.Status
-  const normalizedUri = status.uri?.trim() || ''
   const now = Date.now()
-  const created_at_ms = new Date(status.created_at).getTime()
-  const cols = extractStatusColumns(status)
 
   db.exec('BEGIN;')
   try {
-    const serverId = ensureServer(db, backendUrl)
-    const visibilityId = resolveVisibilityId(db, cols.visibility)
-    const profileId = ensureProfile(db, status.account)
-    ensureProfileAlias(db, profileId, serverId, status.account.id)
-    const acctEmojis =
-      status.account.emojis.length > 0
-        ? status.account.emojis
-        : resolveEmojisFromDb(
-            db,
-            serverId,
-            status.account.display_name,
-            backendUrl,
-          )
-    if (acctEmojis.length > 0) {
-      syncProfileCustomEmojis(db, profileId, serverId, acctEmojis)
-    }
-
-    let postId: number | undefined
-    let existingIsOriginal = false
-
-    // URI で既存投稿を検索
-    if (normalizedUri) {
-      const existingRows = db.exec(
-        'SELECT post_id, is_reblog FROM posts WHERE object_uri = ?;',
-        { bind: [normalizedUri], returnValue: 'resultRows' },
-      ) as number[][]
-      if (existingRows.length > 0) {
-        if (cols.is_reblog === 1 && existingRows[0][1] === 0) {
-          existingIsOriginal = true
-        } else {
-          postId = existingRows[0][0]
-        }
-      }
-    }
-
-    // URI で見つからない場合、posts_backends で検索
-    if (postId === undefined && !existingIsOriginal) {
-      postId = resolvePostIdInternal(db, backendUrl, status.id) ?? undefined
-    }
-
-    // Pleroma/Misskey: リブログの URI が元投稿と同一の場合、
-    // リブログ行に元投稿の URI を割り当てない（元投稿側が URI を保持する）
-    if (
-      postId === undefined &&
-      !existingIsOriginal &&
-      cols.is_reblog === 1 &&
-      normalizedUri !== '' &&
-      normalizedUri === cols.reblog_of_uri
-    ) {
-      existingIsOriginal = true
-    }
-
-    // クロスサーバーリブログの重複検出:
-    // 異なるバックエンドから同一リブログが届いた場合（例: Pleroma では URI が
-    // 元投稿と同一になり空で保存される一方、Misskey では Announce URI が付与される）、
-    // 同一の元投稿URI＋同一投稿者の既存リブログを検索してマージする。
-    // author_profile_id はバックエンドごとに URL 形式が異なるため一致しない
-    // ことがある（例: Pleroma /users/X vs Misskey /@X）ため、
-    // username + domain で照合する。
-    let foundViaReblogDedup = false
-    if (postId === undefined && cols.is_reblog === 1 && cols.reblog_of_uri) {
-      const rebloggerDomain = deriveAccountDomain(status.account)
-      if (rebloggerDomain) {
-        const existingReblog = db.exec(
-          `SELECT p.post_id FROM posts p
-           JOIN profiles pr ON pr.profile_id = p.author_profile_id
-           WHERE p.is_reblog = 1 AND p.reblog_of_uri = ?
-             AND pr.username = ?
-             AND (pr.domain = ? OR pr.actor_uri LIKE ?)
-           LIMIT 1;`,
-          {
-            bind: [
-              cols.reblog_of_uri,
-              status.account.username,
-              rebloggerDomain,
-              `https://${rebloggerDomain}/%`,
-            ],
-            returnValue: 'resultRows',
-          },
-        ) as number[][]
-        if (existingReblog.length > 0) {
-          postId = existingReblog[0][0]
-          existingIsOriginal = false
-          foundViaReblogDedup = true
-        }
-      }
-    }
-
-    const replyToPostId = resolveReplyToPostId(
-      db,
-      cols.in_reply_to_id,
-      serverId,
-    )
-    const repostOfPostId =
-      cols.is_reblog === 1
-        ? resolveRepostOfPostId(db, cols.reblog_of_uri)
-        : null
-
-    if (postId !== undefined) {
-      // author_profile_id は更新しない:
-      // ActivityPub では投稿の著者は不変であり、同一バックエンドからの
-      // 再取得では同じ profile_id が返るため no-op。
-      // 異なるバックエンドからの到着時は actor_uri の URL 形式差異
-      // (例: /users/X vs /@X) により別プロファイルが生成されるため、
-      // 上書きすると spb が選択するバックエンドの profile_aliases が
-      // 存在しなくなる。INSERT 時にのみ設定する。
-      db.exec(
-        `UPDATE posts SET
-          stored_at          = ?,
-          visibility_id      = ?,
-          language           = ?,
-          content_html       = ?,
-          spoiler_text       = ?,
-          canonical_url      = ?,
-          has_media          = ?,
-          media_count        = ?,
-          is_reblog          = ?,
-          reblog_of_uri      = ?,
-          is_sensitive       = ?,
-          has_spoiler        = ?,
-          in_reply_to_id     = ?,
-          edited_at          = ?,
-          reply_to_post_id   = ?,
-          repost_of_post_id  = ?
-        WHERE post_id = ?;`,
-        {
-          bind: [
-            now,
-            visibilityId,
-            cols.language,
-            cols.content_html,
-            cols.spoiler_text,
-            cols.canonical_url,
-            cols.has_media,
-            cols.media_count,
-            cols.is_reblog,
-            cols.reblog_of_uri,
-            cols.is_sensitive,
-            cols.has_spoiler,
-            cols.in_reply_to_id,
-            cols.edited_at,
-            replyToPostId,
-            repostOfPostId,
-            postId,
-          ],
-        },
-      )
-    } else {
-      const insertUri = existingIsOriginal ? '' : cols.uri
-      db.exec(
-        `INSERT INTO posts (
-          object_uri, origin_server_id, created_at_ms, stored_at,
-          author_profile_id, visibility_id, language,
-          content_html, spoiler_text, canonical_url,
-          has_media, media_count, is_reblog, reblog_of_uri,
-          is_sensitive, has_spoiler, in_reply_to_id,
-          is_local_only, edited_at,
-          reply_to_post_id, repost_of_post_id
-        ) VALUES (?,?,?,?, ?,?,?, ?,?,?, ?,?,?,?, ?,?,?, ?,?, ?,?);`,
-        {
-          bind: [
-            insertUri,
-            serverId,
-            created_at_ms,
-            now,
-            profileId,
-            visibilityId,
-            cols.language,
-            cols.content_html,
-            cols.spoiler_text,
-            cols.canonical_url,
-            cols.has_media,
-            cols.media_count,
-            cols.is_reblog,
-            cols.reblog_of_uri,
-            cols.is_sensitive,
-            cols.has_spoiler,
-            cols.in_reply_to_id,
-            0,
-            cols.edited_at,
-            replyToPostId,
-            repostOfPostId,
-          ],
-        },
-      )
-      postId = getLastInsertRowId(db)
-    }
-
-    // リブログマージ時: 既存行の object_uri が空で、新しい URI が
-    // 有効な Announce URI の場合は補完する
-    if (
-      foundViaReblogDedup &&
-      normalizedUri &&
-      normalizedUri !== cols.reblog_of_uri
-    ) {
-      db.exec(
-        `UPDATE posts SET object_uri = ? WHERE post_id = ? AND object_uri = '';`,
-        { bind: [normalizedUri, postId] },
-      )
-    }
-
-    db.exec(
-      `INSERT OR IGNORE INTO posts_backends (server_id, local_id, post_id, backendUrl)
-       VALUES (?, ?, ?, ?);`,
-      { bind: [serverId, status.id, postId, backendUrl] },
-    )
-
-    // Delayed resolution: update other posts that reference this post
-    resolveDelayedReplyReferences(db, postId, status.id, serverId)
-    if (normalizedUri) {
-      resolveDelayedRepostReferences(db, postId, normalizedUri)
-    }
-
-    // timeline_items に登録（timelines が未作成なら自動作成）
+    const host = new URL(backendUrl).host
+    const serverId = ensureServer(db, host)
     const localAccountId = resolveLocalAccountId(db, backendUrl)
-    const isAccountSpecificTimeline =
-      timelineType === 'home' || timelineType === 'notification'
-    const timelineId = ensureTimeline(
+    const timelineKey = buildTimelineKey(timelineType, { tag })
+
+    const postId = upsertSingleStatus(
       db,
+      status,
       serverId,
-      timelineType,
-      tag,
-      isAccountSpecificTimeline ? localAccountId : null,
-    )
-    if (cachedPostItemKindId === null) {
-      setCachedPostItemKindId(resolvePostItemKindId(db))
-    }
-    const postItemKindId = cachedPostItemKindId
-    db.exec(
-      `INSERT OR IGNORE INTO timeline_items (timeline_id, timeline_item_kind_id, post_id, sort_key, inserted_at)
-       VALUES (?, ?, ?, ?, ?);`,
-      { bind: [timelineId, postItemKindId, postId, created_at_ms, now] },
+      localAccountId,
+      now,
+      timelineKey,
     )
 
-    upsertMentionsInternal(db, postId, status.mentions, serverId)
-    syncPostMedia(db, postId, status.media_attachments, status.sensitive)
-    syncPostStats(db, postId, status)
-
-    // エンゲージメント同期（サーバーから返されたフラグをDBに反映）
-    // === true で設定、=== false で解除、null/undefined はスキップ（データなし）
-    if (localAccountId !== null) {
-      if (status.favourited === true) {
-        toggleEngagement(db, localAccountId, postId, 'favourite', true)
-      } else if (status.favourited === false) {
-        toggleEngagement(db, localAccountId, postId, 'favourite', false)
-      }
-      if (status.reblogged === true) {
-        toggleEngagement(db, localAccountId, postId, 'reblog', true)
-      } else if (status.reblogged === false) {
-        toggleEngagement(db, localAccountId, postId, 'reblog', false)
-      }
-      if (status.bookmarked === true) {
-        toggleEngagement(db, localAccountId, postId, 'bookmark', true)
-      } else if (status.bookmarked === false) {
-        toggleEngagement(db, localAccountId, postId, 'bookmark', false)
-      }
-    }
-
-    const statusEmojisResolved =
-      status.emojis?.length > 0
-        ? status.emojis
-        : resolveEmojisFromDb(
-            db,
-            serverId,
-            status.plain_content ?? null,
-            backendUrl,
-          )
-    const accountEmojisResolved =
-      status.account?.emojis?.length > 0
-        ? status.account.emojis
-        : resolveEmojisFromDb(
-            db,
-            serverId,
-            status.account?.display_name ?? null,
-            backendUrl,
-          )
-    syncPostCustomEmojis(
-      db,
-      postId,
-      serverId,
-      statusEmojisResolved,
-      accountEmojisResolved,
-    )
-    syncPostHashtags(db, postId, status.tags)
-
-    // If a specific tag was provided (e.g. from tag timeline), ensure it's in post_hashtags too
+    // tag timeline から来た場合、ハッシュタグを確保する
     if (tag) {
-      const normalizedTag = tag.toLowerCase()
-      db.exec(
-        `INSERT OR IGNORE INTO hashtags (normalized_name, display_name) VALUES (?, ?);`,
-        { bind: [normalizedTag, tag] },
-      )
-      const tagRows = db.exec(
-        'SELECT hashtag_id FROM hashtags WHERE normalized_name = ?;',
-        { bind: [normalizedTag], returnValue: 'resultRows' },
-      ) as number[][]
-      if (tagRows.length > 0) {
-        db.exec(
-          'INSERT OR IGNORE INTO post_hashtags (post_id, hashtag_id) VALUES (?, ?);',
-          { bind: [postId, tagRows[0][0]] },
-        )
-      }
-    }
-    syncPollData(db, postId, status.poll)
-    syncPostLinkCard(db, postId, status.card)
-
-    if (cols.is_reblog === 1 && cols.reblog_of_uri) {
-      db.exec(
-        `INSERT OR REPLACE INTO posts_reblogs (post_id, original_uri, reblogger_acct, reblogged_at_ms)
-         VALUES (?, ?, ?, ?);`,
-        {
-          bind: [
-            postId,
-            cols.reblog_of_uri,
-            status.account.acct,
-            created_at_ms,
-          ],
-        },
-      )
-
-      // リブログ元投稿も保存（reblog フィールド復元用）
-      if (status.reblog) {
-        ensureReblogOriginalPost(
-          db,
-          status.reblog,
-          backendUrl,
-          serverId,
-          now,
-          localAccountId,
-        )
-      }
+      ensureTagForPost(db, postId, tag)
     }
 
     db.exec('COMMIT;')
@@ -416,345 +457,30 @@ export function handleBulkUpsertStatuses(
 
   db.exec('BEGIN;')
   try {
-    const serverId = ensureServer(db, backendUrl)
+    const host = new URL(backendUrl).host
+    const serverId = ensureServer(db, host)
     const localAccountId = resolveLocalAccountId(db, backendUrl)
-    const isAccountSpecificTimeline =
-      timelineType === 'home' || timelineType === 'notification'
-    const timelineId = ensureTimeline(
-      db,
-      serverId,
-      timelineType,
-      tag,
-      isAccountSpecificTimeline ? localAccountId : null,
-    )
-    if (cachedPostItemKindId === null) {
-      setCachedPostItemKindId(resolvePostItemKindId(db))
-    }
-    const postItemKindId = cachedPostItemKindId
+    const timelineKey = buildTimelineKey(timelineType, { tag })
 
     for (const sJson of statusesJson) {
       const status = JSON.parse(sJson) as Entity.Status
-      const normalizedUri = status.uri?.trim() || ''
-      const created_at_ms = new Date(status.created_at).getTime()
-      const cols = extractStatusColumns(status)
-      const visibilityId = resolveVisibilityId(db, cols.visibility)
-      const profileId = ensureProfile(db, status.account)
-      ensureProfileAlias(db, profileId, serverId, status.account.id)
-      const bulkAcctEmojis =
-        status.account.emojis.length > 0
-          ? status.account.emojis
-          : resolveEmojisFromDb(
-              db,
-              serverId,
-              status.account.display_name,
-              backendUrl,
-            )
-      if (bulkAcctEmojis.length > 0) {
-        syncProfileCustomEmojis(db, profileId, serverId, bulkAcctEmojis)
-      }
 
-      let postId: number | undefined = normalizedUri
-        ? uriCache.get(normalizedUri)
-        : undefined
-
-      // リブログが元投稿を上書きしないようにする
-      let existingIsOriginal = false
-
-      if (postId === undefined && normalizedUri) {
-        const existingRows = db.exec(
-          'SELECT post_id, is_reblog FROM posts WHERE object_uri = ?;',
-          { bind: [normalizedUri], returnValue: 'resultRows' },
-        ) as number[][]
-        if (existingRows.length > 0) {
-          if (cols.is_reblog === 1 && existingRows[0][1] === 0) {
-            existingIsOriginal = true
-          } else {
-            postId = existingRows[0][0]
-          }
-        }
-      }
-
-      // URI で見つからない場合、posts_backends で検索
-      if (postId === undefined && !existingIsOriginal) {
-        postId = resolvePostIdInternal(db, backendUrl, status.id) ?? undefined
-      }
-
-      // Pleroma/Misskey: リブログの URI が元投稿と同一の場合、
-      // リブログ行に元投稿の URI を割り当てない
-      if (
-        postId === undefined &&
-        !existingIsOriginal &&
-        cols.is_reblog === 1 &&
-        normalizedUri !== '' &&
-        normalizedUri === cols.reblog_of_uri
-      ) {
-        existingIsOriginal = true
-      }
-
-      // クロスサーバーリブログの重複検出（handleUpsertStatus と同一ロジック）
-      let foundViaReblogDedup = false
-      if (postId === undefined && cols.is_reblog === 1 && cols.reblog_of_uri) {
-        const rebloggerDomain = deriveAccountDomain(status.account)
-        if (rebloggerDomain) {
-          const existingReblog = db.exec(
-            `SELECT p.post_id FROM posts p
-             JOIN profiles pr ON pr.profile_id = p.author_profile_id
-             WHERE p.is_reblog = 1 AND p.reblog_of_uri = ?
-               AND pr.username = ?
-               AND (pr.domain = ? OR pr.actor_uri LIKE ?)
-             LIMIT 1;`,
-            {
-              bind: [
-                cols.reblog_of_uri,
-                status.account.username,
-                rebloggerDomain,
-                `https://${rebloggerDomain}/%`,
-              ],
-              returnValue: 'resultRows',
-            },
-          ) as number[][]
-          if (existingReblog.length > 0) {
-            postId = existingReblog[0][0]
-            existingIsOriginal = false
-            foundViaReblogDedup = true
-          }
-        }
-      }
-
-      const replyToPostId = resolveReplyToPostId(
+      const postId = upsertSingleStatus(
         db,
-        cols.in_reply_to_id,
+        status,
         serverId,
-      )
-      const repostOfPostId =
-        cols.is_reblog === 1
-          ? resolveRepostOfPostId(db, cols.reblog_of_uri)
-          : null
-
-      if (postId !== undefined) {
-        // author_profile_id は更新しない（handleUpsertStatus と同一方針）
-        db.exec(
-          `UPDATE posts SET
-            stored_at          = ?,
-            visibility_id      = ?,
-            language           = ?,
-            content_html       = ?,
-            spoiler_text       = ?,
-            canonical_url      = ?,
-            has_media          = ?,
-            media_count        = ?,
-            is_reblog          = ?,
-            reblog_of_uri      = ?,
-            is_sensitive       = ?,
-            has_spoiler        = ?,
-            in_reply_to_id     = ?,
-            edited_at          = ?,
-            reply_to_post_id   = ?,
-            repost_of_post_id  = ?
-          WHERE post_id = ?;`,
-          {
-            bind: [
-              now,
-              visibilityId,
-              cols.language,
-              cols.content_html,
-              cols.spoiler_text,
-              cols.canonical_url,
-              cols.has_media,
-              cols.media_count,
-              cols.is_reblog,
-              cols.reblog_of_uri,
-              cols.is_sensitive,
-              cols.has_spoiler,
-              cols.in_reply_to_id,
-              cols.edited_at,
-              replyToPostId,
-              repostOfPostId,
-              postId,
-            ],
-          },
-        )
-      } else {
-        const insertUri = existingIsOriginal ? '' : cols.uri
-        db.exec(
-          `INSERT INTO posts (
-            object_uri, origin_server_id, created_at_ms, stored_at,
-            author_profile_id, visibility_id, language,
-            content_html, spoiler_text, canonical_url,
-            has_media, media_count, is_reblog, reblog_of_uri,
-            is_sensitive, has_spoiler, in_reply_to_id,
-            is_local_only, edited_at,
-            reply_to_post_id, repost_of_post_id
-          ) VALUES (?,?,?,?, ?,?,?, ?,?,?, ?,?,?,?, ?,?,?, ?,?, ?,?);`,
-          {
-            bind: [
-              insertUri,
-              serverId,
-              created_at_ms,
-              now,
-              profileId,
-              visibilityId,
-              cols.language,
-              cols.content_html,
-              cols.spoiler_text,
-              cols.canonical_url,
-              cols.has_media,
-              cols.media_count,
-              cols.is_reblog,
-              cols.reblog_of_uri,
-              cols.is_sensitive,
-              cols.has_spoiler,
-              cols.in_reply_to_id,
-              0,
-              cols.edited_at,
-              replyToPostId,
-              repostOfPostId,
-            ],
-          },
-        )
-        postId = getLastInsertRowId(db)
-      }
-
-      // リブログマージ時: 既存行の object_uri が空の場合、実 Announce URI を補完する
-      if (
-        foundViaReblogDedup &&
-        normalizedUri &&
-        normalizedUri !== cols.reblog_of_uri
-      ) {
-        db.exec(
-          `UPDATE posts SET object_uri = ? WHERE post_id = ? AND object_uri = '';`,
-          { bind: [normalizedUri, postId] },
-        )
-        uriCache.set(normalizedUri, postId)
-      }
-
-      // 同一 URI リブログの場合はキャッシュしない（元投稿が URI を使えるようにする）
-      if (
-        normalizedUri &&
-        !(cols.is_reblog === 1 && normalizedUri === cols.reblog_of_uri)
-      ) {
-        uriCache.set(normalizedUri, postId)
-      }
-
-      db.exec(
-        `INSERT OR IGNORE INTO posts_backends (server_id, local_id, post_id, backendUrl)
-         VALUES (?, ?, ?, ?);`,
-        { bind: [serverId, status.id, postId, backendUrl] },
+        localAccountId,
+        now,
+        timelineKey,
+        uriCache,
       )
 
-      // Delayed resolution: update other posts that reference this post
-      resolveDelayedReplyReferences(db, postId, status.id, serverId)
-      if (normalizedUri) {
-        resolveDelayedRepostReferences(db, postId, normalizedUri)
-      }
-
-      // timeline_items に登録
-      db.exec(
-        `INSERT OR IGNORE INTO timeline_items (timeline_id, timeline_item_kind_id, post_id, sort_key, inserted_at)
-         VALUES (?, ?, ?, ?, ?);`,
-        { bind: [timelineId, postItemKindId, postId, created_at_ms, now] },
-      )
-
-      upsertMentionsInternal(db, postId, status.mentions, serverId)
-      syncPostMedia(db, postId, status.media_attachments, status.sensitive)
-      syncPostStats(db, postId, status)
-
-      // エンゲージメント同期（サーバーから返されたフラグをDBに反映）
-      // === true で設定、=== false で解除、null/undefined はスキップ（データなし）
-      if (localAccountId !== null) {
-        if (status.favourited === true) {
-          toggleEngagement(db, localAccountId, postId, 'favourite', true)
-        } else if (status.favourited === false) {
-          toggleEngagement(db, localAccountId, postId, 'favourite', false)
-        }
-        if (status.reblogged === true) {
-          toggleEngagement(db, localAccountId, postId, 'reblog', true)
-        } else if (status.reblogged === false) {
-          toggleEngagement(db, localAccountId, postId, 'reblog', false)
-        }
-        if (status.bookmarked === true) {
-          toggleEngagement(db, localAccountId, postId, 'bookmark', true)
-        } else if (status.bookmarked === false) {
-          toggleEngagement(db, localAccountId, postId, 'bookmark', false)
-        }
-      }
-
-      const bulkStatusEmojis =
-        status.emojis?.length > 0
-          ? status.emojis
-          : resolveEmojisFromDb(
-              db,
-              serverId,
-              status.plain_content ?? null,
-              backendUrl,
-            )
-      const bulkAccountEmojis =
-        status.account?.emojis?.length > 0
-          ? status.account.emojis
-          : resolveEmojisFromDb(
-              db,
-              serverId,
-              status.account?.display_name ?? null,
-              backendUrl,
-            )
-      syncPostCustomEmojis(
-        db,
-        postId,
-        serverId,
-        bulkStatusEmojis,
-        bulkAccountEmojis,
-      )
-      syncPostHashtags(db, postId, status.tags)
-
-      // If a specific tag was provided (e.g. from tag timeline), ensure it's in post_hashtags too
+      // tag timeline から来た場合、ハッシュタグを確保する
       if (tag) {
-        const normalizedTag = tag.toLowerCase()
-        db.exec(
-          `INSERT OR IGNORE INTO hashtags (normalized_name, display_name) VALUES (?, ?);`,
-          { bind: [normalizedTag, tag] },
-        )
-        const tagRows = db.exec(
-          'SELECT hashtag_id FROM hashtags WHERE normalized_name = ?;',
-          { bind: [normalizedTag], returnValue: 'resultRows' },
-        ) as number[][]
-        if (tagRows.length > 0) {
-          db.exec(
-            'INSERT OR IGNORE INTO post_hashtags (post_id, hashtag_id) VALUES (?, ?);',
-            { bind: [postId, tagRows[0][0]] },
-          )
-        }
-      }
-      syncPollData(db, postId, status.poll)
-      syncPostLinkCard(db, postId, status.card)
-
-      // リブログ関係を posts_reblogs に記録（元投稿の URI が存在する場合のみ）
-      if (cols.is_reblog === 1 && cols.reblog_of_uri) {
-        db.exec(
-          `INSERT OR REPLACE INTO posts_reblogs (post_id, original_uri, reblogger_acct, reblogged_at_ms)
-           VALUES (?, ?, ?, ?);`,
-          {
-            bind: [
-              postId,
-              cols.reblog_of_uri,
-              status.account.acct,
-              created_at_ms,
-            ],
-          },
-        )
-
-        // リブログ元投稿も保存（reblog フィールド復元用）
-        if (status.reblog) {
-          ensureReblogOriginalPost(
-            db,
-            status.reblog,
-            backendUrl,
-            serverId,
-            now,
-            localAccountId,
-          )
-        }
+        ensureTagForPost(db, postId, tag)
       }
     }
+
     db.exec('COMMIT;')
   } catch (e) {
     db.exec('ROLLBACK;')
@@ -762,4 +488,29 @@ export function handleBulkUpsertStatuses(
   }
 
   return { changedTables: ['posts'] }
+}
+
+// ================================================================
+// 内部ヘルパー: ハッシュタグ
+// ================================================================
+
+/**
+ * tag timeline 経由の投稿に対して、指定タグを post_hashtags に確保する。
+ */
+function ensureTagForPost(db: DbExec, postId: number, tag: string): void {
+  const normalizedTag = tag.toLowerCase()
+  db.exec(
+    `INSERT OR IGNORE INTO hashtags (normalized_name, display_name) VALUES (?, ?);`,
+    { bind: [normalizedTag, tag] },
+  )
+  const tagRows = db.exec(
+    'SELECT hashtag_id FROM hashtags WHERE normalized_name = ?;',
+    { bind: [normalizedTag], returnValue: 'resultRows' },
+  ) as number[][]
+  if (tagRows.length > 0) {
+    db.exec(
+      'INSERT OR IGNORE INTO post_hashtags (post_id, hashtag_id) VALUES (?, ?);',
+      { bind: [postId, tagRows[0][0]] },
+    )
+  }
 }

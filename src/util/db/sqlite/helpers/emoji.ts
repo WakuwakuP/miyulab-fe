@@ -1,7 +1,7 @@
-import { customEmojiIdCache } from './cache'
+import { emojiIdCache } from './cache'
 
 /**
- * カスタム絵文字を custom_emojis に UPSERT し、emoji_id を返す。
+ * カスタム絵文字を custom_emojis に UPSERT し、id を返す。
  */
 export function ensureCustomEmoji(
   db: {
@@ -21,14 +21,14 @@ export function ensureCustomEmoji(
     visible_in_picker?: boolean
   },
 ): number {
-  const cacheKey = `${serverId}\0${emoji.shortcode}`
+  const cacheKey = `${serverId}:${emoji.shortcode}`
 
-  // UPSERT は常に実行（image_url 等の更新のため）
+  // UPSERT は常に実行（url 等の更新のため）
   db.exec(
-    `INSERT INTO custom_emojis (server_id, shortcode, image_url, static_url, visible_in_picker)
+    `INSERT INTO custom_emojis (server_id, shortcode, url, static_url, visible_in_picker)
      VALUES (?, ?, ?, ?, ?)
-     ON CONFLICT(server_id, shortcode) DO UPDATE SET
-       image_url  = excluded.image_url,
+     ON CONFLICT(shortcode, server_id) DO UPDATE SET
+       url        = excluded.url,
        static_url = excluded.static_url;`,
     {
       bind: [
@@ -42,15 +42,15 @@ export function ensureCustomEmoji(
   )
 
   // キャッシュヒット時は SELECT をスキップ
-  const cached = customEmojiIdCache.get(cacheKey)
+  const cached = emojiIdCache.get(cacheKey)
   if (cached !== undefined) return cached
 
   const emojiRows = db.exec(
-    'SELECT emoji_id FROM custom_emojis WHERE server_id = ? AND shortcode = ?;',
+    'SELECT id FROM custom_emojis WHERE server_id = ? AND shortcode = ?;',
     { bind: [serverId, emoji.shortcode], returnValue: 'resultRows' },
   ) as number[][]
 
-  customEmojiIdCache.set(cacheKey, emojiRows[0][0])
+  emojiIdCache.set(cacheKey, emojiRows[0][0])
   return emojiRows[0][0]
 }
 
@@ -69,81 +69,36 @@ export function syncPostCustomEmojis(
   },
   postId: number,
   serverId: number,
-  statusEmojis: {
-    shortcode: string
-    url: string
-    static_url?: string | null
-    visible_in_picker?: boolean
-  }[],
-  accountEmojis: {
+  emojis: {
     shortcode: string
     url: string
     static_url?: string | null
     visible_in_picker?: boolean
   }[],
 ): void {
-  // First, collect all (emoji_id, usage_context) pairs we want to keep
-  const keepPairs: [number, string][] = []
+  const keepIds: number[] = []
 
-  for (const emoji of statusEmojis) {
+  for (const emoji of emojis) {
     const emojiId = ensureCustomEmoji(db, serverId, emoji)
     db.exec(
-      `INSERT OR IGNORE INTO post_custom_emojis (post_id, emoji_id, usage_context)
-       VALUES (?, ?, 'status');`,
+      `INSERT OR IGNORE INTO post_custom_emojis (post_id, custom_emoji_id)
+       VALUES (?, ?);`,
       { bind: [postId, emojiId] },
     )
-    keepPairs.push([emojiId, 'status'])
-  }
-
-  for (const emoji of accountEmojis) {
-    const emojiId = ensureCustomEmoji(db, serverId, emoji)
-    db.exec(
-      `INSERT OR IGNORE INTO post_custom_emojis (post_id, emoji_id, usage_context)
-       VALUES (?, ?, 'account');`,
-      { bind: [postId, emojiId] },
-    )
-    keepPairs.push([emojiId, 'account'])
+    keepIds.push(emojiId)
   }
 
   // Remove stale entries
-  if (keepPairs.length === 0) {
+  if (keepIds.length === 0) {
     db.exec('DELETE FROM post_custom_emojis WHERE post_id = ?;', {
       bind: [postId],
     })
   } else {
-    // Delete where emoji_id NOT IN the kept ids for each context
-    const statusEmojiIds = keepPairs
-      .filter((p) => p[1] === 'status')
-      .map((p) => p[0])
-    const accountEmojiIds = keepPairs
-      .filter((p) => p[1] === 'account')
-      .map((p) => p[0])
-
-    if (statusEmojiIds.length > 0) {
-      const ph = statusEmojiIds.map(() => '?').join(',')
-      db.exec(
-        `DELETE FROM post_custom_emojis WHERE post_id = ? AND usage_context = 'status' AND emoji_id NOT IN (${ph});`,
-        { bind: [postId, ...statusEmojiIds] },
-      )
-    } else {
-      db.exec(
-        `DELETE FROM post_custom_emojis WHERE post_id = ? AND usage_context = 'status';`,
-        { bind: [postId] },
-      )
-    }
-
-    if (accountEmojiIds.length > 0) {
-      const ph = accountEmojiIds.map(() => '?').join(',')
-      db.exec(
-        `DELETE FROM post_custom_emojis WHERE post_id = ? AND usage_context = 'account' AND emoji_id NOT IN (${ph});`,
-        { bind: [postId, ...accountEmojiIds] },
-      )
-    } else {
-      db.exec(
-        `DELETE FROM post_custom_emojis WHERE post_id = ? AND usage_context = 'account';`,
-        { bind: [postId] },
-      )
-    }
+    const ph = keepIds.map(() => '?').join(',')
+    db.exec(
+      `DELETE FROM post_custom_emojis WHERE post_id = ? AND custom_emoji_id NOT IN (${ph});`,
+      { bind: [postId, ...keepIds] },
+    )
   }
 }
 
@@ -196,7 +151,7 @@ export function resolveEmojisFromDb(
   for (const shortcode of shortcodes) {
     // DB から検索（custom_emojis テーブル）
     const rows = db.exec(
-      'SELECT image_url, static_url, visible_in_picker FROM custom_emojis WHERE server_id = ? AND shortcode = ?;',
+      'SELECT url, static_url, visible_in_picker FROM custom_emojis WHERE server_id = ? AND shortcode = ?;',
       { bind: [serverId, shortcode], returnValue: 'resultRows' },
     ) as (string | number | null)[][]
 

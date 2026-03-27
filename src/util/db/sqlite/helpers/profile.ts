@@ -1,113 +1,143 @@
 import type { Entity } from 'megalodon'
 import { profileIdCache } from './cache'
 import { ensureCustomEmoji } from './emoji'
+import type { DbExecCompat } from './types'
 
 /**
- * account に対応する profile_id を返す。
- * 未登録の場合は profiles テーブルに INSERT し、既存の場合は表示名等を更新する。
+ * account に対応する profiles.id を返す。
+ * 未登録の場合は INSERT、既存の場合は表示名等を更新する。
+ *
+ * UNIQUE 制約は (username, server_id)。
+ * キャッシュキーは acct (FQN)。
  */
 export function ensureProfile(
-  db: {
-    exec: (
-      sql: string,
-      opts?: {
-        bind?: (string | number | null)[]
-        returnValue?: 'resultRows'
-      },
-    ) => unknown
-  },
+  db: DbExecCompat,
   account: Entity.Account,
+  serverId: number,
 ): number {
-  const actorUri = account.url
   const acct = account.acct
-  const domain = acct.includes('@') ? acct.split('@')[1] : null
 
-  // UPSERT は常に実行（display_name 等の更新のため）
   db.exec(
     `INSERT INTO profiles (
-      actor_uri, acct, username, domain, display_name,
-      avatar_url, header_url, locked, bot, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-    ON CONFLICT(actor_uri) DO UPDATE SET
-      display_name = excluded.display_name,
-      avatar_url   = excluded.avatar_url,
-      header_url   = excluded.header_url,
-      locked       = excluded.locked,
-      bot          = excluded.bot,
-      updated_at   = excluded.updated_at;`,
+      actor_uri, username, server_id, acct, display_name,
+      url, avatar_url, avatar_static_url, header_url, header_static_url,
+      bio, is_locked, is_bot, last_fetched_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(username, server_id) DO UPDATE SET
+      actor_uri         = COALESCE(excluded.actor_uri, profiles.actor_uri),
+      display_name      = excluded.display_name,
+      url               = excluded.url,
+      avatar_url        = excluded.avatar_url,
+      avatar_static_url = excluded.avatar_static_url,
+      header_url        = excluded.header_url,
+      header_static_url = excluded.header_static_url,
+      bio               = excluded.bio,
+      is_locked         = excluded.is_locked,
+      is_bot            = excluded.is_bot,
+      last_fetched_at   = excluded.last_fetched_at;`,
     {
       bind: [
-        actorUri,
-        acct,
-        account.username,
-        domain,
-        account.display_name ?? null,
-        account.avatar ?? null,
-        account.header ?? null,
-        account.locked ? 1 : 0,
-        account.bot ? 1 : 0,
+        account.url || null, // actor_uri
+        account.username, // username
+        serverId, // server_id
+        acct, // acct
+        account.display_name ?? '', // display_name
+        account.url ?? '', // url
+        account.avatar ?? '', // avatar_url
+        account.avatar_static ?? '', // avatar_static_url
+        account.header ?? '', // header_url
+        account.header_static ?? '', // header_static_url
+        account.note ?? '', // bio
+        account.locked ? 1 : 0, // is_locked
+        account.bot ? 1 : 0, // is_bot
+        Date.now(), // last_fetched_at
       ],
     },
   )
 
-  // キャッシュヒット時は SELECT をスキップ
-  const cached = profileIdCache.get(actorUri)
+  const cached = profileIdCache.get(acct)
   if (cached !== undefined) return cached
 
-  const rows = db.exec('SELECT profile_id FROM profiles WHERE actor_uri = ?;', {
-    bind: [actorUri],
-    returnValue: 'resultRows',
-  }) as number[][]
+  const rows = db.exec(
+    'SELECT id FROM profiles WHERE username = ? AND server_id = ?;',
+    {
+      bind: [account.username, serverId],
+      returnValue: 'resultRows',
+    },
+  ) as number[][]
 
-  profileIdCache.set(actorUri, rows[0][0])
-  return rows[0][0]
+  const id = rows[0][0]
+  profileIdCache.set(acct, id)
+  return id
 }
 
 /**
- * profile_aliases テーブルにリモートアカウント ID のマッピングを UPSERT する。
- *
- * Mastodon / Pleroma 等の API では、アカウント ID はサーバーごとに異なる。
- * この関数で (server_id, remote_account_id) → profile_id のマッピングを記録し、
- * 読み取りクエリ時にバックエンド固有のアカウント ID を復元できるようにする。
+ * profile_stats テーブルを UPSERT する。
  */
-export function ensureProfileAlias(
-  db: {
-    exec: (
-      sql: string,
-      opts?: {
-        bind?: (string | number | null)[]
-        returnValue?: 'resultRows'
-      },
-    ) => unknown
-  },
+export function syncProfileStats(
+  db: DbExecCompat,
   profileId: number,
-  serverId: number,
-  remoteAccountId: string,
+  stats: {
+    followers_count?: number
+    following_count?: number
+    statuses_count?: number
+  },
 ): void {
-  if (!remoteAccountId) return
   db.exec(
-    `INSERT INTO profile_aliases (server_id, remote_account_id, profile_id, fetched_at)
-     VALUES (?, ?, ?, datetime('now'))
-     ON CONFLICT(server_id, remote_account_id) DO UPDATE SET
-       profile_id = excluded.profile_id,
-       fetched_at = excluded.fetched_at;`,
-    { bind: [serverId, remoteAccountId, profileId] },
+    `INSERT INTO profile_stats (profile_id, followers_count, following_count, statuses_count, updated_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(profile_id) DO UPDATE SET
+       followers_count = excluded.followers_count,
+       following_count = excluded.following_count,
+       statuses_count  = excluded.statuses_count,
+       updated_at      = excluded.updated_at;`,
+    {
+      bind: [
+        profileId,
+        stats.followers_count ?? 0,
+        stats.following_count ?? 0,
+        stats.statuses_count ?? 0,
+        Date.now(),
+      ],
+    },
   )
 }
 
 /**
- * プロフィールのカスタム絵文字を profile_custom_emojis に同期する。
+ * profile_fields テーブルを同期する（DELETE + INSERT）。
+ */
+export function syncProfileFields(
+  db: DbExecCompat,
+  profileId: number,
+  fields: { name: string; value: string; verified_at?: string | null }[],
+): void {
+  db.exec('DELETE FROM profile_fields WHERE profile_id = ?;', {
+    bind: [profileId],
+  })
+
+  for (let i = 0; i < fields.length; i++) {
+    const field = fields[i]
+    db.exec(
+      `INSERT INTO profile_fields (profile_id, sort_order, name, value, verified_at)
+       VALUES (?, ?, ?, ?, ?);`,
+      {
+        bind: [
+          profileId,
+          i,
+          field.name,
+          field.value,
+          field.verified_at ?? null,
+        ],
+      },
+    )
+  }
+}
+
+/**
+ * profile_custom_emojis テーブルを同期する。
  */
 export function syncProfileCustomEmojis(
-  db: {
-    exec: (
-      sql: string,
-      opts?: {
-        bind?: (string | number | null)[]
-        returnValue?: 'resultRows'
-      },
-    ) => unknown
-  },
+  db: DbExecCompat,
   profileId: number,
   serverId: number,
   emojis: {
@@ -122,14 +152,13 @@ export function syncProfileCustomEmojis(
   for (const emoji of emojis) {
     const emojiId = ensureCustomEmoji(db, serverId, emoji)
     db.exec(
-      `INSERT OR IGNORE INTO profile_custom_emojis (profile_id, emoji_id)
+      `INSERT OR IGNORE INTO profile_custom_emojis (profile_id, custom_emoji_id)
        VALUES (?, ?);`,
       { bind: [profileId, emojiId] },
     )
     keepIds.push(emojiId)
   }
 
-  // Remove stale
   if (keepIds.length === 0) {
     db.exec('DELETE FROM profile_custom_emojis WHERE profile_id = ?;', {
       bind: [profileId],
@@ -137,7 +166,7 @@ export function syncProfileCustomEmojis(
   } else {
     const ph = keepIds.map(() => '?').join(',')
     db.exec(
-      `DELETE FROM profile_custom_emojis WHERE profile_id = ? AND emoji_id NOT IN (${ph});`,
+      `DELETE FROM profile_custom_emojis WHERE profile_id = ? AND custom_emoji_id NOT IN (${ph});`,
       { bind: [profileId, ...keepIds] },
     )
   }

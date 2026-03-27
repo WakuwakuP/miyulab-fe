@@ -1,8 +1,13 @@
 /**
  * Status 関連の内部ヘルパー関数群（基本ヘルパー）
  *
- * workerStatusStore.ts から分割。ロジック変更なし。
- * 投稿データ同期処理は postSync.ts に移動。
+ * workerStatusStore.ts から分割。
+ * 新スキーマ (v2) 対応版:
+ *   - posts_backends → post_backend_ids (local_account_id + local_id)
+ *   - visibility_types: visibility_id/code → id/name
+ *   - media_types: media_type_id/code → id/name
+ *   - posts PK: post_id → id
+ *   - cachedPostItemKindId / setCachedPostItemKindId 削除
  */
 
 import type { Entity } from 'megalodon'
@@ -11,11 +16,6 @@ import type { DbExec } from './types'
 // マスターデータキャッシュ（セッション中不変）
 export const visibilityCache = new Map<string, number | null>()
 export const mediaTypeCache = new Map<string, number>()
-export let cachedPostItemKindId: number | null = null
-
-export function setCachedPostItemKindId(value: number): void {
-  cachedPostItemKindId = value
-}
 
 // ================================================================
 // 内部ヘルパー
@@ -41,16 +41,20 @@ export function deriveAccountDomain(account: Entity.Account): string {
   }
 }
 
+/**
+ * local_account_id + local_id から内部 post_id を解決する。
+ * 見つからない場合は undefined を返す。
+ */
 export function resolvePostIdInternal(
   db: DbExec,
-  backendUrl: string,
+  localAccountId: number,
   localId: string,
-): number | null {
+): number | undefined {
   const rows = db.exec(
-    'SELECT post_id FROM posts_backends WHERE server_id = (SELECT server_id FROM servers WHERE base_url = ?) AND local_id = ?;',
-    { bind: [backendUrl, localId], returnValue: 'resultRows' },
+    'SELECT post_id FROM post_backend_ids WHERE local_account_id = ? AND local_id = ?;',
+    { bind: [localAccountId, localId], returnValue: 'resultRows' },
   ) as number[][]
-  return rows.length > 0 ? rows[0][0] : null
+  return rows.length > 0 ? rows[0][0] : undefined
 }
 
 export function getLastInsertRowId(db: DbExec): number {
@@ -67,10 +71,10 @@ export function resolveVisibilityId(
 ): number | null {
   const cached = visibilityCache.get(visibility)
   if (cached !== undefined) return cached
-  const rows = db.exec(
-    'SELECT visibility_id FROM visibility_types WHERE code = ?;',
-    { bind: [visibility], returnValue: 'resultRows' },
-  ) as number[][]
+  const rows = db.exec('SELECT id FROM visibility_types WHERE name = ?;', {
+    bind: [visibility],
+    returnValue: 'resultRows',
+  }) as number[][]
   const result = rows.length > 0 ? rows[0][0] : null
   if (result !== null) visibilityCache.set(visibility, result)
   return result
@@ -79,16 +83,16 @@ export function resolveVisibilityId(
 export function resolveMediaTypeId(db: DbExec, mediaType: string): number {
   const cached = mediaTypeCache.get(mediaType)
   if (cached !== undefined) return cached
-  const rows = db.exec(
-    'SELECT media_type_id FROM media_types WHERE code = ?;',
-    { bind: [mediaType], returnValue: 'resultRows' },
-  ) as number[][]
+  const rows = db.exec('SELECT id FROM media_types WHERE name = ?;', {
+    bind: [mediaType],
+    returnValue: 'resultRows',
+  }) as number[][]
   if (rows.length > 0) {
     mediaTypeCache.set(mediaType, rows[0][0])
     return rows[0][0]
   }
   const fallback = db.exec(
-    "SELECT media_type_id FROM media_types WHERE code = 'unknown';",
+    "SELECT id FROM media_types WHERE name = 'unknown';",
     { returnValue: 'resultRows' },
   ) as number[][]
   mediaTypeCache.set(mediaType, fallback[0][0])
@@ -97,24 +101,24 @@ export function resolveMediaTypeId(db: DbExec, mediaType: string): number {
 
 /**
  * in_reply_to_id (server-local ID) から reply_to_post_id (internal FK) を解決する。
- * posts_backends 経由で post_id を逆引きする。
+ * post_backend_ids 経由で post_id を逆引きする。
  */
 export function resolveReplyToPostId(
   db: DbExec,
   inReplyToId: string | null,
-  serverId: number,
+  localAccountId: number,
 ): number | null {
   if (!inReplyToId) return null
   const rows = db.exec(
-    'SELECT post_id FROM posts_backends WHERE server_id = ? AND local_id = ? LIMIT 1;',
-    { bind: [serverId, inReplyToId], returnValue: 'resultRows' },
+    'SELECT post_id FROM post_backend_ids WHERE local_account_id = ? AND local_id = ? LIMIT 1;',
+    { bind: [localAccountId, inReplyToId], returnValue: 'resultRows' },
   ) as number[][]
   return rows.length > 0 ? rows[0][0] : null
 }
 
 /**
  * reblog_of_uri (ActivityPub URI) から repost_of_post_id (internal FK) を解決する。
- * posts.object_uri 経由で post_id を逆引きする。
+ * posts.object_uri 経由で id を逆引きする。
  */
 export function resolveRepostOfPostId(
   db: DbExec,
@@ -122,7 +126,7 @@ export function resolveRepostOfPostId(
 ): number | null {
   if (!reblogOfUri) return null
   const rows = db.exec(
-    "SELECT post_id FROM posts WHERE object_uri = ? AND object_uri != '' LIMIT 1;",
+    "SELECT id FROM posts WHERE object_uri = ? AND object_uri != '' LIMIT 1;",
     { bind: [reblogOfUri], returnValue: 'resultRows' },
   ) as number[][]
   return rows.length > 0 ? rows[0][0] : null
@@ -133,8 +137,6 @@ export function resolveRepostOfPostId(
 // ================================================================
 export {
   ensureReblogOriginalPost,
-  resolveDelayedReplyReferences,
-  resolveDelayedRepostReferences,
   syncPostMedia,
   syncPostStats,
   upsertMentionsInternal,

@@ -48,17 +48,15 @@ export function sanitizeWhereClause(input: string): string {
  * テーブルカラム / エイリアス一覧（補完用）
  */
 export const QUERY_COMPLETIONS = {
-  aliases: ['p', 'ptt', 'pbt', 'pme', 'pb', 'prb', 'pe', 'n'],
+  aliases: ['p', 'ptt', 'pbt', 'pme', 'pb', 'pe', 'n'],
   columns: {
     n: [
-      'notification_id',
-      'server_id',
+      'id',
       'local_id',
       'notification_type_id',
       'actor_profile_id',
       'related_post_id',
       'created_at_ms',
-      'stored_at',
       'is_read',
       // 後方互換（互換サブクエリ経由）
       'backend_url',
@@ -66,26 +64,27 @@ export const QUERY_COMPLETIONS = {
       'account_acct',
     ],
     p: [
-      'post_id',
+      'id',
       'object_uri',
       'origin_server_id',
       'author_profile_id',
       'created_at_ms',
-      'stored_at',
+      'edited_at_ms',
       'visibility_id',
       'language',
       'content_html',
+      'plain_content',
       'spoiler_text',
       'canonical_url',
-      'has_media',
-      'media_count',
       'is_reblog',
-      'reblog_of_uri',
       'is_sensitive',
-      'has_spoiler',
-      'in_reply_to_id',
+      'in_reply_to_uri',
+      'in_reply_to_account_acct',
       'is_local_only',
-      'edited_at',
+      'quote_of_post_id',
+      'quote_state',
+      'application_name',
+      'last_fetched_at',
       // 後方互換（互換サブクエリ経由）
       'origin_backend_url',
       'account_acct',
@@ -94,11 +93,17 @@ export const QUERY_COMPLETIONS = {
       'reblogs_count',
       'replies_count',
     ],
-    pb: ['post_id', 'backendUrl', 'local_id', 'server_id'],
-    pbt: ['post_id', 'tag', 'normalized_name', 'display_name'],
-    pe: ['post_id', 'local_account_id', 'engagement_type_id', 'emoji_id'],
+    pb: ['post_id', 'backend_url', 'local_id', 'server_id'],
+    pbt: ['post_id', 'tag', 'name', 'display_name'],
+    pe: [
+      'post_id',
+      'is_favourited',
+      'is_reblogged',
+      'is_bookmarked',
+      'is_muted',
+      'is_pinned',
+    ],
     pme: ['post_id', 'acct'],
-    prb: ['post_id', 'original_uri', 'reblogger_acct', 'reblogged_at_ms'],
     ptt: ['post_id', 'timelineType'],
   },
   examples: [
@@ -190,10 +195,6 @@ export const QUERY_COMPLETIONS = {
       query:
         "n.notification_type IN ('favourite', 'reaction', 'reblog') OR EXISTS (SELECT 1 FROM notifications ntf INNER JOIN notification_types ntt ON ntt.notification_type_id = ntf.notification_type_id INNER JOIN profiles pra ON pra.profile_id = ntf.actor_profile_id WHERE ntt.code IN ('favourite', 'reaction', 'reblog') AND pra.acct = p.account_acct AND p.created_at_ms > ntf.created_at_ms AND p.created_at_ms <= ntf.created_at_ms + 180000 AND p.created_at_ms = (SELECT MIN(p2.created_at_ms) FROM posts p2 INNER JOIN profiles pr2 ON pr2.profile_id = p2.author_profile_id WHERE pr2.acct = pra.acct AND p2.created_at_ms > ntf.created_at_ms AND p2.created_at_ms <= ntf.created_at_ms + 180000))",
     },
-    {
-      description: '特定ユーザーがリブログした投稿を取得する',
-      query: "prb.reblogger_acct = 'user@example.com'",
-    },
   ],
   keywords: [
     'SELECT',
@@ -250,16 +251,14 @@ export const QUERY_COMPLETIONS = {
 
 /** 許可リスト（安全なテーブル＋カラムの組み合わせ） */
 export const ALLOWED_COLUMN_VALUES: Record<string, string[]> = {
-  channel_kinds: ['code'],
-  hashtags: ['normalized_name', 'display_name'],
-  notification_types: ['code'],
+  hashtags: ['name', 'display_name'],
+  notification_types: ['name'],
+  post_backend_ids: ['backend_url', 'local_id', 'server_id'],
+  post_mentions: ['acct'],
   posts: ['object_uri', 'language'],
-  posts_backends: ['backendUrl', 'local_id', 'server_id'],
-  posts_mentions: ['acct'],
-  posts_reblogs: ['original_uri', 'reblogger_acct'],
   profiles: ['acct'],
   servers: ['base_url'],
-  visibility_types: ['code'],
+  visibility_types: ['name'],
 }
 
 /** エイリアスからテーブル名・カラム名へのマッピング */
@@ -280,43 +279,39 @@ export const ALIAS_TO_TABLE: Record<
   },
   pb: {
     columns: {
-      backend_url: 'backendUrl',
-      backendUrl: 'backendUrl',
+      backend_url: 'backend_url',
       local_id: 'local_id',
       server_id: 'server_id',
     },
-    table: 'posts_backends',
+    table: 'post_backend_ids',
   },
   pbt: {
     columns: {
-      tag: 'normalized_name',
+      tag: 'name',
     },
     table: 'hashtags',
   },
   pe: {
     columns: {
-      engagement_type_id: 'engagement_type_id',
+      is_bookmarked: 'is_bookmarked',
+      is_favourited: 'is_favourited',
+      is_muted: 'is_muted',
+      is_pinned: 'is_pinned',
+      is_reblogged: 'is_reblogged',
     },
-    table: 'post_engagements',
+    table: 'post_interactions',
   },
   pme: {
     columns: {
       acct: 'acct',
     },
-    table: 'posts_mentions',
-  },
-  prb: {
-    columns: {
-      original_uri: 'original_uri',
-      reblogger_acct: 'reblogger_acct',
-    },
-    table: 'posts_reblogs',
+    table: 'post_mentions',
   },
   ptt: {
     columns: {
-      timelineType: 'code',
+      timelineType: 'timeline_key',
     },
-    table: 'channel_kinds',
+    table: 'timeline_entries',
   },
 }
 
@@ -333,11 +328,11 @@ export const COLUMN_TABLE_OVERRIDE: Record<
   n: {
     account_acct: { column: 'acct', table: 'profiles' },
     backend_url: { column: 'base_url', table: 'servers' },
-    notification_type: { column: 'code', table: 'notification_types' },
+    notification_type: { column: 'name', table: 'notification_types' },
   },
   p: {
     account_acct: { column: 'acct', table: 'profiles' },
-    origin_backend_url: { column: 'backendUrl', table: 'posts_backends' },
-    visibility: { column: 'code', table: 'visibility_types' },
+    origin_backend_url: { column: 'backend_url', table: 'post_backend_ids' },
+    visibility: { column: 'name', table: 'visibility_types' },
   },
 }

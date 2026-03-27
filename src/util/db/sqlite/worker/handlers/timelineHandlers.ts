@@ -1,64 +1,51 @@
 /**
  * タイムライン関連のハンドラ群
  *
- * workerStatusStore.ts から分割。ロジック変更なし。
+ * 新スキーマ対応版:
+ * - timelines + timeline_items → timeline_entries 単一テーブル
+ * - posts_backends → post_backend_ids
+ * - channel_kinds JOIN 不要（timeline_key は文字列）
+ * - post_id PK名 → id に変更（posts テーブル）
  */
 
-import { ensureServer } from '../../shared'
-import { resolvePostIdInternal } from './statusHelpers'
-import type { DbExec, HandlerResult } from './types'
+import type { DbExecCompat } from '../../helpers/types'
+import type { HandlerResult } from './types'
 
 export function handleRemoveFromTimeline(
-  db: DbExec,
-  backendUrl: string,
-  statusId: string,
-  timelineType: string,
-  tag?: string,
+  db: DbExecCompat,
+  localAccountId: number,
+  timelineKey: string,
+  postId: number,
 ): HandlerResult {
-  const postId = resolvePostIdInternal(db, backendUrl, statusId)
-  if (postId === null) return { changedTables: [] }
-
-  const serverId = ensureServer(db, backendUrl)
-
   db.exec('BEGIN;')
   try {
-    // 該当タイムラインから timeline_items を削除
-    const timelineRows = db.exec(
-      `SELECT t.timeline_id FROM timelines t
-       INNER JOIN channel_kinds ck ON ck.channel_kind_id = t.channel_kind_id
-       WHERE t.server_id = ? AND ck.code = ? AND COALESCE(t.tag, '') = ?;`,
-      { bind: [serverId, timelineType, tag ?? ''], returnValue: 'resultRows' },
-    ) as number[][]
+    // 該当タイムラインエントリを削除
+    db.exec(
+      'DELETE FROM timeline_entries WHERE local_account_id = ? AND timeline_key = ? AND post_id = ?;',
+      { bind: [localAccountId, timelineKey, postId] },
+    )
 
-    for (const [timelineId] of timelineRows) {
-      db.exec(
-        'DELETE FROM timeline_items WHERE timeline_id = ? AND post_id = ?;',
-        { bind: [timelineId, postId] },
-      )
-    }
-
-    if (timelineType === 'tag' && tag) {
-      const normalizedTag = tag.toLowerCase()
-      db.exec(
-        `DELETE FROM post_hashtags WHERE post_id = ? AND hashtag_id = (
-          SELECT hashtag_id FROM hashtags WHERE normalized_name = ?
-        );`,
-        { bind: [postId, normalizedTag] },
-      )
-    }
-
-    // どのタイムラインにも属さなくなった投稿を削除
-    const remaining = (
-      db.exec('SELECT COUNT(*) FROM timeline_items WHERE post_id = ?;', {
+    // 孤立投稿チェック: timeline_entries にも notifications にもない投稿を削除
+    const remainingTimelines = (
+      db.exec('SELECT COUNT(*) FROM timeline_entries WHERE post_id = ?;', {
         bind: [postId],
         returnValue: 'resultRows',
       }) as number[][]
     )[0][0]
 
-    if (remaining === 0) {
-      db.exec('DELETE FROM posts WHERE post_id = ?;', {
-        bind: [postId],
-      })
+    if (remainingTimelines === 0) {
+      const remainingNotifications = (
+        db.exec(
+          'SELECT COUNT(*) FROM notifications WHERE related_post_id = ?;',
+          { bind: [postId], returnValue: 'resultRows' },
+        ) as number[][]
+      )[0][0]
+
+      if (remainingNotifications === 0) {
+        db.exec('DELETE FROM posts WHERE id = ?;', {
+          bind: [postId],
+        })
+      }
     }
 
     db.exec('COMMIT;')
@@ -71,77 +58,41 @@ export function handleRemoveFromTimeline(
 }
 
 export function handleDeleteEvent(
-  db: DbExec,
-  backendUrl: string,
-  statusId: string,
-  sourceTimelineType: string,
-  tag?: string,
+  db: DbExecCompat,
+  localAccountId: number,
+  localId: string,
 ): HandlerResult {
-  const postId = resolvePostIdInternal(db, backendUrl, statusId)
-  if (postId === null) return { changedTables: [] }
+  // 1. post_backend_ids から local_account_id + local_id で post_id を取得
+  const rows = db.exec(
+    'SELECT post_id FROM post_backend_ids WHERE local_account_id = ? AND local_id = ?;',
+    { bind: [localAccountId, localId], returnValue: 'resultRows' },
+  ) as number[][]
 
-  const serverId = ensureServer(db, backendUrl)
+  if (rows.length === 0) return { changedTables: [] }
+
+  const postId = rows[0][0]
 
   db.exec('BEGIN;')
   try {
+    // 2. post_backend_ids からエントリを削除
     db.exec(
-      'DELETE FROM posts_backends WHERE server_id = (SELECT server_id FROM servers WHERE base_url = ?) AND local_id = ?;',
-      { bind: [backendUrl, statusId] },
+      'DELETE FROM post_backend_ids WHERE local_account_id = ? AND local_id = ?;',
+      { bind: [localAccountId, localId] },
     )
 
+    // 3. 他のアカウントが同じ投稿を参照していないかチェック
     const remainingBackends = (
-      db.exec('SELECT COUNT(*) FROM posts_backends WHERE post_id = ?;', {
+      db.exec('SELECT COUNT(*) FROM post_backend_ids WHERE post_id = ?;', {
         bind: [postId],
         returnValue: 'resultRows',
       }) as number[][]
     )[0][0]
 
+    // 4. 参照がなければ posts を削除（CASCADE で関連テーブルも削除）
     if (remainingBackends === 0) {
-      db.exec('DELETE FROM posts WHERE post_id = ?;', {
+      db.exec('DELETE FROM posts WHERE id = ?;', {
         bind: [postId],
       })
-    } else {
-      // 該当タイムラインから timeline_items を削除
-      const timelineRows = db.exec(
-        `SELECT t.timeline_id FROM timelines t
-         INNER JOIN channel_kinds ck ON ck.channel_kind_id = t.channel_kind_id
-         WHERE t.server_id = ? AND ck.code = ? AND COALESCE(t.tag, '') = ?;`,
-        {
-          bind: [serverId, sourceTimelineType, tag ?? ''],
-          returnValue: 'resultRows',
-        },
-      ) as number[][]
-
-      for (const [timelineId] of timelineRows) {
-        db.exec(
-          'DELETE FROM timeline_items WHERE timeline_id = ? AND post_id = ?;',
-          { bind: [timelineId, postId] },
-        )
-      }
-
-      if (sourceTimelineType === 'tag' && tag) {
-        const normalizedTag = tag.toLowerCase()
-        db.exec(
-          `DELETE FROM post_hashtags WHERE post_id = ? AND hashtag_id = (
-            SELECT hashtag_id FROM hashtags WHERE normalized_name = ?
-          );`,
-          { bind: [postId, normalizedTag] },
-        )
-      }
-
-      // どのタイムラインにも属さなくなった投稿を削除
-      const remainingTimelines = (
-        db.exec('SELECT COUNT(*) FROM timeline_items WHERE post_id = ?;', {
-          bind: [postId],
-          returnValue: 'resultRows',
-        }) as number[][]
-      )[0][0]
-
-      if (remainingTimelines === 0) {
-        db.exec('DELETE FROM posts WHERE post_id = ?;', {
-          bind: [postId],
-        })
-      }
     }
 
     db.exec('COMMIT;')

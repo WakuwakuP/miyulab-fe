@@ -91,13 +91,13 @@ function hasUnquotedQuestionMark(query: string): boolean {
 /** notifications 互換サブクエリ FROM 句（旧カラム名を後方互換で提供、JOIN ベース） */
 const NOTIF_COMPAT_FROM = `(
       SELECT n2.*,
-        COALESCE(sv_nc.base_url, '') AS backend_url,
-        COALESCE(nt_nc.code, '') AS notification_type,
+        COALESCE(la_nc.backend_url, '') AS backend_url,
+        COALESCE(nt_nc.name, '') AS notification_type,
         COALESCE(pr_nc.acct, '') AS account_acct
       FROM notifications n2
-      LEFT JOIN servers sv_nc ON sv_nc.server_id = n2.server_id
-      LEFT JOIN notification_types nt_nc ON nt_nc.notification_type_id = n2.notification_type_id
-      LEFT JOIN profiles pr_nc ON pr_nc.profile_id = n2.actor_profile_id
+      LEFT JOIN local_accounts la_nc ON la_nc.id = n2.local_account_id
+      LEFT JOIN notification_types nt_nc ON nt_nc.id = n2.notification_type_id
+      LEFT JOIN profiles pr_nc ON pr_nc.id = n2.actor_profile_id
     ) n`
 
 // ================================================================
@@ -128,8 +128,20 @@ const EMPTY_S = `(SELECT
       NULL AS favourites_count, NULL AS reblogs_count, NULL AS replies_count
     LIMIT 0)`
 
-/** ptt 互換サブクエリ: timeline_items + timelines + channel_kinds → (post_id, timelineType) */
-const PTT_COMPAT = `(SELECT ti2.post_id, ck2.code AS timelineType FROM timeline_items ti2 INNER JOIN timelines t2 ON t2.timeline_id = ti2.timeline_id INNER JOIN channel_kinds ck2 ON ck2.channel_kind_id = t2.channel_kind_id WHERE ti2.post_id IS NOT NULL)`
+/** ptt 互換サブクエリ: timeline_entries → (post_id, timelineType) */
+const PTT_COMPAT = `(SELECT te2.post_id, te2.timeline_key AS timelineType FROM timeline_entries te2 WHERE te2.post_id IS NOT NULL)`
+
+/**
+ * posts_reblogs 互換サブクエリ:
+ * posts.reblog_of_post_id FK を利用して旧 prb エイリアスのカラムを再現する。
+ */
+const PRB_COMPAT_SUBQUERY =
+  '(SELECT rb_src.id AS post_id, rb_tgt.object_uri AS original_uri, ' +
+  "COALESCE((SELECT pr.acct FROM profiles pr WHERE pr.id = rb_src.author_profile_id), '') AS reblogger_acct, " +
+  'rb_src.created_at_ms AS reblogged_at_ms ' +
+  'FROM posts rb_src ' +
+  'INNER JOIN posts rb_tgt ON rb_src.reblog_of_post_id = rb_tgt.id ' +
+  'WHERE rb_src.reblog_of_post_id IS NOT NULL)'
 
 const EMPTY_PTT = `(SELECT NULL AS post_id, NULL AS timelineType LIMIT 0)`
 const EMPTY_PHT = `(SELECT NULL AS post_id, NULL AS hashtag_id LIMIT 0)`
@@ -152,7 +164,7 @@ const EMPTY_PRB = `(SELECT NULL AS post_id, NULL AS original_uri, NULL AS reblog
  *
  * ## v2 スキーマ対応
  *
- * - posts_mentions (pme) テーブルを LEFT JOIN に追加
+ * - post_mentions (pme) テーブルを LEFT JOIN に追加
  * - onlyMedia フィルタは SQL の has_media カラムで処理（JS 側フィルタ不要）
  * - カスタムクエリモードでは applyMuteFilter / applyInstanceBlock は適用しない
  *
@@ -266,11 +278,10 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         // Phase2: 取得した ID から詳細情報をフェッチ
         // ============================
         const refs = detectReferencedAliases(sanitized)
-        // pb.backend_url → pb.backendUrl 書き換え
-        const pbRewritten = sanitized.replace(
-          /\bpb\.backend_url\b/g,
-          'pb.backendUrl',
-        )
+        // pb.backend_url / pb.backendUrl → la_pb.backend_url 書き換え
+        const pbRewritten = sanitized
+          .replace(/\bpb\.backend_url\b/g, 'la_pb.backend_url')
+          .replace(/\bpb\.backendUrl\b/g, 'la_pb.backend_url')
         // 施策 A+B: 旧カラム名を正規化形式に書き換え、必要な互換 JOIN を導出
         const { rewrittenWhere, compatJoins } =
           rewriteLegacyColumnsForPhase1(pbRewritten)
@@ -280,32 +291,34 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         // 施策 A: 旧カラム参照に必要な互換 JOIN を追加
         statusPhase1JoinLines.push(...compatJoins)
         // pb は参照されている場合のみ JOIN（1:N のため GROUP BY が必要になる）
-        if (refs.pb)
+        if (refs.pb) {
           statusPhase1JoinLines.push(
-            'LEFT JOIN posts_backends pb ON p.post_id = pb.post_id',
+            'LEFT JOIN post_backend_ids pb ON p.id = pb.post_id',
+            'LEFT JOIN local_accounts la_pb ON la_pb.id = pb.local_account_id',
           )
+        }
         // 1:N JOIN が存在する場合のみ GROUP BY が必要
         const statusHasMultiRowJoin =
           refs.pb || refs.ptt || refs.pbt || refs.pme || refs.prb || refs.pe
         if (refs.ptt)
           statusPhase1JoinLines.push(
-            `LEFT JOIN ${PTT_COMPAT} ptt\n              ON p.post_id = ptt.post_id`,
+            `LEFT JOIN ${PTT_COMPAT} ptt\n              ON p.id = ptt.post_id`,
           )
         if (refs.pbt)
           statusPhase1JoinLines.push(
-            'LEFT JOIN post_hashtags pht ON p.post_id = pht.post_id\n              LEFT JOIN hashtags ht ON pht.hashtag_id = ht.hashtag_id',
+            'LEFT JOIN post_hashtags pht ON p.id = pht.post_id\n              LEFT JOIN hashtags ht ON pht.hashtag_id = ht.id',
           )
         if (refs.pme)
           statusPhase1JoinLines.push(
-            'LEFT JOIN posts_mentions pme\n              ON p.post_id = pme.post_id',
+            'LEFT JOIN post_mentions pme\n              ON p.id = pme.post_id',
           )
         if (refs.prb)
           statusPhase1JoinLines.push(
-            'LEFT JOIN posts_reblogs prb\n              ON p.post_id = prb.post_id',
+            `LEFT JOIN ${PRB_COMPAT_SUBQUERY} prb\n              ON p.id = prb.post_id`,
           )
         if (refs.pe)
           statusPhase1JoinLines.push(
-            'LEFT JOIN post_engagements pe\n              ON p.post_id = pe.post_id',
+            'LEFT JOIN post_interactions pe\n              ON p.id = pe.post_id',
           )
         // EMPTY_N は不要: Status 側では n.* は常に NULL のため、
         // WHERE 句の n.* 参照を直接 NULL に置換する。
@@ -332,7 +345,7 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         // 施策 A: サブクエリ廃止 → FROM posts p 直接参照
         // 1:N JOIN がなければ GROUP BY 不要 → idx_posts_created で ORDER BY + LIMIT early termination が効く
         const statusGroupBy = statusHasMultiRowJoin
-          ? '\n          GROUP BY p.post_id'
+          ? '\n          GROUP BY p.id'
           : ''
 
         // --- Phase1: Notification ID 取得 ---
@@ -349,7 +362,7 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         const rewrittenNotifWhere = sanitized
 
         const notifPhase1Sql = `
-          SELECT n.notification_id, n.created_at_ms
+          SELECT n.id, n.created_at_ms
           FROM ${NOTIF_COMPAT_FROM}
           ${NOTIFICATION_BASE_JOINS}
             ${notifDummyJoins}
@@ -409,8 +422,8 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
               SELECT DISTINCT ntf.actor_profile_id
               FROM notifications ntf
               INNER JOIN notification_types ntt
-                ON ntt.notification_type_id = ntf.notification_type_id
-              WHERE ntt.code IN (${placeholders})`
+                ON ntt.id = ntf.notification_type_id
+              WHERE ntt.name IN (${placeholders})`
             actorBinds = typeCodes
           } else {
             actorSql = 'SELECT DISTINCT actor_profile_id FROM notifications'
@@ -432,7 +445,7 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         }
 
         const statusPhase1Sql = `
-          SELECT p.post_id, p.created_at_ms${refs.pb ? ', MIN(pb.backendUrl) AS backendUrl' : ''}
+          SELECT p.id, p.created_at_ms${refs.pb ? ', MIN(la_pb.backend_url) AS backendUrl' : ''}
           FROM posts p${statusPhase1Joins}
           WHERE (${statusRewrittenWhere})${statusMediaConditions}${statusTimeBound}${statusAuthorPreFilter}${statusGroupBy}
           ORDER BY p.created_at_ms DESC
@@ -487,8 +500,8 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
             SELECT ${STATUS_BASE_SELECT}
             FROM posts p
             ${STATUS_BASE_JOINS}
-            WHERE p.post_id IN (${placeholders})
-            GROUP BY p.post_id
+            WHERE p.id IN (${placeholders})
+            GROUP BY p.id
             ORDER BY p.created_at_ms DESC;
           `
           const { result: statusBaseRowsRaw, durationMs: dur } =
@@ -516,7 +529,10 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
 
           // 子テーブルバッチクエリを並列実行
           const maps = await executeBatchQueries(handle, allPostIds, {
-            engagementsSql: buildScopedEngagementsSql(allBackendUrls, '__PH__'),
+            interactionsSql: buildScopedEngagementsSql(
+              allBackendUrls,
+              '__PH__',
+            ),
           })
 
           statusPhase2Dur = dur
@@ -539,7 +555,7 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
             SELECT ${NOTIFICATION_SELECT}
             FROM ${NOTIF_COMPAT_FROM}
             ${NOTIFICATION_BASE_JOINS}
-            WHERE n.notification_id IN (${placeholders})
+            WHERE n.id IN (${placeholders})
             ORDER BY n.created_at_ms DESC;
           `
           const { result: notifDetailRowsRaw, durationMs: dur } =
@@ -618,11 +634,10 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         // Statuses クエリ: 2段階クエリ戦略
         // ============================
         const refs = detectReferencedAliases(sanitized)
-        // pb.backend_url → pb.backendUrl 書き換え
-        const pbRewritten = sanitized.replace(
-          /\bpb\.backend_url\b/g,
-          'pb.backendUrl',
-        )
+        // pb.backend_url / pb.backendUrl → la_pb.backend_url 書き換え
+        const pbRewritten = sanitized
+          .replace(/\bpb\.backend_url\b/g, 'la_pb.backend_url')
+          .replace(/\bpb\.backendUrl\b/g, 'la_pb.backend_url')
         // 施策 A+B: 旧カラム名を正規化形式に書き換え、必要な互換 JOIN を導出
         const { rewrittenWhere: rawRewrittenWhere, compatJoins } =
           rewriteLegacyColumnsForPhase1(pbRewritten)
@@ -635,32 +650,34 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         // 施策 A: 旧カラム参照に必要な互換 JOIN を追加
         joinLines.push(...compatJoins)
         // pb は参照されている場合のみ JOIN（1:N のため DISTINCT が必要になる）
-        if (refs.pb)
+        if (refs.pb) {
           joinLines.push(
-            'LEFT JOIN posts_backends pb ON p.post_id = pb.post_id',
+            'LEFT JOIN post_backend_ids pb ON p.id = pb.post_id',
+            'LEFT JOIN local_accounts la_pb ON la_pb.id = pb.local_account_id',
           )
+        }
         // 1:N JOIN が存在する場合のみ DISTINCT が必要
         const hasMultiRowJoin =
           refs.pb || refs.ptt || refs.pbt || refs.pme || refs.prb || refs.pe
         if (refs.ptt)
           joinLines.push(
-            `LEFT JOIN ${PTT_COMPAT} ptt\n            ON p.post_id = ptt.post_id`,
+            `LEFT JOIN ${PTT_COMPAT} ptt\n            ON p.id = ptt.post_id`,
           )
         if (refs.pbt)
           joinLines.push(
-            'LEFT JOIN post_hashtags pht ON p.post_id = pht.post_id\n            LEFT JOIN hashtags ht ON pht.hashtag_id = ht.hashtag_id',
+            'LEFT JOIN post_hashtags pht ON p.id = pht.post_id\n            LEFT JOIN hashtags ht ON pht.hashtag_id = ht.id',
           )
         if (refs.pme)
           joinLines.push(
-            'LEFT JOIN posts_mentions pme\n            ON p.post_id = pme.post_id',
+            'LEFT JOIN post_mentions pme\n            ON p.id = pme.post_id',
           )
         if (refs.prb)
           joinLines.push(
-            'LEFT JOIN posts_reblogs prb\n            ON p.post_id = prb.post_id',
+            `LEFT JOIN ${PRB_COMPAT_SUBQUERY} prb\n            ON p.id = prb.post_id`,
           )
         if (refs.pe)
           joinLines.push(
-            'LEFT JOIN post_engagements pe\n            ON p.post_id = pe.post_id',
+            'LEFT JOIN post_interactions pe\n            ON p.id = pe.post_id',
           )
 
         const joinsClause = `\n          ${joinLines.join('\n          ')}`
@@ -677,17 +694,17 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
 
         // Phase1: 軽量な post_id のみ取得（施策 A: サブクエリ廃止）
         // 1:N JOIN がなければ DISTINCT 不要 → idx_posts_created で ORDER BY + LIMIT early termination が効く
-        // pb が参照されている場合は MIN(pb.backendUrl) を取得し Phase2 後に上書きする
+        // pb が参照されている場合は MIN(la_pb.backend_url) を取得し Phase2 後に上書きする
         let selectClause: string
         let groupByClause: string
         if (refs.pb) {
-          selectClause = 'SELECT p.post_id, MIN(pb.backendUrl) AS backendUrl'
-          groupByClause = '\n          GROUP BY p.post_id'
+          selectClause = 'SELECT p.id, MIN(la_pb.backend_url) AS backendUrl'
+          groupByClause = '\n          GROUP BY p.id'
         } else if (hasMultiRowJoin) {
-          selectClause = 'SELECT DISTINCT p.post_id'
+          selectClause = 'SELECT DISTINCT p.id'
           groupByClause = ''
         } else {
-          selectClause = 'SELECT p.post_id'
+          selectClause = 'SELECT p.id'
           groupByClause = ''
         }
         // --- 施策E: アクター事前フィルタ ---
@@ -706,8 +723,8 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
               SELECT DISTINCT ntf.actor_profile_id
               FROM notifications ntf
               INNER JOIN notification_types ntt
-                ON ntt.notification_type_id = ntf.notification_type_id
-              WHERE ntt.code IN (${placeholders})`
+                ON ntt.id = ntf.notification_type_id
+              WHERE ntt.name IN (${placeholders})`
             actorBinds = typeCodes
           } else {
             actorSql = 'SELECT DISTINCT actor_profile_id FROM notifications'

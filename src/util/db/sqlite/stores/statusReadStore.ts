@@ -21,6 +21,18 @@ import { fetchStatusesByIds } from '../queries/statusFetch'
 import type { SqliteStoredStatus, TimelineType } from '../queries/statusMapper'
 import { MAX_QUERY_LIMIT } from '../queries/statusSelect'
 
+/**
+ * posts_reblogs 互換サブクエリ:
+ * posts.reblog_of_post_id FK を利用して旧 prb エイリアスのカラムを再現する。
+ */
+const PRB_COMPAT_SUBQUERY =
+  '(SELECT rb_src.id AS post_id, rb_tgt.object_uri AS original_uri, ' +
+  "COALESCE((SELECT pr.acct FROM profiles pr WHERE pr.id = rb_src.author_profile_id), '') AS reblogger_acct, " +
+  'rb_src.created_at_ms AS reblogged_at_ms ' +
+  'FROM posts rb_src ' +
+  'INNER JOIN posts rb_tgt ON rb_src.reblog_of_post_id = rb_tgt.id ' +
+  'WHERE rb_src.reblog_of_post_id IS NOT NULL)'
+
 // ================================================================
 // タイムライン・タグ・ブックマーク取得
 // ================================================================
@@ -45,16 +57,13 @@ export async function getStatusesByTimelineType(
 
   // 第1段階: post_id + timelineTypes の取得
   const phase1Sql = `
-    SELECT p.post_id, json_group_array(DISTINCT ck.code) AS timelineTypes
+    SELECT p.id, json_group_array(DISTINCT te.timeline_key) AS timelineTypes
     FROM posts p
-    INNER JOIN posts_backends pb ON p.post_id = pb.post_id
-    INNER JOIN posts_timeline_types ptt ON p.post_id = ptt.post_id
-    LEFT JOIN timeline_items ti ON p.post_id = ti.post_id
-    LEFT JOIN timelines t ON t.timeline_id = ti.timeline_id
-    LEFT JOIN channel_kinds ck ON t.channel_kind_id = ck.channel_kind_id
-    WHERE ptt.timelineType = ?
+    INNER JOIN post_backend_ids pb ON p.id = pb.post_id
+    INNER JOIN timeline_entries te ON p.id = te.post_id
+    WHERE te.timeline_key = ?
       ${backendFilter}
-    GROUP BY p.post_id
+    GROUP BY p.id
     ORDER BY p.created_at_ms DESC
     LIMIT ?;
   `
@@ -98,12 +107,12 @@ export async function getStatusesByTag(
 
   // 第1段階: post_id の取得
   const phase1Sql = `
-    SELECT DISTINCT p.post_id
+    SELECT DISTINCT p.id
     FROM posts p
-    INNER JOIN posts_backends pb ON p.post_id = pb.post_id
-    INNER JOIN post_hashtags pht ON p.post_id = pht.post_id
-    INNER JOIN hashtags ht ON pht.hashtag_id = ht.hashtag_id
-    WHERE ht.normalized_name = LOWER(?)
+    INNER JOIN post_backend_ids pb ON p.id = pb.post_id
+    INNER JOIN post_hashtags pht ON p.id = pht.post_id
+    INNER JOIN hashtags ht ON pht.hashtag_id = ht.id
+    WHERE ht.name = LOWER(?)
       ${backendFilter}
     ORDER BY p.created_at_ms DESC
     LIMIT ?;
@@ -141,12 +150,11 @@ export async function getBookmarkedStatuses(
 
   // 第1段階: post_id の取得
   const phase1Sql = `
-    SELECT DISTINCT p.post_id
+    SELECT DISTINCT p.id
     FROM posts p
-    INNER JOIN posts_backends pb ON p.post_id = pb.post_id
-    INNER JOIN post_engagements pe ON p.post_id = pe.post_id
-    INNER JOIN engagement_types et ON pe.engagement_type_id = et.engagement_type_id
-    WHERE et.code = 'bookmark'
+    INNER JOIN post_backend_ids pb ON p.id = pb.post_id
+    INNER JOIN post_interactions pi ON p.id = pi.post_id
+    WHERE pi.is_bookmarked = 1
       ${backendFilter}
     ORDER BY p.created_at_ms DESC
     LIMIT ?;
@@ -202,24 +210,20 @@ export async function getStatusesByCustomQuery(
   const joinLines: string[] = []
   if (refs.ptt)
     joinLines.push(
-      'LEFT JOIN posts_timeline_types ptt\n      ON p.post_id = ptt.post_id',
+      'LEFT JOIN timeline_entries ptt\n      ON p.id = ptt.post_id',
     )
   if (refs.pbt)
     joinLines.push(
-      'LEFT JOIN post_hashtags pht ON p.post_id = pht.post_id\n      LEFT JOIN hashtags ht ON pht.hashtag_id = ht.hashtag_id',
+      'LEFT JOIN post_hashtags pht ON p.id = pht.post_id\n      LEFT JOIN hashtags ht ON pht.hashtag_id = ht.id',
     )
   if (refs.pme)
-    joinLines.push(
-      'LEFT JOIN posts_mentions pme\n      ON p.post_id = pme.post_id',
-    )
+    joinLines.push('LEFT JOIN post_mentions pme\n      ON p.id = pme.post_id')
   if (refs.prb)
     joinLines.push(
-      'LEFT JOIN posts_reblogs prb\n      ON p.post_id = prb.post_id',
+      `LEFT JOIN ${PRB_COMPAT_SUBQUERY} prb\n      ON p.id = prb.post_id`,
     )
   if (refs.pe)
-    joinLines.push(
-      'LEFT JOIN post_engagements pe\n      ON p.post_id = pe.post_id',
-    )
+    joinLines.push('LEFT JOIN post_interactions pe\n      ON p.id = pe.post_id')
 
   let backendFilter = ''
   const phase1Binds: (string | number)[] = []
@@ -235,20 +239,20 @@ export async function getStatusesByCustomQuery(
 
   // 第1段階: post_id の取得（旧カラム名の後方互換性のため posts をサブクエリでラップ）
   const phase1Sql = `
-    SELECT DISTINCT p.post_id
+    SELECT DISTINCT p.id AS post_id
     FROM (
       SELECT p_inner.*,
         COALESCE((SELECT sv.base_url FROM servers sv WHERE sv.server_id = p_inner.origin_server_id), '') AS origin_backend_url,
-        COALESCE((SELECT pr2.acct FROM profiles pr2 WHERE pr2.profile_id = p_inner.author_profile_id), '') AS account_acct,
+        COALESCE((SELECT pr2.acct FROM profiles pr2 WHERE pr2.id = p_inner.author_profile_id), '') AS account_acct,
         '' AS account_id,
-        COALESCE((SELECT vt2.code FROM visibility_types vt2 WHERE vt2.visibility_id = p_inner.visibility_id), 'public') AS visibility,
+        COALESCE((SELECT vt2.name FROM visibility_types vt2 WHERE vt2.id = p_inner.visibility_id), 'public') AS visibility,
         NULL AS reblog_of_id,
-        COALESCE((SELECT ps2.favourites_count FROM post_stats ps2 WHERE ps2.post_id = p_inner.post_id), 0) AS favourites_count,
-        COALESCE((SELECT ps2.reblogs_count FROM post_stats ps2 WHERE ps2.post_id = p_inner.post_id), 0) AS reblogs_count,
-        COALESCE((SELECT ps2.replies_count FROM post_stats ps2 WHERE ps2.post_id = p_inner.post_id), 0) AS replies_count
+        COALESCE((SELECT ps2.favourites_count FROM post_stats ps2 WHERE ps2.post_id = p_inner.id), 0) AS favourites_count,
+        COALESCE((SELECT ps2.reblogs_count FROM post_stats ps2 WHERE ps2.post_id = p_inner.id), 0) AS reblogs_count,
+        COALESCE((SELECT ps2.replies_count FROM post_stats ps2 WHERE ps2.post_id = p_inner.id), 0) AS replies_count
       FROM posts p_inner
     ) p
-    LEFT JOIN posts_backends pb ON p.post_id = pb.post_id${joinsClause}
+    LEFT JOIN post_backend_ids pb ON p.id = pb.post_id${joinsClause}
     WHERE (${rewrittenWhere || '1=1'})
       ${backendFilter}
     ORDER BY p.created_at_ms DESC
@@ -305,9 +309,9 @@ export async function validateCustomQuery(
     // 旧カラム名 backend_url を正しい backendUrl に修正
     const rewritten = sanitized.replace(/\bpb\.backend_url\b/g, 'pb.backendUrl')
 
-    /** ptt 互換サブクエリ: timeline_items + timelines + channel_kinds → (post_id, timelineType) */
+    /** ptt 互換サブクエリ: timeline_entries → (post_id, timelineType) */
     const pttCompat =
-      '(SELECT ti2.post_id, ck2.code AS timelineType FROM timeline_items ti2 INNER JOIN timelines t2 ON t2.timeline_id = ti2.timeline_id INNER JOIN channel_kinds ck2 ON ck2.channel_kind_id = t2.channel_kind_id WHERE ti2.post_id IS NOT NULL)'
+      '(SELECT te2.post_id, te2.timeline_key AS timelineType FROM timeline_entries te2 WHERE te2.post_id IS NOT NULL)'
 
     let sql: string
     if (isMixed) {
@@ -318,46 +322,46 @@ export async function validateCustomQuery(
           FROM (
             SELECT p_inner.*,
               COALESCE((SELECT sv.base_url FROM servers sv WHERE sv.server_id = p_inner.origin_server_id), '') AS origin_backend_url,
-              COALESCE((SELECT pr2.acct FROM profiles pr2 WHERE pr2.profile_id = p_inner.author_profile_id), '') AS account_acct,
-              COALESCE((SELECT vt2.code FROM visibility_types vt2 WHERE vt2.visibility_id = p_inner.visibility_id), 'public') AS visibility,
-              COALESCE((SELECT ps2.favourites_count FROM post_stats ps2 WHERE ps2.post_id = p_inner.post_id), 0) AS favourites_count,
-              COALESCE((SELECT ps2.reblogs_count FROM post_stats ps2 WHERE ps2.post_id = p_inner.post_id), 0) AS reblogs_count,
-              COALESCE((SELECT ps2.replies_count FROM post_stats ps2 WHERE ps2.post_id = p_inner.post_id), 0) AS replies_count
+              COALESCE((SELECT pr2.acct FROM profiles pr2 WHERE pr2.id = p_inner.author_profile_id), '') AS account_acct,
+              COALESCE((SELECT vt2.name FROM visibility_types vt2 WHERE vt2.id = p_inner.visibility_id), 'public') AS visibility,
+              COALESCE((SELECT ps2.favourites_count FROM post_stats ps2 WHERE ps2.post_id = p_inner.id), 0) AS favourites_count,
+              COALESCE((SELECT ps2.reblogs_count FROM post_stats ps2 WHERE ps2.post_id = p_inner.id), 0) AS reblogs_count,
+              COALESCE((SELECT ps2.replies_count FROM post_stats ps2 WHERE ps2.post_id = p_inner.id), 0) AS replies_count
             FROM posts p_inner
           ) p
           LEFT JOIN ${pttCompat} ptt
-            ON p.post_id = ptt.post_id
+            ON p.id = ptt.post_id
           LEFT JOIN post_hashtags pht
-            ON p.post_id = pht.post_id
+            ON p.id = pht.post_id
           LEFT JOIN hashtags ht
-            ON pht.hashtag_id = ht.hashtag_id
-          LEFT JOIN posts_mentions pme
-            ON p.post_id = pme.post_id
-          LEFT JOIN posts_backends pb
-            ON p.post_id = pb.post_id
-          LEFT JOIN posts_reblogs prb
-            ON p.post_id = prb.post_id
+            ON pht.hashtag_id = ht.id
+          LEFT JOIN post_mentions pme
+            ON p.id = pme.post_id
+          LEFT JOIN post_backend_ids pb
+            ON p.id = pb.post_id
+          LEFT JOIN ${PRB_COMPAT_SUBQUERY} prb
+            ON p.id = prb.post_id
           LEFT JOIN (
             SELECT n2.*,
               COALESCE((SELECT sv2.base_url FROM servers sv2 WHERE sv2.server_id = n2.server_id), '') AS backend_url,
-              COALESCE((SELECT nt2.code FROM notification_types nt2 WHERE nt2.notification_type_id = n2.notification_type_id), '') AS notification_type,
-              COALESCE((SELECT pr3.acct FROM profiles pr3 WHERE pr3.profile_id = n2.actor_profile_id), '') AS account_acct
+              COALESCE((SELECT nt2.name FROM notification_types nt2 WHERE nt2.id = n2.notification_type_id), '') AS notification_type,
+              COALESCE((SELECT pr3.acct FROM profiles pr3 WHERE pr3.id = n2.actor_profile_id), '') AS account_acct
             FROM notifications n2
           ) n ON 0 = 1
           WHERE (${rewritten})
           UNION ALL
-          SELECT n.notification_id, n.created_at_ms
+          SELECT n.id AS notification_id, n.created_at_ms
           FROM (
             SELECT n2.*,
               COALESCE((SELECT sv2.base_url FROM servers sv2 WHERE sv2.server_id = n2.server_id), '') AS backend_url,
-              COALESCE((SELECT nt2.code FROM notification_types nt2 WHERE nt2.notification_type_id = n2.notification_type_id), '') AS notification_type,
-              COALESCE((SELECT pr3.acct FROM profiles pr3 WHERE pr3.profile_id = n2.actor_profile_id), '') AS account_acct
+              COALESCE((SELECT nt2.name FROM notification_types nt2 WHERE nt2.id = n2.notification_type_id), '') AS notification_type,
+              COALESCE((SELECT pr3.acct FROM profiles pr3 WHERE pr3.id = n2.actor_profile_id), '') AS account_acct
             FROM notifications n2
           ) n
           LEFT JOIN (
             SELECT p2.*,
               COALESCE((SELECT sv3.base_url FROM servers sv3 WHERE sv3.server_id = p2.origin_server_id), '') AS origin_backend_url,
-              COALESCE((SELECT pr4.acct FROM profiles pr4 WHERE pr4.profile_id = p2.author_profile_id), '') AS account_acct
+              COALESCE((SELECT pr4.acct FROM profiles pr4 WHERE pr4.id = p2.author_profile_id), '') AS account_acct
             FROM posts p2
           ) p ON 0 = 1
           LEFT JOIN ${pttCompat} ptt
@@ -366,11 +370,11 @@ export async function validateCustomQuery(
             ON 0 = 1
           LEFT JOIN hashtags ht
             ON 0 = 1
-          LEFT JOIN posts_mentions pme
+          LEFT JOIN post_mentions pme
             ON 0 = 1
-          LEFT JOIN posts_backends pb
+          LEFT JOIN post_backend_ids pb
             ON 0 = 1
-          LEFT JOIN posts_reblogs prb
+          LEFT JOIN ${PRB_COMPAT_SUBQUERY} prb
             ON 0 = 1
           WHERE (${rewritten})
         )
@@ -379,12 +383,12 @@ export async function validateCustomQuery(
     } else if (isNotifQuery) {
       sql = `
         EXPLAIN
-        SELECT DISTINCT n.notification_id
+        SELECT DISTINCT n.id
         FROM (
           SELECT n2.*,
             COALESCE((SELECT sv2.base_url FROM servers sv2 WHERE sv2.server_id = n2.server_id), '') AS backend_url,
-            COALESCE((SELECT nt2.code FROM notification_types nt2 WHERE nt2.notification_type_id = n2.notification_type_id), '') AS notification_type,
-            COALESCE((SELECT pr3.acct FROM profiles pr3 WHERE pr3.profile_id = n2.actor_profile_id), '') AS account_acct
+            COALESCE((SELECT nt2.name FROM notification_types nt2 WHERE nt2.id = n2.notification_type_id), '') AS notification_type,
+            COALESCE((SELECT pr3.acct FROM profiles pr3 WHERE pr3.id = n2.actor_profile_id), '') AS account_acct
           FROM notifications n2
         ) n
         WHERE (${rewritten})
@@ -393,29 +397,29 @@ export async function validateCustomQuery(
     } else {
       sql = `
         EXPLAIN
-        SELECT DISTINCT p.post_id
+        SELECT DISTINCT p.id
         FROM (
           SELECT p_inner.*,
             COALESCE((SELECT sv.base_url FROM servers sv WHERE sv.server_id = p_inner.origin_server_id), '') AS origin_backend_url,
-            COALESCE((SELECT pr2.acct FROM profiles pr2 WHERE pr2.profile_id = p_inner.author_profile_id), '') AS account_acct,
-            COALESCE((SELECT vt2.code FROM visibility_types vt2 WHERE vt2.visibility_id = p_inner.visibility_id), 'public') AS visibility,
-            COALESCE((SELECT ps2.favourites_count FROM post_stats ps2 WHERE ps2.post_id = p_inner.post_id), 0) AS favourites_count,
-            COALESCE((SELECT ps2.reblogs_count FROM post_stats ps2 WHERE ps2.post_id = p_inner.post_id), 0) AS reblogs_count,
-            COALESCE((SELECT ps2.replies_count FROM post_stats ps2 WHERE ps2.post_id = p_inner.post_id), 0) AS replies_count
+            COALESCE((SELECT pr2.acct FROM profiles pr2 WHERE pr2.id = p_inner.author_profile_id), '') AS account_acct,
+            COALESCE((SELECT vt2.name FROM visibility_types vt2 WHERE vt2.id = p_inner.visibility_id), 'public') AS visibility,
+            COALESCE((SELECT ps2.favourites_count FROM post_stats ps2 WHERE ps2.post_id = p_inner.id), 0) AS favourites_count,
+            COALESCE((SELECT ps2.reblogs_count FROM post_stats ps2 WHERE ps2.post_id = p_inner.id), 0) AS reblogs_count,
+            COALESCE((SELECT ps2.replies_count FROM post_stats ps2 WHERE ps2.post_id = p_inner.id), 0) AS replies_count
           FROM posts p_inner
         ) p
         LEFT JOIN ${pttCompat} ptt
-          ON p.post_id = ptt.post_id
+          ON p.id = ptt.post_id
         LEFT JOIN post_hashtags pht
-          ON p.post_id = pht.post_id
+          ON p.id = pht.post_id
         LEFT JOIN hashtags ht
-          ON pht.hashtag_id = ht.hashtag_id
-        LEFT JOIN posts_mentions pme
-          ON p.post_id = pme.post_id
-        LEFT JOIN posts_backends pb
-          ON p.post_id = pb.post_id
-        LEFT JOIN posts_reblogs prb
-          ON p.post_id = prb.post_id
+          ON pht.hashtag_id = ht.id
+        LEFT JOIN post_mentions pme
+          ON p.id = pme.post_id
+        LEFT JOIN post_backend_ids pb
+          ON p.id = pb.post_id
+        LEFT JOIN ${PRB_COMPAT_SUBQUERY} prb
+          ON p.id = prb.post_id
         WHERE (${rewritten})
         LIMIT 1;
       `
@@ -455,7 +459,7 @@ export async function getDistinctTimelineTypes(): Promise<string[]> {
   try {
     const handle = await getSqliteDb()
     const rows = (await handle.execAsync(
-      'SELECT DISTINCT ck.code FROM timelines t INNER JOIN channel_kinds ck ON ck.channel_kind_id = t.channel_kind_id ORDER BY ck.code;',
+      'SELECT DISTINCT te.timeline_key FROM timeline_entries te ORDER BY te.timeline_key;',
       { returnValue: 'resultRows' },
     )) as string[][]
     return rows.map((r) => r[0])

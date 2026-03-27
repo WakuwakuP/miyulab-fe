@@ -1,8 +1,24 @@
 /**
  * SQLite ベースの Notification ストア
  *
- * v13 スキーマでは json カラムを廃止し、正規化テーブルから
+ * 新スキーマでは json カラムを廃止し、正規化テーブルから
  * Entity.Notification を構築する。
+ *
+ * - notifications.id (旧 notification_id)
+ * - local_accounts.backend_url (旧 servers.base_url)
+ * - notification_types.name (旧 code)
+ * - post_mentions (旧 posts_mentions)
+ * - custom_emojis.url (旧 image_url)
+ * - posts.id (旧 post_id)
+ * - poll_options.sort_order (旧 option_index)
+ * - poll_votes で voted/own_votes を取得
+ * - post_custom_emojis.custom_emoji_id (旧 emoji_id)
+ * - profile_custom_emojis.custom_emoji_id (旧 emoji_id)
+ * - post_backend_ids (旧 posts_backends)
+ * - posts.edited_at_ms INTEGER (旧 edited_at TEXT)
+ * - profile_aliases 廃止
+ * - stored_at 廃止
+ * - has_media → EXISTS サブクエリ
  */
 
 import type { Entity } from 'megalodon'
@@ -27,18 +43,38 @@ export interface SqliteStoredNotification extends Entity.Notification {
   notification_id: number
   backendUrl: string
   created_at_ms: number
-  storedAt: number
 }
 
 /**
  * 正規化テーブルから Entity.Notification を構築するための SELECT 句
+ *
+ * row layout:
+ *   [0] id (notification PK)
+ *   [1] backendUrl (from local_accounts.backend_url)
+ *   [2] created_at_ms
+ *   [3] notification_type   [4] local_id          [5] is_read
+ *   [6] actor_acct          [7] actor_username     [8] actor_display_name
+ *   [9] actor_avatar        [10] actor_header      [11] actor_locked
+ *   [12] actor_bot          [13] actor_url
+ *   [14] rp_post_id         [15] rp_content        [16] rp_spoiler_text
+ *   [17] rp_url             [18] rp_uri            [19] rp_created_at_ms
+ *   [20] rp_sensitive       [21] rp_visibility     [22] rp_language
+ *   [23] rp_author_acct     [24] rp_author_username [25] rp_author_display_name
+ *   [26] rp_author_avatar   [27] rp_author_url     [28] rp_local_id
+ *   [29] rp_in_reply_to_id  [30] rp_edited_at_ms
+ *   [31] rp_status_emojis_json [32] rp_account_emojis_json
+ *   [33] rp_poll_json
+ *   [34] actor_emojis_json
+ *   [35] rp_emoji_reactions_json
+ *   [36] rp_media_json      [37] rp_mentions_json
+ *   [38] rp_voted           [39] rp_own_votes_json
+ *   [40] reaction_name      [41] reaction_url
  */
 export const NOTIFICATION_SELECT = `
-  n.notification_id,
-  COALESCE(sv.base_url, '') AS backendUrl,
+  n.id,
+  COALESCE(la.backend_url, '') AS backendUrl,
   n.created_at_ms,
-  n.stored_at,
-  COALESCE(nt.code, '') AS notification_type,
+  COALESCE(nt.name, '') AS notification_type,
   n.local_id,
   n.is_read,
   COALESCE(ap.acct, '') AS actor_acct,
@@ -46,17 +82,17 @@ export const NOTIFICATION_SELECT = `
   COALESCE(ap.display_name, '') AS actor_display_name,
   COALESCE(ap.avatar_url, '') AS actor_avatar,
   COALESCE(ap.header_url, '') AS actor_header,
-  COALESCE(ap.locked, 0) AS actor_locked,
-  COALESCE(ap.bot, 0) AS actor_bot,
+  COALESCE(ap.is_locked, 0) AS actor_locked,
+  COALESCE(ap.is_bot, 0) AS actor_bot,
   COALESCE(ap.actor_uri, '') AS actor_url,
-  rp.post_id AS rp_post_id,
+  rp.id AS rp_post_id,
   COALESCE(rp.content_html, '') AS rp_content,
   COALESCE(rp.spoiler_text, '') AS rp_spoiler_text,
   rp.canonical_url AS rp_url,
   rp.object_uri AS rp_uri,
   rp.created_at_ms AS rp_created_at_ms,
   COALESCE(rp.is_sensitive, 0) AS rp_sensitive,
-  COALESCE((SELECT vt2.code FROM visibility_types vt2 WHERE vt2.visibility_id = rp.visibility_id), 'public') AS rp_visibility,
+  COALESCE((SELECT vt2.name FROM visibility_types vt2 WHERE vt2.id = rp.visibility_id), 'public') AS rp_visibility,
   rp.language AS rp_language,
   COALESCE(rppr.acct, '') AS rp_author_acct,
   COALESCE(rppr.username, '') AS rp_author_username,
@@ -64,59 +100,58 @@ export const NOTIFICATION_SELECT = `
   COALESCE(rppr.avatar_url, '') AS rp_author_avatar,
   COALESCE(rppr.actor_uri, '') AS rp_author_url,
   COALESCE(
-    (SELECT rpb.local_id FROM posts_backends rpb WHERE rpb.post_id = rp.post_id AND rpb.server_id = sv.server_id LIMIT 1),
-    (SELECT rpb.local_id FROM posts_backends rpb WHERE rpb.post_id = rp.post_id ORDER BY rpb.server_id LIMIT 1)
+    (SELECT rpb.local_id FROM post_backend_ids rpb WHERE rpb.post_id = rp.id AND rpb.local_account_id = n.local_account_id LIMIT 1),
+    (SELECT rpb.local_id FROM post_backend_ids rpb WHERE rpb.post_id = rp.id ORDER BY rpb.local_account_id LIMIT 1)
   ) AS rp_local_id,
-  rp.in_reply_to_id AS rp_in_reply_to_id,
-  rp.edited_at AS rp_edited_at,
-  (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.image_url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM post_custom_emojis pce INNER JOIN custom_emojis ce ON pce.emoji_id = ce.emoji_id WHERE pce.post_id = rp.post_id AND pce.usage_context = 'status') AS rp_status_emojis_json,
-  (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.image_url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM post_custom_emojis pce INNER JOIN custom_emojis ce ON pce.emoji_id = ce.emoji_id WHERE pce.post_id = rp.post_id AND pce.usage_context = 'account') AS rp_account_emojis_json,
-  (SELECT json_object('id', pl.poll_id, 'expires_at', pl.expires_at, 'multiple', pl.multiple, 'votes_count', pl.votes_count, 'options', (SELECT json_group_array(json_object('title', po.title, 'votes_count', po.votes_count)) FROM poll_options po WHERE po.poll_id = pl.poll_id ORDER BY po.option_index)) FROM polls pl WHERE pl.post_id = rp.post_id) AS rp_poll_json,
-  (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.image_url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM profile_custom_emojis pce2 INNER JOIN custom_emojis ce ON pce2.emoji_id = ce.emoji_id WHERE pce2.profile_id = ap.profile_id) AS actor_emojis_json,
-  COALESCE(apa.remote_account_id, '') AS actor_account_id,
-  COALESCE(rppa.remote_account_id, '') AS rp_author_account_id,
+  rp.in_reply_to_uri AS rp_in_reply_to_id,
+  rp.edited_at_ms AS rp_edited_at_ms,
+  (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM post_custom_emojis pce INNER JOIN custom_emojis ce ON pce.custom_emoji_id = ce.id WHERE pce.post_id = rp.id) AS rp_status_emojis_json,
+  (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM profile_custom_emojis rpace INNER JOIN custom_emojis ce ON rpace.custom_emoji_id = ce.id WHERE rpace.profile_id = rppr.id) AS rp_account_emojis_json,
+  (SELECT json_object('id', pl.id, 'expires_at', pl.expires_at, 'multiple', pl.multiple, 'votes_count', pl.votes_count, 'options', (SELECT json_group_array(json_object('title', po.title, 'votes_count', po.votes_count)) FROM poll_options po WHERE po.poll_id = pl.id ORDER BY po.sort_order)) FROM polls pl WHERE pl.post_id = rp.id) AS rp_poll_json,
+  (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM profile_custom_emojis pce2 INNER JOIN custom_emojis ce ON pce2.custom_emoji_id = ce.id WHERE pce2.profile_id = ap.id) AS actor_emojis_json,
   rpps.emoji_reactions_json AS rp_emoji_reactions_json,
-  CASE WHEN rp.has_media = 1 THEN (SELECT json_group_array(json_object('id', pm.remote_media_id, 'type', COALESCE((SELECT mt.code FROM media_types mt WHERE mt.media_type_id = pm.media_type_id), 'unknown'), 'url', pm.url, 'preview_url', pm.preview_url, 'description', pm.description, 'blurhash', pm.blurhash, 'remote_url', pm.url)) FROM post_media pm WHERE pm.post_id = rp.post_id ORDER BY pm.sort_order) ELSE NULL END AS rp_media_json,
-  (SELECT json_group_array(json_object('acct', pme.acct)) FROM posts_mentions pme WHERE pme.post_id = rp.post_id) AS rp_mentions_json,
+  CASE WHEN EXISTS(SELECT 1 FROM post_media WHERE post_id = rp.id) THEN (SELECT json_group_array(json_object('id', pm.media_local_id, 'type', COALESCE((SELECT mt.name FROM media_types mt WHERE mt.id = pm.media_type_id), 'unknown'), 'url', pm.url, 'preview_url', pm.preview_url, 'description', pm.description, 'blurhash', pm.blurhash, 'remote_url', pm.remote_url)) FROM post_media pm WHERE pm.post_id = rp.id ORDER BY pm.sort_order) ELSE NULL END AS rp_media_json,
+  (SELECT json_group_array(json_object('acct', pme.acct)) FROM post_mentions pme WHERE pme.post_id = rp.id) AS rp_mentions_json,
+  (SELECT pv.voted FROM poll_votes pv INNER JOIN polls pl2 ON pv.poll_id = pl2.id WHERE pl2.post_id = rp.id AND pv.local_account_id = n.local_account_id LIMIT 1) AS rp_voted,
+  (SELECT pv.own_votes_json FROM poll_votes pv INNER JOIN polls pl2 ON pv.poll_id = pl2.id WHERE pl2.post_id = rp.id AND pv.local_account_id = n.local_account_id LIMIT 1) AS rp_own_votes_json,
   n.reaction_name,
   n.reaction_url`
 
 export const NOTIFICATION_BASE_JOINS = `
-  LEFT JOIN servers sv ON n.server_id = sv.server_id
-  LEFT JOIN notification_types nt ON n.notification_type_id = nt.notification_type_id
-  LEFT JOIN profiles ap ON n.actor_profile_id = ap.profile_id
-  LEFT JOIN posts rp ON n.related_post_id = rp.post_id
-  LEFT JOIN profiles rppr ON rp.author_profile_id = rppr.profile_id
-  LEFT JOIN post_stats rpps ON rp.post_id = rpps.post_id
-  LEFT JOIN profile_aliases apa ON apa.profile_id = ap.profile_id AND apa.server_id = n.server_id
-  LEFT JOIN profile_aliases rppa ON rppa.profile_id = rppr.profile_id AND rppa.server_id = n.server_id`
+  LEFT JOIN local_accounts la ON n.local_account_id = la.id
+  LEFT JOIN notification_types nt ON n.notification_type_id = nt.id
+  LEFT JOIN profiles ap ON n.actor_profile_id = ap.id
+  LEFT JOIN posts rp ON n.related_post_id = rp.id
+  LEFT JOIN profiles rppr ON rp.author_profile_id = rppr.id
+  LEFT JOIN post_stats rpps ON rp.id = rpps.post_id`
 
 /**
  * row layout:
- *   [0] notification_id  [1] backendUrl      [2] created_at_ms
- *   [3] stored_at        [4] notification_type [5] local_id
- *   [6] is_read
- *   [7] actor_acct       [8] actor_username   [9] actor_display_name
- *   [10] actor_avatar    [11] actor_header    [12] actor_locked
- *   [13] actor_bot       [14] actor_url
- *   [15] rp_post_id      [16] rp_content      [17] rp_spoiler_text
- *   [18] rp_url          [19] rp_uri          [20] rp_created_at_ms
- *   [21] rp_sensitive     [22] rp_visibility   [23] rp_language
- *   [24] rp_author_acct  [25] rp_author_username [26] rp_author_display_name
- *   [27] rp_author_avatar [28] rp_author_url  [29] rp_local_id
- *   [30] rp_in_reply_to_id [31] rp_edited_at
- *   [32] rp_status_emojis_json [33] rp_account_emojis_json
- *   [34] rp_poll_json
- *   [35] actor_emojis_json
- *   [36] actor_account_id [37] rp_author_account_id
- *   [38] rp_emoji_reactions_json
- *   [39] rp_media_json    [40] rp_mentions_json
- *   [41] reaction_name    [42] reaction_url
+ *   [0] id (notification PK)
+ *   [1] backendUrl (from local_accounts.backend_url)
+ *   [2] created_at_ms
+ *   [3] notification_type   [4] local_id          [5] is_read
+ *   [6] actor_acct          [7] actor_username     [8] actor_display_name
+ *   [9] actor_avatar        [10] actor_header      [11] actor_locked
+ *   [12] actor_bot          [13] actor_url
+ *   [14] rp_post_id         [15] rp_content        [16] rp_spoiler_text
+ *   [17] rp_url             [18] rp_uri            [19] rp_created_at_ms
+ *   [20] rp_sensitive       [21] rp_visibility     [22] rp_language
+ *   [23] rp_author_acct     [24] rp_author_username [25] rp_author_display_name
+ *   [26] rp_author_avatar   [27] rp_author_url     [28] rp_local_id
+ *   [29] rp_in_reply_to_id  [30] rp_edited_at_ms
+ *   [31] rp_status_emojis_json [32] rp_account_emojis_json
+ *   [33] rp_poll_json
+ *   [34] actor_emojis_json
+ *   [35] rp_emoji_reactions_json
+ *   [36] rp_media_json      [37] rp_mentions_json
+ *   [38] rp_voted           [39] rp_own_votes_json
+ *   [40] reaction_name      [41] reaction_url
  */
 export function rowToStoredNotification(
   row: (string | number | null)[],
 ): SqliteStoredNotification {
-  const rpPostId = row[15] as number | null
+  const rpPostId = row[14] as number | null
   let status: Entity.Status | undefined
 
   const parseEmojis = (json: string | null): Entity.Emoji[] => {
@@ -139,7 +174,11 @@ export function rowToStoredNotification(
       }))
   }
 
-  const parsePoll = (json: string): Entity.Poll => {
+  const parsePoll = (
+    json: string,
+    voted: number | null,
+    ownVotesJson: string | null,
+  ): Entity.Poll => {
     const p = JSON.parse(json) as {
       id: number
       expires_at: string | null
@@ -154,6 +193,16 @@ export function rowToStoredNotification(
             votes_count: number | null
           }[])
         : p.options
+
+    let ownVotes: number[] | undefined
+    if (ownVotesJson) {
+      try {
+        ownVotes = JSON.parse(ownVotesJson) as number[]
+      } catch {
+        ownVotes = undefined
+      }
+    }
+
     return {
       expired: p.expires_at ? new Date(p.expires_at) < new Date() : false,
       expires_at: p.expires_at,
@@ -163,8 +212,9 @@ export function rowToStoredNotification(
         title: o.title,
         votes_count: o.votes_count,
       })),
-      voted: false,
+      voted: voted === 1,
       votes_count: p.votes_count,
+      ...(ownVotes ? { own_votes: ownVotes } : {}),
     }
   }
 
@@ -188,18 +238,22 @@ export function rowToStoredNotification(
   }
 
   if (rpPostId !== null) {
-    const rpCreatedAtMs = row[20] as number | null
-    const rpStatusEmojisJson = row[32] as string | null
-    const rpAccountEmojisJson = row[33] as string | null
-    const rpPollJson = row[34] as string | null
+    const rpCreatedAtMs = row[19] as number | null
+    const rpStatusEmojisJson = row[31] as string | null
+    const rpAccountEmojisJson = row[32] as string | null
+    const rpPollJson = row[33] as string | null
+    const rpVoted = row[38] as number | null
+    const rpOwnVotesJson = row[39] as string | null
+    const rpEditedAtMs = row[30] as number | null
+
     status = {
       account: {
-        acct: (row[24] as string) ?? '',
-        avatar: (row[27] as string) ?? '',
-        avatar_static: (row[27] as string) ?? '',
+        acct: (row[23] as string) ?? '',
+        avatar: (row[26] as string) ?? '',
+        avatar_static: (row[26] as string) ?? '',
         bot: false,
         created_at: '',
-        display_name: (row[26] as string) ?? '',
+        display_name: (row[25] as string) ?? '',
         emojis: parseEmojis(rpAccountEmojisJson),
         fields: [],
         followers_count: 0,
@@ -207,7 +261,7 @@ export function rowToStoredNotification(
         group: null,
         header: '',
         header_static: '',
-        id: (row[37] as string) || '',
+        id: '',
         limited: null,
         locked: false,
         moved: null,
@@ -215,46 +269,46 @@ export function rowToStoredNotification(
         note: '',
         statuses_count: 0,
         suspended: null,
-        url: (row[28] as string) ?? '',
-        username: (row[25] as string) ?? '',
+        url: (row[27] as string) ?? '',
+        username: (row[24] as string) ?? '',
       },
       application: null,
       bookmarked: false,
       card: null,
-      content: (row[16] as string) ?? '',
+      content: (row[15] as string) ?? '',
       created_at: rpCreatedAtMs ? new Date(rpCreatedAtMs).toISOString() : '',
-      edited_at: row[31] as string | null,
-      emoji_reactions: parseEmojiReactions(row[38] as string | null),
+      edited_at: rpEditedAtMs ? new Date(rpEditedAtMs).toISOString() : null,
+      emoji_reactions: parseEmojiReactions(row[35] as string | null),
       emojis: parseEmojis(rpStatusEmojisJson),
       favourited: null,
       favourites_count: 0,
-      id: (row[29] as string) ?? '',
+      id: (row[28] as string) ?? '',
       in_reply_to_account_id: null,
-      in_reply_to_id: row[30] as string | null,
-      language: row[23] as string | null,
-      media_attachments: parseMediaAttachments(row[39] as string | null),
-      mentions: parseMentions(row[40] as string | null),
+      in_reply_to_id: row[29] as string | null,
+      language: row[22] as string | null,
+      media_attachments: parseMediaAttachments(row[36] as string | null),
+      mentions: parseMentions(row[37] as string | null),
       muted: null,
       pinned: null,
       plain_content: null,
-      poll: rpPollJson ? parsePoll(rpPollJson) : null,
+      poll: rpPollJson ? parsePoll(rpPollJson, rpVoted, rpOwnVotesJson) : null,
       quote: null,
       quote_approval: { automatic: [], current_user: '', manual: [] },
       reblog: null,
       reblogged: null,
       reblogs_count: 0,
       replies_count: 0,
-      sensitive: (row[21] as number) === 1,
-      spoiler_text: (row[17] as string) ?? '',
+      sensitive: (row[20] as number) === 1,
+      spoiler_text: (row[16] as string) ?? '',
       tags: [],
-      uri: (row[19] as string) ?? '',
-      url: (row[18] as string | null) ?? undefined,
-      visibility: ((row[22] as string) ?? 'public') as Entity.StatusVisibility,
+      uri: (row[18] as string) ?? '',
+      url: (row[17] as string | null) ?? undefined,
+      visibility: ((row[21] as string) ?? 'public') as Entity.StatusVisibility,
     }
   }
 
-  const reactionName = row[41] as string | null
-  const reactionUrl = row[42] as string | null
+  const reactionName = row[40] as string | null
+  const reactionUrl = row[41] as string | null
   const reaction: Entity.Reaction | undefined =
     reactionName != null
       ? {
@@ -268,40 +322,39 @@ export function rowToStoredNotification(
 
   return {
     account: {
-      acct: (row[7] as string) ?? '',
-      avatar: (row[10] as string) ?? '',
-      avatar_static: (row[10] as string) ?? '',
-      bot: (row[13] as number) === 1,
+      acct: (row[6] as string) ?? '',
+      avatar: (row[9] as string) ?? '',
+      avatar_static: (row[9] as string) ?? '',
+      bot: (row[12] as number) === 1,
       created_at: '',
-      display_name: (row[9] as string) ?? '',
-      emojis: parseEmojis(row[35] as string | null),
+      display_name: (row[8] as string) ?? '',
+      emojis: parseEmojis(row[34] as string | null),
       fields: [],
       followers_count: 0,
       following_count: 0,
       group: null,
-      header: (row[11] as string) ?? '',
-      header_static: (row[11] as string) ?? '',
-      id: (row[36] as string) || '',
+      header: (row[10] as string) ?? '',
+      header_static: (row[10] as string) ?? '',
+      id: '',
       limited: null,
-      locked: (row[12] as number) === 1,
+      locked: (row[11] as number) === 1,
       moved: null,
       noindex: null,
       note: '',
       statuses_count: 0,
       suspended: null,
-      url: (row[14] as string) ?? '',
-      username: (row[8] as string) ?? '',
+      url: (row[13] as string) ?? '',
+      username: (row[7] as string) ?? '',
     },
     backendUrl: (row[1] as string) ?? '',
     created_at: new Date(row[2] as number).toISOString(),
     created_at_ms: row[2] as number,
-    id: (row[5] as string) ?? String(row[0]),
+    id: (row[4] as string) ?? String(row[0]),
     // SqliteStoredNotification extra fields
     notification_id: row[0] as number,
     ...(reaction ? { reaction } : {}),
     status,
-    storedAt: row[3] as number,
-    type: (row[4] as string) ?? '',
+    type: (row[3] as string) ?? '',
   }
 }
 
@@ -351,7 +404,7 @@ export async function getNotifications(
   let backendFilter = ''
   if (backendUrls && backendUrls.length > 0) {
     const placeholders = backendUrls.map(() => '?').join(',')
-    backendFilter = `WHERE sv.base_url IN (${placeholders})`
+    backendFilter = `WHERE la.backend_url IN (${placeholders})`
     binds.push(...backendUrls)
   }
 
@@ -384,8 +437,8 @@ export async function getNotifications(
 /**
  * Notification 内の Status アクション状態を更新 — Worker に委譲
  *
- * v7: statusId は特定バックエンドのローカル ID のため、
- * posts_backends 経由でグローバルな status を特定し、
+ * statusId は特定バックエンドのローカル ID のため、
+ * post_backend_ids 経由でグローバルな status を特定し、
  * その status.uri に紐づく通知も含めて更新する。
  */
 export async function updateNotificationStatusAction(

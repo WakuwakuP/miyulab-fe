@@ -34,8 +34,8 @@ export async function fetchStatusesByIds(
     SELECT ${STATUS_BASE_SELECT}
     FROM posts p
       ${STATUS_BASE_JOINS}
-    WHERE p.post_id IN (${placeholders})
-    GROUP BY p.post_id
+    WHERE p.id IN (${placeholders})
+    GROUP BY p.id
     ORDER BY p.created_at_ms DESC;
   `
   const baseRows = (await handle.execAsync(baseSql, {

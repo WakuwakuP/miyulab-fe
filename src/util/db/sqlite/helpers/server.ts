@@ -1,35 +1,24 @@
-import { serverCache } from './cache'
+import { serverIdCache } from './cache'
+import type { DbExecCompat } from './types'
 
 /**
- * backendUrl に対応する server_id を返す。
+ * host に対応する servers.id を返す。
  * 未登録の場合は servers テーブルに INSERT してから返す。
  */
-export function ensureServer(
-  db: {
-    exec: (
-      sql: string,
-      opts?: {
-        bind?: (string | number | null)[]
-        returnValue?: 'resultRows'
-      },
-    ) => unknown
-  },
-  backendUrl: string,
-): number {
-  const cached = serverCache.get(backendUrl)
+export function ensureServer(db: DbExecCompat, host: string): number {
+  const cached = serverIdCache.get(host)
   if (cached !== undefined) return cached
 
-  const host = new URL(backendUrl).host
-
-  db.exec('INSERT OR IGNORE INTO servers (host, base_url) VALUES (?, ?);', {
-    bind: [host, backendUrl],
+  db.exec('INSERT OR IGNORE INTO servers (host) VALUES (?);', {
+    bind: [host],
   })
 
-  const rows = db.exec('SELECT server_id FROM servers WHERE base_url = ?;', {
-    bind: [backendUrl],
+  const rows = db.exec('SELECT id FROM servers WHERE host = ?;', {
+    bind: [host],
     returnValue: 'resultRows',
   }) as number[][]
 
-  serverCache.set(backendUrl, rows[0][0])
-  return rows[0][0]
+  const id = rows[0][0]
+  serverIdCache.set(host, id)
+  return id
 }

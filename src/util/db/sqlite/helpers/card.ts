@@ -1,75 +1,85 @@
-/**
- * リンクカード同期ヘルパー
- */
+import type { DbExecCompat } from './types'
+
+const CARD_TYPE_MAP: Record<string, number> = {
+  link: 1,
+  photo: 2,
+  rich: 4,
+  video: 3,
+}
 
 /**
- * 投稿のリンクカードを link_cards / post_links に同期する。
- *
- * link_cards テーブルに canonical_url で UPSERT し、
- * post_links テーブルを洗い替え（DELETE → INSERT）する。
- * card が null の場合は post_links のみ削除する。
+ * リンクカードを同期する。
+ * link_cards テーブルに post_id で 1:1 UPSERT する。
  */
-export function syncPostLinkCard(
-  db: {
-    exec: (
-      sql: string,
-      opts?: {
-        bind?: (string | number | null)[]
-        returnValue?: 'resultRows'
-      },
-    ) => unknown
-  },
+export function syncLinkCard(
+  db: DbExecCompat,
   postId: number,
-  card: {
-    url: string
-    title: string
-    description: string
-    image: string | null
-    provider_name: string | null
-  } | null,
+  card:
+    | {
+        type?: string
+        url: string
+        title?: string
+        description?: string
+        image?: string | null
+        author_name?: string | null
+        author_url?: string | null
+        provider_name?: string | null
+        provider_url?: string | null
+        html?: string | null
+        width?: number | null
+        height?: number | null
+        embed_url?: string | null
+        blurhash?: string | null
+      }
+    | null
+    | undefined,
 ): void {
-  if (!card || !card.url) {
-    // No card - delete all links for this post
-    db.exec('DELETE FROM post_links WHERE post_id = ?;', { bind: [postId] })
+  if (!card) {
+    db.exec('DELETE FROM link_cards WHERE post_id = ?;', { bind: [postId] })
     return
   }
 
-  // UPSERT the link card
+  const cardTypeId = CARD_TYPE_MAP[card.type ?? 'link'] ?? 1
+
   db.exec(
-    `INSERT INTO link_cards (canonical_url, title, description, image_url, provider_name, fetched_at)
-     VALUES (?, ?, ?, ?, ?, datetime('now'))
-     ON CONFLICT(canonical_url) DO UPDATE SET
-       title         = excluded.title,
-       description   = excluded.description,
-       image_url     = excluded.image_url,
-       provider_name = excluded.provider_name,
-       fetched_at    = excluded.fetched_at;`,
+    `INSERT INTO link_cards (
+      post_id, card_type_id, url, title, description, image,
+      author_name, author_url, provider_name, provider_url,
+      html, width, height, embed_url, blurhash
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(post_id) DO UPDATE SET
+      card_type_id  = excluded.card_type_id,
+      url           = excluded.url,
+      title         = excluded.title,
+      description   = excluded.description,
+      image         = excluded.image,
+      author_name   = excluded.author_name,
+      author_url    = excluded.author_url,
+      provider_name = excluded.provider_name,
+      provider_url  = excluded.provider_url,
+      html          = excluded.html,
+      width         = excluded.width,
+      height        = excluded.height,
+      embed_url     = excluded.embed_url,
+      blurhash      = excluded.blurhash;`,
     {
       bind: [
+        postId,
+        cardTypeId,
         card.url,
-        card.title ?? null,
-        card.description ?? null,
+        card.title ?? '',
+        card.description ?? '',
         card.image ?? null,
+        card.author_name ?? null,
+        card.author_url ?? null,
         card.provider_name ?? null,
+        card.provider_url ?? null,
+        card.html ?? null,
+        card.width ?? null,
+        card.height ?? null,
+        card.embed_url ?? null,
+        card.blurhash ?? null,
       ],
     },
   )
-
-  const rows = db.exec(
-    'SELECT link_card_id FROM link_cards WHERE canonical_url = ?;',
-    { bind: [card.url], returnValue: 'resultRows' },
-  ) as number[][]
-  const linkCardId = rows[0][0]
-
-  db.exec(
-    `INSERT INTO post_links (post_id, link_card_id, url_in_post, sort_order)
-     VALUES (?, ?, ?, 0)
-     ON CONFLICT(post_id, link_card_id, url_in_post) DO NOTHING;`,
-    { bind: [postId, linkCardId, card.url] },
-  )
-
-  // Remove stale links (links to other cards)
-  db.exec(`DELETE FROM post_links WHERE post_id = ? AND link_card_id != ?;`, {
-    bind: [postId, linkCardId],
-  })
 }

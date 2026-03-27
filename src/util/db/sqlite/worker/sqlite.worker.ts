@@ -8,7 +8,9 @@
 /// <reference lib="webworker" />
 
 import { logSlowQueryExplain } from '../explainLogger'
+import { buildTimelineKey, resolveLocalAccountId } from '../helpers'
 import type { TableName, WorkerMessage, WorkerRequest } from '../protocol'
+import { resolvePostIdInternal } from './handlers/statusHelpers'
 import { handleEnforceMaxLength } from './workerCleanup'
 import {
   handleAddNotification,
@@ -21,7 +23,6 @@ import {
   handleDeleteEvent,
   handleEnsureLocalAccount,
   handleRemoveFromTimeline,
-  handleSyncFollows,
   handleToggleReaction,
   handleUpdateStatus,
   handleUpdateStatusAction,
@@ -325,9 +326,14 @@ self.onmessage = (
       }
 
       case 'updateStatusAction': {
+        const localAccountId = resolveLocalAccountId(db, msg.backendUrl)
+        if (localAccountId == null) {
+          sendResponse(msg.id, { ok: true }, [])
+          break
+        }
         const r = handleUpdateStatusAction(
           db,
-          msg.backendUrl,
+          localAccountId,
           msg.statusId,
           msg.action,
           msg.value,
@@ -343,13 +349,12 @@ self.onmessage = (
       }
 
       case 'handleDeleteEvent': {
-        const r = handleDeleteEvent(
-          db,
-          msg.backendUrl,
-          msg.statusId,
-          msg.sourceTimelineType,
-          msg.tag,
-        )
+        const localAccountId = resolveLocalAccountId(db, msg.backendUrl)
+        if (localAccountId == null) {
+          sendResponse(msg.id, { ok: true }, [])
+          break
+        }
+        const r = handleDeleteEvent(db, localAccountId, msg.statusId)
         sendResponse(msg.id, { ok: true }, r.changedTables, undefined, {
           backendUrl: msg.backendUrl,
           tag: msg.tag,
@@ -359,12 +364,22 @@ self.onmessage = (
       }
 
       case 'removeFromTimeline': {
+        const localAccountId = resolveLocalAccountId(db, msg.backendUrl)
+        if (localAccountId == null) {
+          sendResponse(msg.id, { ok: true }, [])
+          break
+        }
+        const timelineKey = buildTimelineKey(msg.timelineType, { tag: msg.tag })
+        const postId = resolvePostIdInternal(db, localAccountId, msg.statusId)
+        if (postId == null) {
+          sendResponse(msg.id, { ok: true }, [])
+          break
+        }
         const r = handleRemoveFromTimeline(
           db,
-          msg.backendUrl,
-          msg.statusId,
-          msg.timelineType,
-          msg.tag,
+          localAccountId,
+          timelineKey,
+          postId,
         )
         sendResponse(msg.id, { ok: true }, r.changedTables, undefined, {
           backendUrl: msg.backendUrl,
@@ -414,13 +429,6 @@ self.onmessage = (
         break
       }
 
-      // ---- Follows ----
-      case 'syncFollows': {
-        const r = handleSyncFollows(db, msg.backendUrl, msg.accountsJson)
-        sendResponse(msg.id, { ok: true }, r.changedTables)
-        break
-      }
-
       // ---- Local Account ----
       case 'ensureLocalAccount': {
         const r = handleEnsureLocalAccount(db, msg.backendUrl, msg.accountJson)
@@ -430,9 +438,14 @@ self.onmessage = (
 
       // ---- Reaction ----
       case 'toggleReaction': {
+        const localAccountId = resolveLocalAccountId(db, msg.backendUrl)
+        if (localAccountId == null) {
+          sendResponse(msg.id, { ok: true }, [])
+          break
+        }
         const r = handleToggleReaction(
           db,
-          msg.backendUrl,
+          localAccountId,
           msg.statusId,
           msg.value,
           msg.emoji,
@@ -470,7 +483,7 @@ self.onmessage = (
             batchResults: {
               belongingTags: [],
               customEmojis: [],
-              engagements: [],
+              interactions: [],
               media: [],
               mentions: [],
               polls: [],
@@ -511,7 +524,7 @@ self.onmessage = (
         const batchResults = {
           belongingTags: runBatch(msg.batchSqls.belongingTags),
           customEmojis: runBatch(msg.batchSqls.customEmojis),
-          engagements: runBatch(msg.batchSqls.engagements),
+          interactions: runBatch(msg.batchSqls.interactions),
           media: runBatch(msg.batchSqls.media),
           mentions: runBatch(msg.batchSqls.mentions),
           polls: runBatch(msg.batchSqls.polls),

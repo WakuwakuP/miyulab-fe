@@ -1,14 +1,11 @@
 export {
-  channelKindCache,
   clearAllCaches,
-  createCompositeKey,
-  customEmojiIdCache,
-  localAccountCache,
+  emojiIdCache,
+  localAccountIdCache,
   profileIdCache,
-  serverCache,
-  timelineCache,
+  serverIdCache,
 } from './cache'
-export { syncPostLinkCard } from './card'
+export { syncLinkCard } from './card'
 export {
   CUSTOM_EMOJI_RE,
   ensureCustomEmoji,
@@ -17,22 +14,19 @@ export {
 } from './emoji'
 export { syncPostHashtags } from './hashtag'
 export {
-  ACTION_TO_ENGAGEMENT,
-  toggleEngagement,
   toggleReaction,
+  updateInteraction,
 } from './interaction'
-export { syncPollData } from './poll'
-export { extractStatusColumns } from './post'
+export { syncPollData, syncPollVotes } from './poll'
+export type { PostColumns } from './post'
+export { extractPostColumns } from './post'
 export {
   ensureProfile,
-  ensureProfileAlias,
   syncProfileCustomEmojis,
+  syncProfileFields,
+  syncProfileStats,
 } from './profile'
 export { resolveLocalAccountId, resolvePostId } from './resolve'
 export { ensureServer } from './server'
-export {
-  ensureTimeline,
-  resolveChannelKindId,
-  resolvePostItemKindId,
-} from './timeline'
+export { buildTimelineKey } from './timeline'
 export type { DbExecCompat } from './types'

@@ -3,28 +3,22 @@
 // Worker / メインスレッド両方で使用。一度 DB から取得した値を保持する。
 // ================================================================
 
-export const channelKindCache = new Map<string, number>()
-export const serverCache = new Map<string, number>()
-export const timelineCache = new Map<string, number>()
-export const localAccountCache = new Map<string, number | null>()
-export const profileIdCache = new Map<string, number>()
-export const customEmojiIdCache = new Map<string, number>()
+/** host → servers.id */
+export const serverIdCache = new Map<string, number>()
 
-/**
- * compositeKey を生成する
- *
- * @deprecated v7 以降は post_id (INTEGER PK) を使用。Dexie 互換用に残す。
- */
-export function createCompositeKey(backendUrl: string, id: string): string {
-  return `${backendUrl}:${id}`
-}
+/** acct (FQN: username@domain) → profiles.id */
+export const profileIdCache = new Map<string, number>()
+
+/** "server_id:shortcode" → custom_emojis.id */
+export const emojiIdCache = new Map<string, number>()
+
+/** backend_url → local_accounts.id | null */
+export const localAccountIdCache = new Map<string, number | null>()
 
 /** 全キャッシュをクリアする */
 export function clearAllCaches(): void {
-  channelKindCache.clear()
-  serverCache.clear()
-  timelineCache.clear()
-  localAccountCache.clear()
+  serverIdCache.clear()
   profileIdCache.clear()
-  customEmojiIdCache.clear()
+  emojiIdCache.clear()
+  localAccountIdCache.clear()
 }

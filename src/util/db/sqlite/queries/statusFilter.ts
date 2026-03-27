@@ -52,12 +52,16 @@ export function buildFilterConditions(
   const binds: (string | number)[] = []
   const prefix = tableAlias ? `${tableAlias}.` : ''
 
-  // メディアフィルタ
+  // メディアフィルタ（新スキーマ: post_media サブクエリ）
   if (config.minMediaCount != null && config.minMediaCount > 0) {
-    conditions.push(`${prefix}media_count >= ?`)
+    conditions.push(
+      `(SELECT COUNT(*) FROM post_media WHERE post_id = ${prefix}id) >= ?`,
+    )
     binds.push(config.minMediaCount)
   } else if (config.onlyMedia) {
-    conditions.push(`${prefix}has_media = 1`)
+    conditions.push(
+      `EXISTS(SELECT 1 FROM post_media WHERE post_id = ${prefix}id)`,
+    )
   }
 
   // 公開範囲フィルタ（v13: visibility → visibility_id + visibility_types）
@@ -68,7 +72,7 @@ export function buildFilterConditions(
   ) {
     const placeholders = config.visibilityFilter.map(() => '?').join(',')
     conditions.push(
-      `(SELECT code FROM visibility_types WHERE visibility_id = ${prefix}visibility_id) IN (${placeholders})`,
+      `(SELECT name FROM visibility_types WHERE id = ${prefix}visibility_id) IN (${placeholders})`,
     )
     binds.push(...config.visibilityFilter)
   }
@@ -92,9 +96,9 @@ export function buildFilterConditions(
     conditions.push(`${prefix}in_reply_to_id IS NULL`)
   }
 
-  // CW 付き除外
+  // CW 付き除外（新スキーマ: spoiler_text が空文字 = CW なし）
   if (config.excludeSpoiler) {
-    conditions.push(`${prefix}has_spoiler = 0`)
+    conditions.push(`${prefix}spoiler_text = ''`)
   }
 
   // センシティブ除外
@@ -107,11 +111,11 @@ export function buildFilterConditions(
     const placeholders = config.accountFilter.accts.map(() => '?').join(',')
     if (config.accountFilter.mode === 'include') {
       conditions.push(
-        `(SELECT acct FROM profiles WHERE profile_id = ${prefix}author_profile_id) IN (${placeholders})`,
+        `(SELECT acct FROM profiles WHERE id = ${prefix}author_profile_id) IN (${placeholders})`,
       )
     } else {
       conditions.push(
-        `(SELECT acct FROM profiles WHERE profile_id = ${prefix}author_profile_id) NOT IN (${placeholders})`,
+        `(SELECT acct FROM profiles WHERE id = ${prefix}author_profile_id) NOT IN (${placeholders})`,
       )
     }
     binds.push(...config.accountFilter.accts)
@@ -143,7 +147,7 @@ export function buildFilterConditions(
   if (config.followsOnly) {
     const placeholders = targetBackendUrls.map(() => '?').join(',')
     conditions.push(
-      `${prefix}author_profile_id IN (SELECT f.target_profile_id FROM follows f INNER JOIN local_accounts la ON f.local_account_id = la.local_account_id INNER JOIN servers sv ON la.server_id = sv.server_id WHERE sv.base_url IN (${placeholders}))`,
+      `${prefix}author_profile_id IN (SELECT f.target_profile_id FROM follows f INNER JOIN local_accounts la ON f.local_account_id = la.id INNER JOIN servers sv ON la.server_id = sv.id WHERE sv.base_url IN (${placeholders}))`,
     )
     binds.push(...targetBackendUrls)
   }

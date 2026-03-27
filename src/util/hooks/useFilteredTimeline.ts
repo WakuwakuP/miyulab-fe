@@ -60,7 +60,7 @@ function resolveAppIndex(
  * ## クエリ戦略
  *
  * backendFilter.mode に応じてクエリ対象の backendUrl を決定し、
- * timeline_items + timelines + channel_kinds テーブルとの JOIN で
+ * timeline_entries テーブルとの JOIN で
  * DB 側でソート・フィルタを行う。
  *
  * ## v2 スキーマ対応
@@ -202,7 +202,7 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
 
       // === 第1段階: post_id + timelineTypes + backendUrl の取得（軽量クエリ） ===
       const whereConditions = [
-        `pb.backendUrl IN (${backendPlaceholders})`,
+        `la.backend_url IN (${backendPlaceholders})`,
         ...filterConditions,
       ]
 
@@ -214,21 +214,20 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
           .map((u) => `'${u.replace(/'/g, "''")}'`)
           .join(',')
         whereConditions.push(
-          `t.local_account_id IN (SELECT la.local_account_id FROM local_accounts la INNER JOIN servers sv ON la.server_id = sv.server_id WHERE sv.base_url IN (${quotedUrls}))`,
+          `te.local_account_id IN (SELECT la2.id FROM local_accounts la2 WHERE la2.backend_url IN (${quotedUrls}))`,
         )
       }
 
       const phase1Sql = `
-        SELECT p.post_id, json_group_array(DISTINCT ck.code) AS timelineTypes, MIN(pb.backendUrl) AS backendUrl
-        FROM channel_kinds ck
-        INNER JOIN timelines t ON t.channel_kind_id = ck.channel_kind_id
-        INNER JOIN timeline_items ti ON ti.timeline_id = t.timeline_id
-        INNER JOIN posts p ON p.post_id = ti.post_id
-        INNER JOIN posts_backends pb ON p.post_id = pb.post_id
-        LEFT JOIN profiles pr ON p.author_profile_id = pr.profile_id
+        SELECT p.id, json_group_array(DISTINCT te.timeline_key) AS timelineTypes, MIN(la.backend_url) AS backendUrl
+        FROM timeline_entries te
+        INNER JOIN posts p ON p.id = te.post_id
+        LEFT JOIN post_backend_ids pbi ON p.id = pbi.post_id
+        LEFT JOIN local_accounts la ON pbi.local_account_id = la.id
+        LEFT JOIN profiles pr ON p.author_profile_id = pr.id
         WHERE ${whereConditions.join('\n          AND ')}
-        GROUP BY p.post_id
-        HAVING MAX(ck.code = ?) = 1
+        GROUP BY p.id
+        HAVING MAX(te.timeline_key = ?) = 1
         ORDER BY p.created_at_ms DESC
         LIMIT ?;
       `
