@@ -45,6 +45,7 @@ import {
   isMixedQuery,
   isNotificationQuery,
   rewriteLegacyColumnsForPhase1,
+  upgradeQueryToV2,
 } from 'util/queryBuilder'
 import { useConfigRefresh } from 'util/timelineRefresh'
 
@@ -253,11 +254,13 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         setResults([])
         return
       }
-      const sanitized = customQuery
-        .replace(/;/g, '')
-        .replace(/\bLIMIT\b\s+\d+/gi, '')
-        .replace(/\bOFFSET\b\s+\d+/gi, '')
-        .trim()
+      const sanitized = upgradeQueryToV2(
+        customQuery
+          .replace(/;/g, '')
+          .replace(/\bLIMIT\b\s+\d+/gi, '')
+          .replace(/\bOFFSET\b\s+\d+/gi, '')
+          .trim(),
+      )
 
       if (!sanitized) {
         setResults([])

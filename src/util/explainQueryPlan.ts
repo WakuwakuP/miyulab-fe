@@ -24,6 +24,7 @@ import {
   detectReferencedAliases,
   isMixedQuery,
   isNotificationQuery,
+  upgradeQueryToV2,
 } from 'util/queryBuilder'
 import {
   normalizeBackendFilter,
@@ -425,11 +426,13 @@ function buildCustomQuery(config: TimelineConfigV2): {
   if (/--/.test(customQuery) || /\/\*/.test(customQuery)) {
     return { binds: [], sql: '' }
   }
-  const sanitized = customQuery
-    .replace(/;/g, '')
-    .replace(/\bLIMIT\b\s+\d+/gi, '')
-    .replace(/\bOFFSET\b\s+\d+/gi, '')
-    .trim()
+  const sanitized = upgradeQueryToV2(
+    customQuery
+      .replace(/;/g, '')
+      .replace(/\bLIMIT\b\s+\d+/gi, '')
+      .replace(/\bOFFSET\b\s+\d+/gi, '')
+      .trim(),
+  )
 
   if (!sanitized) {
     return { binds: [], sql: '' }

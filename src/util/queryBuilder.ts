@@ -1146,6 +1146,13 @@ export function upgradeQueryToV2(query: string): string {
   result = result.replace(/\bpbt\.tag\b/g, 'ht.normalized_name')
   result = result.replace(/\bposts_belonging_tags\b/g, 'post_hashtags')
 
+  // notification_types: code → name (v2 スキーマでカラム名変更)
+  result = result.replace(/\bntt\.code\b/g, 'ntt.name')
+  result = result.replace(
+    /\bnotification_types\.code\b/g,
+    'notification_types.name',
+  )
+
   // メディア: json_extract(p.json, '$.media_attachments') != '[]'
   result = result.replace(
     /json_extract\(p\.json,\s*'\$\.media_attachments'\)\s*!=\s*'\[\]'/gi,

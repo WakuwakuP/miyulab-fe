@@ -286,6 +286,10 @@ export function upsertNotification(
   const host = extractHost(backendUrl)
   const serverId = ensureServer(db, host)
   const localAccountId = resolveLocalAccountId(db, backendUrl)
+  if (localAccountId === null) {
+    // local_accounts に未登録の backendUrl → NOT NULL 制約違反を回避
+    return false
+  }
 
   const created_at_ms = new Date(notification.created_at).getTime()
   const notificationTypeId = resolveNotificationTypeId(db, notification.type)
