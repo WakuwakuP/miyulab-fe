@@ -69,6 +69,7 @@
     "start": "next start",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "test:run": "vitest run",
     "test:watch": "vitest"
   },
   "version": "0.1.0"
