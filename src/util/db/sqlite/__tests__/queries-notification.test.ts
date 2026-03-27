@@ -279,14 +279,14 @@ describe('rowToStoredNotification', () => {
 
     const result = rowToStoredNotification(row)
     expect(result.status).toBeDefined()
-    expect(result.status!.content).toBe('<p>Hello</p>')
-    expect(result.status!.id).toBe('local-100')
-    expect(result.status!.uri).toBe('https://example.com/activity/100')
-    expect(result.status!.visibility).toBe('public')
-    expect(result.status!.language).toBe('en')
-    expect(result.status!.account.acct).toBe('author@example.com')
-    expect(result.status!.account.username).toBe('author')
-    expect(result.status!.account.display_name).toBe('Author Name')
+    expect(result.status?.content).toBe('<p>Hello</p>')
+    expect(result.status?.id).toBe('local-100')
+    expect(result.status?.uri).toBe('https://example.com/activity/100')
+    expect(result.status?.visibility).toBe('public')
+    expect(result.status?.language).toBe('en')
+    expect(result.status?.account.acct).toBe('author@example.com')
+    expect(result.status?.account.username).toBe('author')
+    expect(result.status?.account.display_name).toBe('Author Name')
   })
 
   it('edited_at_ms (INTEGER) を ISO 文字列に変換する', () => {
@@ -297,7 +297,7 @@ describe('rowToStoredNotification', () => {
 
     const result = rowToStoredNotification(row)
     expect(result.status).toBeDefined()
-    expect(result.status!.edited_at).toBe(new Date(1700001000000).toISOString())
+    expect(result.status?.edited_at).toBe(new Date(1700001000000).toISOString())
   })
 
   it('edited_at_ms が null の場合 edited_at は null', () => {
@@ -308,7 +308,7 @@ describe('rowToStoredNotification', () => {
 
     const result = rowToStoredNotification(row)
     expect(result.status).toBeDefined()
-    expect(result.status!.edited_at).toBeNull()
+    expect(result.status?.edited_at).toBeNull()
   })
 
   it('rp_author_account_id カラムが無いため status.account.id は空文字列', () => {
@@ -318,7 +318,7 @@ describe('rowToStoredNotification', () => {
 
     const result = rowToStoredNotification(row)
     expect(result.status).toBeDefined()
-    expect(result.status!.account.id).toBe('')
+    expect(result.status?.account.id).toBe('')
   })
 
   it('reaction 情報を正しくマッピングする', () => {
@@ -328,8 +328,8 @@ describe('rowToStoredNotification', () => {
 
     const result = rowToStoredNotification(row)
     expect(result.reaction).toBeDefined()
-    expect(result.reaction!.name).toBe('⭐')
-    expect(result.reaction!.count).toBe(1)
+    expect(result.reaction?.name).toBe('⭐')
+    expect(result.reaction?.count).toBe(1)
   })
 
   it('reaction に URL がある場合 url/static_url を含める', () => {
@@ -339,9 +339,9 @@ describe('rowToStoredNotification', () => {
 
     const result = rowToStoredNotification(row)
     expect(result.reaction).toBeDefined()
-    expect(result.reaction!.name).toBe('blobcat')
-    expect(result.reaction!.url).toBe('https://example.com/emoji/blobcat.png')
-    expect(result.reaction!.static_url).toBe(
+    expect(result.reaction?.name).toBe('blobcat')
+    expect(result.reaction?.url).toBe('https://example.com/emoji/blobcat.png')
+    expect(result.reaction?.static_url).toBe(
       'https://example.com/emoji/blobcat.png',
     )
   })
@@ -365,9 +365,9 @@ describe('rowToStoredNotification', () => {
 
     const result = rowToStoredNotification(row)
     expect(result.status).toBeDefined()
-    expect(result.status!.poll).toBeDefined()
-    expect(result.status!.poll!.voted).toBe(true)
-    expect(result.status!.poll!.own_votes).toEqual([0])
+    expect(result.status?.poll).toBeDefined()
+    expect(result.status?.poll?.voted).toBe(true)
+    expect(result.status?.poll?.own_votes).toEqual([0])
   })
 
   it('poll_votes が null の場合 voted=false, own_votes 無し', () => {
@@ -389,7 +389,7 @@ describe('rowToStoredNotification', () => {
 
     const result = rowToStoredNotification(row)
     expect(result.status).toBeDefined()
-    expect(result.status!.poll).toBeDefined()
-    expect(result.status!.poll!.voted).toBe(false)
+    expect(result.status?.poll).toBeDefined()
+    expect(result.status?.poll?.voted).toBe(false)
   })
 })

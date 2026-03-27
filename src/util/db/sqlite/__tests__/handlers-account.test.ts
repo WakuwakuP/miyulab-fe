@@ -82,7 +82,7 @@ describe('handleEnsureLocalAccount', () => {
     )
     expect(serverInsert).toBeDefined()
     // host はバックエンドURLからホスト名を抽出したもの
-    expect(serverInsert!.opts?.bind).toEqual(['mastodon.social'])
+    expect(serverInsert?.opts?.bind).toEqual(['mastodon.social'])
 
     // ensureProfile: INSERT + SELECT
     const profileInsert = calls.find(
@@ -95,14 +95,14 @@ describe('handleEnsureLocalAccount', () => {
       (c) => c.sql.includes('INSERT') && c.sql.includes('local_accounts'),
     )
     expect(localAccountUpsert).toBeDefined()
-    expect(localAccountUpsert!.sql).toContain('ON CONFLICT')
-    expect(localAccountUpsert!.sql).toContain('backend_url')
-    expect(localAccountUpsert!.sql).toContain('backend_type')
-    expect(localAccountUpsert!.sql).toContain('acct')
-    expect(localAccountUpsert!.sql).toContain('remote_account_id')
+    expect(localAccountUpsert?.sql).toContain('ON CONFLICT')
+    expect(localAccountUpsert?.sql).toContain('backend_url')
+    expect(localAccountUpsert?.sql).toContain('backend_type')
+    expect(localAccountUpsert?.sql).toContain('acct')
+    expect(localAccountUpsert?.sql).toContain('remote_account_id')
 
     // bind にバックエンドURL, アカウント情報が含まれる
-    const bind = localAccountUpsert!.opts?.bind as (string | number | null)[]
+    const bind = localAccountUpsert?.opts?.bind as (string | number | null)[]
     expect(bind).toContain(1) // server_id
     expect(bind).toContain('https://mastodon.social') // backend_url
     expect(bind).toContain('testuser@mastodon.social') // acct
@@ -125,10 +125,10 @@ describe('handleEnsureLocalAccount', () => {
       (c) => c.sql.includes('INSERT') && c.sql.includes('local_accounts'),
     )
     expect(localAccountUpsert).toBeDefined()
-    expect(localAccountUpsert!.sql).toContain('ON CONFLICT')
-    expect(localAccountUpsert!.sql).toContain('DO UPDATE SET')
+    expect(localAccountUpsert?.sql).toContain('ON CONFLICT')
+    expect(localAccountUpsert?.sql).toContain('DO UPDATE SET')
     // updated_at が更新される
-    expect(localAccountUpsert!.sql).toContain('updated_at')
+    expect(localAccountUpsert?.sql).toContain('updated_at')
   })
 
   it('profile_id を設定する', () => {
@@ -141,9 +141,9 @@ describe('handleEnsureLocalAccount', () => {
       (c) => c.sql.includes('INSERT') && c.sql.includes('local_accounts'),
     )
     expect(localAccountUpsert).toBeDefined()
-    expect(localAccountUpsert!.sql).toContain('profile_id')
+    expect(localAccountUpsert?.sql).toContain('profile_id')
 
-    const bind = localAccountUpsert!.opts?.bind as (string | number | null)[]
+    const bind = localAccountUpsert?.opts?.bind as (string | number | null)[]
     expect(bind).toContain(42) // profile_id from ensureProfile
   })
 
@@ -161,13 +161,13 @@ describe('handleEnsureLocalAccount', () => {
         c.opts?.returnValue === 'resultRows',
     )
     expect(serverSelect).toBeDefined()
-    expect(serverSelect!.opts?.bind).toEqual(['mastodon.social'])
+    expect(serverSelect?.opts?.bind).toEqual(['mastodon.social'])
 
     // local_accounts の bind に server_id が含まれる
     const localAccountUpsert = calls.find(
       (c) => c.sql.includes('INSERT') && c.sql.includes('local_accounts'),
     )
-    const bind = localAccountUpsert!.opts?.bind as (string | number | null)[]
+    const bind = localAccountUpsert?.opts?.bind as (string | number | null)[]
     expect(bind).toContain(99) // server_id
   })
 })
@@ -249,7 +249,7 @@ describe('handleBulkUpsertCustomEmojis', () => {
       (c) => c.sql.includes('INSERT') && c.sql.includes('servers'),
     )
     expect(serverInsert).toBeDefined()
-    expect(serverInsert!.opts?.bind).toEqual(['misskey.io'])
+    expect(serverInsert?.opts?.bind).toEqual(['misskey.io'])
 
     const serverSelect = calls.find(
       (c) =>
@@ -258,7 +258,7 @@ describe('handleBulkUpsertCustomEmojis', () => {
         c.opts?.returnValue === 'resultRows',
     )
     expect(serverSelect).toBeDefined()
-    expect(serverSelect!.opts?.bind).toEqual(['misskey.io'])
+    expect(serverSelect?.opts?.bind).toEqual(['misskey.io'])
   })
 
   it('空の絵文字リストの場合は何もしない', () => {

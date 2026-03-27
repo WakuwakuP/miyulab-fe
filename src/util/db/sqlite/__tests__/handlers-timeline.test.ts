@@ -67,16 +67,16 @@ describe('handleRemoveFromTimeline', () => {
       (c) => c.sql.includes('DELETE') && c.sql.includes('timeline_entries'),
     )
     expect(deleteEntry).toBeDefined()
-    expect(deleteEntry!.opts?.bind).toContain(1) // local_account_id
-    expect(deleteEntry!.opts?.bind).toContain('home') // timeline_key
-    expect(deleteEntry!.opts?.bind).toContain(42) // post_id
+    expect(deleteEntry?.opts?.bind).toContain(1) // local_account_id
+    expect(deleteEntry?.opts?.bind).toContain('home') // timeline_key
+    expect(deleteEntry?.opts?.bind).toContain(42) // post_id
 
     // 孤立投稿が削除される（timeline_entries=0, notifications=0 なので）
     const deletePost = calls.find(
       (c) => c.sql.includes('DELETE') && c.sql.includes('posts'),
     )
     expect(deletePost).toBeDefined()
-    expect(deletePost!.opts?.bind).toContain(42)
+    expect(deletePost?.opts?.bind).toContain(42)
   })
 
   it('孤立した投稿をクリーンアップする', () => {
@@ -93,7 +93,7 @@ describe('handleRemoveFromTimeline', () => {
       (c) => c.sql.includes('DELETE') && c.sql.includes('posts'),
     )
     expect(deletePost).toBeDefined()
-    expect(deletePost!.opts?.bind).toContain(100)
+    expect(deletePost?.opts?.bind).toContain(100)
   })
 
   it('投稿が他のタイムラインにある場合は削除しない', () => {
@@ -187,8 +187,8 @@ describe('handleDeleteEvent', () => {
       (c) => c.sql.includes('DELETE') && c.sql.includes('post_backend_ids'),
     )
     expect(deleteBackend).toBeDefined()
-    expect(deleteBackend!.opts?.bind).toContain(1)
-    expect(deleteBackend!.opts?.bind).toContain('status-abc-123')
+    expect(deleteBackend?.opts?.bind).toContain(1)
+    expect(deleteBackend?.opts?.bind).toContain('status-abc-123')
   })
 
   it('他のアカウントがまだ参照している場合、投稿は保持する', () => {
@@ -231,7 +231,7 @@ describe('handleDeleteEvent', () => {
       (c) => c.sql.includes('DELETE') && c.sql.includes('posts'),
     )
     expect(deletePost).toBeDefined()
-    expect(deletePost!.opts?.bind).toContain(10) // post_id
+    expect(deletePost?.opts?.bind).toContain(10) // post_id
   })
 
   it('post_backend_ids にエントリが見つからない場合は何もしない', () => {

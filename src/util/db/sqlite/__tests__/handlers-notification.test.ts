@@ -232,18 +232,18 @@ describe('upsertNotification', () => {
       c.sql.includes('INSERT INTO notifications'),
     )
     expect(insertCall).toBeDefined()
-    expect(insertCall!.sql).toContain('local_account_id')
-    expect(insertCall!.sql).toContain('local_id')
-    expect(insertCall!.sql).toContain('notification_type_id')
-    expect(insertCall!.sql).toContain('created_at_ms')
-    expect(insertCall!.sql).toContain('actor_profile_id')
-    expect(insertCall!.sql).toContain('reaction_name')
-    expect(insertCall!.sql).toContain('reaction_url')
-    expect(insertCall!.sql).toContain('is_read')
-    expect(insertCall!.sql).toContain('ON CONFLICT(local_account_id, local_id)')
+    expect(insertCall?.sql).toContain('local_account_id')
+    expect(insertCall?.sql).toContain('local_id')
+    expect(insertCall?.sql).toContain('notification_type_id')
+    expect(insertCall?.sql).toContain('created_at_ms')
+    expect(insertCall?.sql).toContain('actor_profile_id')
+    expect(insertCall?.sql).toContain('reaction_name')
+    expect(insertCall?.sql).toContain('reaction_url')
+    expect(insertCall?.sql).toContain('is_read')
+    expect(insertCall?.sql).toContain('ON CONFLICT(local_account_id, local_id)')
 
     // bind に local_account_id が含まれる
-    const bind = insertCall!.opts?.bind as (string | number | null)[]
+    const bind = insertCall?.opts?.bind as (string | number | null)[]
     expect(bind).toContain(42) // local_account_id from resolveLocalAccountId
     expect(bind).toContain('notif-1') // local_id
     expect(bind).toContain(2) // notification_type_id for 'favourite'
@@ -261,8 +261,8 @@ describe('upsertNotification', () => {
       c.sql.includes('INSERT INTO notifications'),
     )
     expect(insertCall).toBeDefined()
-    expect(insertCall!.sql).toContain('ON CONFLICT(local_account_id, local_id)')
-    expect(insertCall!.sql).toContain('DO UPDATE SET')
+    expect(insertCall?.sql).toContain('ON CONFLICT(local_account_id, local_id)')
+    expect(insertCall?.sql).toContain('DO UPDATE SET')
 
     // server_id を使った重複チェック SELECT が存在しないことを確認
     const serverIdCheck = calls.find(
@@ -289,7 +289,7 @@ describe('upsertNotification', () => {
 
     // INSERT の VALUES 部分に server_id カラムが含まれていない
     // stored_at も含まれていない
-    const sqlBeforeValues = insertCall!.sql.split('VALUES')[0]
+    const sqlBeforeValues = insertCall?.sql.split('VALUES')[0]
     expect(sqlBeforeValues).not.toContain('server_id')
     expect(sqlBeforeValues).not.toContain('stored_at')
   })
@@ -312,7 +312,7 @@ describe('upsertNotification', () => {
     )
     expect(insertCall).toBeDefined()
 
-    const bind = insertCall!.opts?.bind as (string | number | null)[]
+    const bind = insertCall?.opts?.bind as (string | number | null)[]
     expect(bind).toContain(':blobcat:')
     expect(bind).toContain('https://example.com/emoji/blobcat.png')
   })

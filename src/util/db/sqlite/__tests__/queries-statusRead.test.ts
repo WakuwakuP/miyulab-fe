@@ -23,7 +23,7 @@ describe('Phase 1 クエリが timeline_entries を使用する', () => {
       /async function getStatusesByTimelineType[\s\S]*?^}/m,
     )
     expect(fnMatch).not.toBeNull()
-    const fnSource = fnMatch![0]
+    const fnSource = fnMatch?.[0]
     expect(fnSource).toContain('timeline_entries')
   })
 
@@ -32,7 +32,7 @@ describe('Phase 1 クエリが timeline_entries を使用する', () => {
       /async function getStatusesByCustomQuery[\s\S]*?^}/m,
     )
     expect(fnMatch).not.toBeNull()
-    const fnSource = fnMatch![0]
+    const fnSource = fnMatch?.[0]
     // ptt 参照時に timeline_entries を使う
     expect(fnSource).toContain('timeline_entries')
   })
@@ -46,7 +46,7 @@ describe('Phase 1 クエリが timeline_items を使用しない', () => {
       /async function getStatusesByTimelineType[\s\S]*?^}/m,
     )
     expect(fnMatch).not.toBeNull()
-    const fnSource = fnMatch![0]
+    const fnSource = fnMatch?.[0]
     expect(fnSource).not.toContain('timeline_items')
   })
 
@@ -55,7 +55,7 @@ describe('Phase 1 クエリが timeline_items を使用しない', () => {
       /async function getStatusesByCustomQuery[\s\S]*?^}/m,
     )
     expect(fnMatch).not.toBeNull()
-    const fnSource = fnMatch![0]
+    const fnSource = fnMatch?.[0]
     expect(fnSource).not.toContain('timeline_items')
   })
 })
@@ -68,7 +68,7 @@ describe('getDistinctTimelineTypes が timeline_entries を使用する', () => 
       /async function getDistinctTimelineTypes[\s\S]*?^}/m,
     )
     expect(fnMatch).not.toBeNull()
-    const fnSource = fnMatch![0]
+    const fnSource = fnMatch?.[0]
     expect(fnSource).toContain('timeline_entries')
   })
 
@@ -77,7 +77,7 @@ describe('getDistinctTimelineTypes が timeline_entries を使用する', () => 
       /async function getDistinctTimelineTypes[\s\S]*?^}/m,
     )
     expect(fnMatch).not.toBeNull()
-    const fnSource = fnMatch![0]
+    const fnSource = fnMatch?.[0]
     expect(fnSource).toContain('timeline_key')
   })
 
@@ -86,7 +86,7 @@ describe('getDistinctTimelineTypes が timeline_entries を使用する', () => 
       /async function getDistinctTimelineTypes[\s\S]*?^}/m,
     )
     expect(fnMatch).not.toBeNull()
-    const fnSource = fnMatch![0]
+    const fnSource = fnMatch?.[0]
     expect(fnSource).not.toContain('channel_kinds')
   })
 
@@ -95,7 +95,7 @@ describe('getDistinctTimelineTypes が timeline_entries を使用する', () => 
       /async function getDistinctTimelineTypes[\s\S]*?^}/m,
     )
     expect(fnMatch).not.toBeNull()
-    const fnSource = fnMatch![0]
+    const fnSource = fnMatch?.[0]
     // "timelines" 単体のテーブル参照がないことを確認
     // （timeline_entries は含まれるので、単語境界で確認）
     expect(fnSource).not.toMatch(/\btimelines\b(?!_)/)
@@ -130,7 +130,7 @@ describe('post_engagements テーブルを使用しない', () => {
       /async function getBookmarkedStatuses[\s\S]*?^}/m,
     )
     expect(fnMatch).not.toBeNull()
-    const fnSource = fnMatch![0]
+    const fnSource = fnMatch?.[0]
     expect(fnSource).toContain('post_interactions')
     expect(fnSource).toContain('is_bookmarked')
   })

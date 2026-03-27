@@ -60,7 +60,7 @@ describe('handleEnforceMaxLength', () => {
     )
     expect(deleteTimeline).toBeDefined()
     // LIMIT = count - maxTimeline = 8 - 5 = 3
-    expect(deleteTimeline!.opts?.bind).toContain(3)
+    expect(deleteTimeline?.opts?.bind).toContain(3)
 
     // 孤立 posts の削除クエリが実行される
     const deleteOrphan = calls.find(
@@ -117,7 +117,7 @@ describe('handleEnforceMaxLength', () => {
     )
     expect(deleteNotif).toBeDefined()
     // LIMIT = 10 - 3 = 7
-    expect(deleteNotif!.opts?.bind).toContain(7)
+    expect(deleteNotif?.opts?.bind).toContain(7)
 
     // 孤立 posts の削除クエリが実行される
     const deleteOrphan = calls.find(

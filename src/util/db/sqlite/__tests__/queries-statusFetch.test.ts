@@ -1,3 +1,4 @@
+import type { SqliteHandle } from 'util/db/sqlite/queries/statusBatch'
 import { fetchStatusesByIds } from 'util/db/sqlite/queries/statusFetch'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -19,7 +20,7 @@ function createMockHandle() {
       captured.push(sql)
       return []
     }),
-  }
+  } as unknown as SqliteHandle
   return { captured, handle }
 }
 
@@ -28,7 +29,7 @@ function createMockHandle() {
 describe('Phase2 クエリが p.id を使用する（post_id ではない）', () => {
   it('WHERE 句で p.id IN を使用する', async () => {
     const { captured, handle } = createMockHandle()
-    await fetchStatusesByIds(handle as any, [1, 2, 3])
+    await fetchStatusesByIds(handle, [1, 2, 3])
 
     expect(captured.length).toBeGreaterThanOrEqual(1)
     const baseSql = captured[0]
@@ -38,7 +39,7 @@ describe('Phase2 クエリが p.id を使用する（post_id ではない）', (
 
   it('GROUP BY 句で p.id を使用する', async () => {
     const { captured, handle } = createMockHandle()
-    await fetchStatusesByIds(handle as any, [1, 2, 3])
+    await fetchStatusesByIds(handle, [1, 2, 3])
 
     expect(captured.length).toBeGreaterThanOrEqual(1)
     const baseSql = captured[0]
@@ -48,7 +49,7 @@ describe('Phase2 クエリが p.id を使用する（post_id ではない）', (
 
   it('SQL 全体に p.post_id が含まれない', async () => {
     const { captured, handle } = createMockHandle()
-    await fetchStatusesByIds(handle as any, [10, 20])
+    await fetchStatusesByIds(handle, [10, 20])
 
     expect(captured.length).toBeGreaterThanOrEqual(1)
     const baseSql = captured[0]
@@ -58,7 +59,7 @@ describe('Phase2 クエリが p.id を使用する（post_id ではない）', (
 
   it('空配列を渡した場合はクエリを発行せず空配列を返す', async () => {
     const { captured, handle } = createMockHandle()
-    const result = await fetchStatusesByIds(handle as any, [])
+    const result = await fetchStatusesByIds(handle, [])
 
     expect(result).toEqual([])
     expect(captured).toHaveLength(0)

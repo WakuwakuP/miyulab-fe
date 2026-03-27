@@ -189,10 +189,10 @@ describe('upsertMentionsInternal', () => {
       c.sql.includes('INSERT INTO post_mentions'),
     )
     expect(insertCall).toBeDefined()
-    expect(insertCall!.sql).toContain('DO UPDATE SET')
-    expect(insertCall!.sql).toContain('username')
-    expect(insertCall!.sql).toContain('url')
-    expect(insertCall!.sql).toContain('profile_id')
+    expect(insertCall?.sql).toContain('DO UPDATE SET')
+    expect(insertCall?.sql).toContain('username')
+    expect(insertCall?.sql).toContain('url')
+    expect(insertCall?.sql).toContain('profile_id')
   })
 
   it('不要なメンションを削除する', () => {

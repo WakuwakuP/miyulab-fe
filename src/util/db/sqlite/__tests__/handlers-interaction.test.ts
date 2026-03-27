@@ -212,9 +212,9 @@ describe('handleToggleReaction', () => {
         typeof call[0] === 'string' && call[0].includes('custom_emojis'),
     )
     expect(emojiSelect).toBeDefined()
-    expect(emojiSelect![0]).toContain('SELECT')
-    expect(emojiSelect![0]).toContain('custom_emojis')
-    expect(emojiSelect![1]?.bind).toContain('blobcat')
+    expect(emojiSelect?.[0]).toContain('SELECT')
+    expect(emojiSelect?.[0]).toContain('custom_emojis')
+    expect(emojiSelect?.[1]?.bind).toContain('blobcat')
 
     expect(toggleReaction).toHaveBeenCalledWith(
       db,
