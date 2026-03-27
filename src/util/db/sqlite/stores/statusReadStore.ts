@@ -52,7 +52,7 @@ export async function getStatusesByTimelineType(
   let backendFilter = ''
   if (backendUrls && backendUrls.length > 0) {
     const placeholders = backendUrls.map(() => '?').join(',')
-    backendFilter = `AND pb.server_id IN (SELECT sv.id FROM servers sv WHERE sv.base_url IN (${placeholders}))`
+    backendFilter = `AND pb.local_account_id IN (SELECT la.id FROM local_accounts la WHERE la.backend_url IN (${placeholders}))`
     phase1Binds.push(...backendUrls)
   }
 
@@ -102,7 +102,7 @@ export async function getStatusesByTag(
   let backendFilter = ''
   if (backendUrls && backendUrls.length > 0) {
     const placeholders = backendUrls.map(() => '?').join(',')
-    backendFilter = `AND pb.server_id IN (SELECT sv.id FROM servers sv WHERE sv.base_url IN (${placeholders}))`
+    backendFilter = `AND pb.local_account_id IN (SELECT la.id FROM local_accounts la WHERE la.backend_url IN (${placeholders}))`
     phase1Binds.push(...backendUrls)
   }
 
@@ -145,7 +145,7 @@ export async function getBookmarkedStatuses(
   let backendFilter = ''
   if (backendUrls && backendUrls.length > 0) {
     const placeholders = backendUrls.map(() => '?').join(',')
-    backendFilter = `AND pb.server_id IN (SELECT sv.id FROM servers sv WHERE sv.base_url IN (${placeholders}))`
+    backendFilter = `AND pb.local_account_id IN (SELECT la.id FROM local_accounts la WHERE la.backend_url IN (${placeholders}))`
     phase1Binds.push(...backendUrls)
   }
 
@@ -228,7 +228,7 @@ export async function getStatusesByCustomQuery(
 
   if (backendUrls && backendUrls.length > 0) {
     const placeholders = backendUrls.map(() => '?').join(',')
-    backendFilter = `AND pb.server_id IN (SELECT sv.id FROM servers sv WHERE sv.base_url IN (${placeholders}))`
+    backendFilter = `AND pb.local_account_id IN (SELECT la.id FROM local_accounts la WHERE la.backend_url IN (${placeholders}))`
     phase1Binds.push(...backendUrls)
   }
 
@@ -240,7 +240,7 @@ export async function getStatusesByCustomQuery(
     SELECT DISTINCT p.id AS post_id
     FROM (
       SELECT p_inner.*,
-        COALESCE((SELECT sv.base_url FROM servers sv WHERE sv.id = p_inner.origin_server_id), '') AS origin_backend_url,
+        COALESCE((SELECT la2.backend_url FROM local_accounts la2 WHERE la2.server_id = p_inner.origin_server_id LIMIT 1), '') AS origin_backend_url,
         COALESCE((SELECT pr2.acct FROM profiles pr2 WHERE pr2.id = p_inner.author_profile_id), '') AS account_acct,
         '' AS account_id,
         COALESCE((SELECT vt2.name FROM visibility_types vt2 WHERE vt2.id = p_inner.visibility_id), 'public') AS visibility,
@@ -319,7 +319,7 @@ export async function validateCustomQuery(
           SELECT p.post_id, p.created_at_ms
           FROM (
             SELECT p_inner.*,
-              COALESCE((SELECT sv.base_url FROM servers sv WHERE sv.id = p_inner.origin_server_id), '') AS origin_backend_url,
+              COALESCE((SELECT la2.backend_url FROM local_accounts la2 WHERE la2.server_id = p_inner.origin_server_id LIMIT 1), '') AS origin_backend_url,
               COALESCE((SELECT pr2.acct FROM profiles pr2 WHERE pr2.id = p_inner.author_profile_id), '') AS account_acct,
               COALESCE((SELECT vt2.name FROM visibility_types vt2 WHERE vt2.id = p_inner.visibility_id), 'public') AS visibility,
               COALESCE((SELECT ps2.favourites_count FROM post_stats ps2 WHERE ps2.post_id = p_inner.id), 0) AS favourites_count,
@@ -358,7 +358,7 @@ export async function validateCustomQuery(
           ) n
           LEFT JOIN (
             SELECT p2.*,
-              COALESCE((SELECT sv3.base_url FROM servers sv3 WHERE sv3.id = p2.origin_server_id), '') AS origin_backend_url,
+              COALESCE((SELECT la3.backend_url FROM local_accounts la3 WHERE la3.server_id = p2.origin_server_id LIMIT 1), '') AS origin_backend_url,
               COALESCE((SELECT pr4.acct FROM profiles pr4 WHERE pr4.id = p2.author_profile_id), '') AS account_acct
             FROM posts p2
           ) p ON 0 = 1
@@ -398,7 +398,7 @@ export async function validateCustomQuery(
         SELECT DISTINCT p.id
         FROM (
           SELECT p_inner.*,
-            COALESCE((SELECT sv.base_url FROM servers sv WHERE sv.id = p_inner.origin_server_id), '') AS origin_backend_url,
+            COALESCE((SELECT la2.backend_url FROM local_accounts la2 WHERE la2.server_id = p_inner.origin_server_id LIMIT 1), '') AS origin_backend_url,
             COALESCE((SELECT pr2.acct FROM profiles pr2 WHERE pr2.id = p_inner.author_profile_id), '') AS account_acct,
             COALESCE((SELECT vt2.name FROM visibility_types vt2 WHERE vt2.id = p_inner.visibility_id), 'public') AS visibility,
             COALESCE((SELECT ps2.favourites_count FROM post_stats ps2 WHERE ps2.post_id = p_inner.id), 0) AS favourites_count,

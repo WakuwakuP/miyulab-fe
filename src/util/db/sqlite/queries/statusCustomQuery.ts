@@ -252,12 +252,13 @@ export const QUERY_COMPLETIONS = {
 /** 許可リスト（安全なテーブル＋カラムの組み合わせ） */
 export const ALLOWED_COLUMN_VALUES: Record<string, string[]> = {
   hashtags: ['name', 'display_name'],
+  local_accounts: ['backend_url'],
   notification_types: ['name'],
-  post_backend_ids: ['backend_url', 'local_id', 'server_id'],
+  post_backend_ids: ['local_id', 'server_id'],
   post_mentions: ['acct'],
   posts: ['object_uri', 'language'],
   profiles: ['acct'],
-  servers: ['base_url'],
+  servers: ['host'],
   visibility_types: ['name'],
 }
 
@@ -279,7 +280,6 @@ export const ALIAS_TO_TABLE: Record<
   },
   pb: {
     columns: {
-      backend_url: 'backend_url',
       local_id: 'local_id',
       server_id: 'server_id',
     },
@@ -327,12 +327,15 @@ export const COLUMN_TABLE_OVERRIDE: Record<
 > = {
   n: {
     account_acct: { column: 'acct', table: 'profiles' },
-    backend_url: { column: 'base_url', table: 'servers' },
+    backend_url: { column: 'backend_url', table: 'local_accounts' },
     notification_type: { column: 'name', table: 'notification_types' },
   },
   p: {
     account_acct: { column: 'acct', table: 'profiles' },
-    origin_backend_url: { column: 'backend_url', table: 'post_backend_ids' },
+    origin_backend_url: { column: 'backend_url', table: 'local_accounts' },
     visibility: { column: 'name', table: 'visibility_types' },
+  },
+  pb: {
+    backend_url: { column: 'backend_url', table: 'local_accounts' },
   },
 }

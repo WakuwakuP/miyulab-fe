@@ -160,19 +160,6 @@ function ensurePostForNotification(
   }
 
   // Resolve FK references
-  const replyToPostId = cols.in_reply_to_uri
-    ? (() => {
-        const rows = db.exec(
-          'SELECT post_id FROM post_backend_ids WHERE local_account_id = ? AND local_id = ? LIMIT 1;',
-          {
-            bind: [localAccountId, cols.in_reply_to_uri],
-            returnValue: 'resultRows',
-          },
-        ) as number[][]
-        return rows.length > 0 ? rows[0][0] : null
-      })()
-    : null
-
   const repostOfPostId = status.reblog?.uri
     ? (() => {
         const rows = db.exec(
@@ -190,9 +177,9 @@ function ensurePostForNotification(
       content_html, spoiler_text, canonical_url,
       is_sensitive, in_reply_to_uri, in_reply_to_account_acct,
       is_local_only, edited_at_ms,
-      reply_to_post_id, reblog_of_post_id,
+      reblog_of_post_id,
       plain_content, quote_state, application_name
-    ) VALUES (?,?,?, ?,?,?, ?,?,?, ?,?,?, ?,?, ?,?, ?,?,?);`,
+    ) VALUES (?,?,?, ?,?,?, ?,?,?, ?,?,?, ?,?, ?, ?,?,?);`,
     {
       bind: [
         cols.object_uri,
@@ -209,7 +196,6 @@ function ensurePostForNotification(
         cols.in_reply_to_account_acct,
         cols.is_local_only,
         cols.edited_at_ms,
-        replyToPostId,
         repostOfPostId,
         cols.plain_content,
         cols.quote_state,

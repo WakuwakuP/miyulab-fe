@@ -499,14 +499,13 @@ export function handleBulkUpsertStatuses(
  */
 function ensureTagForPost(db: DbExec, postId: number, tag: string): void {
   const normalizedTag = tag.toLowerCase()
-  db.exec(
-    `INSERT OR IGNORE INTO hashtags (normalized_name, display_name) VALUES (?, ?);`,
-    { bind: [normalizedTag, tag] },
-  )
-  const tagRows = db.exec(
-    'SELECT hashtag_id FROM hashtags WHERE normalized_name = ?;',
-    { bind: [normalizedTag], returnValue: 'resultRows' },
-  ) as number[][]
+  db.exec(`INSERT OR IGNORE INTO hashtags (name) VALUES (?);`, {
+    bind: [normalizedTag],
+  })
+  const tagRows = db.exec('SELECT id FROM hashtags WHERE name = ?;', {
+    bind: [normalizedTag],
+    returnValue: 'resultRows',
+  }) as number[][]
   if (tagRows.length > 0) {
     db.exec(
       'INSERT OR IGNORE INTO post_hashtags (post_id, hashtag_id) VALUES (?, ?);',

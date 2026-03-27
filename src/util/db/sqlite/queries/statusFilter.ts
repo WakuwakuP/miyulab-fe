@@ -17,7 +17,7 @@ import {
  * - visibility（公開範囲フィルタ）
  * - language（言語フィルタ、NULL は常に表示）
  * - is_reblog（ブースト除外）
- * - in_reply_to_id（リプライ除外）
+ * - in_reply_to_uri（リプライ除外）
  * - has_spoiler（CW 除外）
  * - is_sensitive（センシティブ除外）
  * - account_acct（アカウントフィルタ）
@@ -93,7 +93,7 @@ export function buildFilterConditions(
 
   // リプライ除外
   if (config.excludeReplies) {
-    conditions.push(`${prefix}in_reply_to_id IS NULL`)
+    conditions.push(`${prefix}in_reply_to_uri IS NULL`)
   }
 
   // CW 付き除外（新スキーマ: spoiler_text が空文字 = CW なし）
@@ -147,7 +147,7 @@ export function buildFilterConditions(
   if (config.followsOnly) {
     const placeholders = targetBackendUrls.map(() => '?').join(',')
     conditions.push(
-      `${prefix}author_profile_id IN (SELECT f.target_profile_id FROM follows f INNER JOIN local_accounts la ON f.local_account_id = la.id INNER JOIN servers sv ON la.server_id = sv.id WHERE sv.base_url IN (${placeholders}))`,
+      `${prefix}author_profile_id IN (SELECT f.target_profile_id FROM follows f INNER JOIN local_accounts la ON f.local_account_id = la.id WHERE la.backend_url IN (${placeholders}))`,
     )
     binds.push(...targetBackendUrls)
   }

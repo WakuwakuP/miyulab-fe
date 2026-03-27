@@ -174,15 +174,15 @@ describe('followsOnly フィルタが新スキーマの PK を使用する', () 
     expect(followCondition).not.toMatch(/la\.local_account_id\b/)
   })
 
-  it('servers の PK が id である（server_id ではない）', () => {
+  it('servers JOIN を使わず local_accounts.backend_url で直接フィルタする', () => {
     const { conditions } = buildFilterConditions(
       makeConfig({ followsOnly: true }),
       ['https://mastodon.social'],
     )
     const followCondition = conditions.find((c) => c.includes('follows'))
     expect(followCondition).toBeDefined()
-    // sv.id で JOIN（旧: sv.server_id）
-    expect(followCondition).toMatch(/sv\s*ON\s+la\.server_id\s*=\s*sv\.id\b/)
-    expect(followCondition).not.toMatch(/sv\.server_id\b/)
+    // local_accounts.backend_url で直接フィルタ（servers JOIN 不要）
+    expect(followCondition).toMatch(/la\.backend_url\s+IN\b/)
+    expect(followCondition).not.toMatch(/sv\.base_url\b/)
   })
 })

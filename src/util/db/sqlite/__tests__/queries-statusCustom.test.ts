@@ -180,9 +180,9 @@ describe('COLUMN_TABLE_OVERRIDE に新カラム名が使われている', () => 
     )
   })
 
-  it('p.origin_backend_url が post_backend_ids を参照する（posts_backends ではない）', () => {
+  it('p.origin_backend_url が local_accounts を参照する', () => {
     expect(COLUMN_TABLE_OVERRIDE.p.origin_backend_url.table).toBe(
-      'post_backend_ids',
+      'local_accounts',
     )
   })
 })
