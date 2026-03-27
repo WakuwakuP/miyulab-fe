@@ -1,19 +1,25 @@
 /**
- * SQLite マイグレーションランナー
+ * SQLite マイグレーションランナー (SemVer 対応)
  *
- * - user_version PRAGMA でバージョン管理
+ * - user_version PRAGMA でバージョン管理 (SemVer → 整数エンコード)
  * - フレッシュインストール: createFreshSchema → LATEST_VERSION
  * - インクリメンタル: 各マイグレーションを順次適用
  * - フォールバック: 失敗時は全テーブル DROP → 再作成
  */
 
+import type { SemVer } from '../schema/version'
+import {
+  compareSemVer,
+  encodeSemVer,
+  formatSemVer,
+  LATEST_VERSION,
+  normalizeLegacyVersion,
+} from '../schema/version'
 import type { SchemaDbHandle as DbHandle } from '../worker/workerSchema'
 import type { Migration } from './types'
-import { v28Migration } from './v28'
+import { v2_0_0_migration } from './v2.0.0'
 
-const LATEST_VERSION = 28
-
-const migrations: Migration[] = [v28Migration]
+export const migrations: Migration[] = [v2_0_0_migration]
 
 export function runMigrations(
   handle: DbHandle,
@@ -21,18 +27,21 @@ export function runMigrations(
   createFreshSchema: (handle: DbHandle) => void,
 ): void {
   const { db } = handle
-  const currentVersion = (
+  const rawVersion = (
     db.exec('PRAGMA user_version;', { returnValue: 'resultRows' }) as number[][]
   )[0][0]
 
-  if (currentVersion === LATEST_VERSION) return
+  const latestEncoded = encodeSemVer(LATEST_VERSION)
 
-  if (currentVersion === 0) {
-    // フレッシュインストール
+  // 1. 最新バージョンなら何もしない
+  if (rawVersion === latestEncoded) return
+
+  // 2. 新規 DB
+  if (rawVersion === 0) {
     db.exec('BEGIN;')
     try {
       createFreshSchema(handle)
-      db.exec(`PRAGMA user_version = ${LATEST_VERSION};`)
+      db.exec(`PRAGMA user_version = ${latestEncoded};`)
       db.exec('COMMIT;')
     } catch (e) {
       db.exec('ROLLBACK;')
@@ -41,36 +50,41 @@ export function runMigrations(
     return
   }
 
-  // インクリメンタルマイグレーション対象を抽出
-  const applicableMigrations = migrations.filter(
-    (m) => m.version > currentVersion,
-  )
+  // 3. 既存 DB → semver に正規化
+  const currentVersion = normalizeLegacyVersion(rawVersion)
 
-  if (applicableMigrations.length === 0 || currentVersion > LATEST_VERSION) {
-    // 不明なバージョン or ダウングレード → フォールバック
+  // 4. 適用可能なマイグレーションをフィルタ＆ソート
+  const applicable = migrations
+    .filter((m) => compareSemVer(m.version, currentVersion) > 0)
+    .filter((m) => compareSemVer(m.version, LATEST_VERSION) <= 0)
+    .sort((a, b) => compareSemVer(a.version, b.version))
+
+  if (applicable.length === 0) {
+    // ギャップ or ダウングレード → フォールバック
     console.warn(
-      `SQLite: version mismatch (current: ${currentVersion}, latest: ${LATEST_VERSION}). Resetting DB.`,
+      `SQLite: version mismatch (current: ${formatSemVer(currentVersion)}, latest: ${formatSemVer(LATEST_VERSION)}). Resetting DB.`,
     )
     resetSchema(handle, dropAllTables, createFreshSchema)
     return
   }
 
-  // バージョン昇順でソートして順次適用
-  applicableMigrations.sort((a, b) => a.version - b.version)
-
-  for (const migration of applicableMigrations) {
+  // 5. 各マイグレーションを個別トランザクションで適用
+  for (const migration of applicable) {
+    const versionStr = formatSemVer(migration.version)
     db.exec('BEGIN;')
     try {
       migration.up(handle)
 
       if (migration.validate && !migration.validate(handle)) {
-        throw new Error(`Migration v${migration.version} validation failed`)
+        throw new Error(`Migration ${versionStr} validation failed`)
       }
 
-      db.exec(`PRAGMA user_version = ${migration.version};`)
+      stampSchemaVersion(db, migration.version, migration.description)
+
+      db.exec(`PRAGMA user_version = ${encodeSemVer(migration.version)};`)
       db.exec('COMMIT;')
       console.info(
-        `SQLite: migrated to v${migration.version} (${migration.description})`,
+        `SQLite: migrated to ${versionStr} (${migration.description})`,
       )
     } catch (e) {
       try {
@@ -79,7 +93,7 @@ export function runMigrations(
         /* ignore rollback error */
       }
       console.warn(
-        `SQLite: migration to v${migration.version} failed, resetting DB.`,
+        `SQLite: migration to ${versionStr} failed, resetting DB.`,
         e,
       )
 
@@ -103,10 +117,28 @@ function resetSchema(
   try {
     dropAllTables(handle)
     createFreshSchema(handle)
-    db.exec(`PRAGMA user_version = ${LATEST_VERSION};`)
+    db.exec(`PRAGMA user_version = ${encodeSemVer(LATEST_VERSION)};`)
     db.exec('COMMIT;')
   } catch (e2) {
     db.exec('ROLLBACK;')
     throw e2
+  }
+}
+
+/**
+ * schema_version テーブルにバージョン履歴を記録
+ */
+export function stampSchemaVersion(
+  db: DbHandle['db'],
+  version: SemVer,
+  description: string,
+): void {
+  try {
+    db.exec(
+      `INSERT OR REPLACE INTO schema_version (version, applied_at, description)
+       VALUES ('${formatSemVer(version)}', ${Date.now()}, '${description.replace(/'/g, "''")}')`,
+    )
+  } catch {
+    // schema_version テーブルがまだ存在しない場合は無視
   }
 }
