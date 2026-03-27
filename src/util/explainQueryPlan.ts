@@ -41,7 +41,7 @@ import {
 
 const STATUS_COMPAT_FROM = `(
       SELECT p.*,
-        COALESCE(sv_c.base_url, '') AS origin_backend_url,
+        COALESCE((SELECT la_compat.backend_url FROM local_accounts la_compat WHERE la_compat.server_id = p.origin_server_id LIMIT 1), '') AS origin_backend_url,
         COALESCE(pr_c.acct, '') AS account_acct,
         '' AS account_id,
         COALESCE(vt_c.name, 'public') AS visibility,
@@ -50,7 +50,6 @@ const STATUS_COMPAT_FROM = `(
         COALESCE(ps_c.reblogs_count, 0) AS reblogs_count,
         COALESCE(ps_c.replies_count, 0) AS replies_count
       FROM posts p
-      LEFT JOIN servers sv_c ON sv_c.id = p.origin_server_id
       LEFT JOIN profiles pr_c ON pr_c.id = p.author_profile_id
       LEFT JOIN visibility_types vt_c ON vt_c.id = p.visibility_id
       LEFT JOIN post_stats ps_c ON ps_c.post_id = p.id

@@ -114,8 +114,9 @@ const LEGACY_COLUMN_REWRITES: {
   joinKey: string | null
 }[] = [
   {
-    expression: "COALESCE(sv_c.base_url, '')",
-    joinKey: 'servers',
+    expression:
+      "COALESCE((SELECT la_compat.backend_url FROM local_accounts la_compat WHERE la_compat.server_id = p.origin_server_id LIMIT 1), '')",
+    joinKey: null,
     pattern: /\bp\.origin_backend_url\b/g,
   },
   {
@@ -157,6 +158,11 @@ const LEGACY_COLUMN_REWRITES: {
     expression: 'ht.name',
     joinKey: null,
     pattern: /\bpbt\.tag\b/g,
+  },
+  {
+    expression: 'p.in_reply_to_uri',
+    joinKey: null,
+    pattern: /\bp\.in_reply_to_id\b/g,
   },
 ]
 
@@ -1216,13 +1222,31 @@ export function upgradeQueryToV2(query: string): string {
   // リプライ先: json_extract(p.json, '$.in_reply_to_id') IS NOT NULL
   result = result.replace(
     /json_extract\(p\.json,\s*'\$\.in_reply_to_id'\)\s+IS\s+NOT\s+NULL/gi,
-    'p.in_reply_to_id IS NOT NULL',
+    'p.in_reply_to_uri IS NOT NULL',
   )
 
   // リプライ先: json_extract(p.json, '$.in_reply_to_id') IS NULL
   result = result.replace(
     /json_extract\(p\.json,\s*'\$\.in_reply_to_id'\)\s+IS\s+NULL/gi,
-    'p.in_reply_to_id IS NULL',
+    'p.in_reply_to_uri IS NULL',
+  )
+
+  // v1→v2 PK名変更: notification_types.notification_type_id → .id
+  result = result.replace(
+    /\bnotification_types\s+(?:AS\s+)?(\w+)\s+ON\s+\1\.notification_type_id\b/gi,
+    'notification_types $1 ON $1.id',
+  )
+
+  // v1→v2 PK名変更: profiles.profile_id → .id
+  result = result.replace(
+    /\bprofiles\s+(?:AS\s+)?(\w+)\s+ON\s+\1\.profile_id\b/gi,
+    'profiles $1 ON $1.id',
+  )
+
+  // v1→v2 PK名変更: posts.post_id → .id
+  result = result.replace(
+    /\bposts\s+(?:AS\s+)?(\w+)\s+ON\s+\1\.post_id\b/gi,
+    'posts $1 ON $1.id',
   )
 
   return result
