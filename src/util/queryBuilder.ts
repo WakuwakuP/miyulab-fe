@@ -228,9 +228,10 @@ export function rewriteLegacyColumnsForPhase1(whereClause: string): {
  * @returns ヒント注入済みの WHERE 句
  */
 export function injectProfileIdHint(whereClause: string): string {
-  // Pattern: profiles <alias> ON <alias>.profile_id = <source>.actor_profile_id
+  // Pattern: profiles <alias> ON <alias>.id = <source>.actor_profile_id
+  // (後方互換: .profile_id も認識する)
   const joinPattern =
-    /\bprofiles\s+(\w+)\s+ON\s+\1\.profile_id\s*=\s*(\w+)\.actor_profile_id\b/gi
+    /\bprofiles\s+(\w+)\s+ON\s+\1\.(?:profile_id|id)\s*=\s*(\w+)\.actor_profile_id\b/gi
 
   let result = whereClause
 
@@ -276,9 +277,9 @@ export function injectProfileIdHint(whereClause: string): string {
 export function extractNotificationTypeCodes(
   whereClause: string,
 ): string[] | null {
-  // IN 句: ntt.code IN ('favourite', 'reaction', 'reblog')
+  // IN 句: ntt.code IN (...) or ntt.name IN (...)
   const inMatch = whereClause.match(
-    /\b(?:ntt?|notification_types?)\.code\s+IN\s*\(\s*([^)]+)\s*\)/i,
+    /\b(?:ntt?|notification_types?)\.(?:code|name)\s+IN\s*\(\s*([^)]+)\s*\)/i,
   )
   if (inMatch) {
     const codes = inMatch[1]
@@ -288,9 +289,9 @@ export function extractNotificationTypeCodes(
     return codes.length > 0 ? codes : null
   }
 
-  // 単一値: ntt.code = 'favourite'
+  // 単一値: ntt.code = 'favourite' or ntt.name = 'favourite'
   const singleMatch = whereClause.match(
-    /\b(?:ntt?|notification_types?)\.code\s*=\s*'([^']+)'/i,
+    /\b(?:ntt?|notification_types?)\.(?:code|name)\s*=\s*'([^']+)'/i,
   )
   if (singleMatch) return [singleMatch[1]]
 
@@ -753,7 +754,7 @@ function nullTolerant(condition: string): string {
  *
  * @example
  * const { sql, binds } = buildMuteCondition(['https://mastodon.social'])
- * // sql:   "(SELECT acct FROM profiles WHERE profile_id = p.author_profile_id) NOT IN (...)"
+ * // sql:   "(SELECT acct FROM profiles WHERE id = p.author_profile_id) NOT IN (...)"
  *
  * const { sql, binds } = buildMuteCondition(['https://mastodon.social'], 'p', { profileJoined: true })
  * // sql:   "pr.acct NOT IN (...)"
@@ -770,16 +771,17 @@ export function buildMuteCondition(
     return { binds: [], sql: '1=1' }
   }
 
+  const hosts = backendUrls.map((url) => new URL(url).host)
   const prefix = tableAlias ? `${tableAlias}.` : ''
-  const placeholders = backendUrls.map(() => '?').join(',')
+  const placeholders = hosts.map(() => '?').join(',')
   const acctExpr = options?.profileJoined
     ? 'pr.acct'
-    : `(SELECT acct FROM profiles WHERE profile_id = ${prefix}author_profile_id)`
+    : `(SELECT acct FROM profiles WHERE id = ${prefix}author_profile_id)`
   return {
-    binds: [...backendUrls],
+    binds: [...hosts],
     sql: `${acctExpr}
   NOT IN (
-      SELECT account_acct FROM muted_accounts WHERE server_id IN (SELECT sv.server_id FROM servers sv WHERE sv.base_url IN (${placeholders}))
+      SELECT account_acct FROM muted_accounts WHERE server_id IN (SELECT sv.id FROM servers sv WHERE sv.host IN (${placeholders}))
     )`,
   }
 }
@@ -813,7 +815,7 @@ export function buildInstanceBlockCondition(
   }
   return `NOT EXISTS (
     SELECT 1 FROM blocked_instances bi
-    WHERE (SELECT acct FROM profiles WHERE profile_id = ${prefix}author_profile_id) LIKE '%@' || REPLACE(REPLACE(bi.instance_domain, '%', '\\%'), '_', '\\_') ESCAPE '\\'
+    WHERE (SELECT acct FROM profiles WHERE id = ${prefix}author_profile_id) LIKE '%@' || REPLACE(REPLACE(bi.instance_domain, '%', '\\%'), '_', '\\_') ESCAPE '\\'
   )`
 }
 

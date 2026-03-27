@@ -504,17 +504,17 @@ describe('syncPostStats', () => {
     expect(parsed[0].count).toBe(2)
   })
 
-  it('emoji_reactions が空の場合 null を保存する', () => {
+  it('emoji_reactions が空の場合 "[]" を保存する', () => {
     const { db, calls } = createMockDb()
     const status = createMockStatus()
 
     syncPostStats(db, 100, status)
 
     const bind = calls[0].opts?.bind as (string | number | null)[]
-    // emoji_reactions_json は null
+    // emoji_reactions_json は空JSON配列文字列
     // post_id(100), replies_count, reblogs_count, favourites_count, emoji_reactions_json, updated_at
-    // null が含まれていることを確認（emoji_reactions_json 位置）
-    expect(bind).toContain(null)
+    // '[]' が含まれていることを確認（emoji_reactions_json 位置）
+    expect(bind).toContain('[]')
   })
 
   it('updated_at を保存する', () => {

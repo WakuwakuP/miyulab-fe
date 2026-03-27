@@ -197,13 +197,32 @@ describe('v2.0.0 マイグレーション', () => {
       migrations.push(...savedMigrations)
     })
 
-    it('v2.0.0 DB に対しては適用されない（no-op）', () => {
+    it('v2.0.0 DB に対して v2.0.1 マイグレーションが適用される', () => {
       const v2Encoded = encodeSemVer({ major: 2, minor: 0, patch: 0 })
-      const { handle, db } = createMockDb(v2Encoded)
+      // v2.0.1 validate 用に sqlite_master クエリも成功させるモック
+      const db = {
+        exec: vi.fn((sql: string, opts?: Record<string, unknown>) => {
+          if (typeof sql === 'string' && opts?.returnValue === 'resultRows') {
+            if (sql.includes('PRAGMA user_version')) {
+              return [[v2Encoded]]
+            }
+            if (sql.includes('sqlite_master')) {
+              return [[1]]
+            }
+          }
+          return undefined
+        }),
+      }
+      const handle = { db } as SchemaDbHandle
       runMigrations(handle, mockDropAll, mockCreateFresh)
 
-      // 最新バージョンなので何もしない（PRAGMA読取りのみ）
-      expect(db.exec).toHaveBeenCalledTimes(1)
+      // v2.0.1 の up() による CREATE TABLE が実行される
+      const createTableCalls = db.exec.mock.calls.filter(
+        (call) =>
+          typeof call[0] === 'string' && call[0].includes('CREATE TABLE'),
+      )
+      expect(createTableCalls).toHaveLength(2)
+      // フォールバック (DROP → 再作成) は使用されない
       expect(mockDropAll).not.toHaveBeenCalled()
       expect(mockCreateFresh).not.toHaveBeenCalled()
     })

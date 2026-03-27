@@ -160,7 +160,7 @@ export function syncPostStats(
             url: r.url,
           })),
         )
-      : null
+      : '[]'
 
   const now = Date.now()
 

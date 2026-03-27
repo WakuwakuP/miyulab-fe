@@ -79,4 +79,23 @@ export function createLookupTables(db: DbExec): void {
     INSERT OR IGNORE INTO card_types (id, name) VALUES
       (1, 'link'), (2, 'photo'), (3, 'video'), (4, 'rich');
   `)
+
+  // muted_accounts テーブル
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS muted_accounts (
+      server_id    INTEGER NOT NULL,
+      account_acct TEXT    NOT NULL,
+      muted_at     INTEGER NOT NULL,
+      PRIMARY KEY (server_id, account_acct),
+      FOREIGN KEY (server_id) REFERENCES servers(id)
+    );
+  `)
+
+  // blocked_instances テーブル
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS blocked_instances (
+      instance_domain TEXT PRIMARY KEY NOT NULL,
+      blocked_at      INTEGER NOT NULL
+    );
+  `)
 }

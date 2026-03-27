@@ -18,8 +18,9 @@ import {
 import type { SchemaDbHandle as DbHandle } from '../worker/workerSchema'
 import type { Migration } from './types'
 import { v2_0_0_migration } from './v2.0.0'
+import { v2_0_1_migration } from './v2.0.1'
 
-export const migrations: Migration[] = [v2_0_0_migration]
+export const migrations: Migration[] = [v2_0_0_migration, v2_0_1_migration]
 
 export function runMigrations(
   handle: DbHandle,

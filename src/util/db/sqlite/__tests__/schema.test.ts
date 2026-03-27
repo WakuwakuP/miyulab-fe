@@ -479,7 +479,7 @@ describe('スキーマ定義', () => {
       expect(postsIdx).toBeLessThan(metaIdx)
     })
 
-    it('合計28テーブルの CREATE TABLE 文を生成する', () => {
+    it('合計30テーブルの CREATE TABLE 文を生成する', () => {
       const { db, execCalls } = createMockDb()
       const handle = { db } as SchemaDbHandle
       createFreshSchema(handle)
@@ -487,7 +487,7 @@ describe('スキーマ定義', () => {
       const createTableCalls = execCalls.filter((sql) =>
         sql.includes('CREATE TABLE'),
       )
-      expect(createTableCalls).toHaveLength(28)
+      expect(createTableCalls).toHaveLength(30)
     })
   })
 

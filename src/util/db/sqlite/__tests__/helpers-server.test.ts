@@ -74,10 +74,10 @@ describe('ensureServer', () => {
     expect(id1).toBe(99)
     expect(calls).toHaveLength(2)
 
-    // 2回目: キャッシュから返すので DB アクセスなし
+    // 2回目: INSERT OR IGNORE は常に実行し、SELECT はキャッシュから返すのでスキップ
     const id2 = ensureServer(db, 'misskey.io')
     expect(id2).toBe(99)
-    expect(calls).toHaveLength(2) // 増えていない
+    expect(calls).toHaveLength(3) // INSERT OR IGNORE のみ追加
   })
 
   it('キャッシュをクリアするとDBから再取得する', () => {
