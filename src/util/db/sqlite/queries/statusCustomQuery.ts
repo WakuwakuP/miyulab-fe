@@ -48,8 +48,23 @@ export function sanitizeWhereClause(input: string): string {
  * テーブルカラム / エイリアス一覧（補完用）
  */
 export const QUERY_COMPLETIONS = {
-  aliases: ['p', 'ptt', 'pbt', 'pme', 'pb', 'pe', 'n'],
+  aliases: [
+    'p',
+    'pr',
+    'vt',
+    'ps',
+    'ptt',
+    'ht',
+    'pme',
+    'pb',
+    'pe',
+    'n',
+    'nt',
+    'ap',
+  ],
   columns: {
+    ap: ['acct', 'display_name', 'username', 'url'],
+    ht: ['name', 'normalized_name', 'display_name'],
     n: [
       'id',
       'local_id',
@@ -58,11 +73,10 @@ export const QUERY_COMPLETIONS = {
       'related_post_id',
       'created_at_ms',
       'is_read',
-      // 後方互換（互換サブクエリ経由）
-      'backend_url',
-      'notification_type',
-      'account_acct',
+      'reaction_name',
+      'reaction_url',
     ],
+    nt: ['name'],
     p: [
       'id',
       'object_uri',
@@ -81,20 +95,13 @@ export const QUERY_COMPLETIONS = {
       'in_reply_to_uri',
       'in_reply_to_account_acct',
       'is_local_only',
+      'reblog_of_post_id',
       'quote_of_post_id',
       'quote_state',
       'application_name',
       'last_fetched_at',
-      // 後方互換（互換サブクエリ経由）
-      'origin_backend_url',
-      'account_acct',
-      'visibility',
-      'favourites_count',
-      'reblogs_count',
-      'replies_count',
     ],
-    pb: ['post_id', 'backend_url', 'local_id', 'server_id'],
-    pbt: ['post_id', 'tag', 'name', 'display_name'],
+    pb: ['post_id', 'local_account_id', 'local_id', 'server_id'],
     pe: [
       'post_id',
       'is_favourited',
@@ -104,12 +111,15 @@ export const QUERY_COMPLETIONS = {
       'is_pinned',
     ],
     pme: ['post_id', 'acct'],
+    pr: ['acct', 'display_name', 'username', 'url'],
+    ps: ['post_id', 'favourites_count', 'reblogs_count', 'replies_count'],
     ptt: ['post_id', 'timelineType'],
+    vt: ['name'],
   },
   examples: [
     {
       description: '特定ユーザーの投稿を取得する',
-      query: "p.account_acct = 'user@example.com'",
+      query: "pr.acct = 'user@example.com'",
     },
     {
       description: '添付メディアが存在する投稿を取得する',
@@ -141,15 +151,15 @@ export const QUERY_COMPLETIONS = {
     },
     {
       description: '公開投稿のみ取得する',
-      query: "p.visibility = 'public'",
+      query: "vt.name = 'public'",
     },
     {
       description: '未収載を含む公開投稿を取得する',
-      query: "p.visibility IN ('public', 'unlisted')",
+      query: "vt.name IN ('public', 'unlisted')",
     },
     {
       description: 'ふぁぼ数が10以上の投稿を取得する',
-      query: 'p.favourites_count >= 10',
+      query: 'ps.favourites_count >= 10',
     },
     {
       description: '特定ユーザーへのメンションを含む投稿を取得する',
@@ -161,39 +171,38 @@ export const QUERY_COMPLETIONS = {
     },
     {
       description: '指定タグの投稿を取得する',
-      query: "pbt.tag = 'photo'",
+      query: "ht.name = 'photo'",
     },
     {
       description: 'ローカルタイムラインで特定タグの投稿を取得する',
-      query: "ptt.timelineType = 'local' AND pbt.tag = 'music'",
+      query: "ptt.timelineType = 'local' AND ht.name = 'music'",
     },
     {
       description: 'フォロー通知のみ取得する',
-      query: "n.notification_type = 'follow'",
+      query: "nt.name = 'follow'",
     },
     {
       description: 'メンション通知のみ取得する',
-      query: "n.notification_type = 'mention'",
+      query: "nt.name = 'mention'",
     },
     {
       description: 'お気に入りとブースト通知を取得する',
-      query: "n.notification_type IN ('favourite', 'reblog')",
+      query: "nt.name IN ('favourite', 'reblog')",
     },
     {
       description: '特定ユーザーからの通知を取得する',
-      query: "n.account_acct = 'user@example.com'",
+      query: "ap.acct = 'user@example.com'",
     },
     {
       description:
         'ホームタイムラインとお気に入り・ブースト通知を一緒に表示する',
-      query:
-        "ptt.timelineType = 'home' OR n.notification_type IN ('favourite', 'reblog')",
+      query: "ptt.timelineType = 'home' OR nt.name IN ('favourite', 'reblog')",
     },
     {
       description:
         'ふぁぼ・リアクション・ブースト通知と通知元ユーザーの直後の1投稿(3分以内)をまとめて表示する',
       query:
-        "n.notification_type IN ('favourite', 'reaction', 'reblog') OR EXISTS (SELECT 1 FROM notifications ntf INNER JOIN notification_types ntt ON ntt.id = ntf.notification_type_id INNER JOIN profiles pra ON pra.id = ntf.actor_profile_id WHERE ntt.name IN ('favourite', 'reaction', 'reblog') AND pra.acct = p.account_acct AND p.created_at_ms > ntf.created_at_ms AND p.created_at_ms <= ntf.created_at_ms + 180000 AND p.created_at_ms = (SELECT MIN(p2.created_at_ms) FROM posts p2 INNER JOIN profiles pr2 ON pr2.id = p2.author_profile_id WHERE pr2.acct = pra.acct AND p2.created_at_ms > ntf.created_at_ms AND p2.created_at_ms <= ntf.created_at_ms + 180000))",
+        "nt.name IN ('favourite', 'reaction', 'reblog') OR EXISTS (SELECT 1 FROM notifications ntf INNER JOIN notification_types ntt ON ntt.id = ntf.notification_type_id INNER JOIN profiles pra ON pra.id = ntf.actor_profile_id WHERE ntt.name IN ('favourite', 'reaction', 'reblog') AND pra.acct = (SELECT acct FROM profiles WHERE id = p.author_profile_id) AND p.created_at_ms > ntf.created_at_ms AND p.created_at_ms <= ntf.created_at_ms + 180000 AND p.created_at_ms = (SELECT MIN(p2.created_at_ms) FROM posts p2 INNER JOIN profiles pr2 ON pr2.id = p2.author_profile_id WHERE pr2.acct = pra.acct AND p2.created_at_ms > ntf.created_at_ms AND p2.created_at_ms <= ntf.created_at_ms + 180000))",
     },
   ],
   keywords: [
@@ -267,9 +276,32 @@ export const ALIAS_TO_TABLE: Record<
   string,
   { table: string; columns: Record<string, string> }
 > = {
+  ap: {
+    columns: {
+      acct: 'acct',
+      display_name: 'display_name',
+      url: 'url',
+      username: 'username',
+    },
+    table: 'profiles',
+  },
+  ht: {
+    columns: {
+      display_name: 'display_name',
+      name: 'name',
+      normalized_name: 'normalized_name',
+    },
+    table: 'hashtags',
+  },
   n: {
     columns: {},
     table: 'notifications',
+  },
+  nt: {
+    columns: {
+      name: 'name',
+    },
+    table: 'notification_types',
   },
   p: {
     columns: {
@@ -307,11 +339,34 @@ export const ALIAS_TO_TABLE: Record<
     },
     table: 'post_mentions',
   },
+  pr: {
+    columns: {
+      acct: 'acct',
+      display_name: 'display_name',
+      url: 'url',
+      username: 'username',
+    },
+    table: 'profiles',
+  },
+  ps: {
+    columns: {
+      favourites_count: 'favourites_count',
+      reblogs_count: 'reblogs_count',
+      replies_count: 'replies_count',
+    },
+    table: 'post_stats',
+  },
   ptt: {
     columns: {
       timelineType: 'timeline_key',
     },
     table: 'timeline_entries',
+  },
+  vt: {
+    columns: {
+      name: 'name',
+    },
+    table: 'visibility_types',
   },
 }
 

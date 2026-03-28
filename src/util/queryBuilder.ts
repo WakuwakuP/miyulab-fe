@@ -34,14 +34,14 @@ const ALL_NOTIFICATION_TYPES_COUNT = ALL_NOTIFICATION_TYPES.length
  * `n.` プレフィックス付きのカラム参照が存在する場合に true を返す。
  */
 export function isNotificationQuery(query: string): boolean {
-  return /\bn\.\w/.test(query)
+  return /\b(n|nt|ap)\.\w/.test(query)
 }
 
 /**
- * クエリが statuses 関連テーブル（エイリアス p, ptt, pbt, pme, pb）を参照しているか判定する
+ * クエリが statuses 関連テーブル（エイリアス p, ptt, pbt, pme, pb, pr, vt, ps, ht）を参照しているか判定する
  */
 export function isStatusQuery(query: string): boolean {
-  return /\b(p|ptt|pbt|pme|pb|prb)\.[a-zA-Z_]\w*/.test(query)
+  return /\b(p|ptt|pbt|pme|pb|prb|pr|vt|ps|ht)\.[a-zA-Z_]\w*/.test(query)
 }
 
 /**
@@ -68,15 +68,23 @@ export function detectReferencedAliases(whereClause: string): {
   prb: boolean
   pe: boolean
   n: boolean
+  pr: boolean
+  vt: boolean
+  ps: boolean
+  ht: boolean
 } {
   return {
-    n: /\bn\.\w+/.test(whereClause),
+    ht: /\bht\.\w+/.test(whereClause),
+    n: /\b(n|nt|ap)\.\w+/.test(whereClause),
     pb: /\bpb\.\w+/.test(whereClause),
-    pbt: /\b(pbt|pht|ht)\.\w+/.test(whereClause),
+    pbt: /\b(pbt|pht)\.\w+/.test(whereClause),
     pe: /\bpe\.\w+/.test(whereClause),
     pme: /\bpme\.\w+/.test(whereClause),
+    pr: /\bpr\.\w+/.test(whereClause),
     prb: /\bprb\.\w+/.test(whereClause),
+    ps: /\bps\.\w+/.test(whereClause),
     ptt: /\bptt\.\w+/.test(whereClause),
+    vt: /\bvt\.\w+/.test(whereClause),
   }
 }
 
@@ -385,12 +393,12 @@ export function buildQueryFromConfig(config: TimelineConfigV2): string {
 
   // リプライ除外（IS NULL は混合クエリでも notifications 行を通すため変更不要）
   if (config.excludeReplies) {
-    filterConditions.push('p.in_reply_to_id IS NULL')
+    filterConditions.push('p.in_reply_to_uri IS NULL')
   }
 
   // CW 付き除外
   if (config.excludeSpoiler) {
-    const cond = 'p.has_spoiler = 0'
+    const cond = "p.spoiler_text = ''"
     filterConditions.push(isMixed ? nullTolerant(cond) : cond)
   }
 
@@ -507,11 +515,14 @@ function buildTimelineTypeCondition(config: TimelineConfigV2): string | null {
  * v2: p.has_media = 1 または p.media_count >= N
  */
 function buildMediaCondition(config: TimelineConfigV2): string | null {
-  if (config.minMediaCount != null && config.minMediaCount > 0) {
-    return `p.media_count >= ${Math.floor(config.minMediaCount)}`
+  if (config.minMediaCount != null && config.minMediaCount > 1) {
+    return `(SELECT COUNT(*) FROM post_media WHERE post_id = p.id) >= ${Math.floor(config.minMediaCount)}`
   }
-  if (config.onlyMedia) {
-    return 'p.has_media = 1'
+  if (
+    config.onlyMedia ||
+    (config.minMediaCount != null && config.minMediaCount > 0)
+  ) {
+    return 'EXISTS(SELECT 1 FROM post_media WHERE post_id = p.id)'
   }
   return null
 }
@@ -535,7 +546,7 @@ function buildVisibilityCondition(
   if (filter.length >= 4) return null
 
   const escaped = filter.map((v) => `'${escapeSqlString(v)}'`).join(',')
-  return `p.visibility IN (${escaped})`
+  return `vt.name IN (${escaped})`
 }
 
 /**
@@ -582,9 +593,9 @@ function buildAccountCondition(
   const escaped = filter.accts.map((a) => `'${escapeSqlString(a)}'`).join(',')
 
   if (filter.mode === 'include') {
-    return `p.account_acct IN (${escaped})`
+    return `pr.acct IN (${escaped})`
   }
-  return `p.account_acct NOT IN (${escaped})`
+  return `pr.acct NOT IN (${escaped})`
 }
 
 /**
@@ -612,16 +623,16 @@ function buildNotificationTypeCondition(
 
   // 全通知タイプが指定されている場合
   if (filter.length >= ALL_NOTIFICATION_TYPES_COUNT) {
-    return 'n.notification_type IS NOT NULL'
+    return 'nt.name IS NOT NULL'
   }
 
   // 1個の場合は = で表現
   if (filter.length === 1) {
-    return `n.notification_type = '${escapeSqlString(filter[0])}'`
+    return `nt.name = '${escapeSqlString(filter[0])}'`
   }
 
   const escaped = filter.map((v) => `'${escapeSqlString(v)}'`).join(',')
-  return `n.notification_type IN (${escaped})`
+  return `nt.name IN (${escaped})`
 }
 
 /**
@@ -643,44 +654,44 @@ function buildBackendFilterCondition(
 ): string | null {
   if (!filter || filter.mode === 'all') return null
 
-  // コンテキストに応じたテーブル別名リスト
-  const aliases: string[] = []
-  if (hasTimeline || (!hasTimeline && !hasNotification)) {
-    aliases.push('pb')
-  }
-  if (hasNotification) {
-    aliases.push('n')
+  /**
+   * status 用のバックエンドフィルタ条件を構築する
+   * post_backend_ids + local_accounts のサブクエリで表現する
+   */
+  const buildStatusBackendCondition = (urls: string[]): string => {
+    const escaped = urls.map((u) => `'${escapeSqlString(u)}'`).join(', ')
+    if (urls.length === 1) {
+      return `EXISTS(SELECT 1 FROM post_backend_ids pbi INNER JOIN local_accounts la_pbi ON la_pbi.id = pbi.local_account_id WHERE pbi.post_id = p.id AND la_pbi.backend_url = ${escaped})`
+    }
+    return `EXISTS(SELECT 1 FROM post_backend_ids pbi INNER JOIN local_accounts la_pbi ON la_pbi.id = pbi.local_account_id WHERE pbi.post_id = p.id AND la_pbi.backend_url IN (${escaped}))`
   }
 
   /**
-   * エイリアスに応じたバックエンドURLカラム名を返す
-   * - pb: posts_backends の実カラム名 backendUrl
-   * - n: 互換サブクエリの仮想カラム名 backend_url
+   * notification 用のバックエンドフィルタ条件を構築する
+   * NOTIFICATION_BASE_JOINS で提供される la エイリアスを使用する
    */
-  const backendCol = (alias: string) =>
-    alias === 'pb' ? 'backendUrl' : 'backend_url'
-
-  if (filter.mode === 'single') {
-    const escaped = escapeSqlString(filter.backendUrl)
-    if (aliases.length === 1) {
-      return `${aliases[0]}.${backendCol(aliases[0])} = '${escaped}'`
+  const buildNotifBackendCondition = (urls: string[]): string => {
+    const escaped = urls.map((u) => `'${escapeSqlString(u)}'`).join(', ')
+    if (urls.length === 1) {
+      return `la.backend_url = ${escaped}`
     }
-    // 混合クエリ: 両テーブルの条件を OR で結合
-    return `(${aliases.map((a) => `${a}.${backendCol(a)} = '${escaped}'`).join(' OR ')})`
+    return `la.backend_url IN (${escaped})`
   }
 
-  if (filter.mode === 'composite' && filter.backendUrls.length > 0) {
-    const escapedList = filter.backendUrls
-      .map((url) => `'${escapeSqlString(url)}'`)
-      .join(', ')
-    if (aliases.length === 1) {
-      return `${aliases[0]}.${backendCol(aliases[0])} IN (${escapedList})`
-    }
-    // 混合クエリ: 両テーブルの条件を OR で結合
-    return `(${aliases.map((a) => `${a}.${backendCol(a)} IN (${escapedList})`).join(' OR ')})`
+  const urls =
+    filter.mode === 'single' ? [filter.backendUrl] : filter.backendUrls
+  if (urls.length === 0) return null
+
+  const parts: string[] = []
+  if (hasTimeline || (!hasTimeline && !hasNotification)) {
+    parts.push(buildStatusBackendCondition(urls))
+  }
+  if (hasNotification) {
+    parts.push(buildNotifBackendCondition(urls))
   }
 
-  return null
+  if (parts.length === 1) return parts[0]
+  return `(${parts.join(' OR ')})`
 }
 
 /**
@@ -704,10 +715,10 @@ function buildTagCondition(tagConfig: TagConfig): string {
 
   // AND mode: 全タグを含む投稿のみ (GROUP BY + HAVING は WHERE 句内では表現不可)
   // サブクエリで表現する
-  return `p.post_id IN (
+  return `p.id IN (
     SELECT pht_inner.post_id
     FROM post_hashtags pht_inner
-    INNER JOIN hashtags ht_inner ON pht_inner.hashtag_id = ht_inner.hashtag_id
+    INNER JOIN hashtags ht_inner ON pht_inner.hashtag_id = ht_inner.id
     WHERE ht_inner.normalized_name IN (${tagList})
     GROUP BY pht_inner.post_id
     HAVING COUNT(DISTINCT ht_inner.normalized_name) = ${tags.length}
@@ -728,17 +739,17 @@ function escapeSqlString(value: string): string {
  * UNION ALL の notifications サブクエリでは p.* カラムは
  * LEFT JOIN ... ON 0 = 1 により NULL になるため、
  * `p.has_media = 1` は `NULL = 1` → FALSE となり全件除外される。
- * これを防ぐため `(条件 OR p.post_id IS NULL)` で囲む。
+ * これを防ぐため `(条件 OR p.id IS NULL)` で囲む。
  *
- * p.post_id が NULL ＝ notifications 行であるため、
+ * p.id が NULL ＝ notifications 行であるため、
  * notifications 行は常に通過する。
  *
  * @example
- * nullTolerant('p.has_media = 1')
- * // → "(p.has_media = 1 OR p.post_id IS NULL)"
+ * nullTolerant('p.is_reblog = 0')
+ * // → "(p.is_reblog = 0 OR p.id IS NULL)"
  */
 function nullTolerant(condition: string): string {
-  return `(${condition} OR p.post_id IS NULL)`
+  return `(${condition} OR p.id IS NULL)`
 }
 
 // ================================================================
@@ -877,17 +888,22 @@ export function parseQueryToConfig(
   // ========================================
   if (
     query.includes("json_extract(p.json, '$.media_attachments') != '[]'") ||
-    query.includes('p.has_media = 1')
+    query.includes('p.has_media = 1') ||
+    /EXISTS\s*\(\s*SELECT\s+1\s+FROM\s+post_media\b/i.test(query)
   ) {
     result.onlyMedia = true
   }
 
   // ========================================
-  // minMediaCount の検出
+  // minMediaCount の検出（v2 + 旧形式）
   // ========================================
+  const mediaCountMatchV2 = query.match(
+    /\(\s*SELECT\s+COUNT\s*\(\s*\*\s*\)\s+FROM\s+post_media\b[^)]*\)\s*>=\s*(\d+)/i,
+  )
   const mediaCountMatch = query.match(/p\.media_count\s*>=\s*(\d+)/i)
-  if (mediaCountMatch) {
-    const count = parseInt(mediaCountMatch[1], 10)
+  const mediaCountResult = mediaCountMatchV2 ?? mediaCountMatch
+  if (mediaCountResult) {
+    const count = parseInt(mediaCountResult[1], 10)
     if (count > 1) {
       result.minMediaCount = count
       // minMediaCount が設定されている場合は onlyMedia は不要
@@ -898,13 +914,17 @@ export function parseQueryToConfig(
   }
 
   // ========================================
-  // visibilityFilter の検出
+  // visibilityFilter の検出（v2 + 旧形式）
   // ========================================
+  const visibilityMatchV2 = query.match(
+    /vt\.name\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
+  )
   const visibilityMatch = query.match(
     /p\.visibility\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
   )
-  if (visibilityMatch) {
-    const visibilities = visibilityMatch[1]
+  const visibilityResult = visibilityMatchV2 ?? visibilityMatch
+  if (visibilityResult) {
+    const visibilities = visibilityResult[1]
       .split(',')
       .map((v) => v.trim().replace(/^'|'$/g, ''))
       .filter(Boolean)
@@ -941,9 +961,12 @@ export function parseQueryToConfig(
   }
 
   // ========================================
-  // excludeReplies の検出
+  // excludeReplies の検出（v2 + 旧形式）
   // ========================================
-  if (query.includes('p.in_reply_to_id IS NULL')) {
+  if (
+    query.includes('p.in_reply_to_uri IS NULL') ||
+    query.includes('p.in_reply_to_id IS NULL')
+  ) {
     result.excludeReplies = true
   }
 
@@ -952,6 +975,7 @@ export function parseQueryToConfig(
   // ========================================
   if (
     query.includes('p.has_spoiler = 0') ||
+    query.includes("p.spoiler_text = ''") ||
     query.includes("json_extract(p.json, '$.spoiler_text') = ''")
   ) {
     result.excludeSpoiler = true
@@ -965,14 +989,22 @@ export function parseQueryToConfig(
   }
 
   // ========================================
-  // accountFilter の検出
+  // accountFilter の検出（v2 + 旧形式）
   // ========================================
-  const accountExcludeMatch = query.match(
-    /p\.account_acct\s+NOT\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
-  )
-  const accountIncludeMatch = query.match(
-    /p\.account_acct\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
-  )
+  const accountExcludeMatch =
+    query.match(
+      /pr\.acct\s+NOT\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
+    ) ??
+    query.match(
+      /p\.account_acct\s+NOT\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
+    )
+  const accountIncludeMatch =
+    query.match(
+      /pr\.acct\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
+    ) ??
+    query.match(
+      /p\.account_acct\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
+    )
 
   if (accountExcludeMatch) {
     // NOT IN を先にチェック（IN のパターンにもマッチするため）
@@ -997,10 +1029,14 @@ export function parseQueryToConfig(
   // backendFilter の検出
   // ========================================
   const backendSingleMatch =
+    query.match(/la\.backend_url\s*=\s*'([^']+)'/i) ??
     query.match(/pb\.(?:backend_url|backendUrl)\s*=\s*'([^']+)'/i) ??
     query.match(/p\.origin_backend_url\s*=\s*'([^']+)'/i) ??
     query.match(/n\.backend_url\s*=\s*'([^']+)'/i)
   const backendInMatch =
+    query.match(
+      /la\.backend_url\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
+    ) ??
     query.match(
       /pb\.(?:backend_url|backendUrl)\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
     ) ??
@@ -1029,10 +1065,13 @@ export function parseQueryToConfig(
   }
 
   // ========================================
-  // notificationFilter の検出
+  // notificationFilter の検出（v2 + 旧形式）
   // ========================================
   // IS NOT NULL = 全通知タイプ
-  if (/n\.notification_type\s+IS\s+NOT\s+NULL/i.test(query)) {
+  if (
+    /nt\.name\s+IS\s+NOT\s+NULL/i.test(query) ||
+    /n\.notification_type\s+IS\s+NOT\s+NULL/i.test(query)
+  ) {
     result.notificationFilter = [
       'follow',
       'follow_request',
@@ -1044,12 +1083,16 @@ export function parseQueryToConfig(
       'status',
     ]
   } else {
-    const notifTypeInMatch = query.match(
-      /n\.notification_type\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
-    )
-    const notifTypeSingleMatch = query.match(
-      /n\.notification_type\s*=\s*'([^']+)'/i,
-    )
+    const notifTypeInMatch =
+      query.match(
+        /nt\.name\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
+      ) ??
+      query.match(
+        /n\.notification_type\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
+      )
+    const notifTypeSingleMatch =
+      query.match(/nt\.name\s*=\s*'([^']+)'/i) ??
+      query.match(/n\.notification_type\s*=\s*'([^']+)'/i)
 
     if (notifTypeInMatch) {
       const types = notifTypeInMatch[1]
@@ -1071,10 +1114,10 @@ export function parseQueryToConfig(
   // タグ条件の検出（既存ロジック、変更なし）
   // ========================================
   const singleTagMatch = query.match(
-    /(?:pbt\.tag|ht\.normalized_name)\s*=\s*'([^']+)'/i,
+    /(?:pbt\.tag|ht\.(?:name|normalized_name))\s*=\s*'([^']+)'/i,
   )
   const multiTagMatch = query.match(
-    /(?:pbt\.tag|ht\.normalized_name)\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
+    /(?:pbt\.tag|ht\.(?:name|normalized_name))\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
   )
   const andTagMatch = query.match(
     /HAVING\s+COUNT\s*\(\s*DISTINCT\s+\w+\.(?:tag|normalized_name)\s*\)\s*=\s*(\d+)/i,
@@ -1162,13 +1205,13 @@ export function upgradeQueryToV2(query: string): string {
   // メディア: json_extract(p.json, '$.media_attachments') != '[]'
   result = result.replace(
     /json_extract\(p\.json,\s*'\$\.media_attachments'\)\s*!=\s*'\[\]'/gi,
-    'p.has_media = 1',
+    'EXISTS(SELECT 1 FROM post_media WHERE post_id = p.id)',
   )
 
   // メディア枚数: json_array_length(json_extract(p.json, '$.media_attachments')) >= N
   result = result.replace(
     /json_array_length\(json_extract\(p\.json,\s*'\$\.media_attachments'\)\)\s*>=\s*(\d+)/gi,
-    'p.media_count >= $1',
+    '(SELECT COUNT(*) FROM post_media WHERE post_id = p.id) >= $1',
   )
 
   // ブースト: json_extract(p.json, '$.reblog') IS NOT NULL
@@ -1186,13 +1229,13 @@ export function upgradeQueryToV2(query: string): string {
   // CW: json_extract(p.json, '$.spoiler_text') != ''
   result = result.replace(
     /json_extract\(p\.json,\s*'\$\.spoiler_text'\)\s*!=\s*''/gi,
-    'p.has_spoiler = 1',
+    "p.spoiler_text != ''",
   )
 
   // CW除外: json_extract(p.json, '$.spoiler_text') = ''
   result = result.replace(
     /json_extract\(p\.json,\s*'\$\.spoiler_text'\)\s*=\s*''/gi,
-    'p.has_spoiler = 0',
+    "p.spoiler_text = ''",
   )
 
   // センシティブ: json_extract(p.json, '$.sensitive') = 1|0
@@ -1248,6 +1291,59 @@ export function upgradeQueryToV2(query: string): string {
     /\bposts\s+(?:AS\s+)?(\w+)\s+ON\s+\1\.post_id\b/gi,
     'posts $1 ON $1.id',
   )
+
+  // ================================================================
+  // Phantom column 変換（v2 中間形式 → v2 ネイティブ形式）
+  // json_extract 変換後に実行する
+  // ================================================================
+
+  // p.has_media = 1 → EXISTS(SELECT 1 FROM post_media WHERE post_id = p.id)
+  result = result.replace(
+    /\bp\.has_media\s*=\s*1\b/g,
+    'EXISTS(SELECT 1 FROM post_media WHERE post_id = p.id)',
+  )
+
+  // p.has_media = 0 → NOT EXISTS(SELECT 1 FROM post_media WHERE post_id = p.id)
+  result = result.replace(
+    /\bp\.has_media\s*=\s*0\b/g,
+    'NOT EXISTS(SELECT 1 FROM post_media WHERE post_id = p.id)',
+  )
+
+  // p.media_count >= N → (SELECT COUNT(*) FROM post_media WHERE post_id = p.id) >= N
+  result = result.replace(
+    /\bp\.media_count\s*>=\s*(\d+)/g,
+    '(SELECT COUNT(*) FROM post_media WHERE post_id = p.id) >= $1',
+  )
+
+  // p.has_spoiler = 1 → p.spoiler_text != ''
+  result = result.replace(/\bp\.has_spoiler\s*=\s*1\b/g, "p.spoiler_text != ''")
+
+  // p.has_spoiler = 0 → p.spoiler_text = ''
+  result = result.replace(/\bp\.has_spoiler\s*=\s*0\b/g, "p.spoiler_text = ''")
+
+  // ================================================================
+  // Notification compat column 変換
+  // NOTIFICATION_BASE_JOINS で nt, la, ap が利用可能
+  // ================================================================
+
+  // n.notification_type IS NOT NULL → nt.name IS NOT NULL
+  result = result.replace(
+    /\bn\.notification_type\s+IS\s+NOT\s+NULL\b/gi,
+    'nt.name IS NOT NULL',
+  )
+
+  // n.notification_type IN (...) → nt.name IN (...)
+  result = result.replace(/\bn\.notification_type(\s+IN\s*\()/gi, 'nt.name$1')
+
+  // n.notification_type = 'X' → nt.name = 'X'
+  result = result.replace(/\bn\.notification_type(\s*=\s*)/g, 'nt.name$1')
+
+  // n.account_acct → ap.acct
+  result = result.replace(/\bn\.account_acct\b/g, 'ap.acct')
+
+  // n.backend_url → la.backend_url
+  // ※ pb.backend_url → pb.backendUrl の変換より後に実行する
+  result = result.replace(/\bn\.backend_url\b/g, 'la.backend_url')
 
   return result
 }

@@ -96,6 +96,30 @@ describe('QUERY_COMPLETIONS に旧カラムが含まれていない', () => {
     expect(exactMatch).toHaveLength(0)
   })
 
+  it('p に visibility が含まれていない（compat 仮想カラム）', () => {
+    expect(QUERY_COMPLETIONS.columns.p).not.toContain('visibility')
+  })
+
+  it('p に account_acct が含まれていない（compat 仮想カラム）', () => {
+    expect(QUERY_COMPLETIONS.columns.p).not.toContain('account_acct')
+  })
+
+  it('p に origin_backend_url が含まれていない（compat 仮想カラム）', () => {
+    expect(QUERY_COMPLETIONS.columns.p).not.toContain('origin_backend_url')
+  })
+
+  it('p に favourites_count が含まれていない（post_stats に移動）', () => {
+    expect(QUERY_COMPLETIONS.columns.p).not.toContain('favourites_count')
+  })
+
+  it('p に reblogs_count が含まれていない（post_stats に移動）', () => {
+    expect(QUERY_COMPLETIONS.columns.p).not.toContain('reblogs_count')
+  })
+
+  it('p に replies_count が含まれていない（post_stats に移動）', () => {
+    expect(QUERY_COMPLETIONS.columns.p).not.toContain('replies_count')
+  })
+
   it('n に notification_id が含まれていない', () => {
     expect(QUERY_COMPLETIONS.columns.n).not.toContain('notification_id')
   })
@@ -106,6 +130,79 @@ describe('QUERY_COMPLETIONS に旧カラムが含まれていない', () => {
 
   it('n に server_id が含まれていない', () => {
     expect(QUERY_COMPLETIONS.columns.n).not.toContain('server_id')
+  })
+
+  it('n に notification_type が含まれていない（compat 仮想カラム）', () => {
+    expect(QUERY_COMPLETIONS.columns.n).not.toContain('notification_type')
+  })
+
+  it('n に account_acct が含まれていない（compat 仮想カラム）', () => {
+    expect(QUERY_COMPLETIONS.columns.n).not.toContain('account_acct')
+  })
+
+  it('n に backend_url が含まれていない（compat 仮想カラム）', () => {
+    expect(QUERY_COMPLETIONS.columns.n).not.toContain('backend_url')
+  })
+})
+
+// ─── QUERY_COMPLETIONS: 新エイリアス ────────────────────────────
+
+describe('QUERY_COMPLETIONS に新エイリアスが含まれている', () => {
+  it('aliases に pr (profiles) が含まれている', () => {
+    expect(QUERY_COMPLETIONS.aliases).toContain('pr')
+  })
+
+  it('aliases に vt (visibility_types) が含まれている', () => {
+    expect(QUERY_COMPLETIONS.aliases).toContain('vt')
+  })
+
+  it('aliases に ps (post_stats) が含まれている', () => {
+    expect(QUERY_COMPLETIONS.aliases).toContain('ps')
+  })
+
+  it('aliases に ht (hashtags) が含まれている', () => {
+    expect(QUERY_COMPLETIONS.aliases).toContain('ht')
+  })
+
+  it('aliases に nt (notification_types) が含まれている', () => {
+    expect(QUERY_COMPLETIONS.aliases).toContain('nt')
+  })
+
+  it('aliases に ap (profiles - 通知元) が含まれている', () => {
+    expect(QUERY_COMPLETIONS.aliases).toContain('ap')
+  })
+
+  it('aliases に pbt が含まれていない（ht に置き換え）', () => {
+    expect(QUERY_COMPLETIONS.aliases).not.toContain('pbt')
+  })
+
+  it('pr のカラムに acct が含まれている', () => {
+    expect(QUERY_COMPLETIONS.columns.pr).toContain('acct')
+  })
+
+  it('vt のカラムに name が含まれている', () => {
+    expect(QUERY_COMPLETIONS.columns.vt).toContain('name')
+  })
+
+  it('ps のカラムに favourites_count が含まれている', () => {
+    expect(QUERY_COMPLETIONS.columns.ps).toContain('favourites_count')
+  })
+
+  it('ht のカラムに name が含まれている', () => {
+    expect(QUERY_COMPLETIONS.columns.ht).toContain('name')
+  })
+
+  it('nt のカラムに name が含まれている', () => {
+    expect(QUERY_COMPLETIONS.columns.nt).toContain('name')
+  })
+
+  it('ap のカラムに acct が含まれている', () => {
+    expect(QUERY_COMPLETIONS.columns.ap).toContain('acct')
+  })
+
+  it('pb のカラムに backend_url が含まれていない（実カラムのみ）', () => {
+    expect(QUERY_COMPLETIONS.columns.pb).not.toContain('backend_url')
+    expect(QUERY_COMPLETIONS.columns.pb).not.toContain('backendUrl')
   })
 })
 

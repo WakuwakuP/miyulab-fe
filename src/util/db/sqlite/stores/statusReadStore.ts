@@ -316,7 +316,7 @@ export async function validateCustomQuery(
       sql = `
         EXPLAIN
         SELECT post_id FROM (
-          SELECT p.post_id, p.created_at_ms
+          SELECT p.id AS post_id, p.created_at_ms
           FROM (
             SELECT p_inner.*,
               COALESCE((SELECT la2.backend_url FROM local_accounts la2 WHERE la2.server_id = p_inner.origin_server_id LIMIT 1), '') AS origin_backend_url,
@@ -339,6 +339,14 @@ export async function validateCustomQuery(
             ON p.id = pb.post_id
           LEFT JOIN ${PRB_COMPAT_SUBQUERY} prb
             ON p.id = prb.post_id
+          LEFT JOIN profiles pr
+            ON pr.id = p.author_profile_id
+          LEFT JOIN visibility_types vt
+            ON vt.id = p.visibility_id
+          LEFT JOIN post_stats ps
+            ON ps.post_id = p.id
+          LEFT JOIN post_interactions pe
+            ON pe.post_id = p.id
           LEFT JOIN (
             SELECT n2.*,
               COALESCE((SELECT la2.backend_url FROM local_accounts la2 WHERE la2.id = n2.local_account_id), '') AS backend_url,
@@ -346,6 +354,9 @@ export async function validateCustomQuery(
               COALESCE((SELECT pr3.acct FROM profiles pr3 WHERE pr3.id = n2.actor_profile_id), '') AS account_acct
             FROM notifications n2
           ) n ON 0 = 1
+          LEFT JOIN notification_types nt ON 0 = 1
+          LEFT JOIN profiles ap ON 0 = 1
+          LEFT JOIN local_accounts la ON 0 = 1
           WHERE (${rewritten})
           UNION ALL
           SELECT n.id AS notification_id, n.created_at_ms
@@ -356,6 +367,12 @@ export async function validateCustomQuery(
               COALESCE((SELECT pr3.acct FROM profiles pr3 WHERE pr3.id = n2.actor_profile_id), '') AS account_acct
             FROM notifications n2
           ) n
+          LEFT JOIN notification_types nt
+            ON nt.id = n.notification_type_id
+          LEFT JOIN profiles ap
+            ON ap.id = n.actor_profile_id
+          LEFT JOIN local_accounts la
+            ON la.id = n.local_account_id
           LEFT JOIN (
             SELECT p2.*,
               COALESCE((SELECT la3.backend_url FROM local_accounts la3 WHERE la3.server_id = p2.origin_server_id LIMIT 1), '') AS origin_backend_url,
@@ -374,6 +391,14 @@ export async function validateCustomQuery(
             ON 0 = 1
           LEFT JOIN ${PRB_COMPAT_SUBQUERY} prb
             ON 0 = 1
+          LEFT JOIN profiles pr
+            ON 0 = 1
+          LEFT JOIN visibility_types vt
+            ON 0 = 1
+          LEFT JOIN post_stats ps
+            ON 0 = 1
+          LEFT JOIN post_interactions pe
+            ON 0 = 1
           WHERE (${rewritten})
         )
         LIMIT 1;
@@ -389,6 +414,12 @@ export async function validateCustomQuery(
             COALESCE((SELECT pr3.acct FROM profiles pr3 WHERE pr3.id = n2.actor_profile_id), '') AS account_acct
           FROM notifications n2
         ) n
+        LEFT JOIN notification_types nt
+          ON nt.id = n.notification_type_id
+        LEFT JOIN profiles ap
+          ON ap.id = n.actor_profile_id
+        LEFT JOIN local_accounts la
+          ON la.id = n.local_account_id
         WHERE (${rewritten})
         LIMIT 1;
       `
@@ -418,6 +449,14 @@ export async function validateCustomQuery(
           ON p.id = pb.post_id
         LEFT JOIN ${PRB_COMPAT_SUBQUERY} prb
           ON p.id = prb.post_id
+        LEFT JOIN profiles pr
+          ON pr.id = p.author_profile_id
+        LEFT JOIN visibility_types vt
+          ON vt.id = p.visibility_id
+        LEFT JOIN post_stats ps
+          ON ps.post_id = p.id
+        LEFT JOIN post_interactions pe
+          ON pe.post_id = p.id
         WHERE (${rewritten})
         LIMIT 1;
       `

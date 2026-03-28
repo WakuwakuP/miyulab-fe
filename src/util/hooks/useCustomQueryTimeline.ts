@@ -117,16 +117,15 @@ const NOTIF_COMPAT_FROM = `(
  */
 
 const EMPTY_S = `(SELECT
-      NULL AS post_id, NULL AS object_uri, NULL AS origin_server_id,
-      NULL AS author_profile_id, NULL AS created_at_ms, NULL AS stored_at,
+      NULL AS id, NULL AS object_uri, NULL AS origin_server_id,
+      NULL AS author_profile_id, NULL AS created_at_ms,
       NULL AS visibility_id, NULL AS language, NULL AS content_html,
-      NULL AS spoiler_text, NULL AS canonical_url, NULL AS has_media,
-      NULL AS media_count, NULL AS is_reblog, NULL AS reblog_of_uri,
-      NULL AS is_sensitive, NULL AS has_spoiler, NULL AS in_reply_to_id,
-      NULL AS is_local_only, NULL AS edited_at,
-      NULL AS origin_backend_url, NULL AS account_acct, NULL AS account_id,
-      NULL AS visibility, NULL AS reblog_of_id,
-      NULL AS favourites_count, NULL AS reblogs_count, NULL AS replies_count
+      NULL AS plain_content, NULL AS spoiler_text, NULL AS canonical_url,
+      NULL AS is_reblog, NULL AS is_sensitive,
+      NULL AS in_reply_to_uri, NULL AS in_reply_to_account_acct,
+      NULL AS is_local_only, NULL AS edited_at_ms,
+      NULL AS reblog_of_post_id, NULL AS quote_of_post_id, NULL AS quote_state,
+      NULL AS application_name, NULL AS last_fetched_at
     LIMIT 0)`
 
 /** ptt 互換サブクエリ: timeline_entries → (post_id, timelineType) */
@@ -302,7 +301,14 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         }
         // 1:N JOIN が存在する場合のみ GROUP BY が必要
         const statusHasMultiRowJoin =
-          refs.pb || refs.ptt || refs.pbt || refs.pme || refs.prb || refs.pe
+          refs.pb ||
+          refs.ptt ||
+          refs.pbt ||
+          refs.pme ||
+          refs.prb ||
+          refs.pe ||
+          refs.ps ||
+          refs.ht
         if (refs.ptt)
           statusPhase1JoinLines.push(
             `LEFT JOIN ${PTT_COMPAT} ptt\n              ON p.id = ptt.post_id`,
@@ -322,6 +328,22 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         if (refs.pe)
           statusPhase1JoinLines.push(
             'LEFT JOIN post_interactions pe\n              ON p.id = pe.post_id',
+          )
+        if (refs.pr)
+          statusPhase1JoinLines.push(
+            'LEFT JOIN profiles pr\n              ON pr.id = p.author_profile_id',
+          )
+        if (refs.vt)
+          statusPhase1JoinLines.push(
+            'LEFT JOIN visibility_types vt\n              ON vt.id = p.visibility_id',
+          )
+        if (refs.ps)
+          statusPhase1JoinLines.push(
+            'LEFT JOIN post_stats ps\n              ON ps.post_id = p.id',
+          )
+        if (refs.ht)
+          statusPhase1JoinLines.push(
+            'LEFT JOIN post_hashtags pht ON p.id = pht.post_id\n              LEFT JOIN hashtags ht ON pht.hashtag_id = ht.id',
           )
         // EMPTY_N は不要: Status 側では n.* は常に NULL のため、
         // WHERE 句の n.* 参照を直接 NULL に置換する。
@@ -663,7 +685,14 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         }
         // 1:N JOIN が存在する場合のみ DISTINCT が必要
         const hasMultiRowJoin =
-          refs.pb || refs.ptt || refs.pbt || refs.pme || refs.prb || refs.pe
+          refs.pb ||
+          refs.ptt ||
+          refs.pbt ||
+          refs.pme ||
+          refs.prb ||
+          refs.pe ||
+          refs.ps ||
+          refs.ht
         if (refs.ptt)
           joinLines.push(
             `LEFT JOIN ${PTT_COMPAT} ptt\n            ON p.id = ptt.post_id`,
@@ -683,6 +712,22 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
         if (refs.pe)
           joinLines.push(
             'LEFT JOIN post_interactions pe\n            ON p.id = pe.post_id',
+          )
+        if (refs.pr)
+          joinLines.push(
+            'LEFT JOIN profiles pr\n            ON pr.id = p.author_profile_id',
+          )
+        if (refs.vt)
+          joinLines.push(
+            'LEFT JOIN visibility_types vt\n            ON vt.id = p.visibility_id',
+          )
+        if (refs.ps)
+          joinLines.push(
+            'LEFT JOIN post_stats ps\n            ON ps.post_id = p.id',
+          )
+        if (refs.ht)
+          joinLines.push(
+            'LEFT JOIN post_hashtags pht ON p.id = pht.post_id\n            LEFT JOIN hashtags ht ON pht.hashtag_id = ht.id',
           )
 
         const joinsClause = `\n          ${joinLines.join('\n          ')}`
