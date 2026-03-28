@@ -28,8 +28,35 @@ export const DetailPanel = () => {
     if (apps.length <= 0 || detail.content == null) return
 
     if (detail.type === 'Status') {
-      if (!detail.content.id) return
       const client = GetClient(apps[detail.content.appIndex])
+
+      // id が空（SQLite キャッシュ由来で local_id 未解決）の場合は
+      // search API で投稿を解決し、setDetail で id を含む完全なデータに差し替える
+      if (!detail.content.id) {
+        if (!detail.content.uri) return
+        client
+          .search(detail.content.uri, {
+            limit: 1,
+            resolve: true,
+            type: 'statuses',
+          })
+          .then((res) => {
+            const found = res.data.statuses[0]
+            if (found) {
+              setDetail({
+                content: {
+                  ...found,
+                  appIndex: detail.content.appIndex,
+                },
+                type: 'Status',
+              })
+            }
+          })
+          .catch((error) => {
+            console.error('Failed to resolve status by URI:', error)
+          })
+        return
+      }
 
       client
         .getStatusContext(detail.content.id)

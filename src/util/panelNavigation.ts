@@ -104,6 +104,9 @@ export function routeToAccountIndex(route: PanelRoute): number {
 export function detailToPath(params: SetDetailParams): string {
   switch (params.type) {
     case 'Status':
+      // id が空（SQLite キャッシュ由来で local_id 未解決）の場合は
+      // URL を変えず、DetailPanel 側で search API で解決させる
+      if (!params.content.id) return window.location.pathname
       return `/status/${params.content.appIndex}/${params.content.id}`
     case 'Account':
       return `/profile/@${params.content.acct}`
