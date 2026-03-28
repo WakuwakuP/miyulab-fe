@@ -11,11 +11,10 @@ type TableCount = {
 
 const TABLE_NAMES = [
   'posts',
-  'timeline_items',
-  'timelines',
+  'timeline_entries',
   'post_hashtags',
-  'posts_mentions',
-  'posts_backends',
+  'post_mentions',
+  'post_backend_ids',
   'notifications',
   'muted_accounts',
   'blocked_instances',

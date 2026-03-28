@@ -176,10 +176,11 @@ export const UnifiedTimeline = ({
               const rows = (await handle.execAsync(
                 `SELECT pb2.local_id
                  FROM posts p
-                 INNER JOIN posts_backends pb2 ON pb2.post_id = p.post_id
-                 INNER JOIN post_hashtags pht ON p.post_id = pht.post_id
-                 INNER JOIN hashtags ht ON pht.hashtag_id = ht.hashtag_id
-                 WHERE ht.normalized_name = LOWER(?) AND pb2.server_id = (SELECT server_id FROM servers WHERE base_url = ?)
+                 INNER JOIN post_backend_ids pb2 ON pb2.post_id = p.id
+                 INNER JOIN post_hashtags pht ON pht.post_id = p.id
+                 INNER JOIN hashtags ht ON pht.hashtag_id = ht.id
+                 INNER JOIN local_accounts la ON la.id = pb2.local_account_id
+                 WHERE LOWER(ht.name) = LOWER(?) AND la.backend_url = ?
                  ORDER BY p.created_at_ms ASC
                  LIMIT 1;`,
                 {
@@ -198,11 +199,10 @@ export const UnifiedTimeline = ({
             const rows = (await handle.execAsync(
               `SELECT pb2.local_id
                FROM posts p
-               INNER JOIN posts_backends pb2 ON pb2.post_id = p.post_id
-               INNER JOIN timeline_items ti ON p.post_id = ti.post_id
-               INNER JOIN timelines t ON t.timeline_id = ti.timeline_id
-               INNER JOIN channel_kinds ck ON ck.channel_kind_id = t.channel_kind_id
-               WHERE pb2.backendUrl = ? AND ck.code = ?
+               INNER JOIN post_backend_ids pb2 ON pb2.post_id = p.id
+               INNER JOIN local_accounts la ON la.id = pb2.local_account_id
+               INNER JOIN timeline_entries te ON te.post_id = p.id AND te.local_account_id = la.id
+               WHERE la.backend_url = ? AND te.timeline_key = ?
                ORDER BY p.created_at_ms ASC
                LIMIT 1;`,
               {
