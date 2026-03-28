@@ -28,6 +28,7 @@ import {
   updateInteraction,
 } from '../helpers'
 import type { TableName } from '../protocol'
+import { syncPostMedia, upsertMentionsInternal } from './handlers/postSync'
 
 type DbExec = {
   exec: (
@@ -220,6 +221,16 @@ function ensurePostForNotification(
   // カスタム絵文字を同期
   if (status.emojis.length > 0) {
     syncPostCustomEmojis(db, postId, serverId, status.emojis)
+  }
+
+  // メディア添付ファイルを同期
+  if (status.media_attachments?.length > 0) {
+    syncPostMedia(db, postId, status.media_attachments)
+  }
+
+  // メンションを同期
+  if (status.mentions?.length > 0) {
+    upsertMentionsInternal(db, postId, status.mentions)
   }
 
   // 投票データを同期
