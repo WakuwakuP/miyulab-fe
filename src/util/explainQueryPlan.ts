@@ -518,6 +518,13 @@ function buildCustomMixedQuery(
 
   const binds: (string | number)[] = [...statusMediaBinds, TIMELINE_QUERY_LIMIT]
 
+  // Status 側では nt.*/ap.* は存在しないため NULL に置換
+  // （n.* は EMPTY_N ダミー JOIN で NULL 提供済み）
+  const statusRewrittenWhere = rewrittenWhere.replace(
+    /\b(nt|ap)\.\w+\b/g,
+    'NULL',
+  )
+
   const rewrittenNotifWhere = sanitized
 
   // EXPLAIN 用に status + notification の両クエリを UNION ALL で結合
@@ -527,7 +534,7 @@ function buildCustomMixedQuery(
       SELECT p.id AS post_id, p.created_at_ms
       FROM ${STATUS_COMPAT_FROM}
       ${STATUS_BASE_JOINS}${statusExtraJoins}
-      WHERE (${rewrittenWhere})${statusMediaConditions}
+      WHERE (${statusRewrittenWhere})${statusMediaConditions}
       GROUP BY p.id
       UNION ALL
       SELECT n.id AS notification_id, n.created_at_ms

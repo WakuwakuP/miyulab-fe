@@ -345,11 +345,15 @@ export function useCustomQueryTimeline(config: TimelineConfigV2): {
           statusPhase1JoinLines.push(
             'LEFT JOIN post_hashtags pht ON p.id = pht.post_id\n              LEFT JOIN hashtags ht ON pht.hashtag_id = ht.id',
           )
-        // EMPTY_N は不要: Status 側では n.* は常に NULL のため、
-        // WHERE 句の n.* 参照を直接 NULL に置換する。
+        // EMPTY_N は不要: Status 側では n.*/nt.*/ap.* は常に NULL のため、
+        // WHERE 句の通知系エイリアス参照を直接 NULL に置換する。
         // これにより MATERIALIZE + SCAN n LEFT-JOIN のオーバーヘッドを排除し、
         // SQLite の定数畳み込みで不要な条件分岐が除去される。
-        const statusNullReplaced = rewrittenWhere.replace(/\bn\.\w+\b/g, 'NULL')
+        // 注: \b(n|nt|ap)\. は ntt./ntf./ap2. 等にはマッチしない（単語境界で区切られるため安全）
+        const statusNullReplaced = rewrittenWhere.replace(
+          /\b(n|nt|ap)\.\w+\b/g,
+          'NULL',
+        )
 
         // --- 施策D: 相関サブクエリに profile_id ヒント注入 ---
         // profiles.acct 比較を検出し、冗長な actor_profile_id = p.author_profile_id を注入
