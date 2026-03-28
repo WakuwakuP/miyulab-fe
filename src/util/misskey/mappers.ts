@@ -226,23 +226,41 @@ export function mapUserDetailedToAccount(
 function normalizeReaction(
   name: string,
   reactionEmojis?: Record<string, string>,
+  instanceHost?: string,
 ): { name: string; url: string | null } {
   // Custom emoji: `:name@.:` (local) or `:name@host:` (remote)
   const customMatch = name.match(/^:(.+?)@(.+?):$/)
   if (customMatch) {
     const shortcode = customMatch[1]
+    const host = customMatch[2]
     const url =
       reactionEmojis?.[shortcode] ??
-      reactionEmojis?.[`${shortcode}@${customMatch[2]}`] ??
+      reactionEmojis?.[`${shortcode}@${host}`] ??
       null
-    return { name: `:${shortcode}:`, url: url ? ensureAbsoluteUrl(url) : null }
+    if (url) {
+      return { name: `:${shortcode}:`, url: ensureAbsoluteUrl(url) }
+    }
+    // Fallback: construct emoji URL from instance host
+    // Local emoji (host=".") → use own instance, remote → use remote host
+    const fallbackBase = host === '.' ? instanceHost : `https://${host}`
+    const fallbackUrl = fallbackBase
+      ? `${fallbackBase}/emoji/${shortcode}.webp`
+      : null
+    return { name: `:${shortcode}:`, url: fallbackUrl }
   }
 
   // Custom emoji without host: `:name:` (already normalized)
   if (name.startsWith(':') && name.endsWith(':')) {
     const shortcode = name.slice(1, -1)
     const url = reactionEmojis?.[shortcode] ?? null
-    return { name, url: url ? ensureAbsoluteUrl(url) : null }
+    if (url) {
+      return { name, url: ensureAbsoluteUrl(url) }
+    }
+    // Fallback: try constructing URL from instance host
+    const fallbackUrl = instanceHost
+      ? `${instanceHost}/emoji/${shortcode}.webp`
+      : null
+    return { name, url: fallbackUrl }
   }
 
   // Unicode emoji — return as-is
@@ -253,9 +271,10 @@ export function mapReactions(
   reactions: Record<string, number>,
   myReaction?: string | null,
   reactionEmojis?: Record<string, string>,
+  instanceHost?: string,
 ): Entity.Reaction[] {
   return Object.entries(reactions).map(([rawName, count]) => {
-    const r = normalizeReaction(rawName, reactionEmojis)
+    const r = normalizeReaction(rawName, reactionEmojis, instanceHost)
 
     return {
       accounts: [],
@@ -315,6 +334,7 @@ export function mapNoteToStatus(
       note.reactions ?? {},
       note.myReaction,
       note.reactionEmojis,
+      instanceHost,
     ),
     emojis: mapEmojis(note.emojis),
     favourited: note.myReaction != null ? true : null,
@@ -430,7 +450,7 @@ export function mapNotification(
         const rawReaction = (notif as { reaction: string }).reaction
         const reactionEmojis = (notif.note as Misskey.entities.Note | undefined)
           ?.reactionEmojis
-        const r = normalizeReaction(rawReaction, reactionEmojis)
+        const r = normalizeReaction(rawReaction, reactionEmojis, instanceHost)
         return {
           ...base,
           account,
