@@ -26,8 +26,8 @@ const TABLE_NAMES = [
  * INDEXED BY ヒントで小さいインデックスをスキャンさせることで高速化する。
  */
 const INDEX_HINTS: Partial<Record<(typeof TABLE_NAMES)[number], string>> = {
-  notifications: ' INDEXED BY idx_notifications_stored_at',
-  posts: ' INDEXED BY idx_posts_stored_at',
+  notifications: ' INDEXED BY idx_notifications_account_created',
+  posts: ' INDEXED BY idx_posts_created',
 }
 
 export const DatabaseStatsPanel = () => {
