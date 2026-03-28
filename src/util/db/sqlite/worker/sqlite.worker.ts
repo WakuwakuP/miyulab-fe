@@ -506,7 +506,7 @@ self.onmessage = (
         }) as (string | number | null)[][]
 
         // reblog post_id を収集
-        const reblogColIdx = msg.reblogPostIdColumnIndex ?? 27
+        const reblogColIdx = msg.reblogPostIdColumnIndex ?? 25
         const reblogPostIds: number[] = []
         for (const row of phase2Rows) {
           const rbId = row[reblogColIdx] as number | null

@@ -484,7 +484,7 @@ export function assembleStatusFromBatch(
   const customEmojisJson = maps.customEmojisMap.get(postId) ?? null
   const profileEmojisJson = maps.profileEmojisMap.get(postId) ?? null
   const pollJson = maps.pollsMap.get(postId) ?? null
-  const emojiReactionsJson = maps.emojiReactionsMap.get(postId) ?? null
+  const emojiReactionsJson = (row[50] as string | null) ?? null
 
   const belongingTags: string[] = belongingTagsJson
     ? (JSON.parse(belongingTagsJson) as (string | null)[]).filter(
@@ -505,7 +505,7 @@ export function assembleStatusFromBatch(
     const rbCustomEmojisJson = maps.customEmojisMap.get(rbPostId) ?? null
     const rbProfileEmojisJson = maps.profileEmojisMap.get(rbPostId) ?? null
     const rbPollJson = maps.pollsMap.get(rbPostId) ?? null
-    const rbEmojiReactionsJson = maps.emojiReactionsMap.get(rbPostId) ?? null
+    const rbEmojiReactionsJson = (row[51] as string | null) ?? null
 
     const rbEditedAtMs = row[33] as number | null
 

@@ -364,7 +364,7 @@ export const Status = ({
           visibility={status.visibility}
         />
       )}
-      {status.spoiler_text !== '' && (
+      {(status.reblog?.spoiler_text ?? status.spoiler_text) !== '' && (
         <div className="border-b-2 border-b-gray-600 py-2 text-gray-400">
           {parse(spoilerText, {
             replace,
@@ -394,12 +394,13 @@ export const Status = ({
         }
       />
 
-      {status.media_attachments.length === 0 && (
-        <Card card={status.reblog?.card ?? status.card} />
-      )}
+      {(status.reblog?.media_attachments ?? status.media_attachments).length ===
+        0 && <Card card={status.reblog?.card ?? status.card} />}
 
       <MediaAttachments
-        mediaAttachments={status.media_attachments}
+        mediaAttachments={
+          status.reblog?.media_attachments ?? status.media_attachments
+        }
         scrolling={scrolling}
         sensitive={status.reblog?.sensitive ?? status.sensitive}
       />
