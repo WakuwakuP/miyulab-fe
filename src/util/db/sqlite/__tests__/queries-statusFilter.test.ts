@@ -159,30 +159,22 @@ describe('アカウントフィルタが profiles WHERE id を使用する（pro
 
 // ─── follows フィルタ ──────────────────────────────────────────
 
-describe('followsOnly フィルタが新スキーマの PK を使用する', () => {
-  it('local_accounts の PK が id である（local_account_id ではない）', () => {
+describe('followsOnly フィルタ（follows テーブル未実装）', () => {
+  it('follows テーブル未実装のため条件を追加しない', () => {
     const { conditions } = buildFilterConditions(
       makeConfig({ followsOnly: true }),
       ['https://mastodon.social'],
     )
     const followCondition = conditions.find((c) => c.includes('follows'))
-    expect(followCondition).toBeDefined()
-    // la.id で JOIN（旧: la.local_account_id）
-    expect(followCondition).toMatch(
-      /la\s*ON\s+f\.local_account_id\s*=\s*la\.id\b/,
-    )
-    expect(followCondition).not.toMatch(/la\.local_account_id\b/)
+    expect(followCondition).toBeUndefined()
   })
 
-  it('servers JOIN を使わず local_accounts.backend_url で直接フィルタする', () => {
-    const { conditions } = buildFilterConditions(
-      makeConfig({ followsOnly: true }),
-      ['https://mastodon.social'],
-    )
-    const followCondition = conditions.find((c) => c.includes('follows'))
-    expect(followCondition).toBeDefined()
-    // local_accounts.backend_url で直接フィルタ（servers JOIN 不要）
-    expect(followCondition).toMatch(/la\.backend_url\s+IN\b/)
-    expect(followCondition).not.toMatch(/sv\.base_url\b/)
+  it('console.warn を出力する', () => {
+    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    buildFilterConditions(makeConfig({ followsOnly: true }), [
+      'https://mastodon.social',
+    ])
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('followsOnly'))
+    spy.mockRestore()
   })
 })

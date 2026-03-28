@@ -144,12 +144,12 @@ export function buildFilterConditions(
   }
 
   // フォロー中のアカウントのみ表示
+  // NOTE: follows テーブルは v2 スキーマに未実装のため、現在は無効。
+  // テーブル実装後にこのガードを除去すること。
   if (config.followsOnly) {
-    const placeholders = targetBackendUrls.map(() => '?').join(',')
-    conditions.push(
-      `${prefix}author_profile_id IN (SELECT f.target_profile_id FROM follows f INNER JOIN local_accounts la ON f.local_account_id = la.id WHERE la.backend_url IN (${placeholders}))`,
+    console.warn(
+      'followsOnly filter is not yet supported: follows table does not exist',
     )
-    binds.push(...targetBackendUrls)
   }
 
   return { binds, conditions }

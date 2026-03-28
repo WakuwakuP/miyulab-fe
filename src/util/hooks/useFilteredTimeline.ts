@@ -14,7 +14,6 @@ import {
   getSqliteDb,
   subscribe,
 } from 'util/db/sqlite/connection'
-import type { TimelineType as DbTimelineType } from 'util/db/sqlite/statusStore'
 import {
   assembleStatusFromBatch,
   buildBatchMapsFromResults,
@@ -164,6 +163,7 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
   )
   const configType = config.type
   const customQuery = config.customQuery
+  const configTimelineTypes = config.timelineTypes
 
   // 3. SQLite からデータ取得
   const sessionTag = `filtered-${configId}`
@@ -206,10 +206,21 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
         ...filterConditions,
       ]
 
+      // effectiveTypes: UI の Timeline Sources 設定を優先し、
+      // 未設定時は config.type から推定
+      const effectiveTypes: string[] =
+        configTimelineTypes && configTimelineTypes.length > 0
+          ? configTimelineTypes
+          : configType === 'home' ||
+              configType === 'local' ||
+              configType === 'public'
+            ? [configType]
+            : []
+
       // Home タイムラインは local_account_id でスコープする。
       // 同一サーバーに複数アカウントがある場合、各アカウントの
       // ホームタイムラインが混ざらないようにする。
-      if (configType === 'home') {
+      if (effectiveTypes.includes('home')) {
         const quotedUrls = targetBackendUrls
           .map((u) => `'${u.replace(/'/g, "''")}'`)
           .join(',')
@@ -217,6 +228,13 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
           `te.local_account_id IN (SELECT la2.id FROM local_accounts la2 WHERE la2.backend_url IN (${quotedUrls}))`,
         )
       }
+
+      // HAVING: effectiveTypes に含まれる timeline_key を持つ投稿のみ取得
+      const havingPlaceholders = effectiveTypes.map(() => '?').join(',')
+      const havingClause =
+        effectiveTypes.length === 1
+          ? 'HAVING MAX(te.timeline_key = ?) = 1'
+          : `HAVING MAX(te.timeline_key IN (${havingPlaceholders})) = 1`
 
       const phase1Sql = `
         SELECT p.id, json_group_array(DISTINCT te.timeline_key) AS timelineTypes, MIN(la.backend_url) AS backendUrl
@@ -227,14 +245,14 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
         LEFT JOIN profiles pr ON p.author_profile_id = pr.id
         WHERE ${whereConditions.join('\n          AND ')}
         GROUP BY p.id
-        HAVING MAX(te.timeline_key = ?) = 1
+        ${havingClause}
         ORDER BY p.created_at_ms DESC
         LIMIT ?;
       `
       const phase1Binds: (string | number)[] = [
         ...targetBackendUrls,
         ...filterBinds,
-        configType as DbTimelineType,
+        ...effectiveTypes,
         queryLimit,
       ]
 
@@ -305,6 +323,7 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
     }
   }, [
     configType,
+    configTimelineTypes,
     customQuery,
     targetBackendUrls,
     filterResult,
@@ -324,7 +343,11 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
       }
       // ヒントがある場合: 自パネルに関係する変更かチェック
       const isRelevant = hints.some((hint) => {
-        if (hint.timelineType && hint.timelineType !== configType) return false
+        if (hint.timelineType) {
+          // timelineTypes が設定されている場合はそちらで判定
+          const types = configTimelineTypes ?? [configType]
+          if (!types.includes(hint.timelineType as never)) return false
+        }
         if (hint.backendUrl && !targetBackendUrls.includes(hint.backendUrl))
           return false
         return true
@@ -333,7 +356,7 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
         fetchData()
       }
     },
-    [fetchData, configType, targetBackendUrls],
+    [fetchData, configType, configTimelineTypes, targetBackendUrls],
   )
 
   // 初回取得 + 変更通知で再取得
