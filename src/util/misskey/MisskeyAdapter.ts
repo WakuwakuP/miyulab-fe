@@ -9,6 +9,7 @@ import * as Misskey from 'misskey-js'
 import { createMiAuthAppData, fetchMiAuthToken } from './auth'
 import { MisskeyWebSocketAdapter } from './MisskeyWebSocketAdapter'
 import {
+  ensureAbsoluteUrl,
   mapNoteToStatus,
   mapNotification,
   mapUserDetailedToAccount,
@@ -1393,8 +1394,8 @@ export class MisskeyAdapter implements MegalodonInterface {
       emojiList.map((e) => ({
         category: e.category ?? undefined,
         shortcode: e.name,
-        static_url: e.url,
-        url: e.url,
+        static_url: ensureAbsoluteUrl(e.url),
+        url: ensureAbsoluteUrl(e.url),
         visible_in_picker: true,
       })),
     )

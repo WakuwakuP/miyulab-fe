@@ -14,7 +14,6 @@ import {
 import type { App } from 'types/types'
 import { startPeriodicCleanup } from 'util/db/sqlite/cleanup'
 import { startPeriodicExport } from 'util/db/sqlite/dbExport'
-import { syncFollows } from 'util/db/sqlite/followStore'
 import {
   addNotification,
   bulkAddNotifications,
@@ -372,22 +371,17 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
           ),
         )
 
-        // フォロー一覧を同期（バックグラウンド）
+        // ローカルアカウント情報を同期
         client
           .verifyAccountCredentials()
           .then(async (res) => {
             await ensureLocalAccount(res.data, backendUrl)
-            return res
           })
-          .then((res) =>
-            client.getAccountFollowing(res.data.id, {
-              get_all: true,
-              sleep_ms: 200,
-            }),
-          )
-          .then((res) => syncFollows(res.data, backendUrl))
           .catch((error) => {
-            console.warn(`Failed to sync follows for ${backendUrl}:`, error)
+            console.warn(
+              `Failed to verify credentials for ${backendUrl}:`,
+              error,
+            )
           })
       } catch (error) {
         console.error(`Failed to initialize for ${backendUrl}:`, error)

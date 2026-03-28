@@ -330,7 +330,7 @@ export function upsertNotification(
   ) {
     const shortcode = reactionName.slice(1, -1)
     const emojiRows = db.exec(
-      'SELECT image_url, static_url FROM custom_emojis WHERE server_id = ? AND shortcode = ?;',
+      'SELECT url, static_url FROM custom_emojis WHERE server_id = ? AND shortcode = ?;',
       { bind: [serverId, shortcode], returnValue: 'resultRows' },
     ) as (string | null)[][]
     if (emojiRows.length > 0) {

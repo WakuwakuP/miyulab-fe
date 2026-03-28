@@ -2,6 +2,22 @@ import type { Entity } from 'megalodon'
 import type * as Misskey from 'misskey-js'
 
 // ========================================
+// URL Normalization
+// ========================================
+
+/** プロトコルが省略された URL に https:// を付与する */
+export function ensureAbsoluteUrl(url: string): string {
+  if (!url) return url
+  if (
+    url.startsWith('http://') ||
+    url.startsWith('https://') ||
+    url.startsWith('/')
+  )
+    return url
+  return `https://${url}`
+}
+
+// ========================================
 // Misskey Note Extension Fields
 // misskey-js の型定義に含まれないが実データに存在するフィールド
 // ========================================
@@ -80,12 +96,15 @@ export function mapEmojis(
   emojis: Record<string, string> | undefined,
 ): Entity.Emoji[] {
   if (!emojis) return []
-  return Object.entries(emojis).map(([shortcode, url]) => ({
-    shortcode,
-    static_url: url,
-    url,
-    visible_in_picker: true,
-  }))
+  return Object.entries(emojis).map(([shortcode, rawUrl]) => {
+    const url = ensureAbsoluteUrl(rawUrl)
+    return {
+      shortcode,
+      static_url: url,
+      url,
+      visible_in_picker: true,
+    }
+  })
 }
 
 // ========================================
@@ -216,14 +235,14 @@ function normalizeReaction(
       reactionEmojis?.[shortcode] ??
       reactionEmojis?.[`${shortcode}@${customMatch[2]}`] ??
       null
-    return { name: `:${shortcode}:`, url }
+    return { name: `:${shortcode}:`, url: url ? ensureAbsoluteUrl(url) : null }
   }
 
   // Custom emoji without host: `:name:` (already normalized)
   if (name.startsWith(':') && name.endsWith(':')) {
     const shortcode = name.slice(1, -1)
     const url = reactionEmojis?.[shortcode] ?? null
-    return { name, url }
+    return { name, url: url ? ensureAbsoluteUrl(url) : null }
   }
 
   // Unicode emoji — return as-is

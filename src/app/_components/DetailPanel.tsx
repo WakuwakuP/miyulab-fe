@@ -28,6 +28,7 @@ export const DetailPanel = () => {
     if (apps.length <= 0 || detail.content == null) return
 
     if (detail.type === 'Status') {
+      if (!detail.content.id) return
       const client = GetClient(apps[detail.content.appIndex])
 
       client
