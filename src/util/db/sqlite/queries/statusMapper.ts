@@ -482,6 +482,7 @@ export function assembleStatusFromBatch(
   const timelineTypesJson = maps.timelineTypesMap.get(postId) ?? null
   const belongingTagsJson = maps.belongingTagsMap.get(postId) ?? null
   const customEmojisJson = maps.customEmojisMap.get(postId) ?? null
+  const profileEmojisJson = maps.profileEmojisMap.get(postId) ?? null
   const pollJson = maps.pollsMap.get(postId) ?? null
   const emojiReactionsJson = maps.emojiReactionsMap.get(postId) ?? null
 
@@ -502,6 +503,7 @@ export function assembleStatusFromBatch(
     const rbMediaJson = maps.mediaMap.get(rbPostId) ?? null
     const rbMentionsJson = maps.mentionsMap.get(rbPostId) ?? null
     const rbCustomEmojisJson = maps.customEmojisMap.get(rbPostId) ?? null
+    const rbProfileEmojisJson = maps.profileEmojisMap.get(rbPostId) ?? null
     const rbPollJson = maps.pollsMap.get(rbPostId) ?? null
     const rbEmojiReactionsJson = maps.emojiReactionsMap.get(rbPostId) ?? null
 
@@ -515,7 +517,7 @@ export function assembleStatusFromBatch(
         bot: (row[42] as number) === 1,
         created_at: '',
         display_name: (row[38] as string) ?? '',
-        emojis: parseEmojis(rbCustomEmojisJson),
+        emojis: parseEmojis(rbProfileEmojisJson),
         fields: [],
         followers_count: 0,
         following_count: 0,
@@ -579,7 +581,7 @@ export function assembleStatusFromBatch(
       bot: (row[20] as number) === 1,
       created_at: '',
       display_name: (row[16] as string) ?? '',
-      emojis: parseEmojis(customEmojisJson),
+      emojis: parseEmojis(profileEmojisJson),
       fields: [],
       followers_count: 0,
       following_count: 0,

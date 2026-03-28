@@ -93,6 +93,23 @@ export const BATCH_CUSTOM_EMOJIS_SQL = `
   WHERE pce.post_id IN (__PH__)
   GROUP BY pce.post_id`
 
+/** post_id → profile_custom_emojis JSON のバッチクエリ（著者の表示名絵文字） */
+export const BATCH_PROFILE_CUSTOM_EMOJIS_SQL = `
+  SELECT p.id AS post_id,
+    json_group_array(
+      json_object(
+        'shortcode', ce.shortcode,
+        'url', ce.url,
+        'static_url', ce.static_url,
+        'visible_in_picker', ce.visible_in_picker
+      )
+    ) AS emojis_json
+  FROM posts p
+  INNER JOIN profile_custom_emojis prce ON prce.profile_id = p.author_profile_id
+  INNER JOIN custom_emojis ce ON prce.custom_emoji_id = ce.id
+  WHERE p.id IN (__PH__)
+  GROUP BY p.id`
+
 /** post_id → poll_json のバッチクエリ */
 export const BATCH_POLLS_SQL = `
   SELECT p.post_id,
@@ -204,6 +221,21 @@ export const BATCH_SQL_TEMPLATES = {
   FROM polls p
   LEFT JOIN poll_votes pv ON p.id = pv.poll_id AND pv.local_account_id = ?
   WHERE p.post_id IN ({IDS})`,
+  profileEmojis: `
+  SELECT p.id AS post_id,
+    json_group_array(
+      json_object(
+        'shortcode', ce.shortcode,
+        'url', ce.url,
+        'static_url', ce.static_url,
+        'visible_in_picker', ce.visible_in_picker
+      )
+    ) AS emojis_json
+  FROM posts p
+  INNER JOIN profile_custom_emojis prce ON prce.profile_id = p.author_profile_id
+  INNER JOIN custom_emojis ce ON prce.custom_emoji_id = ce.id
+  WHERE p.id IN ({IDS})
+  GROUP BY p.id`,
   timelineTypes: `
   SELECT te.post_id,
     json_group_array(te.timeline_key) AS timelineTypes
@@ -224,6 +256,7 @@ export type BatchResultRows = {
   timelineTypes: (string | number | null)[][]
   belongingTags: (string | number | null)[][]
   customEmojis: (string | number | null)[][]
+  profileEmojis: (string | number | null)[][]
   polls: (string | number | null)[][]
 }
 
@@ -238,6 +271,7 @@ export interface BatchMaps {
   timelineTypesMap: Map<number, string>
   belongingTagsMap: Map<number, string>
   customEmojisMap: Map<number, string>
+  profileEmojisMap: Map<number, string>
   pollsMap: Map<number, string>
   emojiReactionsMap: Map<number, string>
 }
@@ -287,6 +321,12 @@ export function buildBatchMapsFromResults(
     customEmojisMap.set(row[0] as number, row[1] as string)
   }
 
+  // profileEmojis: [post_id, emojis_json] — 著者の表示名絵文字
+  const profileEmojisMap = new Map<number, string>()
+  for (const row of batchResults.profileEmojis) {
+    profileEmojisMap.set(row[0] as number, row[1] as string)
+  }
+
   const pollsMap = new Map<number, string>()
   for (const row of batchResults.polls) {
     pollsMap.set(row[0] as number, row[1] as string)
@@ -303,6 +343,7 @@ export function buildBatchMapsFromResults(
     mediaMap,
     mentionsMap,
     pollsMap,
+    profileEmojisMap,
     timelineTypesMap,
   }
 }
@@ -340,6 +381,7 @@ export async function executeBatchQueries(
       mediaMap: new Map(),
       mentionsMap: new Map(),
       pollsMap: new Map(),
+      profileEmojisMap: new Map(),
       timelineTypesMap: new Map(),
     }
   }
@@ -353,7 +395,7 @@ export async function executeBatchQueries(
   ]
 
   // 全バッチクエリを並列実行
-  // NOTE: sessionTag を渡さない。7 本のクエリが同一 sessionTag を共有すると、
+  // NOTE: sessionTag を渡さない。8 本のクエリが同一 sessionTag を共有すると、
   // workerClient の sendRequest インプレース置換により後続リクエストが先行を
   // キャンセル (undefined で resolve) し、"s is not iterable" エラーになる。
   const [
@@ -363,6 +405,7 @@ export async function executeBatchQueries(
     timelineTypeRows,
     belongingTagRows,
     emojiRows,
+    profileEmojiRows,
     pollRows,
   ] = await Promise.all([
     handle.execAsync(
@@ -401,6 +444,14 @@ export async function executeBatchQueries(
       kind: 'timeline',
       returnValue: 'resultRows',
     }) as Promise<(string | number | null)[][]>,
+    handle.execAsync(
+      replacePlaceholders(BATCH_PROFILE_CUSTOM_EMOJIS_SQL, count),
+      {
+        bind: allPostIds,
+        kind: 'timeline',
+        returnValue: 'resultRows',
+      },
+    ) as Promise<(string | number | null)[][]>,
     handle.execAsync(replacePlaceholders(BATCH_POLLS_SQL, count), {
       bind: pollsBind,
       kind: 'timeline',
@@ -440,6 +491,12 @@ export async function executeBatchQueries(
     customEmojisMap.set(row[0] as number, row[1] as string)
   }
 
+  // profileEmojis: [post_id, emojis_json] — 著者の表示名絵文字
+  const profileEmojisMap = new Map<number, string>()
+  for (const row of profileEmojiRows) {
+    profileEmojisMap.set(row[0] as number, row[1] as string)
+  }
+
   const pollsMap = new Map<number, string>()
   for (const row of pollRows) {
     pollsMap.set(row[0] as number, row[1] as string)
@@ -456,6 +513,7 @@ export async function executeBatchQueries(
     mediaMap,
     mentionsMap,
     pollsMap,
+    profileEmojisMap,
     timelineTypesMap,
   }
 }

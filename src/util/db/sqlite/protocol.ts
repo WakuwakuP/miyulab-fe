@@ -206,6 +206,7 @@ export type FetchTimelineRequest = {
     timelineTypes: string
     belongingTags: string
     customEmojis: string
+    profileEmojis: string
     polls: string
   }
   /** Phase2 結果から reblog_of_post_id を抽出するカラムインデックス */
@@ -223,6 +224,7 @@ export type FetchTimelineResult = {
     timelineTypes: (string | number | null)[][]
     belongingTags: (string | number | null)[][]
     customEmojis: (string | number | null)[][]
+    profileEmojis: (string | number | null)[][]
     polls: (string | number | null)[][]
   }
   totalDurationMs: number

@@ -230,6 +230,7 @@ async function initMainThreadFallback(
             media: [],
             mentions: [],
             polls: [],
+            profileEmojis: [],
             timelineTypes: [],
           },
           phase1Rows,
@@ -270,6 +271,7 @@ async function initMainThreadFallback(
         media: runBatch(request.batchSqls.media),
         mentions: runBatch(request.batchSqls.mentions),
         polls: runBatch(request.batchSqls.polls),
+        profileEmojis: runBatch(request.batchSqls.profileEmojis),
         timelineTypes: runBatch(request.batchSqls.timelineTypes),
       }
 

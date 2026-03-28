@@ -136,6 +136,7 @@ function makeMaps(overrides: Partial<BatchMaps> = {}): BatchMaps {
     mediaMap: new Map(),
     mentionsMap: new Map(),
     pollsMap: new Map(),
+    profileEmojisMap: new Map(),
     timelineTypesMap: new Map(),
     ...overrides,
   }

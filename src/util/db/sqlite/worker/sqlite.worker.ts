@@ -487,6 +487,7 @@ self.onmessage = (
               media: [],
               mentions: [],
               polls: [],
+              profileEmojis: [],
               timelineTypes: [],
             },
             phase1Rows,
@@ -528,6 +529,7 @@ self.onmessage = (
           media: runBatch(msg.batchSqls.media),
           mentions: runBatch(msg.batchSqls.mentions),
           polls: runBatch(msg.batchSqls.polls),
+          profileEmojis: runBatch(msg.batchSqls.profileEmojis),
           timelineTypes: runBatch(msg.batchSqls.timelineTypes),
         }
 
