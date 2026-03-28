@@ -71,11 +71,11 @@ export const EmojiReactions = ({
   }
 
   return (
-    <div className="flex flex-wrap gap-1 pt-1">
+    <div className="flex max-w-full flex-wrap gap-1 pt-1">
       {reactions.map((reaction) => (
         <button
           className={[
-            'flex items-center gap-1 rounded-full border px-2 py-0.5 text-sm',
+            'flex max-w-full items-center gap-1 overflow-hidden rounded-full border px-2 py-0.5 text-sm',
             reaction.me
               ? 'border-blue-400 bg-blue-400/20'
               : 'border-gray-600 hover:bg-gray-700',
@@ -103,7 +103,7 @@ export const EmojiReactions = ({
             return imgUrl ? (
               <img
                 alt={reaction.name}
-                className="h-5 w-5 object-contain"
+                className="h-7 min-w-5 max-w-24 shrink-0 object-contain"
                 loading="lazy"
                 src={imgUrl}
                 title={reaction.name}
