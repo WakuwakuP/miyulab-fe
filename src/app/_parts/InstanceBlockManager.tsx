@@ -29,7 +29,7 @@ function validateDomain(input: string): string | null {
   domain = domain.split(':')[0]
 
   // 基本的なドメイン形式チェック
-  if (!domain || !domain.includes('.')) {
+  if (!domain?.includes('.')) {
     return null
   }
 

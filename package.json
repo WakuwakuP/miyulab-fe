@@ -14,7 +14,7 @@
     "emoji-picker-react": "^4.18.0",
     "html-react-parser": "^5.2.17",
     "jquery": "^4.0.0",
-    "lucide-react": "^0.577.0",
+    "lucide-react": "^1.7.0",
     "megalodon": "^10.2.4",
     "misskey-js": "^2026.1.0-beta.0",
     "next": "^16.2.1",
@@ -36,7 +36,7 @@
     "unicode-emoji-json": "^0.8.0"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.4.8",
+    "@biomejs/biome": "^2.4.9",
     "@tailwindcss/postcss": "^4.2.2",
     "@types/node": "^25.5.0",
     "@types/react": "^19.2.14",
@@ -49,7 +49,7 @@
     "lint-staged": "^16.4.0",
     "postcss": "^8.5.8",
     "tailwindcss": "^4.2.2",
-    "typescript": "5.9.3",
+    "typescript": "^6.0.2",
     "vitest": "^4.1.2"
   },
   "license": "MIT",
