@@ -24,6 +24,7 @@ import type {
   FetchTimelineRequest,
   FetchTimelineResult,
   SendCommandPayload,
+  SlowQueryLogEntry,
   TableName,
   WorkerMessage,
 } from './protocol'
@@ -75,6 +76,22 @@ let initReject: ((reason: Error) => void) | null = null
 let initPromise: Promise<'opfs' | 'memory'> | null = null
 let initTimer: ReturnType<typeof setTimeout> | null = null
 const durationForId = new Map<number, number>()
+
+/** スロークエリログのコールバック */
+let slowQueryLogCallback: ((logs: SlowQueryLogEntry[]) => void) | null = null
+
+/**
+ * スロークエリログの通知コールバックを登録する。
+ * 戻り値は登録解除関数。
+ */
+export function onSlowQueryLogs(
+  callback: (logs: SlowQueryLogEntry[]) => void,
+): () => void {
+  slowQueryLogCallback = callback
+  return () => {
+    slowQueryLogCallback = null
+  }
+}
 
 const TIMEOUT_MS = 30_000
 const INIT_TIMEOUT_MS = 15_000
@@ -203,6 +220,11 @@ function handleMessage(event: MessageEvent<WorkerMessage>): void {
         pending.delete(msg.id)
         req.reject(new Error(msg.error))
       }
+      break
+    }
+
+    case 'slowQueryLogs': {
+      slowQueryLogCallback?.(msg.logs)
       break
     }
   }
@@ -595,6 +617,7 @@ export function terminateWorker(): void {
   initResolve = null
   initReject = null
   notifyChangeCallback = null
+  slowQueryLogCallback = null
   nextId = 0
   stopSnapshotRecording()
 }

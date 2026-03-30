@@ -1,0 +1,25 @@
+/**
+ * ZenStack v3 Schema — クエリログ分析用
+ *
+ * Neon (PostgreSQL) に接続し、クライアント側で検出されたスロークエリを蓄積する。
+ */
+
+datasource db {
+    provider = 'postgresql'
+    url = env('DATABASE_URL')
+}
+
+/**
+ * クライアント側で検出されたスロークエリログ
+ */
+model QueryLog {
+    id          String   @id @default(uuid())
+    sql         String
+    bind        String?
+    explainPlan String?
+    durationMs  Int
+    userAgent   String?
+    createdAt   DateTime @default(now())
+
+    @@map("query_logs")
+}

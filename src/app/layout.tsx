@@ -19,6 +19,8 @@ import { StreamingManagerProvider } from 'util/provider/StreamingManagerProvider
 import { SuspenseProvider } from 'util/provider/SuspenseProvider'
 import { TimelineProvider } from 'util/provider/TimelineProvider'
 
+import { QueryLogBridge } from './_parts/QueryLogBridge'
+
 import './globals.css'
 
 const inter = Inter({ subsets: ['latin'] })
@@ -69,6 +71,7 @@ export default function RootLayout({
             </PostAccountProvider>
           </AppsProvider>
         </SuspenseProvider>
+        <QueryLogBridge />
         <Analytics />
       </body>
     </html>

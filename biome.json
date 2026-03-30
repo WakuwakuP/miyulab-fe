@@ -38,7 +38,8 @@
       "!**/tests/**/*",
       "!**/.storybook/MockAuth.tsx",
       "!**/plans/**/*",
-      "!**/.github/prompts/**/*"
+      "!**/.github/prompts/**/*",
+      "!**/src/zenstack/**/*"
     ]
   },
   "formatter": {

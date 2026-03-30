@@ -287,8 +287,28 @@ export type InitMessage = {
   persistence: 'opfs' | 'memory'
 }
 
+/** スロークエリログエントリ（Worker → Main Thread 通知用） */
+export type SlowQueryLogEntry = {
+  sql: string
+  bind: string
+  explainPlan: string
+  durationMs: number
+  userAgent: string
+  timestamp: string
+}
+
+/** Worker → Main Thread: スロークエリログ通知（RPC レスポンスではない） */
+export type SlowQueryLogMessage = {
+  type: 'slowQueryLogs'
+  logs: SlowQueryLogEntry[]
+}
+
 /** Worker → Main Thread 全メッセージ型 */
-export type WorkerMessage = SuccessResponse | ErrorResponse | InitMessage
+export type WorkerMessage =
+  | SuccessResponse
+  | ErrorResponse
+  | InitMessage
+  | SlowQueryLogMessage
 
 // ================================================================
 // sendCommand 用: id を除外したコマンドペイロード型
