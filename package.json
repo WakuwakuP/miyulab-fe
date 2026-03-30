@@ -71,6 +71,7 @@
     "check:fix": "biome check --write .",
     "dev": "next dev --experimental-https",
     "generate": "zen generate --lite",
+    "prebuild": "zenstack generate && zenstack migrate deploy",
     "prepare": "husky install",
     "start": "next start",
     "test": "vitest run",

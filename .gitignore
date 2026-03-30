@@ -41,3 +41,4 @@ certificates
 
 plans/*
 !plans/.gitkeep
+.env
