@@ -14,6 +14,7 @@ export default defineConfig({
     coverage: {
       include: ['src/util/db/sqlite/**'],
       provider: 'v8',
+      reporter: ['text', 'json', 'json-summary'],
     },
     environment: 'node',
     globals: true,
