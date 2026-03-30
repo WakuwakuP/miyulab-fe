@@ -74,17 +74,17 @@ export async function createQueryLogs(
   }
 
   try {
-    for (const log of filtered) {
-      await client.queryLog.create({
-        data: {
-          bind: log.bind ?? null,
-          durationMs: Math.round(log.durationMs),
-          explainPlan: log.explainPlan ?? null,
-          sql: log.sql.slice(0, MAX_SQL_LENGTH),
-          userAgent: log.userAgent ?? null,
-        },
-      })
-    }
+    const data = filtered.map((log) => ({
+      bind: log.bind ?? null,
+      durationMs: Math.round(log.durationMs),
+      explainPlan: log.explainPlan ?? null,
+      sql: log.sql.slice(0, MAX_SQL_LENGTH),
+      userAgent: log.userAgent ?? null,
+    }))
+
+    await client.queryLog.createMany({
+      data,
+    })
 
     return { count: filtered.length, success: true }
   } catch (e) {

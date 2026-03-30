@@ -41,6 +41,13 @@ function flushQueue(): void {
 
   const logs = logQueue.splice(0)
   const message: SlowQueryLogMessage = { logs, type: 'slowQueryLogs' }
+
+  // Worker 環境のみ postMessage を使用する
+  // Window 環境（fallback DB 実装）では window.postMessage となり
+  // targetOrigin 引数が必須のため、ここでは送信せずにキューを破棄する。
+  if (typeof window !== 'undefined' && self === window) {
+    return
+  }
   self.postMessage(message)
 }
 
@@ -56,7 +63,20 @@ function scheduleFlush(): void {
  * SQL からアクセストークン等の機密情報をマスクする
  */
 function sanitizeSql(sql: string): string {
-  return sql.trim().replace(/\s+/g, ' ').slice(0, MAX_SQL_LENGTH)
+  // まずはログ用にホワイトスペースを正規化
+  const normalized = sql.trim().replace(/\s+/g, ' ')
+
+  // Bearer トークンや長い文字列リテラルをマスクする
+  const masked = normalized
+    // e.g. "Authorization: Bearer abcdef..." のようなパターン
+    .replace(/\bBearer\s+[A-Za-z0-9\-._~+/]+=*/gi, 'Bearer [REDACTED]')
+    // シングルクォートで囲まれた不自然に長いリテラル
+    .replace(/'[^']{50,}'/g, "'[REDACTED]'")
+    // ダブルクォートで囲まれた不自然に長いリテラル
+    .replace(/"[^"]{50,}"/g, '"[REDACTED]"')
+
+  // ログ肥大化防止のため最大長を制限
+  return masked.slice(0, MAX_SQL_LENGTH)
 }
 
 /**
