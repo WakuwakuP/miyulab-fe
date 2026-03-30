@@ -25,7 +25,7 @@ type CreateQueryLogsResult =
   | { success: false; error: string }
 
 /** サーバー側のバリデーション閾値（ミリ秒） */
-const MIN_DURATION_MS = 2000
+const MIN_DURATION_MS = 1000
 
 /** SQL の最大文字数 */
 const MAX_SQL_LENGTH = 500

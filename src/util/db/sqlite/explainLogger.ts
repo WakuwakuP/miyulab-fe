@@ -15,7 +15,7 @@ import type { SlowQueryLogEntry, SlowQueryLogMessage } from './protocol'
 type RawDb = any
 
 /** スローログの閾値（ミリ秒） */
-const SLOW_QUERY_THRESHOLD_MS = 2000
+const SLOW_QUERY_THRESHOLD_MS = 1000
 
 /** キューのフラッシュ間隔（ミリ秒） */
 const FLUSH_INTERVAL_MS = 5_000
