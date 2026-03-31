@@ -568,3 +568,30 @@ export async function searchDistinctColumnValues(
     return []
   }
 }
+
+/**
+ * テーブル名・カラム名を直接指定してプレフィクス検索する（NodeEditor 用）
+ *
+ * ALIAS_TO_TABLE を経由せず、テーブル名とカラム名を直接指定して
+ * ALLOWED_COLUMN_VALUES のホワイトリストに準拠した値検索を行う。
+ */
+export async function searchColumnValuesDirect(
+  table: string,
+  column: string,
+  prefix: string,
+  maxResults = 20,
+): Promise<string[]> {
+  if (!ALLOWED_COLUMN_VALUES[table]?.includes(column)) return []
+
+  try {
+    const handle = await getSqliteDb()
+    const escaped = prefix.replace(/[%_\\]/g, (c) => `\\${c}`)
+    const rows = (await handle.execAsync(
+      `SELECT DISTINCT "${column}" FROM "${table}" WHERE "${column}" IS NOT NULL AND "${column}" != '' AND "${column}" LIKE ? ESCAPE '\\' ORDER BY "${column}" LIMIT ?;`,
+      { bind: [`${escaped}%`, maxResults], returnValue: 'resultRows' },
+    )) as string[][]
+    return rows.map((r) => r[0])
+  } catch {
+    return []
+  }
+}

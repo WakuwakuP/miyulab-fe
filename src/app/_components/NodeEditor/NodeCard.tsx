@@ -27,8 +27,14 @@ import {
   X,
   Zap,
 } from 'lucide-react'
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import type { ResolvedAccount } from 'util/accountResolver'
+import {
+  getAllFilterableTables,
+  getExistsFilterTables,
+  getFilterableColumns,
+  getKnownValues,
+} from 'util/db/query-ir/completion'
 import type {
   AerialReplyFilter,
   ExistsFilter,
@@ -39,6 +45,8 @@ import type {
   TableFilter,
   TimelineScope,
 } from 'util/db/query-ir/nodes'
+import { searchColumnValuesDirect } from 'util/db/sqlite/stores/statusReadStore'
+import { ValueInput } from './ValueInput'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -265,21 +273,84 @@ function TableFilterBody({
   onUpdate: (n: TableFilter) => void
 }) {
   const isNullOp = node.op === 'IS NULL' || node.op === 'IS NOT NULL'
-  const displayValue = Array.isArray(node.value)
-    ? node.value.join(', ')
-    : String(node.value ?? '')
+
+  // テーブル一覧
+  const tableOptions = useMemo(() => getAllFilterableTables(), [])
+  // カラム一覧
+  const columnOptions = useMemo(
+    () => getFilterableColumns(node.table),
+    [node.table],
+  )
+  // 既知値候補
+  const knownValues = useMemo(
+    () => getKnownValues(node.table, node.column),
+    [node.table, node.column],
+  )
+  // カラムメタデータ
+  const columnMeta = useMemo(
+    () => columnOptions.find((c) => c.name === node.column),
+    [columnOptions, node.column],
+  )
+
+  const handleTableChange = useCallback(
+    (table: string) => {
+      const cols = getFilterableColumns(table)
+      const firstCol = cols[0]?.name ?? ''
+      onUpdate({ ...node, column: firstCol, table, value: '' })
+    },
+    [node, onUpdate],
+  )
+
+  const handleColumnChange = useCallback(
+    (column: string) => {
+      onUpdate({ ...node, column, value: '' })
+    },
+    [node, onUpdate],
+  )
 
   return (
     <div className="space-y-2">
+      {/* テーブル・カラム選択行 */}
       <div className="flex items-center gap-2">
-        <Badge className="text-xs shrink-0" variant="outline">
-          {node.column}
-        </Badge>
+        <Select onValueChange={handleTableChange} value={node.table}>
+          <SelectTrigger className="h-7 w-36 text-xs bg-gray-800 border-gray-600">
+            <SelectValue placeholder="テーブル" />
+          </SelectTrigger>
+          <SelectContent>
+            {tableOptions.map((t) => (
+              <SelectItem key={t.table} value={t.table}>
+                {t.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {columnOptions.length > 0 ? (
+          <Select onValueChange={handleColumnChange} value={node.column}>
+            <SelectTrigger className="h-7 w-36 text-xs bg-gray-800 border-gray-600">
+              <SelectValue placeholder="カラム" />
+            </SelectTrigger>
+            <SelectContent>
+              {columnOptions.map((c) => (
+                <SelectItem key={c.name} value={c.name}>
+                  {c.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
+          <Badge className="text-xs shrink-0" variant="outline">
+            {node.column}
+          </Badge>
+        )}
+      </div>
+
+      {/* 演算子 + 値入力行 */}
+      <div className="flex items-center gap-2">
         <Select
           onValueChange={(v) => onUpdate({ ...node, op: v as FilterOp })}
           value={node.op}
         >
-          <SelectTrigger className="h-7 w-24 text-xs bg-gray-800 border-gray-600">
+          <SelectTrigger className="h-7 w-28 text-xs bg-gray-800 border-gray-600 shrink-0">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -291,26 +362,15 @@ function TableFilterBody({
           </SelectContent>
         </Select>
         {!isNullOp && (
-          <Input
-            className="h-7 text-xs bg-gray-800 border-gray-600 flex-1"
-            onChange={(e) => {
-              const raw = e.target.value
-              if (node.op === 'IN' || node.op === 'NOT IN') {
-                const values = raw
-                  .split(',')
-                  .map((s) => s.trim())
-                  .filter(Boolean)
-                onUpdate({ ...node, value: values })
-              } else {
-                const num = Number(raw)
-                onUpdate({
-                  ...node,
-                  value: raw !== '' && !Number.isNaN(num) ? num : raw,
-                })
-              }
-            }}
-            placeholder="値"
-            value={displayValue}
+          <ValueInput
+            column={node.column}
+            columnType={columnMeta?.type ?? 'text'}
+            knownValues={knownValues}
+            onChange={(value) => onUpdate({ ...node, value })}
+            op={node.op}
+            searchValues={searchColumnValuesDirect}
+            table={node.table}
+            value={node.value ?? ''}
           />
         )}
       </div>
@@ -338,43 +398,63 @@ function ExistsFilterBody({
   onUpdate: (n: ExistsFilter) => void
 }) {
   const isCountMode = node.mode.startsWith('count-')
+  const existsTableOptions = useMemo(() => getExistsFilterTables(), [])
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="space-y-2">
+      {/* テーブル選択 */}
       <Select
-        onValueChange={(v) =>
-          onUpdate({
-            ...node,
-            mode: v as ExistsFilter['mode'],
-          })
-        }
-        value={node.mode}
+        onValueChange={(v) => onUpdate({ ...node, table: v })}
+        value={node.table}
       >
-        <SelectTrigger className="h-7 w-32 text-xs bg-gray-800 border-gray-600">
-          <SelectValue />
+        <SelectTrigger className="h-7 w-44 text-xs bg-gray-800 border-gray-600">
+          <SelectValue placeholder="テーブル" />
         </SelectTrigger>
         <SelectContent>
-          {EXISTS_MODES.map((m) => (
-            <SelectItem key={m.value} value={m.value}>
-              {m.label}
+          {existsTableOptions.map((t) => (
+            <SelectItem key={t.table} value={t.table}>
+              {t.label}
             </SelectItem>
           ))}
         </SelectContent>
       </Select>
-      {isCountMode && (
-        <Input
-          className="h-7 w-16 text-xs bg-gray-800 border-gray-600"
-          min={0}
-          onChange={(e) =>
+      {/* モード + 件数 */}
+      <div className="flex items-center gap-2">
+        <Select
+          onValueChange={(v) =>
             onUpdate({
               ...node,
-              countValue: Number.parseInt(e.target.value, 10) || 0,
+              mode: v as ExistsFilter['mode'],
             })
           }
-          type="number"
-          value={node.countValue ?? 0}
-        />
-      )}
+          value={node.mode}
+        >
+          <SelectTrigger className="h-7 w-32 text-xs bg-gray-800 border-gray-600">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {EXISTS_MODES.map((m) => (
+              <SelectItem key={m.value} value={m.value}>
+                {m.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {isCountMode && (
+          <Input
+            className="h-7 w-16 text-xs bg-gray-800 border-gray-600"
+            min={0}
+            onChange={(e) =>
+              onUpdate({
+                ...node,
+                countValue: Number.parseInt(e.target.value, 10) || 0,
+              })
+            }
+            type="number"
+            value={node.countValue ?? 0}
+          />
+        )}
+      </div>
     </div>
   )
 }
