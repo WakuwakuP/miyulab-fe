@@ -9,6 +9,8 @@ import {
   useState,
 } from 'react'
 import type { StatusAddAppIndex, TimelineConfigV2 } from 'types/types'
+import { compilePhase1ForTimeline } from 'util/db/query-ir/compat/compilePhase1'
+import { configToQueryPlan } from 'util/db/query-ir/compat/configToNodes'
 import {
   type ChangeHint,
   getSqliteDb,
@@ -24,8 +26,11 @@ import {
   type SqliteStoredStatus,
 } from 'util/db/sqlite/statusStore'
 import { TIMELINE_QUERY_LIMIT } from 'util/environment'
-import { buildFilterConditions } from 'util/hooks/timelineFilterBuilder'
 import { useQueryDuration } from 'util/hooks/useQueryDuration'
+import {
+  useLocalAccountIds,
+  useServerIds,
+} from 'util/hooks/useResolvedAccounts'
 import { AppsContext } from 'util/provider/AppsProvider'
 import {
   normalizeBackendFilter,
@@ -111,61 +116,24 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
     return resolveBackendUrls(filter, apps)
   }, [config.backendFilter, apps])
 
-  // 2. フィルタ条件を事前計算（useMemo で安定化）
-  const {
-    onlyMedia,
-    minMediaCount,
-    visibilityFilter,
-    languageFilter,
-    excludeReblogs,
-    excludeReplies,
-    excludeSpoiler,
-    excludeSensitive,
-    accountFilter,
-    applyMuteFilter,
-    applyInstanceBlock,
-  } = config
+  // 2. IR パイプライン: config → QueryPlan → Phase1 SQL
+  const localAccountIds = useLocalAccountIds(targetBackendUrls)
+  const serverIds = useServerIds(targetBackendUrls)
 
-  const filterResult = useMemo(
-    () =>
-      buildFilterConditions(
-        {
-          accountFilter,
-          applyInstanceBlock,
-          applyMuteFilter,
-          excludeReblogs,
-          excludeReplies,
-          excludeSensitive,
-          excludeSpoiler,
-          languageFilter,
-          minMediaCount,
-          onlyMedia,
-          visibilityFilter,
-        } as TimelineConfigV2,
-        targetBackendUrls,
-        'p', // posts テーブルのエイリアス
-        { profileJoined: true },
-      ),
-    [
-      onlyMedia,
-      minMediaCount,
-      visibilityFilter,
-      languageFilter,
-      excludeReblogs,
-      excludeReplies,
-      excludeSpoiler,
-      excludeSensitive,
-      accountFilter,
-      applyMuteFilter,
-      applyInstanceBlock,
-      targetBackendUrls,
-    ],
-  )
+  const phase1Result = useMemo(() => {
+    const plan = configToQueryPlan(config, {
+      localAccountIds,
+      queryLimit,
+      serverIds,
+    })
+    return compilePhase1ForTimeline(plan)
+  }, [config, localAccountIds, serverIds, queryLimit])
+
   const configType = config.type
   const customQuery = config.customQuery
   const configTimelineTypes = config.timelineTypes
 
-  // 3. SQLite からデータ取得
+  // 3. SQLite からデータ取得 (IR パイプライン)
   const sessionTag = `filtered-${configId}`
 
   const fetchData = useCallback(async () => {
@@ -185,81 +153,15 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
       return
     }
 
-    // filterResult は useMemo で安定化済みなので、ここで分解しても安全
-    const filterConditions = filterResult.conditions
-    const filterBinds = filterResult.binds
-
     const version = ++fetchVersionRef.current
 
     try {
       const handle = await getSqliteDb()
 
-      // 前回の fetchData で積んだ未処理クエリは sendRequest の
-      // インプレース置換で自動的にキャンセルされるため、
-      // cancelStaleRequests の明示呼び出しは不要
-
-      const backendPlaceholders = targetBackendUrls.map(() => '?').join(',')
-
-      // === 第1段階: post_id + timelineTypes + backendUrl の取得（軽量クエリ） ===
-      const whereConditions = [
-        `la.backend_url IN (${backendPlaceholders})`,
-        ...filterConditions,
-      ]
-
-      // effectiveTypes: UI の Timeline Sources 設定を優先し、
-      // 未設定時は config.type から推定
-      const effectiveTypes: string[] =
-        configTimelineTypes && configTimelineTypes.length > 0
-          ? configTimelineTypes
-          : configType === 'home' ||
-              configType === 'local' ||
-              configType === 'public'
-            ? [configType]
-            : []
-
-      // Home タイムラインは local_account_id でスコープする。
-      // 同一サーバーに複数アカウントがある場合、各アカウントの
-      // ホームタイムラインが混ざらないようにする。
-      if (effectiveTypes.includes('home')) {
-        const quotedUrls = targetBackendUrls
-          .map((u) => `'${u.replace(/'/g, "''")}'`)
-          .join(',')
-        whereConditions.push(
-          `te.local_account_id IN (SELECT la2.id FROM local_accounts la2 WHERE la2.backend_url IN (${quotedUrls}))`,
-        )
-      }
-
-      // HAVING: effectiveTypes に含まれる timeline_key を持つ投稿のみ取得
-      const havingPlaceholders = effectiveTypes.map(() => '?').join(',')
-      const havingClause =
-        effectiveTypes.length === 1
-          ? 'HAVING MAX(te.timeline_key = ?) = 1'
-          : `HAVING MAX(te.timeline_key IN (${havingPlaceholders})) = 1`
-
-      const phase1Sql = `
-        SELECT p.id, json_group_array(DISTINCT te.timeline_key) AS timelineTypes, MIN(la.backend_url) AS backendUrl
-        FROM timeline_entries te
-        INNER JOIN posts p ON p.id = te.post_id
-        LEFT JOIN post_backend_ids pbi ON p.id = pbi.post_id
-        LEFT JOIN local_accounts la ON pbi.local_account_id = la.id
-        LEFT JOIN profiles pr ON p.author_profile_id = pr.id
-        WHERE ${whereConditions.join('\n          AND ')}
-        GROUP BY p.id
-        ${havingClause}
-        ORDER BY p.created_at_ms DESC
-        LIMIT ?;
-      `
-      const phase1Binds: (string | number)[] = [
-        ...targetBackendUrls,
-        ...filterBinds,
-        ...effectiveTypes,
-        queryLimit,
-      ]
+      // === IR コンパイル済み Phase1 SQL を使用 ===
+      const { sql: phase1Sql, binds: phase1Binds } = phase1Result
 
       // === 一括取得: Phase1 → Phase2 → Batch×7 を Worker 内で実行 ===
-      // spb（Selected Posts Backend）をパネルのバックエンドに限定する。
-      // これにより複数パネルが異なるバックエンドでフィルタされている場合でも、
-      // 各パネルに正しい local_id / account.id が返る。
       const spbFilter = buildSpbFilter(targetBackendUrls)
       const phase2BaseSql = spbFilter
         ? buildPhase2Template(spbFilter)
@@ -275,7 +177,6 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
       )
 
       // sendRequest のインプレース置換でキャンセルされた場合 result は undefined になる
-      // キャンセルされた場合は早期リターン
       if (!result) return
 
       const idRows = result.phase1Rows
@@ -323,11 +224,9 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
     }
   }, [
     configType,
-    configTimelineTypes,
     customQuery,
     targetBackendUrls,
-    filterResult,
-    queryLimit,
+    phase1Result,
     recordDuration,
     refreshToken,
     sessionTag,

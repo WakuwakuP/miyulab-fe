@@ -9,6 +9,8 @@ import {
   useState,
 } from 'react'
 import type { StatusAddAppIndex, TimelineConfigV2 } from 'types/types'
+import { compilePhase1ForTagTimeline } from 'util/db/query-ir/compat/compilePhase1'
+import { configToQueryPlan } from 'util/db/query-ir/compat/configToNodes'
 import {
   type ChangeHint,
   getSqliteDb,
@@ -24,8 +26,11 @@ import {
   type SqliteStoredStatus,
 } from 'util/db/sqlite/statusStore'
 import { TIMELINE_QUERY_LIMIT } from 'util/environment'
-import { buildFilterConditions } from 'util/hooks/timelineFilterBuilder'
 import { useQueryDuration } from 'util/hooks/useQueryDuration'
+import {
+  useLocalAccountIds,
+  useServerIds,
+} from 'util/hooks/useResolvedAccounts'
 import { AppsContext } from 'util/provider/AppsProvider'
 import {
   normalizeBackendFilter,
@@ -108,58 +113,20 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
   }, [config.backendFilter, apps])
 
   const tags = tagConfig?.tags ?? EMPTY_TAGS
-  const tagMode = tagConfig?.mode ?? 'or'
 
-  // フィルタ条件を事前計算（useMemo で安定化）
-  const {
-    onlyMedia,
-    minMediaCount,
-    visibilityFilter,
-    languageFilter,
-    excludeReblogs,
-    excludeReplies,
-    excludeSpoiler,
-    excludeSensitive,
-    accountFilter,
-    applyMuteFilter,
-    applyInstanceBlock,
-  } = config
+  // 2. IR パイプライン: config → QueryPlan → Phase1 SQL
+  const localAccountIds = useLocalAccountIds(targetBackendUrls)
+  const serverIds = useServerIds(targetBackendUrls)
 
-  const filterResult = useMemo(
-    () =>
-      buildFilterConditions(
-        {
-          accountFilter,
-          applyInstanceBlock,
-          applyMuteFilter,
-          excludeReblogs,
-          excludeReplies,
-          excludeSensitive,
-          excludeSpoiler,
-          languageFilter,
-          minMediaCount,
-          onlyMedia,
-          visibilityFilter,
-        } as TimelineConfigV2,
-        targetBackendUrls,
-        'p', // posts テーブルのエイリアス
-        { profileJoined: true },
-      ),
-    [
-      onlyMedia,
-      minMediaCount,
-      visibilityFilter,
-      languageFilter,
-      excludeReblogs,
-      excludeReplies,
-      excludeSpoiler,
-      excludeSensitive,
-      accountFilter,
-      applyMuteFilter,
-      applyInstanceBlock,
-      targetBackendUrls,
-    ],
-  )
+  const phase1Result = useMemo(() => {
+    const plan = configToQueryPlan(config, {
+      localAccountIds,
+      queryLimit,
+      serverIds,
+    })
+    return compilePhase1ForTagTimeline(plan)
+  }, [config, localAccountIds, serverIds, queryLimit])
+
   const configType = config.type
   const customQuery = config.customQuery
   const sessionTag = `tag-${configId}`
@@ -178,80 +145,14 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
     }
 
     const version = ++fetchVersionRef.current
-    const { conditions: filterConditions, binds: filterBinds } = filterResult
 
     try {
       const handle = await getSqliteDb()
 
-      // 前回の fetchData で積んだ未処理クエリは sendRequest の
-      // インプレース置換で自動的にキャンセルされるため、
-      // cancelStaleRequests の明示呼び出しは不要
-
-      const backendPlaceholders = targetBackendUrls.map(() => '?').join(',')
-      const tagPlaceholders = tags.map(() => '?').join(',')
-
-      // === 第1段階: post_id + backendUrl の取得（軽量クエリ） ===
-      let phase1Sql: string
-      const phase1Binds: (string | number)[] = []
-
-      if (tagMode === 'or') {
-        const whereConditions = [
-          `ht.name IN (${tagPlaceholders})`,
-          `la.backend_url IN (${backendPlaceholders})`,
-          ...filterConditions,
-        ]
-
-        phase1Sql = `
-          SELECT p.id, MIN(la.backend_url) AS backendUrl
-          FROM posts p
-          LEFT JOIN post_backend_ids pbi ON p.id = pbi.post_id
-          LEFT JOIN local_accounts la ON pbi.local_account_id = la.id
-          LEFT JOIN profiles pr ON p.author_profile_id = pr.id
-          INNER JOIN post_hashtags pht ON p.id = pht.post_id
-          INNER JOIN hashtags ht ON pht.hashtag_id = ht.id
-          WHERE ${whereConditions.join('\n            AND ')}
-          GROUP BY p.id
-          ORDER BY p.created_at_ms DESC
-          LIMIT ?;
-        `
-        phase1Binds.push(
-          ...tags,
-          ...targetBackendUrls,
-          ...filterBinds,
-          queryLimit,
-        )
-      } else {
-        const whereConditions = [
-          `ht.name IN (${tagPlaceholders})`,
-          `la.backend_url IN (${backendPlaceholders})`,
-          ...filterConditions,
-        ]
-
-        phase1Sql = `
-          SELECT p.id, MIN(la.backend_url) AS backendUrl
-          FROM posts p
-          LEFT JOIN post_backend_ids pbi ON p.id = pbi.post_id
-          LEFT JOIN local_accounts la ON pbi.local_account_id = la.id
-          LEFT JOIN profiles pr ON p.author_profile_id = pr.id
-          INNER JOIN post_hashtags pht ON p.id = pht.post_id
-          INNER JOIN hashtags ht ON pht.hashtag_id = ht.id
-          WHERE ${whereConditions.join('\n            AND ')}
-          GROUP BY p.id
-          HAVING COUNT(DISTINCT ht.name) = ?
-          ORDER BY p.created_at_ms DESC
-          LIMIT ?;
-        `
-        phase1Binds.push(
-          ...tags,
-          ...targetBackendUrls,
-          ...filterBinds,
-          tags.length,
-          queryLimit,
-        )
-      }
+      // === IR コンパイル済み Phase1 SQL を使用 ===
+      const { sql: phase1Sql, binds: phase1Binds } = phase1Result
 
       // === 一括取得: Phase1 → Phase2 → Batch×7 を Worker 内で実行 ===
-      // spb をパネルのバックエンドに限定し、正しい local_id / account.id を返す
       const spbFilter = buildSpbFilter(targetBackendUrls)
       const phase2BaseSql = spbFilter
         ? buildPhase2Template(spbFilter)
@@ -304,13 +205,11 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
       console.error('useFilteredTagTimeline query error:', e)
     }
   }, [
-    tagMode,
     configType,
     customQuery,
     targetBackendUrls,
     tags,
-    filterResult,
-    queryLimit,
+    phase1Result,
     recordDuration,
     refreshToken,
     sessionTag,
