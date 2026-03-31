@@ -301,7 +301,7 @@ export function compileModerationFilter(
       }
     } else if (apply === 'instance-block') {
       conditions.push(
-        `NOT EXISTS (SELECT 1 FROM blocked_instances bi WHERE bi.instance_domain = (SELECT p2.domain FROM profiles p2 WHERE p2.id = ${profileFk}))`,
+        `NOT EXISTS (SELECT 1 FROM blocked_instances bi WHERE bi.instance_domain = (SELECT s.host FROM servers s INNER JOIN profiles p2 ON p2.server_id = s.id WHERE p2.id = ${profileFk}))`,
       )
     }
   }
