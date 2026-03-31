@@ -4,71 +4,144 @@
 
 ### バージョン管理方式
 
-SQLite の `PRAGMA user_version` を使用してスキーマバージョンを管理する。
+**SemVer** を SQLite の `PRAGMA user_version` にエンコードして管理する。
+
+現在のバージョン: **v2.0.1**（エンコード値: **20001**）
 
 ```sql
-PRAGMA user_version;  -- 現在のバージョンを取得
-PRAGMA user_version = 20;  -- バージョンを更新
+// エンコード: major * 10000 + minor * 100 + patch
+// v2.0.1 → 2 * 10000 + 0 * 100 + 1 = 20001
+
+PRAGMA user_version;         // → 20001
+PRAGMA user_version = 20001; // → v2.0.1
 ```
 
-現在のバージョン: **v20**
-
-### マイグレーションの実行
-
-`schema.ts` がアプリ起動時にバージョンを確認し、必要なマイグレーションを順次適用する。
+### SemVer エンコーディング
 
 ```typescript
-// 新規インストール: v19 スキーマを直接作成 → v20 マイグレーション
-// 既存環境: 現在バージョンから v20 まで順次マイグレーション
-const currentVersion = db.pragma('user_version')
+type SemVer = { major: number; minor: number; patch: number }
 
-if (currentVersion === 0) {
-  createV19Schema(db)  // 最新に近いスキーマを直接作成
+function encodeSemVer(v: SemVer): number {
+  return v.major * 10000 + v.minor * 100 + v.patch
 }
 
-// 段階的マイグレーション
-if (currentVersion < 20) migrateV19ToV20(db)
+function decodeSemVer(encoded: number): SemVer {
+  if (encoded > 0 && encoded < 10000) {
+    return { major: 0, minor: 0, patch: encoded }  // レガシー値
+  }
+  return {
+    major: Math.floor(encoded / 10000),
+    minor: Math.floor((encoded % 10000) / 100),
+    patch: encoded % 100,
+  }
+}
 ```
 
-**設計判断**: 新規インストール時に v1 から全マイグレーションを実行するのは非効率かつ壊れやすい。最新に近い v19 スキーマを直接作成し、最後のマイグレーションのみ適用する。
+### レガシーバージョンの正規化
 
-## スキーマ進化の歴史
+旧整数バージョン（v1〜v28）は `1.0.0` に正規化される。
 
-### 初期段階（v1〜v7）: Dexie から SQLite への移行
+```typescript
+function normalizeLegacyVersion(pragmaValue: number): SemVer {
+  if (pragmaValue === 0) return { major: 0, minor: 0, patch: 0 }  // 未初期化
+  if (pragmaValue <= 10000) return { major: 1, minor: 0, patch: 0 }  // レガシー
+  return decodeSemVer(pragmaValue)
+}
+```
 
-| バージョン | 変更内容 |
-|-----------|---------|
-| v1 | Dexie（IndexedDB）ベースの初期スキーマ。compositeKey による PK |
-| v2 | ミュートアカウント・ブロックインスタンステーブル追加 |
-| v3〜v5 | インデックス追加、カラム追加 |
-| v6 | マテリアライズドビュー（`timeline_entries`, `tag_entries`）導入 |
-| v7 | トリガーによるマテリアライズドビュー自動同期 |
+## マイグレーションの実行
 
-**転換点**: v6〜v7 でマテリアライズドビューを導入。タイムラインクエリの性能を大幅に改善。
+`migrations/index.ts` のマイグレーションランナーがアプリ起動時にバージョンを確認し、必要なマイグレーションを順次適用する。
 
-### 正規化段階（v8〜v13）: データモデルの正規化
+```typescript
+const migrations: Migration[] = [v2_0_0_migration, v2_0_1_migration]
+```
 
-| バージョン | 変更内容 |
-|-----------|---------|
-| v8 | マスタテーブル群の導入（servers, visibility_types, notification_types, media_types, engagement_types, channel_kinds, timeline_item_kinds）。`post_id INTEGER PRIMARY KEY` に変更 |
-| v9 | `profiles` テーブル導入。投稿者情報を正規化。`profile_aliases` でクロスサーバー名寄せ |
-| v10 | コンテンツ関連テーブル追加（post_stats, post_media, hashtags, polls, link_cards） |
-| v11 | `post_engagements` テーブル追加。ユーザーアクション追跡 |
-| v12 | 旧マテリアライズドビュー削除、インデックス最適化 |
-| v13 | JSON カラム依存の完全撤廃。全データを正規化カラムで保持 |
+| `user_version` の状態 | アクション |
+|---------------------|---------|
+| `= 20001` (最新) | No-op |
+| `= 0` (新規 DB) | `createFreshSchema()` → LATEST_VERSION をスタンプ |
+| レガシー (≤ 10000, 例: v28) | `1.0.0` に正規化 → 適用可能なマイグレーションを実行 |
+| 不整合 / ギャップ | **フォールバック**: DROP ALL → `createFreshSchema()` |
 
-**転換点**: v8 で INTEGER PK に変更し、マスタテーブルを導入。v13 で JSON カラムへの依存を完全に排除し、全フィルタを SQL カラムで実行可能に。
+**設計判断**: ブラウザのキャッシュ DB であるため、マイグレーション失敗時はデータを捨てて再作成する（ユーザーデータの永久損失にはならない）。
 
-### 統合段階（v14〜v20）: タイムライン管理の高度化
+### マイグレーション型
 
-| バージョン | 変更内容 |
-|-----------|---------|
-| v14〜v17 | コンテンツモデルの改善（カスタム絵文字、リンクカード同期、ハッシュタグ同期） |
-| v18 | `timelines`, `timeline_items`, `feed_events` テーブル導入。投稿のタイムライン所属を正規化 |
-| v19 | チャネルインフラの最適化 |
-| v20 | 現在の本番スキーマ |
+```typescript
+type Migration = {
+  version: SemVer
+  migrate: (db: DbExec) => void
+  validate?: (db: DbExec) => boolean
+}
+```
 
-**転換点**: v18 で `timeline_items` テーブルを導入し、投稿がどのタイムライン（ホーム/ローカル/パブリック）に属するかを正規化。2 フェーズクエリの Phase 1 で `timeline_items` + `timelines` + `channel_kinds` を JOIN する基盤が整った。
+各マイグレーションは独自のトランザクション内で実行され、オプションの `validate()` で結果を検証できる。
+
+## マイグレーション履歴
+
+### v2.0.0: 正規化スキーマ（28 テーブル）
+
+旧スキーマ（v1〜v28）を **全テーブル DROP + 再作成**。
+
+| カテゴリ | テーブル |
+|---------|--------|
+| ルックアップ | `servers`, `visibility_types`, `media_types`, `notification_types`, `card_types` |
+| レジストリ | `custom_emojis`, `hashtags` |
+| プロフィール | `profiles`, `profile_stats`, `profile_fields`, `profile_custom_emojis` |
+| アカウント | `local_accounts` |
+| 投稿 | `posts`, `post_backend_ids`, `post_stats` |
+| 投稿関連 | `post_media`, `post_mentions`, `post_hashtags`, `post_custom_emojis` |
+| インタラクション | `post_interactions`, `post_emoji_reactions` |
+| 投票 | `polls`, `poll_votes`, `poll_options` |
+| カード | `link_cards` |
+| タイムライン/通知 | `timeline_entries`, `notifications` |
+| メタ | `schema_version` |
+
+**主な変更**:
+- `posts_backends` → `post_backend_ids`（`local_account_id` FK ベース）
+- `timelines` + `timeline_items` → `timeline_entries`（軽量設計）
+- 新規 `local_accounts` テーブル（マルチアカウント管理の中核）
+- `posts.id` を INTEGER PK に統一（旧 `post_id`）
+- JSON カラム依存を完全排除
+- FK 依存順序でテーブルを作成
+
+### v2.0.1: フィルタリングテーブル追加
+
+| テーブル | 用途 |
+|---------|------|
+| `muted_accounts` | ミュートアカウント管理 |
+| `blocked_instances` | インスタンスブロック管理 |
+
+## スキーマファイル構成
+
+```text
+src/util/db/sqlite/schema/
+  ├── index.ts          ← ensureSchema / createFreshSchema / dropAllTables
+  ├── version.ts        ← SemVer 型 + LATEST_VERSION + encode/decode
+  ├── types.ts          ← DbExec 型
+  └── tables/           ← テーブル別 CREATE 文
+       ├── accounts.ts      (local_accounts)
+       ├── cards.ts         (link_cards)
+       ├── interactions.ts  (post_interactions, post_emoji_reactions)
+       ├── lookup.ts        (servers, visibility_types, media_types, etc.)
+       ├── meta.ts          (schema_version)
+       ├── notifications.ts (notifications)
+       ├── polls.ts         (polls, poll_votes, poll_options)
+       ├── postRelated.ts   (post_media, post_mentions, post_hashtags, etc.)
+       ├── posts.ts         (posts, post_backend_ids, post_stats)
+       ├── profiles.ts      (profiles, profile_stats, profile_fields, etc.)
+       ├── registries.ts    (custom_emojis, hashtags)
+       └── timeline.ts      (timeline_entries)
+
+src/util/db/sqlite/migrations/
+  ├── index.ts          ← マイグレーションランナー
+  ├── types.ts          ← Migration 型定義
+  ├── helpers.ts        ← ユーティリティ (tableExists, recreateTable, etc.)
+  ├── v28.ts            ← レガシーバージョン参照
+  ├── v2.0.0/index.ts   ← 正規化スキーマ (DROP ALL + 28 テーブル作成)
+  └── v2.0.1/index.ts   ← muted_accounts + blocked_instances 追加
+```
 
 ## 設定マイグレーション
 
@@ -102,36 +175,23 @@ V2 で追加された主な設定項目：
 
 **移行理由**:
 - IndexedDB は JOIN ができない。マルチバックエンド統合には JavaScript 側での結合が必要で、パフォーマンスが悪化
-- 複雑なフィルタ条件（可視性 AND 言語 AND メディア AND ミュート除外）を IndexedDB のクエリで表現できない
-- SQL なら WHERE 句でフィルタを宣言的に組み合わせられ、インデックスも効く
-
-**結果**: schema.ts の 3,800 行超のスキーマ定義が示すように、複雑なデータモデルを SQL で管理する方針が確立された。
+- 複雑なフィルタ条件の組み合わせを IndexedDB のクエリで表現できない
+- SQL なら WHERE 句でフィルタを宣言的に組み合わせられる
 
 ### JSON カラム → 完全正規化
 
-**背景**: 初期は投稿の JSON 全体を `json` カラムに保持し、必要に応じてパースしていた。
+**背景**: 初期は投稿の JSON 全体を `json` カラムに保持していた。
 
 **移行理由**:
 - JSON の中身でフィルタするにはパースが必要で、インデックスが効かない
-- `has_media`, `is_reblog` 等を非正規化カラムとして持てばインデックスで高速フィルタ可能
-- v13 で JSON 依存を完全排除し、すべてのフィルタがカラムベースに
+- 正規化カラムにすればサブクエリでフィルタ可能
+- v2.0.0 で JSON 依存を完全排除
 
-### マテリアライズドビューの導入と改善
+### 整数バージョン → SemVer
 
-**背景**: `posts_timeline_types` テーブルを毎回 JOIN するとクエリが複雑化。
+**背景**: v1〜v28 では整数バージョンで段階的にマイグレーションしていた。
 
-**v6 で導入**: `timeline_entries` テーブルをマテリアライズドビューとして追加。頻出フィールドを非正規化。
-
-**v12 で旧ビュー削除**: `timeline_items` + `timelines` テーブルの導入（v18）により、より柔軟な構造に置き換え。
-
-### timeline_items テーブルの導入
-
-**背景**: `posts_timeline_types` は投稿とタイムラインタイプの関連のみを保持していた。
-
-**v18 で導入**: `timelines` テーブル（サーバ × チャネル種別 × タグ）と `timeline_items` テーブル（タイムライン × アイテム）に分離。
-
-**利点**:
-- タイムラインの概念を一級市民として扱える
-- `sort_key` を持ち、ソート順をカスタマイズ可能
-- 通知も同じ `timeline_items` で管理（`timeline_item_kind_id`）
-- 将来的にブックマークや会話など新しいチャネル種別を追加しやすい
+**移行理由**:
+- 28 段階のマイグレーションチェーンは壊れやすく非効率
+- v2.0.0 で全テーブルを一括再作成し、以降は SemVer で管理
+- レガシーバージョンは一律 `1.0.0` に正規化してからマイグレーション適用

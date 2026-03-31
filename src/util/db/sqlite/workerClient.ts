@@ -23,7 +23,9 @@ import type {
   ExecRequest,
   FetchTimelineRequest,
   FetchTimelineResult,
+  QueryPlanResult,
   SendCommandPayload,
+  SerializedExecutionPlan,
   SlowQueryLogEntry,
   TableName,
   WorkerMessage,
@@ -550,6 +552,27 @@ export function execBatch(
     type: 'execBatch',
   }
   return sendRequest(request, 'other') as Promise<Record<number, unknown>>
+}
+
+/**
+ * ExecutionPlan を Worker で実行する。
+ * Plan 003: 汎用実行エンジン経由。
+ */
+export function executeQueryPlan(
+  plan: SerializedExecutionPlan,
+  sessionTag?: string,
+): Promise<QueryPlanResult> {
+  const id = nextId++
+  const message = { id, plan, type: 'executeQueryPlan' } as {
+    type: string
+    id: number
+    [key: string]: unknown
+  }
+  return sendRequest(
+    message,
+    'timeline',
+    sessionTag,
+  ) as Promise<QueryPlanResult>
 }
 
 /**

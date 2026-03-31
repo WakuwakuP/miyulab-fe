@@ -1,18 +1,19 @@
 'use client'
 
-import { BackendFilterSelector } from 'app/_components/BackendFilterSelector'
-import { QueryEditor } from 'app/_components/QueryEditor'
-import { TagConfigEditor } from 'app/_components/TagConfigEditor'
-import { FilterControls, MuteBlockControls } from 'app/_parts/FilterControls'
+import { FlowQueryEditorModal } from 'app/_components/FlowEditor'
 import { InstanceBlockManager } from 'app/_parts/InstanceBlockManager'
 import { MuteManager } from 'app/_parts/MuteManager'
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { BackendFilter, TagConfig, TimelineConfigV2 } from 'types/types'
-import {
-  buildQueryFromConfig,
-  canParseQuery,
-  parseQueryToConfig,
-} from 'util/queryBuilder'
+import { Pencil, Shield, VolumeX } from 'lucide-react'
+import { useCallback, useMemo, useState } from 'react'
+import type { TimelineConfigV2 } from 'types/types'
+import type { ConfigToNodesContext } from 'util/db/query-ir/compat/configToNodes'
+import { configToQueryPlan } from 'util/db/query-ir/compat/configToNodes'
+import { nodesToWhere } from 'util/db/query-ir/compat/nodesToWhere'
+import type { QueryPlan } from 'util/db/query-ir/nodes'
+
+// ---------------------------------------------------------------------------
+// Props
+// ---------------------------------------------------------------------------
 
 type TimelineEditPanelProps = {
   config: TimelineConfigV2
@@ -21,161 +22,52 @@ type TimelineEditPanelProps = {
   onSave: (updates: Partial<TimelineConfigV2>) => void
 }
 
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
 export const TimelineEditPanel = ({
   config,
   onCancel,
-  onCopyExplain,
   onSave,
 }: TimelineEditPanelProps) => {
   const [label, setLabel] = useState(config.label ?? '')
-  const [backendFilter, setBackendFilter] = useState<BackendFilter>(
-    config.backendFilter ?? { mode: 'all' },
-  )
-  const [onlyMedia, setOnlyMedia] = useState(config.onlyMedia ?? false)
-  const [tagConfig, setTagConfig] = useState<TagConfig>(
-    config.tagConfig ?? { mode: 'or', tags: [] },
-  )
-  // Advanced Query モードの永続化: config から初期値を復元
-  const [showAdvanced, setShowAdvanced] = useState(
-    config.advancedQuery ?? false,
-  )
-
-  // Advanced Query → 通常UI 切替時の復元不可警告
-  const [parseWarning, setParseWarning] = useState(false)
-
-  // v2 フィルタオプションのローカル状態
-  const [filterUpdates, setFilterUpdates] = useState<Partial<TimelineConfigV2>>(
-    {},
-  )
-
-  // MuteManager / InstanceBlockManager モーダルの表示状態
+  const [showFlowEditor, setShowFlowEditor] = useState(false)
   const [showMuteManager, setShowMuteManager] = useState(false)
   const [showBlockManager, setShowBlockManager] = useState(false)
 
-  // フィルタ変更ハンドラ: 差分を蓄積する
-  const handleFilterChange = useCallback(
-    (updates: Partial<TimelineConfigV2>) => {
-      setFilterUpdates((prev) => ({ ...prev, ...updates }))
-      // onlyMedia は既存の独立状態と同期
-      if (updates.onlyMedia !== undefined) {
-        setOnlyMedia(updates.onlyMedia)
+  // 現在の config から QueryPlan を構築（フローエディタの初期状態用）
+  const initialPlan = useMemo<QueryPlan>(() => {
+    const ctx: ConfigToNodesContext = {
+      localAccountIds: [],
+      queryLimit: 50,
+      serverIds: [],
+    }
+    return configToQueryPlan(config, ctx)
+  }, [config])
+
+  // フローエディタで保存された QueryPlan を TimelineConfigV2 の更新差分に変換する
+  const handleFlowSave = useCallback(
+    (plan: QueryPlan) => {
+      const customQuery = nodesToWhere(plan.filters)
+
+      const updates: Partial<TimelineConfigV2> = {
+        advancedQuery: true,
+        backendFilter: { mode: 'all' },
+        customQuery: customQuery.trim() || undefined,
+        label: label.trim() || undefined,
       }
+
+      onSave(updates)
+      setShowFlowEditor(false)
     },
-    [],
+    [label, onSave],
   )
 
-  // 現在のフィルタ状態をマージした config
-  const mergedConfig = useMemo(
-    () => ({
-      ...config,
-      backendFilter,
-      onlyMedia,
-      ...filterUpdates,
-    }),
-    [backendFilter, config, onlyMedia, filterUpdates],
-  )
-
-  // UI 設定から構築されたクエリ
-  const builtQuery = useMemo(
-    () =>
-      buildQueryFromConfig({
-        ...mergedConfig,
-        tagConfig,
-      }),
-    [mergedConfig, tagConfig],
-  )
-
-  // カスタムクエリ: 初期値は保存済みクエリ or UI から構築
-  const [customQuery, setCustomQuery] = useState(
-    config.customQuery ?? builtQuery,
-  )
-
-  // 通常UIモード時は UI 変更に連動してクエリを更新
-  useEffect(() => {
-    if (!showAdvanced) {
-      setCustomQuery(builtQuery)
-    }
-  }, [builtQuery, showAdvanced])
-
-  // Advanced Query トグル
-  const handleToggleAdvanced = useCallback(() => {
-    setShowAdvanced((prev) => {
-      const next = !prev
-      if (next) {
-        // 通常UI → Advanced: 現在の UI 設定からクエリを生成して反映
-        setCustomQuery(builtQuery)
-        setParseWarning(false)
-      } else {
-        // Advanced → 通常UI: クエリから UI 設定を逆算（ベストエフォート）
-        const parseable = canParseQuery(customQuery, mergedConfig)
-        setParseWarning(!parseable)
-
-        const parsed = parseQueryToConfig(customQuery)
-        if (parsed) {
-          if (parsed.onlyMedia !== undefined) setOnlyMedia(parsed.onlyMedia)
-          if (parsed.tagConfig) setTagConfig(parsed.tagConfig)
-          // backendFilter も逆算
-          if (parsed.backendFilter) {
-            setBackendFilter(parsed.backendFilter)
-          } else {
-            setBackendFilter({ mode: 'all' })
-          }
-          // v2 フィルタオプションも逆算
-          const restoredUpdates: Partial<TimelineConfigV2> = {}
-          if (parsed.timelineTypes !== undefined)
-            restoredUpdates.timelineTypes = parsed.timelineTypes
-          if (parsed.excludeReblogs !== undefined)
-            restoredUpdates.excludeReblogs = parsed.excludeReblogs
-          if (parsed.excludeReplies !== undefined)
-            restoredUpdates.excludeReplies = parsed.excludeReplies
-          if (parsed.excludeSpoiler !== undefined)
-            restoredUpdates.excludeSpoiler = parsed.excludeSpoiler
-          if (parsed.excludeSensitive !== undefined)
-            restoredUpdates.excludeSensitive = parsed.excludeSensitive
-          if (parsed.visibilityFilter !== undefined)
-            restoredUpdates.visibilityFilter = parsed.visibilityFilter
-          if (parsed.languageFilter !== undefined)
-            restoredUpdates.languageFilter = parsed.languageFilter
-          if (parsed.accountFilter !== undefined)
-            restoredUpdates.accountFilter = parsed.accountFilter
-          if (parsed.minMediaCount !== undefined)
-            restoredUpdates.minMediaCount = parsed.minMediaCount
-          if (parsed.notificationFilter !== undefined)
-            restoredUpdates.notificationFilter = parsed.notificationFilter
-          setFilterUpdates((prev) => ({ ...prev, ...restoredUpdates }))
-        }
-      }
-      return next
-    })
-  }, [builtQuery, customQuery, mergedConfig])
-
+  // Label のみ変更して保存
   const handleSave = useCallback(() => {
-    const updates: Partial<TimelineConfigV2> = {
-      advancedQuery: showAdvanced,
-      // Advanced Query モードでは backendFilter はクエリに含まれるため all にリセット
-      backendFilter: showAdvanced ? { mode: 'all' } : backendFilter,
-      // customQuery は Advanced Query モード時のみ保存する。
-      // 通常モードでは個別の設定プロパティ（backendFilter, onlyMedia 等）が
-      // 正として機能し、型別の最適化された Hook（useFilteredTimeline 等）を使用する。
-      customQuery: showAdvanced ? customQuery.trim() || undefined : undefined,
-      label: label.trim() || undefined,
-      onlyMedia,
-      tagConfig,
-      // v2 フィルタオプション
-      ...filterUpdates,
-    }
-
-    onSave(updates)
-  }, [
-    backendFilter,
-    customQuery,
-    filterUpdates,
-    label,
-    onSave,
-    onlyMedia,
-    showAdvanced,
-    tagConfig,
-  ])
+    onSave({ label: label.trim() || undefined })
+  }, [label, onSave])
 
   return (
     <div className="border border-gray-600 rounded-md p-3 mt-2 space-y-3 bg-gray-800">
@@ -203,69 +95,35 @@ export const TimelineEditPanel = ({
         />
       </div>
 
-      {/* Advanced Query トグルスイッチ（表示名の直下） */}
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold text-gray-300">
-          Advanced Query
-        </span>
+      {/* フローエディタを開くボタン (メインの編集手段) */}
+      <button
+        className="flex w-full items-center justify-center gap-2 rounded-md border border-cyan-700 bg-cyan-900/30 px-4 py-3 text-sm font-medium text-cyan-300 hover:bg-cyan-900/50 hover:border-cyan-600 transition-colors"
+        onClick={() => setShowFlowEditor(true)}
+        type="button"
+      >
+        <Pencil className="h-4 w-4" />
+        フローエディタでクエリを編集
+      </button>
+
+      {/* ミュート / インスタンスブロック管理 */}
+      <div className="flex gap-2">
         <button
-          aria-checked={showAdvanced}
-          aria-label="Advanced Query"
-          className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full transition-colors duration-200 ease-in-out ${
-            showAdvanced ? 'bg-blue-600' : 'bg-gray-600'
-          }`}
-          onClick={handleToggleAdvanced}
-          role="switch"
+          className="flex flex-1 items-center justify-center gap-1.5 rounded bg-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-600 transition-colors"
+          onClick={() => setShowMuteManager(true)}
           type="button"
         >
-          <span
-            className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out mt-0.5 ${
-              showAdvanced ? 'translate-x-4 ml-0.5' : 'translate-x-0 ml-0.5'
-            }`}
-          />
+          <VolumeX className="h-3.5 w-3.5" />
+          ミュート管理
+        </button>
+        <button
+          className="flex flex-1 items-center justify-center gap-1.5 rounded bg-gray-700 px-3 py-1.5 text-xs text-gray-300 hover:bg-gray-600 transition-colors"
+          onClick={() => setShowBlockManager(true)}
+          type="button"
+        >
+          <Shield className="h-3.5 w-3.5" />
+          ブロック管理
         </button>
       </div>
-
-      {/* クエリ復元不可警告 */}
-      {!showAdvanced && parseWarning && (
-        <div className="rounded border border-yellow-600 bg-yellow-900/30 px-3 py-2 text-xs text-yellow-300">
-          ⚠️ The query could not be fully restored to UI settings. Some
-          conditions may have been lost.
-        </div>
-      )}
-
-      {/* 通常UIモード: Backend Filter + Filters + Tag Config */}
-      {!showAdvanced && (
-        <>
-          {/* Backend Filter */}
-          <BackendFilterSelector
-            onChange={setBackendFilter}
-            value={backendFilter}
-          />
-
-          {/* v2 フィルタコントロール（Media, Visibility, Language, Toggle, Account） */}
-          <FilterControls config={mergedConfig} onChange={handleFilterChange} />
-
-          <TagConfigEditor onChange={setTagConfig} value={tagConfig} />
-
-          {/* Mute / Block コントロール */}
-          <MuteBlockControls
-            config={mergedConfig}
-            onChange={handleFilterChange}
-            onOpenBlockManager={() => setShowBlockManager(true)}
-            onOpenMuteManager={() => setShowMuteManager(true)}
-          />
-        </>
-      )}
-
-      {/* Advanced Query エディタ */}
-      {showAdvanced && (
-        <QueryEditor
-          onChange={setCustomQuery}
-          onCopyExplain={onCopyExplain}
-          value={customQuery}
-        />
-      )}
 
       {/* Actions */}
       <div className="flex justify-end space-x-2 pt-1">
@@ -294,6 +152,14 @@ export const TimelineEditPanel = ({
       {showBlockManager && (
         <InstanceBlockManager onClose={() => setShowBlockManager(false)} />
       )}
+
+      {/* FlowQueryEditorModal */}
+      <FlowQueryEditorModal
+        initialPlan={initialPlan}
+        onOpenChange={setShowFlowEditor}
+        onSave={handleFlowSave}
+        open={showFlowEditor}
+      />
     </div>
   )
 }

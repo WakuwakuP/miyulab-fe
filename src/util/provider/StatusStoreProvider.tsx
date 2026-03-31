@@ -12,6 +12,7 @@ import {
   useRef,
 } from 'react'
 import type { App } from 'types/types'
+import { initAccountResolver } from 'util/accountResolver'
 import { startPeriodicCleanup } from 'util/db/sqlite/cleanup'
 import { startPeriodicExport } from 'util/db/sqlite/dbExport'
 import {
@@ -279,6 +280,11 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
     // 定期クリーンアップと定期エクスポートを開始
     const stopCleanup = startPeriodicCleanup()
     const stopExport = startPeriodicExport()
+
+    // local_accounts キャッシュを構築（SQL から local_accounts JOIN を排除するため）
+    initAccountResolver().catch((error) => {
+      console.warn('Failed to initialize account resolver:', error)
+    })
 
     // 各アプリのデータを取得してストリーミング接続
     apps.forEach(async (app, index) => {

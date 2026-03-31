@@ -1,8 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    turbopackUseSystemTlsCerts: true,
-  },
   async headers() {
     return [
       {
@@ -39,6 +36,7 @@ const nextConfig = {
       { destination: '/', source: '/hashtag/:tag' },
     ]
   },
+  turbopack: {},
   // SQLite Wasm ファイルを static アセットとして配信
   webpack(config) {
     config.resolve.fallback = {

@@ -21,11 +21,11 @@ API / WebSocket ──→ SQLite (OPFS) ──→ React UI
 - **URI 重複排除**: ActivityPub URI で連合上の同一投稿を自動的に統合
 - **高度なフィルタリング**: SQL の表現力を活かした柔軟なフィルタ
 - **オフライン耐性**: ブラウザを再開しても過去のデータが残る
-- **UI 非ブロック**: 書き込みは Web Worker で実行
+- **UI 非ブロック**: 書き込みは Web Worker で実行、優先度キューで制御
 
 ### マルチバックエンドの統合
 
-複数の Mastodon / Pleroma / Firefish 等のアカウントを登録し、それぞれのホーム・ローカル・パブリックタイムラインを **1つのビューに統合** できる。`BackendFilter` により、全バックエンド / 単一 / 任意の組み合わせでフィルタ可能。
+複数の Mastodon / Pleroma / Firefish / Misskey 等のアカウントを登録し、それぞれのホーム・ローカル・パブリックタイムラインを **1つのビューに統合** できる。`BackendFilter` により、全バックエンド / 単一 / 任意の組み合わせでフィルタ可能。
 
 ### ユーザーによるカスタマイズ
 
@@ -40,7 +40,7 @@ API / WebSocket ──→ SQLite (OPFS) ──→ React UI
 | [03. データストレージ](./03-data-storage.md) | SQLite スキーマ、テーブル設計、Worker 構成 |
 | [04. ストリーミングとデータ取得](./04-streaming.md) | WebSocket、API フェッチ、初期データロード |
 | [05. クエリシステム](./05-data-fetching.md) | 2 フェーズクエリ、フィルタビルダー、Advanced Query |
-| [06. フィルタリング](./06-filtering.md) | フィルタ種別、SQL 生成、マテリアライズドビュー |
+| [06. フィルタリング](./06-filtering.md) | フィルタ種別、SQL 生成 |
 | [07. React Hooks](./07-hooks.md) | useTimelineData ディスパッチ、リアクティブ更新 |
 | [08. UI コンポーネント](./08-components.md) | 仮想スクロール、タブ、管理 UI |
 | [09. マイグレーション](./09-migration.md) | スキーマ進化、設定マイグレーション |
@@ -61,6 +61,8 @@ API / WebSocket ──→ SQLite (OPFS) ──→ React UI
 - `src/util/hooks/useFilteredTimeline.ts` — フィルタ付きクエリ
 - `src/util/hooks/useFilteredTagTimeline.ts` — タグタイムライン
 - `src/util/hooks/useCustomQueryTimeline.ts` — Advanced Query
+- `src/util/hooks/useNotifications.ts` — 通知タイムライン
+- `src/util/hooks/useTimeline.ts` — 旧 API（deprecated）
 
 ### Provider
 - `src/util/provider/TimelineProvider.tsx` — 設定管理
@@ -69,16 +71,31 @@ API / WebSocket ──→ SQLite (OPFS) ──→ React UI
 - `src/util/provider/StatusStoreProvider.tsx` — ホームストリーム
 
 ### ユーティリティ
-- `src/util/hooks/timelineFilterBuilder.ts` — SQL フィルタ生成
+- `src/util/db/sqlite/queries/statusFilter.ts` — SQL フィルタ生成
+- `src/util/hooks/timelineFilterBuilder.ts` — バレルエクスポート（deprecated → statusFilter へ）
 - `src/util/timelineFetcher.ts` — API フェッチ
 - `src/util/timelineRefresh.ts` — リフレッシュ通知
 - `src/util/timelineConfigValidator.ts` — 設定バリデーション
 - `src/util/timelineDisplayName.ts` — 表示名生成
-- `src/util/queryBuilder.ts` — クエリ構築
+- `src/util/queryBuilder.ts` — クエリ構築・パース・エイリアス検出
+- `src/util/explainQueryPlan.ts` — EXPLAIN QUERY PLAN 出力
+
+### ストリーミング
+- `src/util/streaming/deriveRequiredStreams.ts` — 必要ストリーム算出
+- `src/util/streaming/streamKey.ts` — ストリームキー管理
+- `src/util/streaming/streamRegistry.ts` — 接続レジストリ型
+- `src/util/streaming/stopStream.ts` — 安全な停止・再開
+- `src/util/streaming/constants.ts` — リトライ定数
 
 ### データベース
-- `src/util/db/sqlite/schema.ts` — スキーマ定義
-- `src/util/db/sqlite/statusStore.ts` — 投稿ストア
+- `src/util/db/sqlite/schema/` — スキーマ定義（テーブル別ファイル）
+- `src/util/db/sqlite/schema/version.ts` — SemVer バージョン管理
+- `src/util/db/sqlite/migrations/` — マイグレーション（v2.0.0, v2.0.1）
+- `src/util/db/sqlite/queries/` — クエリ構築（statusBatch, statusFetch, statusFilter, statusMapper, statusSelect, statusCustomQuery）
+- `src/util/db/sqlite/stores/statusStore.ts` — 投稿ストア（マイクロバッチ書き込み）
+- `src/util/db/sqlite/stores/statusReadStore.ts` — 読み取り専用ストア
 - `src/util/db/sqlite/notificationStore.ts` — 通知ストア
-- `src/util/db/sqlite/connection.ts` — 接続管理
-- `src/util/db/sqlite/worker/` — Worker 実装
+- `src/util/db/sqlite/connection.ts` — 接続管理 + subscribe/notifyChange（ChangeHint 付き）
+- `src/util/db/sqlite/worker/` — Worker 実装（handlers/ サブディレクトリ付き）
+- `src/util/db/sqlite/workerClient.ts` — Worker RPC クライアント
+- `src/util/db/dbQueue.ts` — 優先度キューシステム（timeline/other 二重キュー）

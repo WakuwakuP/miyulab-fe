@@ -62,6 +62,7 @@ async function initWorkerMode(
     execAsync,
     execAsyncTimed,
     execBatch,
+    executeQueryPlan,
     sendCommand,
     cancelStaleRequests,
     fetchTimeline,
@@ -74,6 +75,7 @@ async function initWorkerMode(
     execAsync,
     execAsyncTimed,
     execBatch,
+    executeQueryPlan,
     fetchTimeline,
     persistence,
     sendCommand,
@@ -207,6 +209,13 @@ async function initMainThreadFallback(
         }
         throw e
       }
+    },
+
+    executeQueryPlan: async (plan) => {
+      const { executeQueryPlan: runPlan } = await import(
+        './queries/executionEngine'
+      )
+      return runPlan(db as never, plan)
     },
 
     fetchTimeline: async (request) => {

@@ -10,6 +10,7 @@
 import { logSlowQueryExplain } from '../explainLogger'
 import { buildTimelineKey, resolveLocalAccountId } from '../helpers'
 import type { TableName, WorkerMessage, WorkerRequest } from '../protocol'
+import { executeQueryPlan as runQueryPlan } from '../queries/executionEngine'
 import { resolvePostIdInternal } from './handlers/statusHelpers'
 import { handleEnforceMaxLength } from './workerCleanup'
 import {
@@ -462,6 +463,13 @@ self.onmessage = (
           msg.emojisJson,
         )
         sendResponse(msg.id, { ok: true }, r.changedTables)
+        break
+      }
+
+      // ---- ExecutionPlan 汎用実行 ----
+      case 'executeQueryPlan': {
+        const result = runQueryPlan(db, msg.plan)
+        sendResponse(msg.id, result, undefined, result.totalDurationMs)
         break
       }
 

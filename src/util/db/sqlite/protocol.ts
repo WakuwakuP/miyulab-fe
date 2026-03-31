@@ -231,6 +231,81 @@ export type FetchTimelineResult = {
 }
 
 // ================================================================
+// executeQueryPlan — 汎用実行エンジン
+// ================================================================
+
+export type SerializedStep =
+  | {
+      type: 'id-collect'
+      source: string
+      sql: string
+      binds: BindValue[]
+      columns: Record<string, number>
+      timeLowerBound?: { fromStep: number; column: string }
+    }
+  | {
+      type: 'merge'
+      strategy: string
+      sourceStepIndices: number[]
+      limit: number
+    }
+  | {
+      type: 'detail-fetch'
+      target: string
+      sqlTemplate: string
+      reblogColumnIndex?: number
+    }
+  | {
+      type: 'batch-enrich'
+      queries: Record<string, string>
+    }
+
+export type SerializedExecutionPlan = {
+  steps: SerializedStep[]
+  meta: {
+    sourceType: 'post' | 'notification' | 'mixed' | 'precomputed'
+    requiresReblogExpansion: boolean
+  }
+}
+
+export type ExecuteQueryPlanRequest = {
+  type: 'executeQueryPlan'
+  id: number
+  plan: SerializedExecutionPlan
+}
+
+export type IdCollectResult = {
+  type: 'id-collect'
+  rows: (string | number | null)[][]
+}
+
+export type MergeResult = {
+  type: 'merge'
+  mergedIds: { id: number; type: string; createdAtMs: number }[]
+}
+
+export type DetailFetchResult = {
+  type: 'detail-fetch'
+  rows: (string | number | null)[][]
+}
+
+export type BatchEnrichResult = {
+  type: 'batch-enrich'
+  results: Record<string, (string | number | null)[][]>
+}
+
+export type StepResult =
+  | IdCollectResult
+  | MergeResult
+  | DetailFetchResult
+  | BatchEnrichResult
+
+export type QueryPlanResult = {
+  stepResults: StepResult[]
+  totalDurationMs: number
+}
+
+// ================================================================
 // Union 型
 // ================================================================
 
@@ -254,6 +329,7 @@ export type WorkerRequest =
   | ToggleReactionRequest
   | BulkUpsertCustomEmojisRequest
   | FetchTimelineRequest
+  | ExecuteQueryPlanRequest
 
 // ================================================================
 // Worker → Main Thread (レスポンス)

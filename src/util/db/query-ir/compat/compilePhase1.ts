@@ -9,8 +9,8 @@
 // 従来の手動 SQL 構築を IR ベースに置き換えるブリッジ層。
 
 import { compileTagCombination } from '../compile'
-import type { BindValue, FilterNode, QueryPlan } from '../nodes'
-import type { CompiledFilter, JoinClause } from '../plan'
+import type { BindValue, QueryPlan } from '../nodes'
+import type { JoinClause } from '../plan'
 import { compileFilterNode } from '../translate/filterToSql'
 
 // ---------------------------------------------------------------------------

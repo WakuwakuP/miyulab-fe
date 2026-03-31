@@ -7,7 +7,7 @@
 ブラウザ上で動作するリレーショナルデータベースとして **wa-sqlite**（SQLite の WebAssembly 実装）を採用。
 
 | 選択肢 | 不採用理由 |
-|--------|-----------|
+|--------|-----------| 
 | IndexedDB | JOIN やフィルタの表現力不足。マルチバックエンド横断クエリが困難 |
 | Dexie.js | 当初採用していたが、複雑なフィルタ条件の組み合わせに限界 → SQLite に移行 |
 | メモリ保持 | ページ離脱でデータ消失。大量データのメモリ占有 |
@@ -18,109 +18,103 @@ SQLite データベースは **OPFS SAH Pool VFS**（Origin Private File System 
 
 **初期化のフォールバックチェーン**:
 
-```
 1. Dedicated Worker + OPFS SAH Pool VFS  ← 最速・最優先
 2. Dedicated Worker + Standard OPFS       ← フォールバック
 3. メインスレッド + インメモリDB            ← 最終フォールバック
-```
 
 Worker モードでは以下の PRAGMA を設定：
 
-```sql
 PRAGMA journal_mode=WAL;      -- 読み書き並行アクセスの性能向上
 PRAGMA synchronous=NORMAL;    -- 書き込み性能とデータ安全のバランス
 PRAGMA foreign_keys = ON;     -- 外部キー制約の有効化
-```
 
-## テーブル設計
+## テーブル設計（v2.0.x スキーマ）
+
+全 30 テーブル（v2.0.0 の 28 テーブル + v2.0.1 の 2 テーブル）。
 
 ### 投稿（posts）
 
 タイムラインシステムの中心テーブル。Mastodon の `Status` エンティティを正規化して格納する。
 
-```sql
 posts (
-  post_id           INTEGER PRIMARY KEY,  -- 内部ID（自動採番）
-  object_uri        TEXT NOT NULL UNIQUE,  -- ActivityPub URI（重複排除キー）
-  origin_server_id  INTEGER,              -- 発信元サーバ
-  created_at_ms     INTEGER NOT NULL,     -- 投稿日時（ミリ秒UNIX時間）
-  stored_at         INTEGER NOT NULL,     -- 格納日時
-  author_profile_id INTEGER,              -- 投稿者プロフィール
-  visibility_id     INTEGER,              -- 可視性（FK → visibility_types）
-  language          TEXT,                 -- 言語コード
-  content_html      TEXT,                 -- HTML本文
-  spoiler_text      TEXT,                 -- CWテキスト
-  canonical_url     TEXT,                 -- 正規URL
-  has_media         INTEGER,              -- メディア有無 (0/1)
-  media_count       INTEGER,              -- メディア数
-  is_reblog         INTEGER,              -- ブーストか (0/1)
-  reblog_of_uri     TEXT,                 -- ブースト元URI
-  is_sensitive      INTEGER,              -- センシティブか (0/1)
-  has_spoiler       INTEGER,              -- CW付きか (0/1)
-  in_reply_to_id    TEXT,                 -- リプライ先ID
-  edited_at         TEXT                  -- 編集日時
+  id                  INTEGER PRIMARY KEY,  -- 内部ID（自動採番）
+  object_uri          TEXT NOT NULL UNIQUE,  -- ActivityPub URI（重複排除キー）
+  origin_server_id    INTEGER,              -- 発信元サーバ
+  author_profile_id   INTEGER,              -- 投稿者プロフィール（FK → profiles）
+  created_at_ms       INTEGER NOT NULL,     -- 投稿日時（ミリ秒UNIX時間）
+  visibility_id       INTEGER,              -- 可視性（FK → visibility_types）
+  language            TEXT,                 -- 言語コード
+  content_html        TEXT,                 -- HTML本文
+  plain_content       TEXT,                 -- プレーンテキスト本文
+  spoiler_text        TEXT,                 -- CWテキスト
+  canonical_url       TEXT,                 -- 正規URL
+  is_reblog           INTEGER,              -- ブーストか (0/1)
+  is_sensitive        INTEGER,              -- センシティブか (0/1)
+  in_reply_to_uri     TEXT,                 -- リプライ先URI
+  in_reply_to_account_acct TEXT,            -- リプライ先アカウント
+  is_local_only       INTEGER,              -- ローカル限定投稿 (0/1)
+  edited_at_ms        INTEGER,              -- 編集日時（ミリ秒）
+  reblog_of_post_id   INTEGER,              -- ブースト元投稿（FK → posts）
+  quote_of_post_id    INTEGER,              -- 引用元投稿（FK → posts）
+  quote_state         TEXT,                 -- 引用状態
+  application_name    TEXT,                 -- 投稿アプリ名
+  last_fetched_at     INTEGER               -- 最終取得日時
 )
-```
 
 **設計判断**:
-- **`object_uri` に UNIQUE 制約**: ActivityPub の URI は連合上でグローバルに一意。これを主キーの代わりにユニーク制約として使い、複数バックエンドからの重複を排除する。
+- **`object_uri` に UNIQUE 制約**: ActivityPub の URI は連合上でグローバルに一意。複数バックエンドからの重複を排除。
 - **`created_at_ms` をミリ秒整数で保持**: 文字列の日時比較よりインデックス効率が高い。ソートとページネーションの基盤。
-- **ブールフィールドの非正規化**: `has_media`, `is_reblog`, `is_sensitive`, `has_spoiler` を直接カラムに持つことで、フィルタクエリで JOIN なしに WHERE 条件を適用できる。
+- **メディア関連のカラムを posts テーブルから廃止**: v2 では `post_media` テーブルのサブクエリでフィルタ（`EXISTS(SELECT 1 FROM post_media WHERE post_id = p.id)`）。
+- **`in_reply_to_uri` を使用**: ID ではなく URI でリプライ先を参照（サーバ横断の一貫性）。
 
-### バックエンド関連（posts_backends）
+### アカウント管理（local_accounts）
 
-1 つの投稿が複数のバックエンドから参照される関係を管理。
+ユーザーが登録した各バックエンドのアカウント情報。`post_backend_ids` や `timeline_entries` の外部キーとして使用。
 
-```sql
-posts_backends (
-  post_id     INTEGER NOT NULL,
-  backendUrl  TEXT NOT NULL,       -- サーバURL
-  local_id    TEXT NOT NULL,       -- そのサーバ上でのローカルID
-  server_id   INTEGER,            -- FK → servers
-  PRIMARY KEY (backendUrl, local_id),
-  FOREIGN KEY (post_id) REFERENCES posts(post_id)
+local_accounts (
+  id            INTEGER PRIMARY KEY,
+  backend_url   TEXT NOT NULL UNIQUE,  -- サーバURL（例: https://mastodon.social）
+  account_id    TEXT,                  -- そのサーバ上のアカウントID
+  created_at    TEXT NOT NULL
 )
-```
+
+### バックエンド関連（post_backend_ids）
+
+1 つの投稿が複数のバックエンドから参照される関係を管理。旧 `posts_backends` から `local_account_id` 外部キーベースに変更。
+
+post_backend_ids (
+  id                INTEGER PRIMARY KEY,
+  post_id           INTEGER NOT NULL,       -- FK → posts
+  local_account_id  INTEGER NOT NULL,       -- FK → local_accounts
+  local_id          TEXT NOT NULL,          -- そのサーバ上でのローカルID
+  UNIQUE (local_account_id, local_id)
+)
 
 **重複排除の流れ**:
 1. 新しい投稿が到着 → `object_uri` で既存レコードを検索
-2. 存在すれば → `posts_backends` に新しいバックエンド関連を追加するのみ
-3. 存在しなければ → `posts` に INSERT + `posts_backends` に関連追加
+2. 存在すれば → `post_backend_ids` に新しいバックエンド関連を追加するのみ
+3. 存在しなければ → `posts` に INSERT + `post_backend_ids` に関連追加
 
-### タイムライン管理（timelines / timeline_items）
+### タイムライン管理（timeline_entries）
 
-どの投稿がどのタイムラインに属するかを管理する。
+どの投稿がどのタイムラインに属するかを管理する。旧 `timelines` + `timeline_items` テーブルを統合した軽量設計。
 
-```sql
-timelines (
-  timeline_id      INTEGER PRIMARY KEY,
-  server_id        INTEGER NOT NULL,       -- FK → servers
-  channel_kind_id  INTEGER NOT NULL,       -- FK → channel_kinds (home/local/public/tag/notification)
-  tag              TEXT,                   -- タグタイムラインの場合のタグ名
-  created_at       TEXT NOT NULL,
-  UNIQUE (server_id, channel_kind_id, tag)
+timeline_entries (
+  id                INTEGER PRIMARY KEY,
+  post_id           INTEGER NOT NULL,       -- FK → posts
+  local_account_id  INTEGER NOT NULL,       -- FK → local_accounts
+  timeline_key      TEXT NOT NULL,          -- 'home' | 'local' | 'public' | 'tag:タグ名'
+  inserted_at       INTEGER NOT NULL
 )
 
-timeline_items (
-  timeline_item_id       INTEGER PRIMARY KEY,
-  timeline_id            INTEGER NOT NULL,  -- FK → timelines
-  timeline_item_kind_id  INTEGER NOT NULL,  -- FK → timeline_item_kinds (post/notification/event)
-  post_id                INTEGER,           -- FK → posts（投稿の場合）
-  notification_id        INTEGER,           -- FK → notifications（通知の場合）
-  sort_key               INTEGER,           -- ソート用キー（created_at_ms）
-  inserted_at            TEXT NOT NULL
-)
-```
-
-**設計判断**: `timeline_items` テーブルを導入することで、1 つの投稿が複数のタイムライン（home かつ local）に属する関係を正規化して表現できる。`sort_key` に `created_at_ms` を使うことでタイムライン表示順のインデックスが効く。
+**設計判断**: `timeline_key` にタイムライン種別を直接文字列で保持。マスタテーブルとの JOIN を不要にし、Phase 1 クエリを軽量化。
 
 ### プロフィール（profiles）
 
 投稿者情報の正規化テーブル。
 
-```sql
 profiles (
-  profile_id      INTEGER PRIMARY KEY,
+  id              INTEGER PRIMARY KEY,
   actor_uri       TEXT NOT NULL UNIQUE,  -- ActivityPub Actor URI
   home_server_id  INTEGER,
   acct            TEXT,          -- user@domain 形式
@@ -129,77 +123,80 @@ profiles (
   display_name    TEXT,
   avatar_url      TEXT,
   header_url      TEXT,
-  locked          INTEGER,       -- 鍵アカウント (0/1)
-  bot             INTEGER,       -- Bot (0/1)
+  is_locked       INTEGER,       -- 鍵アカウント (0/1)
+  is_bot          INTEGER,       -- Bot (0/1)
   updated_at      TEXT NOT NULL
 )
 
--- サーバ間のアカウント解決
-profile_aliases (
-  profile_alias_id  INTEGER PRIMARY KEY,
-  server_id         INTEGER NOT NULL,
-  remote_account_id TEXT NOT NULL,      -- そのサーバ上でのアカウントID
-  profile_id        INTEGER NOT NULL,   -- FK → profiles
-  UNIQUE (server_id, remote_account_id)
-)
-```
-
-**設計判断**: 同一人物が異なるサーバから異なるアカウント ID で参照される。`profile_aliases` でサーバごとのリモート ID を `profile_id` に名寄せする。
-
 ### 通知（notifications）
 
-```sql
 notifications (
-  notification_id      INTEGER PRIMARY KEY,
-  server_id            INTEGER,
-  notification_type_id INTEGER,          -- FK → notification_types
-  actor_profile_id     INTEGER,          -- 通知を発生させたユーザー
-  related_post_id      INTEGER,          -- 関連する投稿（あれば）
+  id                   INTEGER PRIMARY KEY,
+  local_account_id     INTEGER NOT NULL,     -- FK → local_accounts
+  notification_type_id INTEGER,              -- FK → notification_types
+  actor_profile_id     INTEGER,              -- 通知を発生させたユーザー
+  related_post_id      INTEGER,              -- 関連する投稿（あれば）
   created_at_ms        INTEGER NOT NULL,
-  stored_at            INTEGER NOT NULL,
   local_id             TEXT NOT NULL,
   is_read              INTEGER NOT NULL DEFAULT 0,
-  [json]               TEXT NOT NULL     -- 元データのJSONバックアップ
+  reaction_name        TEXT,                 -- リアクション名（emoji_reaction 用）
+  reaction_url         TEXT,                 -- リアクション URL
+  [json]               TEXT NOT NULL         -- 元データのJSONバックアップ
 )
-```
 
-### マスタテーブル
+### ルックアップテーブル
 
-参照データを管理するルックアップテーブル。
+参照データを管理するテーブル。
 
 | テーブル | 内容 |
 |---------|------|
 | `servers` | サーバメタデータ（host, base_url, software_type） |
-| `software_types` | mastodon, pleroma, firefish, gotosocial, ... |
 | `visibility_types` | public, unlisted, private, direct |
 | `notification_types` | follow, mention, reblog, favourite, ... |
 | `media_types` | image, video, gifv, audio, unknown |
-| `engagement_types` | favourite, reblog, bookmark, reaction |
-| `channel_kinds` | home, local, federated, tag, notification, bookmark, ... |
-| `timeline_item_kinds` | post, notification, event |
+| `card_types` | link, photo, video, rich |
+
+### レジストリテーブル
+
+| テーブル | 用途 |
+|---------|------|
+| `custom_emojis` | カスタム絵文字マスタ |
+| `hashtags` | ハッシュタグマスタ |
 
 ### コンテンツ関連テーブル
 
 | テーブル | 用途 |
 |---------|------|
-| `post_media` | メディア添付ファイル（URL, blurhash, type） |
-| `post_stats` | 統計（リプライ数, ブースト数, お気に入り数） |
-| `post_engagements` | ユーザーのアクション（お気に入り, ブースト, ブックマーク） |
-| `posts_belonging_tags` | 投稿に付けられたハッシュタグ |
-| `posts_mentions` | メンション先アカウント |
-| `posts_reblogs` | ブースト関連情報 |
-| `hashtags` / `post_hashtags` | ハッシュタグマスタと投稿紐付け |
-| `polls` / `poll_options` | 投票データ |
-| `link_cards` / `post_links` | リンクカード（OGP） |
-| `custom_emojis` / `post_custom_emojis` / `profile_custom_emojis` | カスタム絵文字 |
+| `post_media` | メディア添付ファイル（URL, blurhash, type, sort_order） |
+| `post_stats` | 統計（お気に入り数, ブースト数, リプライ数, emoji_reactions_json） |
+| `post_interactions` | ユーザーのアクション（お気に入り, ブースト, ブックマーク） |
+| `post_emoji_reactions` | 絵文字リアクション |
+| `post_hashtags` | 投稿に付けられたハッシュタグ（FK → hashtags） |
+| `post_mentions` | メンション先アカウント |
+| `post_custom_emojis` | 投稿のカスタム絵文字 |
+| `polls` / `poll_options` / `poll_votes` | 投票データ |
+| `link_cards` | リンクカード（OGP） |
 
-### フィルタリング関連テーブル
+### プロフィール関連テーブル
+
+| テーブル | 用途 |
+|---------|------|
+| `profile_stats` | プロフィール統計 |
+| `profile_fields` | プロフィールフィールド |
+| `profile_custom_emojis` | プロフィールのカスタム絵文字 |
+
+### フィルタリング関連テーブル（v2.0.1 追加）
 
 | テーブル | 用途 |
 |---------|------|
 | `muted_accounts` | ミュートアカウント（backendUrl + acct） |
 | `blocked_instances` | ブロックインスタンス |
-| `follows` | フォロー関係（followsOnly フィルタ用） |
+
+### メタテーブル
+
+| テーブル | 用途 |
+|---------|------|
+| `schema_version` | スキーマバージョン履歴 |
 
 ## Worker 構成
 
@@ -207,11 +204,29 @@ notifications (
 
 大量の投稿（初期ロード 40 件 × 複数バックエンド、ストリーミング連続受信）を正規化・INSERT する処理はメインスレッドをブロックしうる。Worker に書き込みを隔離することで UI の応答性を保つ。
 
+### マイクロバッチ書き込み
+
+ストリーミングイベントは `stores/statusStore.ts` のマイクロバッチシステムで蓄積される。
+
+- **バッチキー**: `backendUrl + timelineType + tag` の組み合わせ
+- **フラッシュ条件**: 100ms 経過 **または** 20 件蓄積
+- **効果**: 個別 upsert の Worker RPC オーバーヘッドを削減し、トランザクション内で一括処理
+
+### 優先度キューシステム
+
+`dbQueue.ts` が 2 つのキューを管理する。
+
+| キュー | 用途 | 優先度 |
+|-------|------|--------|
+| `timeline` | タイムライン読み取りクエリ | 低（重複排除あり） |
+| `other` | 書き込み・管理操作 | 高 |
+
+**アダプティブモード**（`auto`）: キューサイズの比率に基づいて、連続して other キューから処理する最大数を動的に調整。
+
 ### 通信プロトコル
 
 Worker とメインスレッドは RPC パターンで通信する。
 
-```
 メインスレッド                    Worker
     │                              │
     │  sendCommand({ type,         │
@@ -222,69 +237,71 @@ Worker とメインスレッドは RPC パターンで通信する。
     │                              │
     │  ←──────────────────────────  │
     │  { result, changedTables,    │
-    │    duration }                 │
+    │    changeHints, duration }    │
     │                              │
-    │  notifyChange('posts')       │
+    │  notifyChange('posts',       │
+    │    { timelineType, backendUrl })
     │  ──→ subscribe コールバック    │
-```
-
-### 主要コマンド
-
-| コマンド | 用途 |
-|---------|------|
-| `BulkUpsertStatuses` | API 取得した投稿の一括 upsert |
-| `UpsertStatus` | ストリーミングからの単一投稿 upsert |
-| `UpdateStatus` | 投稿編集イベント |
-| `HandleDeleteEvent` | 投稿削除イベント |
-| `UpdateStatusAction` | お気に入り/ブースト/ブックマーク操作 |
-| `AddNotification` | 通知の追加 |
-| `BulkAddNotifications` | 通知の一括追加 |
-| `EnforceMaxLength` | 古いデータの定期クリーンアップ |
+    │      (80ms デバウンスで集約)    │
 
 ### ファイル構成
 
-```
-src/util/db/sqlite/
-  ├── initSqlite.ts         ← DB初期化（Worker/フォールバック判定）
-  ├── connection.ts         ← シングルトン接続 + subscribe/notify
-  ├── schema.ts             ← スキーマ定義 + マイグレーション（3800行超）
-  ├── protocol.ts           ← RPC プロトコル型定義
-  ├── statusStore.ts        ← メインスレッド側の投稿ストア（クエリ + コマンド送信）
-  ├── notificationStore.ts  ← メインスレッド側の通知ストア
-  ├── cleanup.ts            ← 定期クリーンアップ
-  ├── workerClient.ts       ← Worker RPC クライアント
-  ├── types.ts              ← DbHandle インターフェース
-  ├── shared.ts             ← 共有ユーティリティ
-  └── worker/
-       ├── sqlite.worker.ts        ← Worker エントリポイント
-       ├── workerStatusStore.ts    ← 投稿 upsert のトランザクション実装
-       ├── workerNotificationStore.ts ← 通知処理
-       ├── workerSchema.ts         ← Worker 内のスキーマ型
-       └── workerCleanup.ts        ← クリーンアップ実装
-```
-
-## インデックス設計
-
-クエリパフォーマンスのためのインデックス。フィルタで頻繁に使用されるカラムに対して設定。
-
-```sql
--- URI重複排除
-CREATE UNIQUE INDEX idx_posts_uri ON posts(object_uri);
-
--- タイムラインクエリ（バックエンド + 時系列）
-CREATE INDEX idx_posts_backend_created ON posts_backends(backendUrl, post_id);
-
--- フィルタ用
-CREATE INDEX idx_posts_media_filter ON posts(has_media, media_count);
-CREATE INDEX idx_posts_visibility_filter ON posts(visibility_id);
-CREATE INDEX idx_posts_language_filter ON posts(language);
-CREATE INDEX idx_posts_reblog_filter ON posts(is_reblog);
-```
+src/util/db/
+  ├── dbQueue.ts              ← 優先度キューシステム
+  ├── errors.ts               ← エラーラッパー
+  └── sqlite/
+       ├── initSqlite.ts         ← DB初期化（Worker/フォールバック判定）
+       ├── connection.ts         ← シングルトン接続 + subscribe/notify (80ms debounce)
+       ├── protocol.ts           ← RPC プロトコル型定義
+       ├── statusStore.ts        ← メインスレッド側の投稿ストア（バレルエクスポート）
+       ├── notificationStore.ts  ← メインスレッド側の通知ストア
+       ├── cleanup.ts            ← 定期クリーンアップ
+       ├── workerClient.ts       ← Worker RPC クライアント
+       ├── types.ts              ← DbHandle インターフェース
+       ├── shared.ts             ← 共有ユーティリティ
+       ├── schema/
+       │    ├── index.ts         ← ensureSchema / createFreshSchema
+       │    ├── version.ts       ← SemVer 管理 (LATEST_VERSION = 2.0.1)
+       │    ├── types.ts         ← DbExec 型
+       │    └── tables/          ← テーブル別 CREATE 文
+       │         ├── accounts.ts, cards.ts, interactions.ts,
+       │         ├── lookup.ts, meta.ts, notifications.ts,
+       │         ├── polls.ts, postRelated.ts, posts.ts,
+       │         ├── profiles.ts, registries.ts, timeline.ts
+       ├── migrations/
+       │    ├── index.ts         ← マイグレーションランナー
+       │    ├── types.ts         ← Migration 型
+       │    ├── helpers.ts       ← ヘルパー（tableExists, recreateTable 等）
+       │    ├── v28.ts           ← レガシーバージョン
+       │    ├── v2.0.0/          ← v2.0.0 マイグレーション（全テーブル再作成）
+       │    └── v2.0.1/          ← v2.0.1 マイグレーション（muted/blocked 追加）
+       ├── queries/
+       │    ├── statusFilter.ts  ← フィルタ条件生成
+       │    ├── statusFetch.ts   ← fetchTimeline バッチ API
+       │    ├── statusBatch.ts   ← バッチクエリテンプレート
+       │    ├── statusSelect.ts  ← SELECT 句定義
+       │    ├── statusMapper.ts  ← 行データ → オブジェクト変換
+       │    └── statusCustomQuery.ts ← カスタムクエリ用
+       ├── stores/
+       │    ├── statusStore.ts   ← 投稿 upsert（マイクロバッチ）
+       │    └── statusReadStore.ts ← 読み取り専用
+       ├── helpers/              ← ユーティリティ関数
+       └── worker/
+            ├── sqlite.worker.ts        ← Worker エントリポイント
+            ├── workerStatusStore.ts    ← 投稿 upsert のトランザクション実装
+            ├── workerNotificationStore.ts ← 通知処理
+            ├── workerSchema.ts         ← Worker 内のスキーマ型
+            ├── workerCleanup.ts        ← クリーンアップ実装
+            └── handlers/               ← Worker ハンドラ
+                 ├── statusHandlers.ts, statusHelpers.ts,
+                 ├── statusUpdateHandler.ts, accountHandlers.ts,
+                 ├── interactionHandlers.ts, timelineHandlers.ts,
+                 ├── postSync.ts, types.ts
 
 ## 定期クリーンアップ
 
-`cleanup.ts` が `MAX_LENGTH`（デフォルト 100,000 件）を超えた古い投稿を削除する。
+`cleanup.ts` がデータベースの肥大化を防ぐ。
 
 - アプリ起動時に即時実行
-- 以降 60 分ごとに定期実行
+- 以降定期的に実行
 - Worker 内の `enforceMaxLength` コマンドとして実行

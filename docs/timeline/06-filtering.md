@@ -2,141 +2,121 @@
 
 ## 概要
 
-タイムラインのフィルタリングは **すべてデータベースレイヤー（SQL）** で実行される。メモリ上でのフィルタリングは行わない。これにより、大量のデータに対しても効率的にフィルタを適用でき、インデックスの恩恵を受けられる。
+タイムラインのフィルタリングは **すべてデータベースレイヤー（SQL）** で実行される。メモリ上でのフィルタリングは行わない。これにより、大量のデータに対しても効率的にフィルタを適用できる。
 
 ## フィルタの分類
 
 ### バックエンドフィルタ
 
-どのサーバのデータを対象とするか。
+どのサーバのデータを対象とするか。`local_accounts` テーブル経由で解決。
 
 | モード | SQL |
 |--------|-----|
 | `all` | 条件なし（全バックエンド） |
-| `single` | `pb.backendUrl = ?` |
-| `composite` | `pb.backendUrl IN (?, ?, ...)` |
+| `single` | `la.backend_url = ?` |
+| `composite` | `la.backend_url IN (?, ?, ...)` |
 
 ### タイムラインタイプフィルタ
 
-どのタイムライン種別のデータを対象とするか。
+どのタイムライン種別のデータを対象とするか。`timeline_entries` テーブルで管理。
 
-```sql
+```
 -- 単一タイプ
-ck.code = 'home'
+HAVING MAX(te.timeline_key = 'home') = 1
 
 -- 複数タイプ（timelineTypes 設定時）
-ck.code IN ('home', 'local')
+HAVING MAX(te.timeline_key IN ('home', 'local')) = 1
 ```
-
-`timelines` + `channel_kinds` テーブルの JOIN で実現。
 
 ### メディアフィルタ
 
-```sql
+```
 -- onlyMedia: true
-p.has_media = 1
+EXISTS(SELECT 1 FROM post_media WHERE post_id = p.id)
 
 -- minMediaCount: 3
-p.media_count >= 3
+(SELECT COUNT(*) FROM post_media WHERE post_id = p.id) >= 3
 ```
 
-`has_media` と `media_count` は `posts` テーブルに非正規化されたカラム。`post_media` との JOIN なしでフィルタ可能。
+v2 スキーマでは `post_media` テーブルのサブクエリでフィルタ。posts テーブルに `has_media` カラムは持たない。
 
 ### 可視性フィルタ
 
-```sql
+```
 -- visibilityFilter: ['public', 'unlisted']
-p.visibility_id IN (
-  SELECT visibility_id FROM visibility_types WHERE code IN ('public', 'unlisted')
-)
+(SELECT name FROM visibility_types WHERE id = p.visibility_id) IN ('public', 'unlisted')
 ```
 
-`visibility_types` マスタテーブルのサブクエリで ID を解決。
+`visibility_types` ルックアップテーブルのサブクエリで名前を解決。
 
 ### 言語フィルタ
 
-```sql
+```
 -- languageFilter: ['ja', 'en']
-p.language IN ('ja', 'en')
+(p.language IN ('ja', 'en') OR p.language IS NULL)
 ```
 
-Mastodon の `language` フィールドは ISO 639-1 コード。投稿者が言語を指定しなかった場合は `NULL` となり、このフィルタからは除外される。
+Mastodon の `language` フィールドは ISO 639-1 コード。投稿者が言語を指定しなかった場合は `NULL` となるが、**NULL は常に表示される**（言語未指定の投稿がフィルタで消えるのを防ぐ）。
 
 ### 除外フィルタ
 
-```sql
+```
 -- excludeReblogs
 p.is_reblog = 0
 
 -- excludeReplies
-p.in_reply_to_id IS NULL
+p.in_reply_to_uri IS NULL
 
--- excludeSpoiler
-p.has_spoiler = 0
+-- excludeSpoiler（CW 付き除外）
+p.spoiler_text = ''
 
 -- excludeSensitive
 p.is_sensitive = 0
 ```
 
-いずれも `posts` テーブルのカラムを直接参照。
+`excludeSpoiler` は `spoiler_text` が空文字列かで判定（v2 スキーマでは `has_spoiler` カラムを廃止）。
 
 ### アカウントフィルタ
 
-```sql
+```
 -- include モード
-pr.acct IN ('user1@mastodon.social', 'user2@example.com')
+(SELECT acct FROM profiles WHERE id = p.author_profile_id) IN ('user1@mastodon.social', 'user2@example.com')
 
 -- exclude モード
-pr.acct NOT IN ('spammer@bad.instance')
+(SELECT acct FROM profiles WHERE id = p.author_profile_id) NOT IN ('spammer@bad.instance')
 ```
 
-`profiles` テーブルとの JOIN が必要。
+`profiles` テーブルのサブクエリで `acct` を解決。`profileJoined: true` オプション時は `pr.acct` を直接使用。
 
 ### ミュートフィルタ
 
-```sql
--- applyMuteFilter: true（デフォルト）
-NOT EXISTS (
-  SELECT 1 FROM muted_accounts ma
-  WHERE ma.account_acct = pr.acct
-  AND ma.backendUrl = pb.backendUrl
-)
-```
+`buildMuteCondition()` が生成するサブクエリ。`muted_accounts` テーブル（v2.0.1 追加）を参照。
 
-`muted_accounts` テーブルはバックエンドごとにミュート設定を保持。異なるサーバで異なるミュートリストを持てる。
+**重要**: `accountFilter.mode === 'include'` の場合、ミュートフィルタは **適用されない**。ユーザーが明示的に指定したアカウントがミュートで表示されなくなるのは不適切なため。
 
 ### インスタンスブロックフィルタ
 
-```sql
--- applyInstanceBlock: true（デフォルト）
-NOT EXISTS (
-  SELECT 1 FROM blocked_instances bi
-  WHERE pr.domain = bi.instance_domain
-)
-```
+`buildInstanceBlockCondition()` が生成するサブクエリ。`blocked_instances` テーブル（v2.0.1 追加）を参照。
 
 ### フォローフィルタ
 
-```sql
+```
 -- followsOnly: true
-EXISTS (
-  SELECT 1 FROM follows f
-  WHERE f.target_profile_id = p.author_profile_id
-)
+⚠️ 未実装（v2 スキーマに follows テーブルが存在しない）
 ```
 
-`follows` テーブルにフォロー関係を事前にロードしておく必要がある。`StatusStoreProvider` が初期化時に `getAccountFollowing()` で取得・同期する。
+`buildFilterConditions()` では `followsOnly: true` の場合に警告ログを出力し、条件は生成しない。
 
 ### 通知タイプフィルタ
 
 通知タイムライン用。
 
-```sql
+```
 -- notificationFilter: ['mention', 'favourite']
-nt.code IN ('mention', 'favourite')
+nt.name IN ('mention', 'favourite')
 ```
 
-`notification_types` マスタテーブルと JOIN。
+`notification_types` ルックアップテーブルと JOIN。
 
 ## タグフィルタリング
 
@@ -144,48 +124,58 @@ nt.code IN ('mention', 'favourite')
 
 ### OR モード（いずれかのタグ）
 
-```sql
-SELECT DISTINCT p.post_id
+```
+SELECT p.id, MIN(la.backend_url) AS backendUrl
 FROM posts p
-JOIN posts_belonging_tags pbt ON pbt.post_id = p.post_id
-WHERE pbt.tag IN ('tag1', 'tag2', 'tag3')
--- + 他のフィルタ条件
+LEFT JOIN post_backend_ids pbi ON p.id = pbi.post_id
+LEFT JOIN local_accounts la ON pbi.local_account_id = la.id
+LEFT JOIN profiles pr ON p.author_profile_id = pr.id
+INNER JOIN post_hashtags pht ON p.id = pht.post_id
+INNER JOIN hashtags ht ON pht.hashtag_id = ht.id
+WHERE ht.name IN ('tag1', 'tag2', 'tag3')
+  AND la.backend_url IN (?, ?)
+  -- + 他のフィルタ条件
+GROUP BY p.id
 ORDER BY p.created_at_ms DESC
 LIMIT 50
 ```
 
-`DISTINCT` で同じ投稿が複数タグにマッチした場合の重複を排除。
+`GROUP BY` で同じ投稿が複数タグにマッチした場合の重複を排除。
 
 ### AND モード（すべてのタグ）
 
-```sql
-SELECT p.post_id
+```
+SELECT p.id, MIN(la.backend_url) AS backendUrl
 FROM posts p
-JOIN posts_belonging_tags pbt ON pbt.post_id = p.post_id
-WHERE pbt.tag IN ('tag1', 'tag2')
--- + 他のフィルタ条件
-GROUP BY p.post_id
-HAVING COUNT(DISTINCT pbt.tag) = 2  -- タグ数と一致
+LEFT JOIN post_backend_ids pbi ON p.id = pbi.post_id
+LEFT JOIN local_accounts la ON pbi.local_account_id = la.id
+LEFT JOIN profiles pr ON p.author_profile_id = pr.id
+INNER JOIN post_hashtags pht ON p.id = pht.post_id
+INNER JOIN hashtags ht ON pht.hashtag_id = ht.id
+WHERE ht.name IN ('tag1', 'tag2')
+  AND la.backend_url IN (?, ?)
+  -- + 他のフィルタ条件
+GROUP BY p.id
+HAVING COUNT(DISTINCT ht.name) = 2  -- タグ数と一致
 ORDER BY p.created_at_ms DESC
 LIMIT 50
 ```
 
-`HAVING COUNT(DISTINCT tag)` でタグ数の条件を付けて AND を実現。
+`HAVING COUNT(DISTINCT ht.name)` でタグ数の条件を付けて AND を実現。
 
 ## フィルタの組み合わせ
 
 `buildFilterConditions()` が生成するすべての条件は **AND** で結合される。
 
-```sql
-WHERE ck.code = 'public'                           -- タイムラインタイプ
-  AND pb.backendUrl IN (?, ?)                      -- バックエンド
-  AND p.has_media = 1                              -- メディアあり
-  AND p.visibility_id IN (...)                     -- 可視性
-  AND p.language IN ('ja')                         -- 言語
-  AND p.is_reblog = 0                              -- ブースト除外
-  AND p.in_reply_to_id IS NULL                     -- リプライ除外
-  AND NOT EXISTS (SELECT 1 FROM muted_accounts...) -- ミュート
-  AND NOT EXISTS (SELECT 1 FROM blocked_instances...)-- ブロック
+```
+WHERE la.backend_url IN (?, ?)                                -- バックエンド
+  AND EXISTS(SELECT 1 FROM post_media WHERE post_id = p.id)   -- メディアあり
+  AND (SELECT name FROM visibility_types ...) IN (...)         -- 可視性
+  AND (p.language IN ('ja') OR p.language IS NULL)             -- 言語
+  AND p.is_reblog = 0                                          -- ブースト除外
+  AND p.in_reply_to_uri IS NULL                                -- リプライ除外
+  AND <muted_accounts サブクエリ>                               -- ミュート
+  AND <blocked_instances サブクエリ>                             -- ブロック
 ```
 
 ## UI ↔ Advanced Query の相互変換
@@ -199,33 +189,23 @@ UI のフィルタ設定を `queryBuilder.ts` の `buildQueryFromConfig()` が S
 ```
 UI: type=public, onlyMedia=true, languageFilter=['ja']
     ↓
-SQL: ck.code = 'public' AND p.has_media = 1 AND p.language IN ('ja')
+SQL: ptt.timelineType = 'public' AND EXISTS(SELECT 1 FROM post_media WHERE post_id = p.id) AND (p.language IN ('ja') OR p.language IS NULL)
 ```
 
 ### Advanced Query → UI
 
-Advanced Query から UI モードに戻す場合、SQL のパースは行わず、**設定は保持されない**（カスタムクエリは破棄される）。`TimelineEditPanel` がパース警告を表示する。
+Advanced Query から UI モードに戻す場合、`parseQueryToConfig()` がベストエフォートで SQL を解析し `Partial<TimelineConfigV2>` を抽出する。`canParseQuery()` でラウンドトリップの忠実度を検証し、復元できない場合はパース警告を表示する。
 
 ## パフォーマンス考慮
 
-### インデックスの活用
+### サブクエリ vs JOIN
 
-頻出フィルタに対してインデックスを設定：
-
-- `idx_posts_media_filter` → `(has_media, media_count)`
-- `idx_posts_visibility_filter` → `(visibility_id)`
-- `idx_posts_language_filter` → `(language)`
-- `idx_posts_reblog_filter` → `(is_reblog)`
-- `idx_posts_backend_created` → `(backendUrl, post_id)`
-
-### 非正規化カラムの効果
-
-`has_media`, `is_reblog`, `is_sensitive`, `has_spoiler` は本来 JOIN して計算すべき値だが、`posts` テーブルに直接持たせることで：
-
-- Phase 1 の WHERE で JOIN なしにフィルタ可能
-- インデックスが直接効く
-- クエリプランが単純化される
+v2 スキーマではメディアや可視性のフィルタにサブクエリを使用する。`post_media` や `visibility_types` は 1:N ではなく 1:1 に近い関係のため、サブクエリのコストは低い。一方で posts テーブルの非正規化カラムを減らし、テーブル設計がクリーンになった。
 
 ### NOT EXISTS vs LEFT JOIN + IS NULL
 
 ミュートとインスタンスブロックには `NOT EXISTS` サブクエリを使用。`LEFT JOIN ... WHERE ... IS NULL` よりも SQLite のクエリオプティマイザに適している場合が多い。
+
+### ChangeHint による選択的再クエリ
+
+フィルタが変更されなくてもストリーミングでデータが到着すると再クエリが走る。`ChangeHint` により、自パネルに関係しない変更（異なる backendUrl や timelineType）では再クエリをスキップし、不要なクエリ実行を削減する。

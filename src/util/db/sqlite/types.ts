@@ -8,7 +8,9 @@ import type {
   BindValue,
   FetchTimelineRequest,
   FetchTimelineResult,
+  QueryPlanResult,
   SendCommandPayload,
+  SerializedExecutionPlan,
 } from './protocol'
 
 /** SQL 実行オプション */
@@ -62,6 +64,14 @@ export type DbHandle = {
    * フォールバックモード（キューなし）では no-op (return 0)。
    */
   cancelStaleRequests: (sessionTag: string, staleValue?: unknown) => number
+
+  /**
+   * ExecutionPlan を実行する（Plan 003: 汎用実行エンジン）。
+   */
+  executeQueryPlan: (
+    plan: SerializedExecutionPlan,
+    sessionTag?: string,
+  ) => Promise<QueryPlanResult>
 
   /**
    * タイムラインを一括取得する。
