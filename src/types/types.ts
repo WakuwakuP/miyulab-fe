@@ -1,4 +1,5 @@
 import type { Entity, OAuth } from 'megalodon'
+import type { QueryPlan } from 'util/db/query-ir/nodes'
 
 export type App = {
   backend: Backend
@@ -320,6 +321,14 @@ export type TimelineConfigV2 = {
    * @default false
    */
   followsOnly?: boolean
+
+  /**
+   * FlowEditor で編集された QueryPlan (IR)
+   *
+   * 設定時は FlowEditor の再オープン時にノードグラフが完全復元される。
+   * customQuery より優先して参照される。
+   */
+  queryPlan?: QueryPlan
 }
 
 export type TimelineSettingsV2 = {

@@ -34,17 +34,29 @@ const TABLE_TO_ALIAS: Record<string, string> = {
 // Individual node → SQL converters
 // ---------------------------------------------------------------------------
 
+/** SQL 文字列リテラル用エスケープ: ' → '' */
+function escapeSql(value: string): string {
+  return value.replace(/'/g, "''")
+}
+
 function timelineScopeToSql(node: TimelineScope): string {
   if (node.timelineKeys.length === 1) {
-    return `ptt.timelineType = '${node.timelineKeys[0]}'`
+    return `ptt.timelineType = '${escapeSql(node.timelineKeys[0])}'`
   }
-  const keys = node.timelineKeys.map((k) => `'${k}'`).join(', ')
+  const keys = node.timelineKeys.map((k) => `'${escapeSql(k)}'`).join(', ')
   return `ptt.timelineType IN (${keys})`
 }
 
 function tableFilterToSql(node: TableFilter): string {
   const alias = TABLE_TO_ALIAS[node.table] ?? node.table
   const col = `${alias}.${node.column}`
+
+  // W-7: null 値の処理
+  if (node.value === null || node.value === undefined) {
+    if (node.op === '!=' || node.op === 'IS NOT NULL')
+      return `${col} IS NOT NULL`
+    return `${col} IS NULL`
+  }
 
   switch (node.op) {
     case 'IS NULL':
@@ -54,19 +66,23 @@ function tableFilterToSql(node: TableFilter): string {
     case 'IN':
     case 'NOT IN': {
       if (Array.isArray(node.value)) {
+        // W-5: 空配列ガード
+        if (node.value.length === 0) {
+          return node.op === 'IN' ? '0' : '1'
+        }
         const values = node.value
-          .map((v) => (typeof v === 'string' ? `'${v}'` : String(v)))
+          .map((v) => (typeof v === 'string' ? `'${escapeSql(v)}'` : String(v)))
           .join(', ')
         return `${col} ${node.op} (${values})`
       }
       if (typeof node.value === 'string') {
-        return `${col} ${node.op === 'IN' ? '=' : '!='} '${node.value}'`
+        return `${col} ${node.op === 'IN' ? '=' : '!='} '${escapeSql(node.value)}'`
       }
       return `${col} ${node.op === 'IN' ? '=' : '!='} ${node.value}`
     }
     default: {
       if (typeof node.value === 'string') {
-        return `${col} ${node.op} '${node.value}'`
+        return `${col} ${node.op} '${escapeSql(node.value)}'`
       }
       return `${col} ${node.op} ${node.value}`
     }
@@ -74,18 +90,53 @@ function tableFilterToSql(node: TableFilter): string {
 }
 
 function existsFilterToSql(node: ExistsFilter): string {
+  // W-2: innerFilters サポート
+  let innerWhere = ''
+  if (node.innerFilters && node.innerFilters.length > 0) {
+    const innerConditions = node.innerFilters.map((inner) => {
+      const innerAlias = TABLE_TO_ALIAS[node.table] ?? node.table
+      const innerCol = `${innerAlias}.${inner.column}`
+      return tableFilterFragmentToSql(innerCol, inner.op, inner.value)
+    })
+    innerWhere = ` AND ${innerConditions.join(' AND ')}`
+  }
+
   switch (node.mode) {
     case 'exists':
-      return `EXISTS(SELECT 1 FROM ${node.table} WHERE post_id = p.id)`
+      return `EXISTS(SELECT 1 FROM ${node.table} WHERE post_id = p.id${innerWhere})`
     case 'not-exists':
-      return `NOT EXISTS(SELECT 1 FROM ${node.table} WHERE post_id = p.id)`
+      return `NOT EXISTS(SELECT 1 FROM ${node.table} WHERE post_id = p.id${innerWhere})`
     case 'count-gte':
-      return `(SELECT COUNT(*) FROM ${node.table} WHERE post_id = p.id) >= ${node.countValue ?? 1}`
+      return `(SELECT COUNT(*) FROM ${node.table} WHERE post_id = p.id${innerWhere}) >= ${node.countValue ?? 1}`
     case 'count-lte':
-      return `(SELECT COUNT(*) FROM ${node.table} WHERE post_id = p.id) <= ${node.countValue ?? 0}`
+      return `(SELECT COUNT(*) FROM ${node.table} WHERE post_id = p.id${innerWhere}) <= ${node.countValue ?? 0}`
     case 'count-eq':
-      return `(SELECT COUNT(*) FROM ${node.table} WHERE post_id = p.id) = ${node.countValue ?? 0}`
+      return `(SELECT COUNT(*) FROM ${node.table} WHERE post_id = p.id${innerWhere}) = ${node.countValue ?? 0}`
   }
+}
+
+/** W-2: innerFilters 用のヘルパー — 条件部分のみ生成 */
+function tableFilterFragmentToSql(
+  col: string,
+  op: string,
+  value: string | number | (string | number)[] | null | undefined,
+): string {
+  if (value === null || value === undefined) {
+    return `${col} IS NULL`
+  }
+  if (op === 'IS NULL') return `${col} IS NULL`
+  if (op === 'IS NOT NULL') return `${col} IS NOT NULL`
+  if ((op === 'IN' || op === 'NOT IN') && Array.isArray(value)) {
+    if (value.length === 0) return op === 'IN' ? '0' : '1'
+    const values = value
+      .map((v) => (typeof v === 'string' ? `'${escapeSql(v)}'` : String(v)))
+      .join(', ')
+    return `${col} ${op} (${values})`
+  }
+  if (typeof value === 'string') {
+    return `${col} ${op} '${escapeSql(value)}'`
+  }
+  return `${col} ${op} ${value}`
 }
 
 function rawSqlFilterToSql(node: RawSQLFilter): string {
@@ -93,7 +144,9 @@ function rawSqlFilterToSql(node: RawSQLFilter): string {
 }
 
 function aerialReplyFilterToSql(node: AerialReplyFilter): string {
-  const types = node.notificationTypes.map((t) => `'${t}'`).join(', ')
+  const types = node.notificationTypes
+    .map((t) => `'${escapeSql(t)}'`)
+    .join(', ')
   return [
     `EXISTS(SELECT 1 FROM notifications ntf`,
     `INNER JOIN notification_types ntt ON ntt.id = ntf.notification_type_id`,

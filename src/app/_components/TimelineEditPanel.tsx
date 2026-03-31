@@ -5,7 +5,8 @@ import { InstanceBlockManager } from 'app/_parts/InstanceBlockManager'
 import { MuteManager } from 'app/_parts/MuteManager'
 import { Pencil, Shield, VolumeX } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
-import type { TimelineConfigV2 } from 'types/types'
+import type { BackendFilter, TimelineConfigV2 } from 'types/types'
+import { resolveBackendUrlFromAccountId } from 'util/accountResolver'
 import type { ConfigToNodesContext } from 'util/db/query-ir/compat/configToNodes'
 import { configToQueryPlan } from 'util/db/query-ir/compat/configToNodes'
 import { nodesToWhere } from 'util/db/query-ir/compat/nodesToWhere'
@@ -37,7 +38,12 @@ export const TimelineEditPanel = ({
   const [showBlockManager, setShowBlockManager] = useState(false)
 
   // 現在の config から QueryPlan を構築（フローエディタの初期状態用）
+  // S-3: 保存済み queryPlan があればそのまま復元（ラウンドトリップ保持）
   const initialPlan = useMemo<QueryPlan>(() => {
+    if (config.queryPlan) {
+      return config.queryPlan
+    }
+    // フォールバック: 構造化フィールドから構築
     const ctx: ConfigToNodesContext = {
       localAccountIds: [],
       queryLimit: 50,
@@ -49,13 +55,63 @@ export const TimelineEditPanel = ({
   // フローエディタで保存された QueryPlan を TimelineConfigV2 の更新差分に変換する
   const handleFlowSave = useCallback(
     (plan: QueryPlan) => {
+      // S-1: plan.filters からモデレーション設定を抽出
+      const moderationNode = plan.filters.find(
+        (f) => f.kind === 'moderation-filter',
+      )
+      const applyMute =
+        moderationNode?.kind === 'moderation-filter' &&
+        moderationNode.apply.includes('mute')
+      const applyBlock =
+        moderationNode?.kind === 'moderation-filter' &&
+        moderationNode.apply.includes('instance-block')
+
+      // S-2: plan.filters からバックエンドフィルタを抽出
+      const backendNode = plan.filters.find((f) => f.kind === 'backend-filter')
+      let backendFilter: BackendFilter | undefined
+      if (
+        backendNode?.kind === 'backend-filter' &&
+        backendNode.localAccountIds.length > 0
+      ) {
+        const urls = backendNode.localAccountIds
+          .map((id) => resolveBackendUrlFromAccountId(id))
+          .filter((u): u is string => u != null)
+        if (urls.length === 0) {
+          backendFilter = { mode: 'all' }
+        } else if (urls.length === 1) {
+          backendFilter = { backendUrl: urls[0], mode: 'single' }
+        } else {
+          backendFilter = { backendUrls: urls, mode: 'composite' }
+        }
+      } else {
+        backendFilter = { mode: 'all' }
+      }
+
+      // 後方互換: customQuery テキストも生成（useCustomQueryTimeline で実行するため）
       const customQuery = nodesToWhere(plan.filters)
 
       const updates: Partial<TimelineConfigV2> = {
+        // S-4: ゴーストフィルタを明示的にクリア
+        accountFilter: undefined,
         advancedQuery: true,
-        backendFilter: { mode: 'all' },
+        applyInstanceBlock: applyBlock || undefined,
+        applyMuteFilter: applyMute || undefined,
+        backendFilter,
         customQuery: customQuery.trim() || undefined,
+        excludeReblogs: undefined,
+        excludeReplies: undefined,
+        excludeSensitive: undefined,
+        excludeSpoiler: undefined,
+        followsOnly: undefined,
         label: label.trim() || undefined,
+        languageFilter: undefined,
+        minMediaCount: undefined,
+        notificationFilter: undefined,
+        onlyMedia: undefined,
+        queryPlan: plan,
+        tagConfig: undefined,
+        timelineTypes: undefined,
+        visibilityFilter: undefined,
       }
 
       onSave(updates)

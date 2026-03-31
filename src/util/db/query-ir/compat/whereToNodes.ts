@@ -235,6 +235,21 @@ function tryAccountFilter(cond: string): FilterNode | null {
       value: accts,
     }
   }
+  // W-1: NOT IN: pr.acct NOT IN ('a', 'b')
+  const prNotInMatch = cond.match(/^pr\.acct\s+NOT\s+IN\s*\(([^)]+)\)$/i)
+  if (prNotInMatch) {
+    const accts = prNotInMatch[1]
+      .split(',')
+      .map((s) => s.trim().replace(/'/g, ''))
+      .filter(Boolean)
+    return {
+      column: 'acct',
+      kind: 'table-filter',
+      op: 'NOT IN',
+      table: 'profiles',
+      value: accts,
+    }
+  }
   return null
 }
 
@@ -299,6 +314,22 @@ function tryPropertyFilter(cond: string): FilterNode | null {
       column: field,
       kind: 'table-filter',
       op: 'IN',
+      table: 'posts',
+      value: values,
+    }
+  }
+  // W-1: p.column NOT IN ('a', 'b')
+  const notInMatch = cond.match(/^p\.(\w+)\s+NOT\s+IN\s*\(([^)]+)\)$/i)
+  if (notInMatch) {
+    const field = notInMatch[1]
+    const values = notInMatch[2]
+      .split(',')
+      .map((s) => s.trim().replace(/'/g, ''))
+      .filter(Boolean)
+    return {
+      column: field,
+      kind: 'table-filter',
+      op: 'NOT IN',
       table: 'posts',
       value: values,
     }
@@ -379,49 +410,65 @@ function tryTagFilter(cond: string): FilterNode | null {
   return null
 }
 
-/** EXISTS(SELECT 1 FROM post_media WHERE post_id = p.id) */
+/** W-4: EXISTS(SELECT 1 FROM <table> WHERE post_id = p.id) — ジェネリック */
 function tryExistsFilter(cond: string): FilterNode | null {
-  // EXISTS media
-  if (
-    /^EXISTS\s*\(\s*SELECT\s+1\s+FROM\s+post_media\s+WHERE\s+post_id\s*=\s*p\.id\s*\)$/i.test(
-      cond,
-    )
-  ) {
+  // EXISTS: EXISTS(SELECT 1 FROM <table> WHERE post_id = p.id)
+  const existsMatch = cond.match(
+    /^EXISTS\s*\(\s*SELECT\s+1\s+FROM\s+(\w+)\s+WHERE\s+post_id\s*=\s*p\.id\s*\)$/i,
+  )
+  if (existsMatch) {
     return {
       kind: 'exists-filter',
       mode: 'exists',
-      table: 'post_media',
+      table: existsMatch[1],
     } satisfies ExistsFilter
   }
-  // NOT EXISTS media
-  if (
-    /^NOT\s+EXISTS\s*\(\s*SELECT\s+1\s+FROM\s+post_media\s+WHERE\s+post_id\s*=\s*p\.id\s*\)$/i.test(
-      cond,
-    )
-  ) {
+  // NOT EXISTS: NOT EXISTS(SELECT 1 FROM <table> WHERE post_id = p.id)
+  const notExistsMatch = cond.match(
+    /^NOT\s+EXISTS\s*\(\s*SELECT\s+1\s+FROM\s+(\w+)\s+WHERE\s+post_id\s*=\s*p\.id\s*\)$/i,
+  )
+  if (notExistsMatch) {
     return {
       kind: 'exists-filter',
       mode: 'not-exists',
-      table: 'post_media',
+      table: notExistsMatch[1],
     } satisfies ExistsFilter
   }
   return null
 }
 
-/** (SELECT COUNT(*) FROM post_media WHERE post_id = p.id) >= N */
+/** W-4+W-6: (SELECT COUNT(*) FROM <table> WHERE post_id = p.id) <op> N — ジェネリック */
 function tryCountFilter(cond: string): FilterNode | null {
   const match = cond.match(
-    /^\(SELECT\s+COUNT\(\*\)\s+FROM\s+post_media\s+WHERE\s+post_id\s*=\s*p\.id\)\s*>=\s*(\d+)$/i,
+    /^\(SELECT\s+COUNT\(\*\)\s+FROM\s+(\w+)\s+WHERE\s+post_id\s*=\s*p\.id\)\s*(>=|<=|=)\s*(\d+)$/i,
   )
-  if (match) {
-    return {
-      countValue: Number(match[1]),
-      kind: 'exists-filter',
-      mode: 'count-gte',
-      table: 'post_media',
-    } satisfies ExistsFilter
+  if (!match) return null
+
+  const table = match[1]
+  const op = match[2]
+  const countValue = Number.parseInt(match[3], 10)
+
+  let mode: 'count-gte' | 'count-lte' | 'count-eq'
+  switch (op) {
+    case '>=':
+      mode = 'count-gte'
+      break
+    case '<=':
+      mode = 'count-lte'
+      break
+    case '=':
+      mode = 'count-eq'
+      break
+    default:
+      return null
   }
-  return null
+
+  return {
+    countValue,
+    kind: 'exists-filter',
+    mode,
+    table,
+  } satisfies ExistsFilter
 }
 
 /** pme.acct = 'user@example.com' (mention filter) */

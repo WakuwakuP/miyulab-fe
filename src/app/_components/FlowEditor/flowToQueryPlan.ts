@@ -93,23 +93,62 @@ export function flowToQueryPlan(graph: FlowGraphState): QueryPlan {
     }
   }
 
-  // Check if incoming is a merge node
-  const prevNode = findNodeById(nodes, incoming[0].source)
-  if (
-    prevNode &&
-    (prevNode.data as { nodeType: string }).nodeType === 'merge'
-  ) {
-    return buildMergePlan(prevNode, nodes, edges, sort, pagination)
+  // C-1: 単一入力の場合
+  if (incoming.length === 1) {
+    const prevNode = findNodeById(nodes, incoming[0].source)
+    if (
+      prevNode &&
+      (prevNode.data as { nodeType: string }).nodeType === 'merge'
+    ) {
+      return buildMergePlan(prevNode, nodes, edges, sort, pagination)
+    }
+
+    // Single pipeline: trace back to source
+    const pipeline = traceBackPipeline(incoming[0].source, nodes, edges)
+    return {
+      composites: [],
+      filters: pipeline.filters,
+      pagination,
+      sort,
+      source: pipeline.source,
+    }
   }
 
-  // Single pipeline: trace back to source
-  const pipeline = traceBackPipeline(incoming[0].source, nodes, edges)
+  // C-1: 複数入力エッジ → 暗黙 Merge として処理
+  const subPlans: QueryPlan[] = incoming.map((edge) => {
+    const prevNode = findNodeById(nodes, edge.source)
+
+    // 入力元が Merge ノードの場合はそのまま Merge を展開
+    if (
+      prevNode &&
+      (prevNode.data as { nodeType: string }).nodeType === 'merge'
+    ) {
+      return buildMergePlan(prevNode, nodes, edges, sort, pagination)
+    }
+
+    const pipeline = traceBackPipeline(edge.source, nodes, edges)
+    return {
+      composites: [],
+      filters: pipeline.filters,
+      pagination: { ...pagination },
+      sort: { ...sort },
+      source: pipeline.source,
+    }
+  })
+
   return {
-    composites: [],
-    filters: pipeline.filters,
+    composites: [
+      {
+        kind: 'merge',
+        limit: pagination.limit,
+        sources: subPlans,
+        strategy: 'interleave-by-time' as const,
+      },
+    ],
+    filters: [],
     pagination,
     sort,
-    source: pipeline.source,
+    source: subPlans[0]?.source ?? DEFAULT_SOURCE,
   }
 }
 
@@ -147,6 +186,11 @@ function traceBackPipeline(
       filters.push(filterData.filter)
     }
 
+    // C-2: merge ノードに到達した場合はトレースを停止
+    if (data.nodeType === 'merge') {
+      break
+    }
+
     // Move to previous node
     const incoming = findIncomingEdges(edges, currentId)
     currentId = incoming.length > 0 ? incoming[0].source : null
@@ -170,6 +214,17 @@ function buildMergePlan(
   const mergeData = mergeNode.data as MergeNodeData
   const incoming = findIncomingEdges(edges, mergeNode.id)
 
+  // C-3: 空 Merge ガード
+  if (incoming.length === 0) {
+    return {
+      composites: [],
+      filters: [],
+      pagination,
+      sort,
+      source: DEFAULT_SOURCE,
+    }
+  }
+
   const subPlans: QueryPlan[] = incoming.map((edge) => {
     const pipeline = traceBackPipeline(edge.source, nodes, edges)
     return {
@@ -180,6 +235,14 @@ function buildMergePlan(
       source: pipeline.source,
     }
   })
+
+  // C-3: ソースの整合性チェック — 全サブプランが同一テーブルなら採用、
+  // 異なる場合は安全なデフォルトを使用
+  const allSourceTables = new Set(subPlans.map((p) => p.source.table))
+  const topSource: SourceNode =
+    allSourceTables.size === 1
+      ? subPlans[0].source
+      : { kind: 'source', table: 'posts' }
 
   return {
     composites: [
@@ -193,6 +256,6 @@ function buildMergePlan(
     filters: [],
     pagination,
     sort,
-    source: subPlans[0]?.source ?? DEFAULT_SOURCE,
+    source: topSource,
   }
 }

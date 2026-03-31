@@ -38,7 +38,7 @@ import {
   User,
   Zap,
 } from 'lucide-react'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { compileQueryPlan } from 'util/db/query-ir/compile'
 import type { FilterNode, QueryPlan } from 'util/db/query-ir/nodes'
 import type { ExecutionStep, IdCollectStep } from 'util/db/query-ir/plan'
@@ -79,19 +79,6 @@ type AddMenuItem = {
   label: string
   description: string
   createNode: (id: string, viewport: { x: number; y: number }) => FlowNode
-}
-
-let addNodeCounter = 1000
-
-function nextAddId(): string {
-  return `add-${++addNodeCounter}`
-}
-
-/** 連続追加時にノードが重ならないよう小さくずらす */
-let addJitterIndex = 0
-function jitter(): { x: number; y: number } {
-  const i = addJitterIndex++
-  return { x: (i % 5) * 40, y: (i % 5) * 40 }
 }
 
 const ADD_MENU_ITEMS: AddMenuItem[] = [
@@ -368,13 +355,25 @@ export function FlowQueryEditorModal({
   // --- viewport center ref (FlowCanvas が更新する) ---
   const viewportCenterRef = useRef<ViewportCenterFn | null>(null)
 
+  // --- F-4: add-node counters (component-scoped via useRef) ---
+  const addNodeCounterRef = useRef(1000)
+  const addJitterIndexRef = useRef(0)
+
   // --- controlled state for nodes / edges ---
-  const [nodes, setNodes] = useState<FlowNode[]>(
-    () => queryPlanToFlow(plan).nodes,
-  )
-  const [edges, setEdges] = useState<FlowEdge[]>(
-    () => queryPlanToFlow(plan).edges,
-  )
+  // F-1: 初期値は空配列。open 時に useEffect で初期化する
+  const [nodes, setNodes] = useState<FlowNode[]>([])
+  const [edges, setEdges] = useState<FlowEdge[]>([])
+
+  // --- F-2: open 時に plan からフローを再生成 ---
+  useEffect(() => {
+    if (open) {
+      const flow = queryPlanToFlow(plan)
+      setNodes(flow.nodes)
+      setEdges(flow.edges)
+      addNodeCounterRef.current = 1000
+      addJitterIndexRef.current = 0
+    }
+  }, [open, plan])
 
   // --- React Flow change handlers ---
   const onNodesChange: OnNodesChange = useCallback(
@@ -394,11 +393,12 @@ export function FlowQueryEditorModal({
 
   // --- add / delete ---
   const handleAddNode = useCallback((item: AddMenuItem) => {
-    const id = nextAddId()
+    const id = `add-${++addNodeCounterRef.current}`
     const center = viewportCenterRef.current
       ? viewportCenterRef.current()
       : { x: 300, y: 200 }
-    const j = jitter()
+    const i = addJitterIndexRef.current++
+    const j = { x: (i % 5) * 40, y: (i % 5) * 40 }
     const pos = { x: center.x + j.x, y: center.y + j.y }
     const newNode = item.createNode(id, pos)
     setNodes((nds) => [...nds, newNode])

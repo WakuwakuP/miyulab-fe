@@ -57,9 +57,15 @@ export function queryPlanToFlow(plan: QueryPlan): FlowGraphState {
       mergeInputIds.push(lastNodeId)
     })
 
+    // C-6: Merge ノードの X 座標を最長パイプラインに基づいて動的計算
+    const maxPipelineLength = Math.max(
+      ...mergeComposite.sources.map((subPlan) => 1 + subPlan.filters.length),
+      1,
+    )
+    const mergeX = INITIAL_X + NODE_X_GAP * (maxPipelineLength + 1)
+
     // Merge node
     const mergeId = nextId()
-    const mergeX = INITIAL_X + NODE_X_GAP * 4
     const mergeY =
       INITIAL_Y + ((mergeComposite.sources.length - 1) * NODE_Y_GAP * 3) / 2
     nodes.push({

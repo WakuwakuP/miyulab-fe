@@ -109,7 +109,7 @@ export function translateExistsCondition(
         }
       case 'count-gte':
         return {
-          binds: [...allBinds, node.countValue ?? 0],
+          binds: [...allBinds, node.countValue ?? 1],
           joins: [],
           sql: `(SELECT COUNT(*) FROM ${fromClause}${joinPart} WHERE ${whereClause}${innerWhere}) >= ?`,
         }
