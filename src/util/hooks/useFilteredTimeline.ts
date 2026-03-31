@@ -10,7 +10,10 @@ import {
 } from 'react'
 import type { StatusAddAppIndex, TimelineConfigV2 } from 'types/types'
 import { compilePhase1ForTimeline } from 'util/db/query-ir/compat/compilePhase1'
-import { configToQueryPlan } from 'util/db/query-ir/compat/configToNodes'
+import {
+  configToQueryPlan,
+  enrichQueryPlan,
+} from 'util/db/query-ir/compat/configToNodes'
 import {
   type ChangeHint,
   getSqliteDb,
@@ -117,21 +120,22 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
   }, [config.backendFilter, apps])
 
   // 2. IR パイプライン: config → QueryPlan → Phase1 SQL
+  //    queryPlan が保存されている場合は enrichQueryPlan でコンテキストを注入して使用
   const localAccountIds = useLocalAccountIds(targetBackendUrls)
   const serverIds = useServerIds(targetBackendUrls)
 
   const phase1Result = useMemo(() => {
-    const plan = configToQueryPlan(config, {
-      localAccountIds,
-      queryLimit,
-      serverIds,
-    })
+    const ctx = { localAccountIds, queryLimit, serverIds }
+    const plan = config.queryPlan
+      ? enrichQueryPlan(config.queryPlan, ctx)
+      : configToQueryPlan(config, ctx)
     return compilePhase1ForTimeline(plan)
   }, [config, localAccountIds, serverIds, queryLimit])
 
   const configType = config.type
   const customQuery = config.customQuery
   const configTimelineTypes = config.timelineTypes
+  const hasQueryPlan = config.queryPlan != null
 
   // 3. SQLite からデータ取得 (IR パイプライン)
   const sessionTag = `filtered-${configId}`
@@ -139,11 +143,12 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
   const fetchData = useCallback(async () => {
     void refreshToken
     // tag / notification はそれぞれ専用 Hook で処理するためスキップ
-    // customQuery が設定されている場合も useCustomQueryTimeline に委譲するためスキップ
+    // customQuery が設定されている場合は useCustomQueryTimeline に委譲するためスキップ
+    // ただし queryPlan が保存されている場合は IR パスで処理するためスキップしない
     if (
       configType === 'tag' ||
       configType === 'notification' ||
-      customQuery?.trim()
+      (customQuery?.trim() && !hasQueryPlan)
     ) {
       setStatuses([])
       return
@@ -225,6 +230,7 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
   }, [
     configType,
     customQuery,
+    hasQueryPlan,
     targetBackendUrls,
     phase1Result,
     recordDuration,

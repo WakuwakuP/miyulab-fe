@@ -237,3 +237,106 @@ export function configToQueryPlan(
 
   return { composites, filters, pagination, sort, source }
 }
+
+// ---------------------------------------------------------------------------
+// enrichQueryPlan — 保存済み QueryPlan にランタイムコンテキストを注入
+// ---------------------------------------------------------------------------
+
+/**
+ * FlowEditor で保存された QueryPlan にランタイム依存の情報を注入する。
+ *
+ * FlowEditor は localAccountIds / serverIds を持たない状態で QueryPlan を保存する。
+ * 実行時に以下を補完する:
+ * - timeline-scope.accountScope (home タイムラインのアカウントスコープ)
+ * - backend-filter.localAccountIds
+ * - moderation-filter.serverIds
+ * - pagination.limit (queryLimit)
+ *
+ * backend-filter ノードが存在しない場合は追加する。
+ * moderation-filter ノードが存在しない場合は追加する。
+ */
+export function enrichQueryPlan(
+  plan: QueryPlan,
+  context: ConfigToNodesContext,
+): QueryPlan {
+  const enrichedFilters = enrichFilters(plan.filters, context)
+
+  const enrichedComposites = plan.composites.map((c) => {
+    if (c.kind === 'merge') {
+      return {
+        ...c,
+        sources: c.sources.map((sub) => enrichQueryPlan(sub, context)),
+      }
+    }
+    return c
+  })
+
+  return {
+    ...plan,
+    composites: enrichedComposites,
+    filters: enrichedFilters,
+    pagination: { ...plan.pagination, limit: context.queryLimit },
+  }
+}
+
+function enrichFilters(
+  filters: FilterNode[],
+  context: ConfigToNodesContext,
+): FilterNode[] {
+  let hasBackendFilter = false
+  let hasModerationFilter = false
+
+  const enriched = filters.map((f): FilterNode => {
+    switch (f.kind) {
+      case 'timeline-scope': {
+        // home タイムラインにはアカウントスコープが必要
+        if (
+          f.timelineKeys.includes('home') &&
+          context.localAccountIds.length > 0 &&
+          (!f.accountScope || f.accountScope.length === 0)
+        ) {
+          return { ...f, accountScope: [...context.localAccountIds] }
+        }
+        return f
+      }
+      case 'backend-filter': {
+        hasBackendFilter = true
+        // localAccountIds を最新のコンテキストで上書き
+        if (context.localAccountIds.length > 0) {
+          return { ...f, localAccountIds: [...context.localAccountIds] }
+        }
+        return f
+      }
+      case 'moderation-filter': {
+        hasModerationFilter = true
+        // serverIds を最新のコンテキストで上書き
+        if (context.serverIds.length > 0) {
+          return { ...f, serverIds: [...context.serverIds] }
+        }
+        return f
+      }
+      default:
+        return f
+    }
+  })
+
+  // backend-filter が存在しない場合は追加
+  if (!hasBackendFilter && context.localAccountIds.length > 0) {
+    enriched.push({
+      kind: 'backend-filter',
+      localAccountIds: [...context.localAccountIds],
+    } satisfies BackendFilter)
+  }
+
+  // moderation-filter が存在しない場合は追加
+  if (!hasModerationFilter) {
+    enriched.push({
+      apply: ['mute', 'instance-block'],
+      kind: 'moderation-filter',
+      serverIds:
+        context.serverIds.length > 0 ? [...context.serverIds] : undefined,
+    } satisfies ModerationFilter)
+  }
+
+  return enriched
+}

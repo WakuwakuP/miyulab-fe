@@ -129,7 +129,11 @@ export function useNotifications(config?: TimelineConfigV2): {
     }
 
     // customQuery が設定されている場合は useCustomQueryTimeline に委譲するためスキップ
-    if (targetBackendUrls.length === 0 || config?.customQuery?.trim()) {
+    // ただし queryPlan が保存されている場合は通知Hook で処理するためスキップしない
+    if (
+      targetBackendUrls.length === 0 ||
+      (config?.customQuery?.trim() && !config?.queryPlan)
+    ) {
       setNotifications([])
       return
     }
@@ -190,6 +194,7 @@ export function useNotifications(config?: TimelineConfigV2): {
     configType,
     targetBackendUrls,
     config?.customQuery,
+    config?.queryPlan,
     notificationFilterKey,
     queryLimit,
     recordDuration,

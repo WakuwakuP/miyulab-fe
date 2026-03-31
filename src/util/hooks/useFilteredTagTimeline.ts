@@ -10,7 +10,10 @@ import {
 } from 'react'
 import type { StatusAddAppIndex, TimelineConfigV2 } from 'types/types'
 import { compilePhase1ForTagTimeline } from 'util/db/query-ir/compat/compilePhase1'
-import { configToQueryPlan } from 'util/db/query-ir/compat/configToNodes'
+import {
+  configToQueryPlan,
+  enrichQueryPlan,
+} from 'util/db/query-ir/compat/configToNodes'
 import {
   type ChangeHint,
   getSqliteDb,
@@ -119,23 +122,24 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
   const serverIds = useServerIds(targetBackendUrls)
 
   const phase1Result = useMemo(() => {
-    const plan = configToQueryPlan(config, {
-      localAccountIds,
-      queryLimit,
-      serverIds,
-    })
+    const ctx = { localAccountIds, queryLimit, serverIds }
+    const plan = config.queryPlan
+      ? enrichQueryPlan(config.queryPlan, ctx)
+      : configToQueryPlan(config, ctx)
     return compilePhase1ForTagTimeline(plan)
   }, [config, localAccountIds, serverIds, queryLimit])
 
   const configType = config.type
   const customQuery = config.customQuery
+  const hasQueryPlan = config.queryPlan != null
   const sessionTag = `tag-${configId}`
 
   const fetchData = useCallback(async () => {
     void refreshToken
     // tag 以外の type の場合は早期に空配列を返し、不要な DB クエリを防ぐ
     // customQuery が設定されている場合も useCustomQueryTimeline に委譲するためスキップ
-    if (configType !== 'tag' || customQuery?.trim()) {
+    // ただし queryPlan が保存されている場合は IR パスで処理するためスキップしない
+    if (configType !== 'tag' || (customQuery?.trim() && !hasQueryPlan)) {
       setStatuses([])
       return
     }
@@ -207,6 +211,7 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
   }, [
     configType,
     customQuery,
+    hasQueryPlan,
     targetBackendUrls,
     tags,
     phase1Result,

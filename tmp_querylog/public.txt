@@ -1,0 +1,218 @@
+-- SQL
+    SELECT
+  p.id AS post_id,
+  COALESCE((SELECT la2.backend_url FROM local_accounts la2 WHERE la2.id = spb.local_account_id), '') AS backendUrl,
+  spb.local_id AS local_id,
+  p.created_at_ms,
+  p.object_uri,
+  COALESCE(p.content_html, '') AS content_html,
+  COALESCE(p.spoiler_text, '') AS spoiler_text,
+  p.canonical_url,
+  p.language,
+  COALESCE(vt.name, 'public') AS visibility_code,
+  p.is_sensitive,
+  (p.reblog_of_post_id IS NOT NULL) AS is_reblog,
+  p.in_reply_to_uri AS in_reply_to_id,
+  p.edited_at_ms,
+  COALESCE(pr.acct, '') AS author_acct,
+  COALESCE(pr.username, '') AS author_username,
+  COALESCE(pr.display_name, '') AS author_display_name,
+  COALESCE(pr.avatar_url, '') AS author_avatar,
+  COALESCE(pr.header_url, '') AS author_header,
+  COALESCE(pr.is_locked, 0) AS author_locked,
+  COALESCE(pr.is_bot, 0) AS author_bot,
+  COALESCE(pr.url, '') AS author_url,
+  COALESCE(ps.replies_count, 0) AS replies_count,
+  COALESCE(ps.reblogs_count, 0) AS reblogs_count,
+  COALESCE(ps.favourites_count, 0) AS favourites_count,
+  (SELECT NULLIF(SUBSTR(
+      CASE WHEN pi2.is_favourited = 1 THEN ',favourite' ELSE '' END ||
+      CASE WHEN pi2.is_reblogged = 1 THEN ',reblog' ELSE '' END ||
+      CASE WHEN pi2.is_bookmarked = 1 THEN ',bookmark' ELSE '' END ||
+      CASE WHEN pi2.is_muted = 1 THEN ',mute' ELSE '' END ||
+      CASE WHEN pi2.is_pinned = 1 THEN ',pin' ELSE '' END
+    , 2), '') FROM post_interactions pi2 WHERE pi2.post_id = p.id LIMIT 1) AS engagements_csv,
+  (SELECT json_group_array(json_object('id', pm.media_local_id, 'type', COALESCE((SELECT mt.name FROM media_types mt WHERE mt.id = pm.media_type_id), 'unknown'), 'url', pm.url, 'preview_url', pm.preview_url, 'description', pm.description, 'blurhash', pm.blurhash, 'remote_url', pm.remote_url)) FROM post_media pm WHERE pm.post_id = p.id ORDER BY pm.sort_order) AS media_json,
+  (SELECT json_group_array(json_object('acct', pme.acct, 'username', pme.username, 'url', pme.url)) FROM post_mentions pme WHERE pme.post_id = p.id) AS mentions_json,
+  (SELECT json_group_array(tk) FROM (SELECT DISTINCT te.timeline_key AS tk FROM timeline_entries te WHERE te.post_id = p.id)) AS timelineTypes,
+  (SELECT json_group_array(ht.name) FROM post_hashtags pht INNER JOIN hashtags ht ON pht.hashtag_id = ht.id WHERE pht.post_id = p.id) AS belongingTags,
+  (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM post_custom_emojis pce INNER JOIN custom_emojis ce ON pce.custom_emoji_id = ce.id WHERE pce.post_id = p.id) AS status_emojis_json,
+  (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM profile_custom_emojis prce INNER JOIN custom_emojis ce ON prce.custom_emoji_id = ce.id WHERE prce.profile_id = p.author_profile_id) AS account_emojis_json,
+  (SELECT json_object('id', pl.id, 'expires_at', pl.expires_at, 'multiple', pl.multiple, 'votes_count', pl.votes_count, 'options', (SELECT json_group_array(json_object('title', po.title, 'votes_count', po.votes_count)) FROM poll_options po WHERE po.poll_id = pl.id ORDER BY po.sort_order)) FROM polls pl WHERE pl.post_id = p.id) AS poll_json,
+  rs.id AS rb_post_id,
+  COALESCE(rs.content_html, '') AS rb_content_html,
+  COALESCE(rs.spoiler_text, '') AS rb_spoiler_text,
+  rs.canonical_url AS rb_canonical_url,
+  rs.language AS rb_language,
+  COALESCE(rvt.name, 'public') AS rb_visibility_code,
+  rs.is_sensitive AS rb_is_sensitive,
+  rs.in_reply_to_uri AS rb_in_reply_to_id,
+  rs.edited_at_ms AS rb_edited_at,
+  rs.created_at_ms AS rb_created_at_ms,
+  rs.object_uri AS rb_object_uri,
+  COALESCE(rpr.acct, '') AS rb_author_acct,
+  COALESCE(rpr.username, '') AS rb_author_username,
+  COALESCE(rpr.display_name, '') AS rb_author_display_name,
+  COALESCE(rpr.avatar_url, '') AS rb_author_avatar,
+  COALESCE(rpr.header_url, '') AS rb_author_header,
+  COALESCE(rpr.is_locked, 0) AS rb_author_locked,
+  COALESCE(rpr.is_bot, 0) AS rb_author_bot,
+  COALESCE(rpr.url, '') AS rb_author_url,
+  COALESCE(rps.replies_count, 0) AS rb_replies_count,
+  COALESCE(rps.reblogs_count, 0) AS rb_reblogs_count,
+  COALESCE(rps.favourites_count, 0) AS rb_favourites_count,
+  CASE WHEN rs.id IS NOT NULL
+    THEN (SELECT NULLIF(SUBSTR(
+      CASE WHEN pi2.is_favourited = 1 THEN ',favourite' ELSE '' END ||
+      CASE WHEN pi2.is_reblogged = 1 THEN ',reblog' ELSE '' END ||
+      CASE WHEN pi2.is_bookmarked = 1 THEN ',bookmark' ELSE '' END ||
+      CASE WHEN pi2.is_muted = 1 THEN ',mute' ELSE '' END ||
+      CASE WHEN pi2.is_pinned = 1 THEN ',pin' ELSE '' END
+    , 2), '') FROM post_interactions pi2 WHERE pi2.post_id = rs.id LIMIT 1)
+    ELSE NULL
+  END AS rb_engagements_csv,
+  CASE WHEN rs.id IS NOT NULL
+    THEN (SELECT json_group_array(json_object('id', pm.media_local_id, 'type', COALESCE((SELECT mt.name FROM media_types mt WHERE mt.id = pm.media_type_id), 'unknown'), 'url', pm.url, 'preview_url', pm.preview_url, 'description', pm.description, 'blurhash', pm.blurhash, 'remote_url', pm.remote_url)) FROM post_media pm WHERE pm.post_id = rs.id ORDER BY pm.sort_order)
+    ELSE NULL
+  END AS rb_media_json,
+  CASE WHEN rs.id IS NOT NULL
+    THEN (SELECT json_group_array(json_object('acct', pme.acct, 'username', pme.username, 'url', pme.url)) FROM post_mentions pme WHERE pme.post_id = rs.id)
+    ELSE NULL
+  END AS rb_mentions_json,
+  CASE WHEN rs.id IS NOT NULL
+    THEN (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM post_custom_emojis pce INNER JOIN custom_emojis ce ON pce.custom_emoji_id = ce.id WHERE pce.post_id = rs.id)
+    ELSE NULL
+  END AS rb_status_emojis_json,
+  CASE WHEN rs.id IS NOT NULL
+    THEN (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM profile_custom_emojis prce INNER JOIN custom_emojis ce ON prce.custom_emoji_id = ce.id WHERE prce.profile_id = rs.author_profile_id)
+    ELSE NULL
+  END AS rb_account_emojis_json,
+  CASE WHEN rs.id IS NOT NULL
+    THEN (SELECT json_object('id', pl.id, 'expires_at', pl.expires_at, 'multiple', pl.multiple, 'votes_count', pl.votes_count, 'options', (SELECT json_group_array(json_object('title', po.title, 'votes_count', po.votes_count)) FROM poll_options po WHERE po.poll_id = pl.id ORDER BY po.sort_order)) FROM polls pl WHERE pl.post_id = rs.id)
+    ELSE NULL
+  END AS rb_poll_json,
+  CASE WHEN rs.id IS NOT NULL
+    THEN COALESCE(
+      (SELECT rpb.local_id FROM post_backend_ids rpb WHERE rpb.post_id = rs.id AND rpb.server_id = spb.server_id LIMIT 1),
+      (SELECT rpb.local_id FROM post_backend_ids rpb WHERE rpb.post_id = rs.id ORDER BY rpb.server_id LIMIT 1)
+    )
+    ELSE NULL
+  END AS rb_local_id,
+  COALESCE(la_auth.remote_account_id, '') AS author_account_id,
+  CASE WHEN rs.id IS NOT NULL
+    THEN COALESCE(
+      (SELECT la3.remote_account_id FROM post_backend_ids rpb3 INNER JOIN local_accounts la3 ON la3.id = rpb3.local_account_id WHERE rpb3.post_id = rs.id AND rpb3.server_id = spb.server_id LIMIT 1),
+      '')
+    ELSE ''
+  END AS rb_author_account_id,
+  ps.emoji_reactions_json,
+  rps.emoji_reactions_json AS rb_emoji_reactions_json
+    FROM posts p
+  LEFT JOIN profiles pr ON p.author_profile_id = pr.id
+  LEFT JOIN visibility_types vt ON p.visibility_id = vt.id
+  LEFT JOIN post_backend_ids pb ON p.id = pb.post_id
+  LEFT JOIN post_stats ps ON p.id = ps.post_id
+  LEFT JOIN posts rs ON p.reblog_of_post_id IS NOT NULL AND rs.id = p.reblog_of_post_id
+  LEFT JOIN profiles rpr ON rs.author_profile_id = rpr.id
+  LEFT JOIN visibility_types rvt ON rs.visibility_id = rvt.id
+  LEFT JOIN post_stats rps ON rs.id = rps.post_id
+  LEFT JOIN post_backend_ids spb
+    ON spb.post_id = p.id
+    AND spb.server_id = (
+      SELECT MIN(spb_min.server_id)
+      FROM post_backend_ids spb_min
+      WHERE spb_min.post_id = p.id
+    )
+  LEFT JOIN local_accounts la_auth ON la_auth.id = spb.local_account_id
+    INNER JOIN timeline_entries te ON p.id = te.post_id
+    LEFT JOIN post_backend_ids pbi ON p.id = pbi.post_id
+    LEFT JOIN local_accounts la ON pbi.local_account_id = la.id
+    WHERE te.timeline_key = ?
+      AND la.backend_url IN (?,?)
+      AND EXISTS(SELECT 1 FROM post_media WHERE post_id = p.id)
+    GROUP BY p.id
+    ORDER BY p.created_at_ms DESC
+    LIMIT ?;
+
+-- Bind
+[
+  "public",
+  "https://pl.waku.dev",
+  "https://prismisskey.space",
+  50
+]
+
+-- EXPLAIN QUERY PLAN
+  SCAN la
+  SEARCH te USING AUTOMATIC PARTIAL COVERING INDEX (timeline_key=?)
+  SEARCH p USING INTEGER PRIMARY KEY (rowid=?)
+  SEARCH pr USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN
+  SEARCH post_media EXISTS USING COVERING INDEX idx_post_media_post (post_id=?)
+  SEARCH vt USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN
+  SEARCH pb USING COVERING INDEX idx_post_backend_ids_post (post_id=?) LEFT-JOIN
+  SEARCH ps USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN
+  SEARCH rs USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN
+  SEARCH rpr USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN
+  SEARCH rvt USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN
+  SEARCH rps USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN
+  SEARCH spb USING INDEX idx_post_backend_ids_server (server_id=?) LEFT-JOIN
+  CORRELATED SCALAR SUBQUERY 24
+  SEARCH spb_min USING INDEX idx_post_backend_ids_post (post_id=?)
+  SEARCH la_auth USING INTEGER PRIMARY KEY (rowid=?) LEFT-JOIN
+  SEARCH pbi USING COVERING INDEX sqlite_autoindex_post_backend_ids_2 (post_id=?) LEFT-JOIN
+  USE TEMP B-TREE FOR GROUP BY
+  CORRELATED SCALAR SUBQUERY 1
+  SEARCH la2 USING INTEGER PRIMARY KEY (rowid=?)
+  CORRELATED SCALAR SUBQUERY 2
+  SEARCH pi2 USING INDEX sqlite_autoindex_post_interactions_1 (post_id=?)
+  CORRELATED SCALAR SUBQUERY 4
+  SEARCH pm USING INDEX idx_post_media_post (post_id=?)
+  CORRELATED SCALAR SUBQUERY 3
+  SEARCH mt USING INTEGER PRIMARY KEY (rowid=?)
+  CORRELATED SCALAR SUBQUERY 5
+  SEARCH pme USING INDEX idx_post_mentions_post (post_id=?)
+  CORRELATED SCALAR SUBQUERY 7
+  CO-ROUTINE (subquery-6)
+  SCAN te USING COVERING INDEX sqlite_autoindex_timeline_entries_1
+  USE TEMP B-TREE FOR DISTINCT
+  SCAN (subquery-6)
+  CORRELATED SCALAR SUBQUERY 8
+  SEARCH pht USING COVERING INDEX sqlite_autoindex_post_hashtags_1 (post_id=?)
+  SEARCH ht USING INTEGER PRIMARY KEY (rowid=?)
+  CORRELATED SCALAR SUBQUERY 9
+  SEARCH pce USING COVERING INDEX sqlite_autoindex_post_custom_emojis_1 (post_id=?)
+  SEARCH ce USING INTEGER PRIMARY KEY (rowid=?)
+  CORRELATED SCALAR SUBQUERY 10
+  SEARCH prce USING COVERING INDEX sqlite_autoindex_profile_custom_emojis_1 (profile_id=?)
+  SEARCH ce USING INTEGER PRIMARY KEY (rowid=?)
+  CORRELATED SCALAR SUBQUERY 12
+  SEARCH pl USING INDEX sqlite_autoindex_polls_1 (post_id=?)
+  CORRELATED SCALAR SUBQUERY 11
+  SEARCH po USING INDEX idx_poll_options_poll (poll_id=?)
+  CORRELATED SCALAR SUBQUERY 13
+  SEARCH pi2 USING INDEX sqlite_autoindex_post_interactions_1 (post_id=?)
+  CORRELATED SCALAR SUBQUERY 15
+  SEARCH pm USING INDEX idx_post_media_post (post_id=?)
+  CORRELATED SCALAR SUBQUERY 14
+  SEARCH mt USING INTEGER PRIMARY KEY (rowid=?)
+  CORRELATED SCALAR SUBQUERY 16
+  SEARCH pme USING INDEX idx_post_mentions_post (post_id=?)
+  CORRELATED SCALAR SUBQUERY 17
+  SEARCH pce USING COVERING INDEX sqlite_autoindex_post_custom_emojis_1 (post_id=?)
+  SEARCH ce USING INTEGER PRIMARY KEY (rowid=?)
+  CORRELATED SCALAR SUBQUERY 18
+  SEARCH prce USING COVERING INDEX sqlite_autoindex_profile_custom_emojis_1 (profile_id=?)
+  SEARCH ce USING INTEGER PRIMARY KEY (rowid=?)
+  CORRELATED SCALAR SUBQUERY 20
+  SEARCH pl USING INDEX sqlite_autoindex_polls_1 (post_id=?)
+  CORRELATED SCALAR SUBQUERY 19
+  SEARCH po USING INDEX idx_poll_options_poll (poll_id=?)
+  CORRELATED SCALAR SUBQUERY 21
+  SEARCH rpb USING INDEX idx_post_backend_ids_server (server_id=?)
+  CORRELATED SCALAR SUBQUERY 22
+  SEARCH rpb USING INDEX idx_post_backend_ids_post (post_id=?)
+  USE TEMP B-TREE FOR ORDER BY
+  CORRELATED SCALAR SUBQUERY 23
+  SEARCH rpb3 USING INDEX idx_post_backend_ids_server (server_id=?)
+  SEARCH la3 USING INTEGER PRIMARY KEY (rowid=?)
+  USE TEMP B-TREE FOR ORDER BY
