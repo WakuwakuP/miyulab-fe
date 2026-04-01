@@ -8,7 +8,9 @@
 // - knownValues がある場合: Select / MultiSelect (IN/NOT IN 時)
 // - テキスト型カラム: DB 値のインクリメンタル検索
 // - 数値型カラム: number input
+// - IN/NOT IN 演算子: MultiCombobox による複数選択
 
+import { type ComboboxItem, MultiCombobox } from 'app/_parts/MultiCombobox'
 import { Input } from 'components/ui/input'
 import {
   Select,
@@ -17,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from 'components/ui/select'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { FilterOp, FilterValue } from 'util/db/query-ir/nodes'
 
 // ---------------------------------------------------------------------------
@@ -243,9 +245,18 @@ export function ValueInput({
   value,
 }: ValueInputProps) {
   const isNullOp = op === 'IS NULL' || op === 'IS NOT NULL'
-  if (isNullOp) return null
-
   const isArrayOp = op === 'IN' || op === 'NOT IN'
+
+  // DB 検索を ComboboxItem[] に変換する関数 (hooks ルール準拠のため常に宣言)
+  const comboboxSearch = useMemo(() => {
+    if (!searchValues) return undefined
+    return async (query: string): Promise<ComboboxItem[]> => {
+      const results = await searchValues(table, column, query)
+      return results.map((r) => ({ label: r, value: r }))
+    }
+  }, [searchValues, table, column])
+
+  if (isNullOp) return null
 
   // knownValues がある場合
   if (knownValues && knownValues.length > 0) {
@@ -279,23 +290,22 @@ export function ValueInput({
   // 数値型
   if (columnType === 'integer' || columnType === 'real') {
     if (isArrayOp) {
-      const displayValue = Array.isArray(value)
-        ? value.join(', ')
+      const arrayVal = Array.isArray(value)
+        ? value.map(String)
         : String(value ?? '')
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
       return (
-        <Input
-          className="h-7 text-xs bg-gray-800 border-gray-600 flex-1"
-          onChange={(e) => {
-            const values = e.target.value
-              .split(',')
-              .map((s) => s.trim())
-              .filter(Boolean)
-              .map(Number)
-              .filter((n) => !Number.isNaN(n))
-            onChange(values)
+        <MultiCombobox
+          emptyText="数値を検索..."
+          onChange={(vals) => {
+            const nums = vals.map(Number).filter((n) => !Number.isNaN(n))
+            onChange(nums)
           }}
-          placeholder="カンマ区切りで入力"
-          value={displayValue}
+          onSearch={comboboxSearch}
+          placeholder="値を選択"
+          value={arrayVal}
         />
       )
     }
@@ -318,21 +328,18 @@ export function ValueInput({
   // テキスト型 + DB検索
   if (searchValues) {
     if (isArrayOp) {
-      const displayValue = Array.isArray(value)
-        ? value.join(', ')
+      const arrayVal = Array.isArray(value)
+        ? (value as string[])
         : String(value ?? '')
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
       return (
-        <Input
-          className="h-7 text-xs bg-gray-800 border-gray-600 flex-1"
-          onChange={(e) => {
-            const values = e.target.value
-              .split(',')
-              .map((s) => s.trim())
-              .filter(Boolean)
-            onChange(values)
-          }}
-          placeholder="カンマ区切りで入力"
-          value={displayValue}
+        <MultiCombobox
+          onChange={(vals) => onChange(vals)}
+          onSearch={comboboxSearch}
+          placeholder="値を検索して選択"
+          value={arrayVal}
         />
       )
     }
@@ -347,25 +354,37 @@ export function ValueInput({
     )
   }
 
-  // フォールバック: 素の Input
-  const displayValue = Array.isArray(value)
-    ? value.join(', ')
-    : String(value ?? '')
+  // フォールバック: 素の Input (単一値) / MultiCombobox (配列)
+  if (isArrayOp) {
+    const arrayVal = Array.isArray(value)
+      ? value.map(String)
+      : String(value ?? '')
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+    return (
+      <MultiCombobox
+        onChange={(vals) => {
+          const nums = vals.map(Number)
+          const allNumeric = vals.every(
+            (v) => v !== '' && !Number.isNaN(Number(v)),
+          )
+          onChange(allNumeric ? nums : vals)
+        }}
+        placeholder="値を入力して選択"
+        value={arrayVal}
+      />
+    )
+  }
+
+  const displayValue = String(value ?? '')
   return (
     <Input
       className="h-7 text-xs bg-gray-800 border-gray-600 flex-1"
       onChange={(e) => {
         const raw = e.target.value
-        if (isArrayOp) {
-          const values = raw
-            .split(',')
-            .map((s) => s.trim())
-            .filter(Boolean)
-          onChange(values)
-        } else {
-          const num = Number(raw)
-          onChange(raw !== '' && !Number.isNaN(num) ? num : raw)
-        }
+        const num = Number(raw)
+        onChange(raw !== '' && !Number.isNaN(num) ? num : raw)
       }}
       placeholder="値"
       value={displayValue}

@@ -4,18 +4,37 @@
 // FlowNodePanel — ノード選択時のプロパティパネル
 // ============================================================
 
+import { ValueInput } from 'app/_components/NodeEditor/ValueInput'
+import { Checkbox } from 'components/ui/checkbox'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from 'components/ui/select'
 import { X } from 'lucide-react'
-import { useCallback } from 'react'
+import { useCallback, useMemo, useSyncExternalStore } from 'react'
+import type { ResolvedAccount } from 'util/accountResolver'
+import { getSnapshot, subscribeAccountResolver } from 'util/accountResolver'
+import {
+  getAllFilterableTables,
+  getExistsFilterTables,
+  getFilterableColumns,
+  getKnownValues,
+} from 'util/db/query-ir/completion'
 import type {
   AerialReplyFilter,
   BackendFilter,
   ExistsFilter,
   FilterNode,
+  FilterOp,
   ModerationFilter,
   SourceNode,
   TableFilter,
   TimelineScope,
 } from 'util/db/query-ir/nodes'
+import { searchColumnValuesDirect } from 'util/db/sqlite/stores/statusReadStore'
 import type { FlowNode, MergeNodeData } from './types'
 import { getFilterLabel } from './types'
 
@@ -24,6 +43,24 @@ type Props = {
   onUpdate: (id: string, data: FlowNode['data']) => void
   onDelete: () => void
   onClose: () => void
+}
+
+// --------------- Account hook ---------------
+
+function safeHostname(url: string): string {
+  try {
+    return new URL(url).hostname
+  } catch {
+    return url
+  }
+}
+
+function useAccounts(): ReadonlyMap<string, ResolvedAccount> {
+  return useSyncExternalStore(
+    subscribeAccountResolver,
+    getSnapshot,
+    getSnapshot,
+  )
 }
 
 export function FlowNodePanel({ node, onUpdate, onDelete, onClose }: Props) {
@@ -93,17 +130,18 @@ function SourcePanel({
   return (
     <div className="space-y-3">
       <div>
-        <label className="text-xs font-semibold text-gray-300 block mb-1">
+        <span className="text-xs font-semibold text-gray-300 block mb-1">
           テーブル
-          <select
-            className="w-full rounded bg-gray-700 px-2 py-1.5 text-sm text-white border border-gray-600"
-            onChange={(e) => handleTableChange(e.target.value)}
-            value={data.config.table}
-          >
-            <option value="posts">投稿 (posts)</option>
-            <option value="notifications">通知 (notifications)</option>
-          </select>
-        </label>
+        </span>
+        <Select onValueChange={handleTableChange} value={data.config.table}>
+          <SelectTrigger className="w-full h-7 text-xs bg-gray-700 border-gray-600 text-white">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="posts">投稿 (posts)</SelectItem>
+            <SelectItem value="notifications">通知 (notifications)</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
     </div>
   )
@@ -195,12 +233,31 @@ function TimelineScopePanel({
   filter: TimelineScope
   onUpdate: (f: FilterNode) => void
 }) {
+  const accounts = useAccounts()
+  const accountEntries = useMemo(() => [...accounts.entries()], [accounts])
+
   const toggleKey = useCallback(
     (key: string) => {
       const keys = filter.timelineKeys.includes(key)
         ? filter.timelineKeys.filter((k) => k !== key)
         : [...filter.timelineKeys, key]
       onUpdate({ ...filter, timelineKeys: keys.length > 0 ? keys : [key] })
+    },
+    [filter, onUpdate],
+  )
+
+  const toggleAccountScope = useCallback(
+    (localAccountId: number) => {
+      const current = new Set(filter.accountScope ?? [])
+      if (current.has(localAccountId)) {
+        current.delete(localAccountId)
+      } else {
+        current.add(localAccountId)
+      }
+      onUpdate({
+        ...filter,
+        accountScope: current.size > 0 ? [...current] : undefined,
+      })
     },
     [filter, onUpdate],
   )
@@ -229,29 +286,60 @@ function TimelineScopePanel({
         </div>
       </div>
       <div>
-        <label className="text-xs font-semibold text-gray-300 block mb-1">
-          アカウントスコープ (ID, カンマ区切り)
-          <input
-            className="w-full rounded bg-gray-700 px-2 py-1.5 text-sm text-white border border-gray-600"
-            onChange={(e) => {
-              const ids = e.target.value
-                .split(',')
-                .map((s) => Number.parseInt(s.trim(), 10))
-                .filter((n) => !Number.isNaN(n))
-              onUpdate({
-                ...filter,
-                accountScope: ids.length > 0 ? ids : undefined,
-              })
-            }}
-            placeholder="例: 1, 2"
-            type="text"
-            value={filter.accountScope?.join(', ') ?? ''}
-          />
-        </label>
+        <span className="text-xs font-semibold text-gray-300 block mb-1">
+          アカウントスコープ
+        </span>
+        {accountEntries.length > 0 ? (
+          <div className="space-y-1">
+            {accountEntries.map(([url, resolved]) => (
+              <span
+                className="flex items-center gap-1.5 text-xs text-gray-300 cursor-pointer"
+                key={url}
+                onClick={() => toggleAccountScope(resolved.localAccountId)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ')
+                    toggleAccountScope(resolved.localAccountId)
+                }}
+              >
+                <Checkbox
+                  checked={(filter.accountScope ?? []).includes(
+                    resolved.localAccountId,
+                  )}
+                  onCheckedChange={() =>
+                    toggleAccountScope(resolved.localAccountId)
+                  }
+                />
+                <span className="truncate" title={url}>
+                  {safeHostname(url)}
+                </span>
+              </span>
+            ))}
+          </div>
+        ) : (
+          <div className="text-xs text-gray-500">
+            {filter.accountScope?.join(', ') ?? '全アカウント'}
+          </div>
+        )}
       </div>
     </>
   )
 }
+
+const FILTER_OPS: { label: string; value: FilterOp }[] = [
+  { label: '=', value: '=' },
+  { label: '≠', value: '!=' },
+  { label: '>', value: '>' },
+  { label: '≥', value: '>=' },
+  { label: '<', value: '<' },
+  { label: '≤', value: '<=' },
+  { label: 'IN', value: 'IN' },
+  { label: 'NOT IN', value: 'NOT IN' },
+  { label: 'IS NULL', value: 'IS NULL' },
+  { label: 'IS NOT NULL', value: 'IS NOT NULL' },
+  { label: 'LIKE', value: 'LIKE' },
+  { label: 'NOT LIKE', value: 'NOT LIKE' },
+  { label: 'GLOB', value: 'GLOB' },
+]
 
 function TableFilterPanel({
   filter,
@@ -260,94 +348,120 @@ function TableFilterPanel({
   filter: TableFilter
   onUpdate: (f: FilterNode) => void
 }) {
+  const tableOptions = useMemo(() => getAllFilterableTables(), [])
+  const columnOptions = useMemo(
+    () => getFilterableColumns(filter.table),
+    [filter.table],
+  )
+  const knownValues = useMemo(
+    () => getKnownValues(filter.table, filter.column),
+    [filter.table, filter.column],
+  )
+  const columnMeta = useMemo(
+    () => columnOptions.find((c) => c.name === filter.column),
+    [columnOptions, filter.column],
+  )
+
+  const isNullOp = filter.op === 'IS NULL' || filter.op === 'IS NOT NULL'
+
+  const handleTableChange = useCallback(
+    (table: string) => {
+      const cols = getFilterableColumns(table)
+      const firstCol = cols[0]?.name ?? ''
+      onUpdate({ ...filter, column: firstCol, table, value: '' })
+    },
+    [filter, onUpdate],
+  )
+
+  const handleColumnChange = useCallback(
+    (column: string) => {
+      onUpdate({ ...filter, column, value: '' })
+    },
+    [filter, onUpdate],
+  )
+
   return (
     <div className="space-y-2">
       <div>
-        <label className="text-xs font-semibold text-gray-300 block mb-1">
+        <span className="text-xs font-semibold text-gray-300 block mb-1">
           テーブル
-          <input
-            className="w-full rounded bg-gray-700 px-2 py-1.5 text-sm text-white border border-gray-600"
-            onChange={(e) => onUpdate({ ...filter, table: e.target.value })}
-            type="text"
-            value={filter.table}
-          />
-        </label>
+        </span>
+        <Select onValueChange={handleTableChange} value={filter.table}>
+          <SelectTrigger className="w-full h-7 text-xs bg-gray-700 border-gray-600 text-white">
+            <SelectValue placeholder="テーブル" />
+          </SelectTrigger>
+          <SelectContent>
+            {tableOptions.map((t) => (
+              <SelectItem key={t.table} value={t.table}>
+                {t.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       <div>
-        <label className="text-xs font-semibold text-gray-300 block mb-1">
+        <span className="text-xs font-semibold text-gray-300 block mb-1">
           カラム
+        </span>
+        {columnOptions.length > 0 ? (
+          <Select onValueChange={handleColumnChange} value={filter.column}>
+            <SelectTrigger className="w-full h-7 text-xs bg-gray-700 border-gray-600 text-white">
+              <SelectValue placeholder="カラム" />
+            </SelectTrigger>
+            <SelectContent>
+              {columnOptions.map((c) => (
+                <SelectItem key={c.name} value={c.name}>
+                  {c.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        ) : (
           <input
             className="w-full rounded bg-gray-700 px-2 py-1.5 text-sm text-white border border-gray-600"
             onChange={(e) => onUpdate({ ...filter, column: e.target.value })}
             type="text"
             value={filter.column}
           />
-        </label>
+        )}
       </div>
       <div>
-        <label className="text-xs font-semibold text-gray-300 block mb-1">
+        <span className="text-xs font-semibold text-gray-300 block mb-1">
           演算子
-          <select
-            className="w-full rounded bg-gray-700 px-2 py-1.5 text-sm text-white border border-gray-600"
-            onChange={(e) =>
-              onUpdate({ ...filter, op: e.target.value as TableFilter['op'] })
-            }
-            value={filter.op}
-          >
-            {[
-              '=',
-              '!=',
-              '>',
-              '>=',
-              '<',
-              '<=',
-              'IN',
-              'NOT IN',
-              'IS NULL',
-              'IS NOT NULL',
-              'LIKE',
-              'NOT LIKE',
-              'GLOB',
-            ].map((op) => (
-              <option key={op} value={op}>
-                {op}
-              </option>
+        </span>
+        <Select
+          onValueChange={(v) =>
+            onUpdate({ ...filter, op: v as TableFilter['op'] })
+          }
+          value={filter.op}
+        >
+          <SelectTrigger className="w-full h-7 text-xs bg-gray-700 border-gray-600 text-white">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {FILTER_OPS.map((op) => (
+              <SelectItem key={op.value} value={op.value}>
+                {op.label}
+              </SelectItem>
             ))}
-          </select>
-        </label>
+          </SelectContent>
+        </Select>
       </div>
-      {filter.op !== 'IS NULL' && filter.op !== 'IS NOT NULL' && (
+      {!isNullOp && (
         <div>
-          <label className="text-xs font-semibold text-gray-300 block mb-1">
+          <span className="text-xs font-semibold text-gray-300 block mb-1">
             値
-            <input
-              className="w-full rounded bg-gray-700 px-2 py-1.5 text-sm text-white border border-gray-600"
-              onChange={(e) => {
-                const raw = e.target.value
-                if (filter.op === 'IN' || filter.op === 'NOT IN') {
-                  const values = raw
-                    .split(',')
-                    .map((s) => s.trim())
-                    .filter(Boolean)
-                  onUpdate({ ...filter, value: values })
-                } else {
-                  const num = Number(raw)
-                  onUpdate({ ...filter, value: Number.isNaN(num) ? raw : num })
-                }
-              }}
-              placeholder={
-                filter.op === 'IN' || filter.op === 'NOT IN'
-                  ? 'カンマ区切り'
-                  : '値'
-              }
-              type="text"
-              value={
-                Array.isArray(filter.value)
-                  ? filter.value.join(', ')
-                  : String(filter.value ?? '')
-              }
-            />
-          </label>
+          </span>
+          <ValueInput
+            column={filter.column}
+            columnType={columnMeta?.type ?? 'text'}
+            knownValues={knownValues}
+            onChange={(value) => onUpdate({ ...filter, value })}
+            op={filter.op}
+            searchValues={searchColumnValuesDirect}
+            table={filter.table}
+            value={filter.value ?? ''}
+          />
         </div>
       )}
     </div>
@@ -361,53 +475,68 @@ function ExistsFilterPanel({
   filter: ExistsFilter
   onUpdate: (f: FilterNode) => void
 }) {
+  const existsTableOptions = useMemo(() => getExistsFilterTables(), [])
+
   return (
     <div className="space-y-2">
       <div>
-        <label className="text-xs font-semibold text-gray-300 block mb-1">
+        <span className="text-xs font-semibold text-gray-300 block mb-1">
           テーブル
-          <input
-            className="w-full rounded bg-gray-700 px-2 py-1.5 text-sm text-white border border-gray-600"
-            onChange={(e) => onUpdate({ ...filter, table: e.target.value })}
-            type="text"
-            value={filter.table}
-          />
-        </label>
+        </span>
+        <Select
+          onValueChange={(v) => onUpdate({ ...filter, table: v })}
+          value={filter.table}
+        >
+          <SelectTrigger className="w-full h-7 text-xs bg-gray-700 border-gray-600 text-white">
+            <SelectValue placeholder="テーブル" />
+          </SelectTrigger>
+          <SelectContent>
+            {existsTableOptions.map((t) => (
+              <SelectItem key={t.table} value={t.table}>
+                {t.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       <div>
-        <label className="text-xs font-semibold text-gray-300 block mb-1">
+        <span className="text-xs font-semibold text-gray-300 block mb-1">
           モード
-          <select
-            className="w-full rounded bg-gray-700 px-2 py-1.5 text-sm text-white border border-gray-600"
-            onChange={(e) =>
-              onUpdate({
-                ...filter,
-                mode: e.target.value as ExistsFilter['mode'],
-              })
-            }
-            value={filter.mode}
-          >
-            <option value="exists">EXISTS</option>
-            <option value="not-exists">NOT EXISTS</option>
-            <option value="count-gte">COUNT &gt;=</option>
-            <option value="count-lte">COUNT &lt;=</option>
-            <option value="count-eq">COUNT =</option>
-          </select>
-        </label>
+        </span>
+        <Select
+          onValueChange={(v) =>
+            onUpdate({
+              ...filter,
+              mode: v as ExistsFilter['mode'],
+            })
+          }
+          value={filter.mode}
+        >
+          <SelectTrigger className="w-full h-7 text-xs bg-gray-700 border-gray-600 text-white">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="exists">EXISTS</SelectItem>
+            <SelectItem value="not-exists">NOT EXISTS</SelectItem>
+            <SelectItem value="count-gte">COUNT ≥</SelectItem>
+            <SelectItem value="count-lte">COUNT ≤</SelectItem>
+            <SelectItem value="count-eq">COUNT =</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
       {filter.mode.startsWith('count-') && (
         <div>
-          <label className="text-xs font-semibold text-gray-300 block mb-1">
+          <span className="text-xs font-semibold text-gray-300 block mb-1">
             カウント値
-            <input
-              className="w-full rounded bg-gray-700 px-2 py-1.5 text-sm text-white border border-gray-600"
-              onChange={(e) =>
-                onUpdate({ ...filter, countValue: Number(e.target.value) })
-              }
-              type="number"
-              value={filter.countValue ?? 0}
-            />
-          </label>
+          </span>
+          <input
+            className="w-full rounded bg-gray-700 px-2 py-1.5 text-sm text-white border border-gray-600"
+            onChange={(e) =>
+              onUpdate({ ...filter, countValue: Number(e.target.value) })
+            }
+            type="number"
+            value={filter.countValue ?? 0}
+          />
         </div>
       )}
     </div>
@@ -421,27 +550,73 @@ function BackendFilterPanel({
   filter: BackendFilter
   onUpdate: (f: FilterNode) => void
 }) {
+  const accounts = useAccounts()
+  const accountEntries = useMemo(() => [...accounts.entries()], [accounts])
+
+  const toggleAccount = useCallback(
+    (localAccountId: number) => {
+      const ids = new Set(filter.localAccountIds)
+      if (ids.has(localAccountId)) {
+        ids.delete(localAccountId)
+      } else {
+        ids.add(localAccountId)
+      }
+      onUpdate({ ...filter, localAccountIds: [...ids] })
+    },
+    [filter, onUpdate],
+  )
+
+  if (accountEntries.length === 0) {
+    return (
+      <div className="text-xs text-gray-400">
+        アカウント ID: {filter.localAccountIds.join(', ') || '(なし)'}
+      </div>
+    )
+  }
+
   return (
     <div>
-      <label className="text-xs font-semibold text-gray-300 block mb-1">
-        ローカルアカウント ID (カンマ区切り)
-        <input
-          className="w-full rounded bg-gray-700 px-2 py-1.5 text-sm text-white border border-gray-600"
-          onChange={(e) => {
-            const ids = e.target.value
-              .split(',')
-              .map((s) => Number.parseInt(s.trim(), 10))
-              .filter((n) => !Number.isNaN(n))
-            onUpdate({ ...filter, localAccountIds: ids })
-          }}
-          placeholder="例: 1, 2"
-          type="text"
-          value={filter.localAccountIds.join(', ')}
-        />
-      </label>
+      <span className="text-xs font-semibold text-gray-300 block mb-1">
+        ローカルアカウント
+      </span>
+      <div className="space-y-1">
+        {accountEntries.map(([url, resolved]) => (
+          <span
+            className="flex items-center gap-1.5 text-xs text-gray-300 cursor-pointer"
+            key={url}
+            onClick={() => toggleAccount(resolved.localAccountId)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ')
+                toggleAccount(resolved.localAccountId)
+            }}
+          >
+            <Checkbox
+              checked={filter.localAccountIds.includes(resolved.localAccountId)}
+              onCheckedChange={() => toggleAccount(resolved.localAccountId)}
+            />
+            <span className="truncate" title={url}>
+              {safeHostname(url)}
+            </span>
+          </span>
+        ))}
+      </div>
     </div>
   )
 }
+
+const AERIAL_NOTIFICATION_TYPES = [
+  { key: 'favourite', label: 'ふぁぼ' },
+  { key: 'reaction', label: 'リアクション' },
+  { key: 'reblog', label: 'ブースト' },
+  { key: 'emoji_reaction', label: '絵文字リアクション' },
+]
+
+const AERIAL_TIME_WINDOWS = [
+  { label: '1分', value: '60000' },
+  { label: '3分', value: '180000' },
+  { label: '5分', value: '300000' },
+  { label: '10分', value: '600000' },
+]
 
 function AerialReplyPanel({
   filter,
@@ -450,51 +625,70 @@ function AerialReplyPanel({
   filter: AerialReplyFilter
   onUpdate: (f: FilterNode) => void
 }) {
-  const TYPES = ['favourite', 'reaction', 'reblog', 'emoji_reaction']
-
   return (
     <div className="space-y-2">
       <div>
         <span className="text-xs font-semibold text-gray-300 block mb-1">
           通知種別
         </span>
-        <div className="flex flex-wrap gap-1">
-          {TYPES.map((t) => (
-            <button
-              className={`px-2 py-0.5 rounded text-xs transition-colors ${
-                filter.notificationTypes.includes(t)
-                  ? 'bg-yellow-600 text-white'
-                  : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
-              }`}
-              key={t}
+        <div className="space-y-1">
+          {AERIAL_NOTIFICATION_TYPES.map(({ key, label }) => (
+            <span
+              className="flex items-center gap-1.5 text-xs text-gray-300 cursor-pointer"
+              key={key}
               onClick={() => {
-                const types = filter.notificationTypes.includes(t)
-                  ? filter.notificationTypes.filter((x) => x !== t)
-                  : [...filter.notificationTypes, t]
-                onUpdate({ ...filter, notificationTypes: types })
+                const types = filter.notificationTypes.includes(key)
+                  ? filter.notificationTypes.filter((x) => x !== key)
+                  : [...filter.notificationTypes, key]
+                if (types.length > 0)
+                  onUpdate({ ...filter, notificationTypes: types })
               }}
-              type="button"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  const types = filter.notificationTypes.includes(key)
+                    ? filter.notificationTypes.filter((x) => x !== key)
+                    : [...filter.notificationTypes, key]
+                  if (types.length > 0)
+                    onUpdate({ ...filter, notificationTypes: types })
+                }
+              }}
             >
-              {t}
-            </button>
+              <Checkbox
+                checked={filter.notificationTypes.includes(key)}
+                onCheckedChange={() => {
+                  const types = filter.notificationTypes.includes(key)
+                    ? filter.notificationTypes.filter((x) => x !== key)
+                    : [...filter.notificationTypes, key]
+                  if (types.length > 0)
+                    onUpdate({ ...filter, notificationTypes: types })
+                }}
+              />
+              {label}
+            </span>
           ))}
         </div>
       </div>
       <div>
-        <label className="text-xs font-semibold text-gray-300 block mb-1">
-          時間窓 (秒)
-          <input
-            className="w-full rounded bg-gray-700 px-2 py-1.5 text-sm text-white border border-gray-600"
-            onChange={(e) =>
-              onUpdate({
-                ...filter,
-                timeWindowMs: Number(e.target.value) * 1000,
-              })
-            }
-            type="number"
-            value={filter.timeWindowMs / 1000}
-          />
-        </label>
+        <span className="text-xs font-semibold text-gray-300 block mb-1">
+          時間窓
+        </span>
+        <Select
+          onValueChange={(v) =>
+            onUpdate({ ...filter, timeWindowMs: Number(v) })
+          }
+          value={String(filter.timeWindowMs)}
+        >
+          <SelectTrigger className="w-full h-7 text-xs bg-gray-700 border-gray-600 text-white">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {AERIAL_TIME_WINDOWS.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
     </div>
   )
@@ -517,14 +711,10 @@ function ModerationPanel({
       <span className="text-xs font-semibold text-gray-300 block mb-1">
         適用フィルタ
       </span>
-      <div className="flex flex-wrap gap-1">
+      <div className="space-y-1">
         {APPLY_OPTIONS.map((opt) => (
-          <button
-            className={`px-2 py-0.5 rounded text-xs transition-colors ${
-              filter.apply.includes(opt.key)
-                ? 'bg-red-600 text-white'
-                : 'bg-gray-700 text-gray-400 hover:bg-gray-600'
-            }`}
+          <span
+            className="flex items-center gap-1.5 text-xs text-gray-300 cursor-pointer"
             key={opt.key}
             onClick={() => {
               const apply = filter.apply.includes(opt.key)
@@ -538,10 +728,38 @@ function ModerationPanel({
                     : [opt.key],
               })
             }}
-            type="button"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                const apply = filter.apply.includes(opt.key)
+                  ? filter.apply.filter((a) => a !== opt.key)
+                  : [...filter.apply, opt.key]
+                onUpdate({
+                  ...filter,
+                  apply:
+                    apply.length > 0
+                      ? (apply as ('mute' | 'instance-block')[])
+                      : [opt.key],
+                })
+              }
+            }}
           >
+            <Checkbox
+              checked={filter.apply.includes(opt.key)}
+              onCheckedChange={() => {
+                const apply = filter.apply.includes(opt.key)
+                  ? filter.apply.filter((a) => a !== opt.key)
+                  : [...filter.apply, opt.key]
+                onUpdate({
+                  ...filter,
+                  apply:
+                    apply.length > 0
+                      ? (apply as ('mute' | 'instance-block')[])
+                      : [opt.key],
+                })
+              }}
+            />
             {opt.label}
-          </button>
+          </span>
         ))}
       </div>
     </div>
@@ -592,25 +810,29 @@ function OutputPanel({
   return (
     <div className="space-y-3">
       <div>
-        <label className="text-xs font-semibold text-gray-300 block mb-1">
+        <span className="text-xs font-semibold text-gray-300 block mb-1">
           ソート方向
-          <select
-            className="w-full rounded bg-gray-700 px-2 py-1.5 text-sm text-white border border-gray-600"
-            onChange={(e) =>
-              onUpdate(node.id, {
-                ...data,
-                sort: {
-                  ...data.sort,
-                  direction: e.target.value as 'ASC' | 'DESC',
-                },
-              })
-            }
-            value={data.sort.direction}
-          >
-            <option value="DESC">新しい順 (DESC)</option>
-            <option value="ASC">古い順 (ASC)</option>
-          </select>
-        </label>
+        </span>
+        <Select
+          onValueChange={(v) =>
+            onUpdate(node.id, {
+              ...data,
+              sort: {
+                ...data.sort,
+                direction: v as 'ASC' | 'DESC',
+              },
+            })
+          }
+          value={data.sort.direction}
+        >
+          <SelectTrigger className="w-full h-7 text-xs bg-gray-700 border-gray-600 text-white">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="DESC">新しい順 (DESC)</SelectItem>
+            <SelectItem value="ASC">古い順 (ASC)</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
       <div>
         <label className="text-xs font-semibold text-gray-300 block mb-1">
