@@ -5,12 +5,22 @@
 // ============================================================
 //
 // TableFilter の値入力に使用する。
-// - knownValues がある場合: Select / MultiSelect (IN/NOT IN 時)
-// - テキスト型カラム: DB 値のインクリメンタル検索
+// - knownValues がある場合: Combobox (multiple) / Select
+// - テキスト型カラム: Combobox (DB 非同期検索)
 // - 数値型カラム: number input
-// - IN/NOT IN 演算子: MultiCombobox による複数選択
+// - IN/NOT IN 演算子: Combobox multiple による複数選択
 
-import { type ComboboxItem, MultiCombobox } from 'app/_parts/MultiCombobox'
+import {
+  Combobox,
+  ComboboxChip,
+  ComboboxChips,
+  ComboboxChipsInput,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxList,
+} from 'components/ui/combobox'
 import { Input } from 'components/ui/input'
 import {
   Select,
@@ -19,7 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from 'components/ui/select'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FilterOp, FilterValue } from 'util/db/query-ir/nodes'
 
 // ---------------------------------------------------------------------------
@@ -48,50 +58,93 @@ type ValueInputProps = {
 }
 
 // ---------------------------------------------------------------------------
-// Multi-value badge input (for IN / NOT IN with knownValues)
+// Async multi-select combobox (DB search backed)
 // ---------------------------------------------------------------------------
 
-function KnownValuesMultiSelect({
-  knownValues,
+function AsyncMultiCombobox({
+  column,
   onChange,
+  placeholder = '値を検索して選択',
+  searchValues,
+  table,
   value,
 }: {
-  knownValues: string[]
-  onChange: (value: string[]) => void
+  column: string
+  onChange: (values: string[]) => void
+  placeholder?: string
+  searchValues: (
+    table: string,
+    column: string,
+    prefix: string,
+  ) => Promise<string[]>
+  table: string
   value: string[]
 }) {
-  const toggle = useCallback(
-    (v: string) => {
-      const next = value.includes(v)
-        ? value.filter((x) => x !== v)
-        : [...value, v]
-      onChange(next)
+  const [searchResults, setSearchResults] = useState<string[]>([])
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // 選択済み + 検索結果をマージ (重複除去)
+  const items = [...new Set([...value, ...searchResults])]
+
+  const handleInputChange = useCallback(
+    (inputValue: string) => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+      if (!inputValue) {
+        setSearchResults([])
+        return
+      }
+      let cancelled = false
+      debounceRef.current = setTimeout(() => {
+        void searchValues(table, column, inputValue).then((results) => {
+          if (!cancelled) setSearchResults(results)
+        })
+      }, 200)
+      return () => {
+        cancelled = true
+      }
     },
-    [value, onChange],
+    [searchValues, table, column],
   )
 
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+    }
+  }, [])
+
   return (
-    <div className="flex flex-wrap gap-1">
-      {knownValues.map((v) => (
-        <button
-          className={`rounded px-1.5 py-0.5 text-xs border transition-colors ${
-            value.includes(v)
-              ? 'bg-blue-600/30 border-blue-500/50 text-blue-300'
-              : 'bg-gray-800 border-gray-600 text-gray-400 hover:border-gray-500'
-          }`}
-          key={v}
-          onClick={() => toggle(v)}
-          type="button"
-        >
-          {v}
-        </button>
-      ))}
-    </div>
+    <Combobox
+      filter={null}
+      items={items}
+      multiple
+      onInputValueChange={handleInputChange}
+      onValueChange={onChange}
+      value={value}
+    >
+      <ComboboxChips className="min-h-7 text-xs bg-gray-800 border-gray-600">
+        {value.map((item) => (
+          <ComboboxChip className="text-[10px]" key={item}>
+            {item}
+          </ComboboxChip>
+        ))}
+        <ComboboxChipsInput className="text-xs" placeholder={placeholder} />
+      </ComboboxChips>
+      <ComboboxContent>
+        <ComboboxEmpty>候補が見つかりません</ComboboxEmpty>
+        <ComboboxList>
+          {(item) => (
+            <ComboboxItem className="text-xs" key={item} value={item}>
+              {item}
+            </ComboboxItem>
+          )}
+        </ComboboxList>
+      </ComboboxContent>
+    </Combobox>
   )
 }
 
 // ---------------------------------------------------------------------------
-// Autocomplete text input (DB search backed)
+// Autocomplete single input (DB search backed)
 // ---------------------------------------------------------------------------
 
 function AutocompleteInput({
@@ -111,27 +164,27 @@ function AutocompleteInput({
   table: string
   value: string
 }) {
-  const [suggestions, setSuggestions] = useState<string[]>([])
-  const [showSuggestions, setShowSuggestions] = useState(false)
-  const [selectedIndex, setSelectedIndex] = useState(0)
+  const [searchResults, setSearchResults] = useState<string[]>([])
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
 
-  const search = useCallback(
-    (prefix: string) => {
+  const items = [...new Set([...(value ? [value] : []), ...searchResults])]
+
+  const handleInputChange = useCallback(
+    (inputValue: string) => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
-      if (!prefix) {
-        setSuggestions([])
-        setShowSuggestions(false)
+      if (!inputValue) {
+        setSearchResults([])
         return
       }
+      let cancelled = false
       debounceRef.current = setTimeout(() => {
-        void searchValues(table, column, prefix).then((results) => {
-          setSuggestions(results)
-          setSelectedIndex(0)
-          setShowSuggestions(results.length > 0)
+        void searchValues(table, column, inputValue).then((results) => {
+          if (!cancelled) setSearchResults(results)
         })
       }, 200)
+      return () => {
+        cancelled = true
+      }
     },
     [searchValues, table, column],
   )
@@ -142,91 +195,67 @@ function AutocompleteInput({
     }
   }, [])
 
-  const handleChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const v = e.target.value
-      onChange(v)
-      search(v)
-    },
-    [onChange, search],
-  )
-
-  const applySuggestion = useCallback(
-    (suggestion: string) => {
-      onChange(suggestion)
-      setShowSuggestions(false)
-      inputRef.current?.focus()
-    },
-    [onChange],
-  )
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLInputElement>) => {
-      if (!showSuggestions) return
-      switch (e.key) {
-        case 'ArrowDown':
-          e.preventDefault()
-          setSelectedIndex((prev) =>
-            prev < suggestions.length - 1 ? prev + 1 : 0,
-          )
-          break
-        case 'ArrowUp':
-          e.preventDefault()
-          setSelectedIndex((prev) =>
-            prev > 0 ? prev - 1 : suggestions.length - 1,
-          )
-          break
-        case 'Tab':
-        case 'Enter':
-          if (suggestions[selectedIndex]) {
-            e.preventDefault()
-            applySuggestion(suggestions[selectedIndex])
-          }
-          break
-        case 'Escape':
-          setShowSuggestions(false)
-          break
-      }
-    },
-    [showSuggestions, suggestions, selectedIndex, applySuggestion],
-  )
-
   return (
-    <div className="relative flex-1">
-      <Input
+    <Combobox
+      filter={null}
+      items={items}
+      onInputValueChange={handleInputChange}
+      onValueChange={(val) => onChange(val as string)}
+      value={value}
+    >
+      <ComboboxInput
         className="h-7 text-xs bg-gray-800 border-gray-600"
-        onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
-        onChange={handleChange}
-        onFocus={() => {
-          if (value) search(value)
-        }}
-        onKeyDown={handleKeyDown}
         placeholder="値"
-        ref={inputRef}
-        value={value}
+        showTrigger={false}
       />
-      {showSuggestions && suggestions.length > 0 && (
-        <div className="absolute z-50 mt-1 w-full max-h-32 overflow-y-auto rounded bg-gray-900 border border-gray-600 shadow-lg">
-          {suggestions.map((s, i) => (
-            <button
-              className={`w-full text-left px-2 py-1 text-xs font-mono ${
-                i === selectedIndex
-                  ? 'bg-blue-600 text-white'
-                  : 'text-gray-300 hover:bg-gray-700'
-              }`}
-              key={s}
-              onMouseDown={(e) => {
-                e.preventDefault()
-                applySuggestion(s)
-              }}
-              type="button"
-            >
-              {s}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+      <ComboboxContent>
+        <ComboboxEmpty>候補が見つかりません</ComboboxEmpty>
+        <ComboboxList>
+          {(item) => (
+            <ComboboxItem className="text-xs" key={item} value={item}>
+              {item}
+            </ComboboxItem>
+          )}
+        </ComboboxList>
+      </ComboboxContent>
+    </Combobox>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Static multi-select combobox (known values)
+// ---------------------------------------------------------------------------
+
+function StaticMultiCombobox({
+  items,
+  onChange,
+  value,
+}: {
+  items: string[]
+  onChange: (values: string[]) => void
+  value: string[]
+}) {
+  return (
+    <Combobox items={items} multiple onValueChange={onChange} value={value}>
+      <ComboboxChips className="min-h-7 text-xs bg-gray-800 border-gray-600">
+        {value.map((item) => (
+          <ComboboxChip className="text-[10px]" key={item}>
+            {item}
+          </ComboboxChip>
+        ))}
+        <ComboboxChipsInput className="text-xs" placeholder="値を選択" />
+      </ComboboxChips>
+      <ComboboxContent>
+        <ComboboxEmpty>候補が見つかりません</ComboboxEmpty>
+        <ComboboxList>
+          {(item) => (
+            <ComboboxItem className="text-xs" key={item} value={item}>
+              {item}
+            </ComboboxItem>
+          )}
+        </ComboboxList>
+      </ComboboxContent>
+    </Combobox>
   )
 }
 
@@ -247,15 +276,6 @@ export function ValueInput({
   const isNullOp = op === 'IS NULL' || op === 'IS NOT NULL'
   const isArrayOp = op === 'IN' || op === 'NOT IN'
 
-  // DB 検索を ComboboxItem[] に変換する関数 (hooks ルール準拠のため常に宣言)
-  const comboboxSearch = useMemo(() => {
-    if (!searchValues) return undefined
-    return async (query: string): Promise<ComboboxItem[]> => {
-      const results = await searchValues(table, column, query)
-      return results.map((r) => ({ label: r, value: r }))
-    }
-  }, [searchValues, table, column])
-
   if (isNullOp) return null
 
   // knownValues がある場合
@@ -263,8 +283,8 @@ export function ValueInput({
     if (isArrayOp) {
       const arrayVal = Array.isArray(value) ? (value as string[]) : []
       return (
-        <KnownValuesMultiSelect
-          knownValues={knownValues}
+        <StaticMultiCombobox
+          items={knownValues}
           onChange={onChange}
           value={arrayVal}
         />
@@ -296,15 +316,28 @@ export function ValueInput({
             .split(',')
             .map((s) => s.trim())
             .filter(Boolean)
+      if (searchValues) {
+        return (
+          <AsyncMultiCombobox
+            column={column}
+            onChange={(vals) => {
+              const nums = vals.map(Number).filter((n) => !Number.isNaN(n))
+              onChange(nums)
+            }}
+            placeholder="数値を検索..."
+            searchValues={searchValues}
+            table={table}
+            value={arrayVal}
+          />
+        )
+      }
       return (
-        <MultiCombobox
-          emptyText="数値を検索..."
+        <StaticMultiCombobox
+          items={arrayVal}
           onChange={(vals) => {
             const nums = vals.map(Number).filter((n) => !Number.isNaN(n))
             onChange(nums)
           }}
-          onSearch={comboboxSearch}
-          placeholder="値を選択"
           value={arrayVal}
         />
       )
@@ -335,10 +368,11 @@ export function ValueInput({
             .map((s) => s.trim())
             .filter(Boolean)
       return (
-        <MultiCombobox
+        <AsyncMultiCombobox
+          column={column}
           onChange={(vals) => onChange(vals)}
-          onSearch={comboboxSearch}
-          placeholder="値を検索して選択"
+          searchValues={searchValues}
+          table={table}
           value={arrayVal}
         />
       )
@@ -354,7 +388,7 @@ export function ValueInput({
     )
   }
 
-  // フォールバック: 素の Input (単一値) / MultiCombobox (配列)
+  // フォールバック: 素の Input
   if (isArrayOp) {
     const arrayVal = Array.isArray(value)
       ? value.map(String)
@@ -363,7 +397,8 @@ export function ValueInput({
           .map((s) => s.trim())
           .filter(Boolean)
     return (
-      <MultiCombobox
+      <StaticMultiCombobox
+        items={arrayVal}
         onChange={(vals) => {
           const nums = vals.map(Number)
           const allNumeric = vals.every(
@@ -371,7 +406,6 @@ export function ValueInput({
           )
           onChange(allNumeric ? nums : vals)
         }}
-        placeholder="値を入力して選択"
         value={arrayVal}
       />
     )
