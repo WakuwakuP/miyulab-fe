@@ -84,8 +84,13 @@ export const FLOW_NODE_TYPES = {
 /** FilterNode から UI 表示用ラベルを生成 */
 export function getFilterLabel(filter: FilterNode): string {
   switch (filter.kind) {
-    case 'timeline-scope':
-      return `TL: ${filter.timelineKeys.join(', ')}`
+    case 'timeline-scope': {
+      const tlLabel = `TL: ${filter.timelineKeys.join(', ')}`
+      if (filter.accountScope && filter.accountScope.length > 0) {
+        return `${tlLabel} (Acc: ${filter.accountScope.join(', ')})`
+      }
+      return tlLabel
+    }
     case 'backend-filter':
       return `アカウント: ${filter.localAccountIds.length > 0 ? filter.localAccountIds.join(', ') : '未選択'}`
     case 'exists-filter':
