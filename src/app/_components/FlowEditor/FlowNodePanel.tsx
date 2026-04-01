@@ -28,6 +28,7 @@ import type {
   FilterCondition,
   FilterOp,
   GetIdsFilter,
+  GetIdsInputBinding,
   JoinCondition,
   TimeCondition,
 } from 'util/db/query-ir/nodes'
@@ -217,11 +218,7 @@ function GetIdsPanel({
     [edges, nodes, node.id],
   )
 
-  // このテーブルのフィルタ可能カラム（inputBinding 用）
-  const bindableColumns = useMemo(
-    () => getFilterableColumns(data.config.table),
-    [data.config.table],
-  )
+  // このテーブルのフィルタ可能カラム（inputBinding 用）は FilterConditionRow 内で参照する
 
   function updateConfig(patch: Partial<typeof data.config>) {
     onUpdate(node.id, { ...data, config: { ...data.config, ...patch } })
@@ -238,7 +235,16 @@ function GetIdsPanel({
   }
 
   function deleteFilter(idx: number) {
-    updateFilters(data.config.filters.filter((_, i) => i !== idx))
+    const f = data.config.filters[idx]
+    const isFC = f && 'op' in f
+    const clearBinding =
+      isFC && data.config.inputBinding?.column === (f as FilterCondition).column
+    const nextFilters = data.config.filters.filter((_, i) => i !== idx)
+    if (clearBinding) {
+      updateConfig({ filters: nextFilters, inputBinding: undefined })
+    } else {
+      updateFilters(nextFilters)
+    }
   }
 
   function addTableFilter() {
@@ -290,65 +296,6 @@ function GetIdsPanel({
         </Select>
       </div>
 
-      {/* 入力バインド */}
-      <div className="rounded border border-sky-900/60 bg-sky-950/30 p-2">
-        <div className="flex items-center gap-1.5 mb-2">
-          <Link className="h-3 w-3 text-sky-400" />
-          <span className="text-xs font-semibold text-sky-300">
-            入力バインド
-          </span>
-        </div>
-        {upstreamNodes.length === 0 ? (
-          <p className="text-[10px] text-gray-600">
-            ← 接続なし（左ハンドルに別ノードを繋ぐと有効）
-          </p>
-        ) : (
-          <>
-            <div className="mb-1.5">
-              <span className="text-[10px] text-gray-400 block mb-0.5">
-                接続元
-              </span>
-              <div className="flex flex-wrap gap-1">
-                {upstreamNodes.map((n) => (
-                  <span
-                    className="rounded bg-gray-700 border border-gray-600 px-1.5 py-0.5 text-[10px] text-gray-300"
-                    key={n.id}
-                  >
-                    {getNodeLabelV2(n.data)}
-                  </span>
-                ))}
-              </div>
-            </div>
-            <div>
-              <span className="text-[10px] text-gray-400 block mb-0.5">
-                バインド先カラム
-              </span>
-              <Select
-                onValueChange={(col) =>
-                  updateConfig({
-                    inputBinding:
-                      col && col !== '__none__' ? { column: col } : undefined,
-                  })
-                }
-                value={data.config.inputBinding?.column ?? '__none__'}
-              >
-                <SelectTrigger className="w-full h-6 text-xs bg-gray-700 border-gray-600 text-white">
-                  <SelectValue placeholder="カラムを選択" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__none__">（なし）</SelectItem>
-                  {bindableColumns.map((c) => (
-                    <SelectItem key={c.name} value={c.name}>
-                      {c.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </>
-        )}
-      </div>
-
       <div>
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs font-semibold text-gray-300">
@@ -394,9 +341,16 @@ function GetIdsPanel({
             <FilterConditionRow
               filter={filter}
               flatColumns={flatColumns}
+              inputBinding={data.config.inputBinding}
               key={key}
               onDelete={() => deleteFilter(idx)}
+              onSetInputBinding={(col) =>
+                updateConfig({
+                  inputBinding: col ? { column: col } : undefined,
+                })
+              }
               onUpdate={(f) => updateFilter(idx, f)}
+              upstreamNodes={upstreamNodes}
             />
           ) : (
             <ExistsConditionRow
@@ -416,11 +370,17 @@ function GetIdsPanel({
 function FilterConditionRow({
   filter,
   flatColumns,
+  upstreamNodes,
+  inputBinding,
+  onSetInputBinding,
   onUpdate,
   onDelete,
 }: {
   filter: FilterCondition
   flatColumns: FlatColumnOption[]
+  upstreamNodes: FlowNode[]
+  inputBinding: GetIdsInputBinding | undefined
+  onSetInputBinding: (column: string | undefined) => void
   onUpdate: (f: FilterCondition) => void
   onDelete: () => void
 }) {
@@ -432,9 +392,14 @@ function FilterConditionRow({
     getFilterableColumns(filter.table).find((c) => c.name === filter.column)
       ?.type ?? 'text'
 
+  const hasUpstream = upstreamNodes.length > 0
+  const isInputMode = hasUpstream && inputBinding?.column === filter.column
+  const showValueArea = !NO_VALUE_OPS.has(filter.op)
+
   function handleColumnKey(key: string) {
     const [tbl, ...rest] = key.split(':')
     const col = rest.join(':')
+    if (isInputMode) onSetInputBinding(undefined)
     onUpdate({
       column: col,
       op: '=',
@@ -449,6 +414,15 @@ function FilterConditionRow({
       op,
       value: NO_VALUE_OPS.has(op) ? undefined : filter.value,
     })
+  }
+
+  function toggleInputMode() {
+    if (isInputMode) {
+      onSetInputBinding(undefined)
+    } else {
+      onSetInputBinding(filter.column)
+      onUpdate({ ...filter, value: undefined })
+    }
   }
 
   const selectedKey = flatColumnKey({
@@ -490,7 +464,7 @@ function FilterConditionRow({
         </Select>
       </div>
 
-      <div className={NO_VALUE_OPS.has(filter.op) ? undefined : 'mb-1.5'}>
+      <div className={showValueArea ? 'mb-1.5' : undefined}>
         <span className="text-[10px] text-gray-400 block mb-0.5">演算子</span>
         <Select
           onValueChange={(v) => handleOpChange(v as FilterOp)}
@@ -509,15 +483,55 @@ function FilterConditionRow({
         </Select>
       </div>
 
-      <ValueInput
-        column={filter.column}
-        columnType={currentType}
-        knownValues={knownValues}
-        onChange={(value) => onUpdate({ ...filter, value })}
-        op={filter.op}
-        table={filter.table}
-        value={filter.value ?? null}
-      />
+      {showValueArea && (
+        <div>
+          <div className="flex items-center justify-between mb-0.5">
+            <span className="text-[10px] text-gray-400">値</span>
+            {hasUpstream && (
+              <button
+                className={`flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] border transition-colors ${
+                  isInputMode
+                    ? 'bg-sky-900/60 border-sky-700/70 text-sky-300'
+                    : 'bg-gray-700/60 border-gray-600 text-gray-500 hover:text-sky-400 hover:border-sky-700/50'
+                }`}
+                onClick={toggleInputMode}
+                title={isInputMode ? '手動入力に戻す' : '入力から割り当て'}
+                type="button"
+              >
+                <Link className="h-2.5 w-2.5" />
+                入力
+              </button>
+            )}
+          </div>
+          {isInputMode ? (
+            <div className="rounded bg-sky-950/40 border border-sky-800/50 px-2 py-1.5">
+              <p className="text-[10px] text-sky-400 mb-1">
+                上流ノードの出力を使用
+              </p>
+              <div className="flex flex-wrap gap-1">
+                {upstreamNodes.map((n) => (
+                  <span
+                    className="rounded bg-gray-700 border border-gray-600 px-1.5 py-0.5 text-[10px] text-gray-300"
+                    key={n.id}
+                  >
+                    {getNodeLabelV2(n.data)}
+                  </span>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <ValueInput
+              column={filter.column}
+              columnType={currentType}
+              knownValues={knownValues}
+              onChange={(value) => onUpdate({ ...filter, value })}
+              op={filter.op}
+              table={filter.table}
+              value={filter.value ?? null}
+            />
+          )}
+        </div>
+      )}
     </div>
   )
 }
