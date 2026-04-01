@@ -286,14 +286,20 @@ function GetIdsPanel({
           <SelectTrigger className="w-full h-7 text-xs bg-gray-700 border-gray-600 text-white">
             <SelectValue />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="max-h-60">
             {tables.map((t) => (
-              <SelectItem key={t.table} value={t.table}>
-                {t.label}
+              <SelectItem key={t.table} textValue={t.label} value={t.table}>
+                <span className="block">{t.label}</span>
+                <span className="block text-[10px] text-gray-500 font-mono">
+                  {t.table}
+                </span>
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
+        <p className="mt-0.5 text-[10px] text-gray-600 font-mono">
+          {data.config.table}
+        </p>
       </div>
 
       <div>
@@ -451,17 +457,23 @@ function FilterConditionRow({
           <SelectTrigger className="w-full h-6 text-xs bg-gray-700 border-gray-600 text-white">
             <SelectValue />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="max-h-60">
             {flatColumns.map((c) => {
               const k = flatColumnKey(c)
               return (
-                <SelectItem key={k} value={k}>
-                  {c.columnLabel}
+                <SelectItem key={k} textValue={c.columnLabel} value={k}>
+                  <span className="block">{c.columnLabel}</span>
+                  <span className="block text-[10px] text-gray-500 font-mono">
+                    {c.columnName}
+                  </span>
                 </SelectItem>
               )
             })}
           </SelectContent>
         </Select>
+        <p className="mt-0.5 text-[10px] text-gray-600 font-mono">
+          {filter.column}
+        </p>
       </div>
 
       <div className={showValueArea ? 'mb-1.5' : undefined}>
@@ -473,7 +485,7 @@ function FilterConditionRow({
           <SelectTrigger className="w-full h-6 text-xs bg-gray-700 border-gray-600 text-white">
             <SelectValue />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="max-h-60">
             {ALL_OPS.map((op) => (
               <SelectItem key={op} value={op}>
                 {op}
@@ -576,14 +588,20 @@ function ExistsConditionRow({
           <SelectTrigger className="w-full h-6 text-xs bg-gray-700 border-gray-600 text-white">
             <SelectValue />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="max-h-60">
             {existsTables.map((t) => (
-              <SelectItem key={t.table} value={t.table}>
-                {t.label}
+              <SelectItem key={t.table} textValue={t.label} value={t.table}>
+                <span className="block">{t.label}</span>
+                <span className="block text-[10px] text-gray-500 font-mono">
+                  {t.table}
+                </span>
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
+        <p className="mt-0.5 text-[10px] text-gray-600 font-mono">
+          {filter.table}
+        </p>
       </div>
 
       <div className={showCount ? 'mb-1.5' : undefined}>
@@ -601,7 +619,7 @@ function ExistsConditionRow({
           <SelectTrigger className="w-full h-6 text-xs bg-gray-700 border-gray-600 text-white">
             <SelectValue />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="max-h-60">
             {EXISTS_MODES.map((m) => (
               <SelectItem key={m.value} value={m.value}>
                 {m.label}
@@ -741,7 +759,7 @@ function LookupRelatedPanel({
           <SelectTrigger className="w-full h-7 text-xs bg-gray-700 border-gray-600 text-white">
             <SelectValue />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="max-h-60">
             {tables.map((t) => (
               <SelectItem key={t.table} value={t.table}>
                 {t.label}
@@ -788,7 +806,7 @@ function LookupRelatedPanel({
                   <SelectTrigger className="w-full h-6 text-[10px] bg-gray-700 border-gray-600 text-white">
                     <SelectValue placeholder="入力側" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="max-h-60">
                     {inputColumns.map((c) => (
                       <SelectItem key={c.name} value={c.name}>
                         {c.label}
@@ -808,7 +826,7 @@ function LookupRelatedPanel({
                   <SelectTrigger className="w-full h-6 text-[10px] bg-gray-700 border-gray-600 text-white">
                     <SelectValue placeholder="検索先側" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="max-h-60">
                     {lookupColumns.map((c) => (
                       <SelectItem key={c.name} value={c.name}>
                         {c.label}
@@ -860,7 +878,7 @@ function LookupRelatedPanel({
                 <SelectTrigger className="flex-1 h-6 text-[10px] bg-gray-700 border-gray-600 text-white">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="max-h-60">
                   {inputTimeColumns.map((c) => (
                     <SelectItem key={c.name} value={c.name}>
                       {c.label}
@@ -882,7 +900,7 @@ function LookupRelatedPanel({
                 <SelectTrigger className="flex-1 h-6 text-[10px] bg-gray-700 border-gray-600 text-white">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="max-h-60">
                   {lookupTimeColumns.map((c) => (
                     <SelectItem key={c.name} value={c.name}>
                       {c.label}
@@ -986,7 +1004,7 @@ function MergePanelV2({
           <SelectTrigger className="w-full h-7 text-xs bg-gray-700 border-gray-600 text-white">
             <SelectValue />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="max-h-60">
             <SelectItem value="union">union</SelectItem>
             <SelectItem value="intersect">intersect</SelectItem>
             <SelectItem value="interleave-by-time">
@@ -1051,7 +1069,7 @@ function OutputPanelV2({
           <SelectTrigger className="w-full h-7 text-xs bg-gray-700 border-gray-600 text-white">
             <SelectValue />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="max-h-60">
             <SelectItem value="DESC">新しい順 (DESC)</SelectItem>
             <SelectItem value="ASC">古い順 (ASC)</SelectItem>
           </SelectContent>
