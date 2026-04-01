@@ -59,6 +59,11 @@ export const TABLE_REGISTRY: TableRegistry = {
   blocked_instances: {
     cardinality: '1:1',
     columns: {
+      blocked_at: {
+        label: 'ブロック日時',
+        nullable: false,
+        type: 'integer',
+      },
       instance_domain: {
         label: 'インスタンスドメイン',
         nullable: false,
@@ -108,6 +113,11 @@ export const TABLE_REGISTRY: TableRegistry = {
         nullable: false,
         type: 'text',
       },
+      url: {
+        label: 'URL',
+        nullable: true,
+        type: 'text',
+      },
     },
     hints: {
       preferExists: true,
@@ -132,15 +142,65 @@ export const TABLE_REGISTRY: TableRegistry = {
   link_cards: {
     cardinality: '1:1',
     columns: {
+      author_name: {
+        label: '著者名',
+        nullable: true,
+        type: 'text',
+      },
+      author_url: {
+        label: '著者 URL',
+        nullable: true,
+        type: 'text',
+      },
+      blurhash: {
+        label: 'BlurHash',
+        nullable: true,
+        type: 'text',
+      },
+      card_type_id: {
+        label: 'カード種別 ID',
+        nullable: false,
+        type: 'integer',
+      },
       description: {
         label: '説明',
         nullable: false,
+        type: 'text',
+      },
+      embed_url: {
+        label: '埋め込み URL',
+        nullable: true,
+        type: 'text',
+      },
+      height: {
+        label: '高さ',
+        nullable: true,
+        type: 'integer',
+      },
+      html: {
+        label: 'HTML',
+        nullable: true,
+        type: 'text',
+      },
+      image: {
+        label: '画像 URL',
+        nullable: true,
         type: 'text',
       },
       post_id: {
         label: '投稿 ID',
         nullable: false,
         type: 'integer',
+      },
+      provider_name: {
+        label: 'プロバイダー名',
+        nullable: true,
+        type: 'text',
+      },
+      provider_url: {
+        label: 'プロバイダー URL',
+        nullable: true,
+        type: 'text',
       },
       title: {
         label: 'タイトル',
@@ -151,6 +211,11 @@ export const TABLE_REGISTRY: TableRegistry = {
         label: 'URL',
         nullable: false,
         type: 'text',
+      },
+      width: {
+        label: '幅',
+        nullable: true,
+        type: 'integer',
       },
     },
     joinPaths: {
@@ -176,6 +241,16 @@ export const TABLE_REGISTRY: TableRegistry = {
         nullable: false,
         type: 'text',
       },
+      backend_url: {
+        label: 'バックエンド URL',
+        nullable: false,
+        type: 'text',
+      },
+      created_at: {
+        label: '作成日時',
+        nullable: false,
+        type: 'integer',
+      },
       display_order: {
         label: '表示順',
         nullable: false,
@@ -183,6 +258,26 @@ export const TABLE_REGISTRY: TableRegistry = {
       },
       is_active: {
         label: 'アクティブ',
+        nullable: false,
+        type: 'integer',
+      },
+      profile_id: {
+        label: 'プロフィール ID',
+        nullable: true,
+        type: 'integer',
+      },
+      remote_account_id: {
+        label: 'リモートアカウント ID',
+        nullable: false,
+        type: 'text',
+      },
+      server_id: {
+        label: 'サーバー ID',
+        nullable: false,
+        type: 'integer',
+      },
+      updated_at: {
+        label: '更新日時',
         nullable: false,
         type: 'integer',
       },
@@ -245,6 +340,11 @@ export const TABLE_REGISTRY: TableRegistry = {
         label: 'アカウント ID',
         nullable: false,
         type: 'text',
+      },
+      muted_at: {
+        label: 'ミュート日時',
+        nullable: false,
+        type: 'integer',
       },
       server_id: {
         label: 'サーバー ID',
@@ -316,6 +416,11 @@ export const TABLE_REGISTRY: TableRegistry = {
         nullable: false,
         type: 'integer',
       },
+      local_id: {
+        label: 'ローカル ID',
+        nullable: false,
+        type: 'text',
+      },
       notification_type_id: {
         label: '通知種別 ID',
         nullable: false,
@@ -323,6 +428,11 @@ export const TABLE_REGISTRY: TableRegistry = {
       },
       reaction_name: {
         label: 'リアクション名',
+        nullable: true,
+        type: 'text',
+      },
+      reaction_url: {
+        label: 'リアクション URL',
         nullable: true,
         type: 'text',
       },
@@ -340,6 +450,11 @@ export const TABLE_REGISTRY: TableRegistry = {
   poll_options: {
     cardinality: '1:N',
     columns: {
+      poll_id: {
+        label: 'アンケート ID',
+        nullable: false,
+        type: 'integer',
+      },
       sort_order: {
         label: '順序',
         nullable: false,
@@ -384,6 +499,16 @@ export const TABLE_REGISTRY: TableRegistry = {
         nullable: false,
         type: 'integer',
       },
+      own_votes_json: {
+        label: '自分の投票 (JSON)',
+        nullable: true,
+        type: 'text',
+      },
+      poll_id: {
+        label: 'アンケート ID',
+        nullable: false,
+        type: 'integer',
+      },
       voted: {
         label: '投票済み',
         nullable: false,
@@ -418,10 +543,20 @@ export const TABLE_REGISTRY: TableRegistry = {
         nullable: false,
         type: 'integer',
       },
+      expires_at: {
+        label: '締め切り日時',
+        nullable: true,
+        type: 'text',
+      },
       multiple: {
         label: '複数選択',
         nullable: false,
         type: 'integer',
+      },
+      poll_local_id: {
+        label: 'アンケートローカル ID',
+        nullable: true,
+        type: 'text',
       },
       post_id: {
         label: '投稿 ID',
@@ -526,6 +661,16 @@ export const TABLE_REGISTRY: TableRegistry = {
         nullable: false,
         type: 'integer',
       },
+      static_url: {
+        label: '静止画 URL',
+        nullable: true,
+        type: 'text',
+      },
+      url: {
+        label: 'URL',
+        nullable: true,
+        type: 'text',
+      },
     },
     hints: {
       preferExists: true,
@@ -600,8 +745,23 @@ export const TABLE_REGISTRY: TableRegistry = {
         nullable: false,
         type: 'integer',
       },
+      my_reaction_name: {
+        label: '自分のリアクション名',
+        nullable: true,
+        type: 'text',
+      },
+      my_reaction_url: {
+        label: '自分のリアクション URL',
+        nullable: true,
+        type: 'text',
+      },
       post_id: {
         label: '投稿 ID',
+        nullable: false,
+        type: 'integer',
+      },
+      updated_at: {
+        label: '更新日時',
         nullable: false,
         type: 'integer',
       },
@@ -629,8 +789,38 @@ export const TABLE_REGISTRY: TableRegistry = {
         nullable: true,
         type: 'text',
       },
+      height: {
+        label: '高さ',
+        nullable: true,
+        type: 'integer',
+      },
+      media_local_id: {
+        label: 'メディアローカル ID',
+        nullable: true,
+        type: 'text',
+      },
+      media_type_id: {
+        label: 'メディア種別 ID',
+        nullable: false,
+        type: 'integer',
+      },
       post_id: {
         label: '投稿 ID',
+        nullable: false,
+        type: 'integer',
+      },
+      preview_url: {
+        label: 'プレビュー URL',
+        nullable: true,
+        type: 'text',
+      },
+      remote_url: {
+        label: 'リモート URL',
+        nullable: true,
+        type: 'text',
+      },
+      sort_order: {
+        label: '順序',
         nullable: false,
         type: 'integer',
       },
@@ -638,6 +828,11 @@ export const TABLE_REGISTRY: TableRegistry = {
         label: 'URL',
         nullable: false,
         type: 'text',
+      },
+      width: {
+        label: '幅',
+        nullable: true,
+        type: 'integer',
       },
     },
     hints: {
@@ -671,6 +866,16 @@ export const TABLE_REGISTRY: TableRegistry = {
         nullable: true,
         type: 'integer',
       },
+      url: {
+        label: 'URL',
+        nullable: false,
+        type: 'text',
+      },
+      username: {
+        label: 'ユーザー名',
+        nullable: false,
+        type: 'text',
+      },
     },
     hints: {
       preferExists: true,
@@ -688,6 +893,11 @@ export const TABLE_REGISTRY: TableRegistry = {
   post_stats: {
     cardinality: '1:1',
     columns: {
+      emoji_reactions_json: {
+        label: '絵文字リアクション (JSON)',
+        nullable: false,
+        type: 'text',
+      },
       favourites_count: {
         label: 'お気に入り数',
         nullable: false,
@@ -708,6 +918,11 @@ export const TABLE_REGISTRY: TableRegistry = {
         nullable: false,
         type: 'integer',
       },
+      updated_at: {
+        label: '更新日時',
+        nullable: false,
+        type: 'integer',
+      },
     },
     joinPaths: {
       posts: {
@@ -722,10 +937,20 @@ export const TABLE_REGISTRY: TableRegistry = {
   posts: {
     cardinality: '1:1',
     columns: {
+      application_name: {
+        label: 'アプリ名',
+        nullable: true,
+        type: 'text',
+      },
       author_profile_id: {
         label: '著者プロフィール ID',
         nullable: false,
         type: 'integer',
+      },
+      canonical_url: {
+        label: '正規 URL',
+        nullable: true,
+        type: 'text',
       },
       content_html: {
         label: 'HTML 本文',
@@ -736,6 +961,16 @@ export const TABLE_REGISTRY: TableRegistry = {
         label: '作成日時',
         nullable: false,
         type: 'integer',
+      },
+      edited_at_ms: {
+        label: '編集日時',
+        nullable: true,
+        type: 'integer',
+      },
+      in_reply_to_account_acct: {
+        label: 'リプライ先アカウント',
+        nullable: true,
+        type: 'text',
       },
       in_reply_to_uri: {
         label: 'リプライ先 URI',
@@ -762,6 +997,16 @@ export const TABLE_REGISTRY: TableRegistry = {
         nullable: true,
         type: 'text',
       },
+      last_fetched_at: {
+        label: '最終取得日時',
+        nullable: true,
+        type: 'integer',
+      },
+      object_uri: {
+        label: 'オブジェクト URI',
+        nullable: false,
+        type: 'text',
+      },
       origin_server_id: {
         label: '配信元サーバー ID',
         nullable: false,
@@ -776,6 +1021,11 @@ export const TABLE_REGISTRY: TableRegistry = {
         label: '引用元投稿 ID',
         nullable: true,
         type: 'integer',
+      },
+      quote_state: {
+        label: '引用状態',
+        nullable: true,
+        type: 'text',
       },
       reblog_of_post_id: {
         label: 'リブログ元投稿 ID',
@@ -821,6 +1071,11 @@ export const TABLE_REGISTRY: TableRegistry = {
         nullable: false,
         type: 'integer',
       },
+      updated_at: {
+        label: '更新日時',
+        nullable: false,
+        type: 'integer',
+      },
     },
     joinPaths: {
       posts: {
@@ -840,14 +1095,44 @@ export const TABLE_REGISTRY: TableRegistry = {
         nullable: false,
         type: 'text',
       },
+      actor_uri: {
+        label: 'アクター URI',
+        nullable: true,
+        type: 'text',
+      },
+      avatar_static_url: {
+        label: 'アバター静止画 URL',
+        nullable: false,
+        type: 'text',
+      },
+      avatar_url: {
+        label: 'アバター URL',
+        nullable: false,
+        type: 'text',
+      },
+      bio: {
+        label: '自己紹介',
+        nullable: false,
+        type: 'text',
+      },
+      created_at: {
+        label: '作成日時',
+        nullable: false,
+        type: 'text',
+      },
       display_name: {
         label: '表示名',
         nullable: false,
         type: 'text',
       },
-      domain: {
-        label: 'ドメイン',
-        nullable: true,
+      header_static_url: {
+        label: 'ヘッダー静止画 URL',
+        nullable: false,
+        type: 'text',
+      },
+      header_url: {
+        label: 'ヘッダー URL',
+        nullable: false,
         type: 'text',
       },
       is_bot: {
@@ -855,15 +1140,35 @@ export const TABLE_REGISTRY: TableRegistry = {
         nullable: true,
         type: 'integer',
       },
+      is_detail_fetched: {
+        label: '詳細取得済み',
+        nullable: false,
+        type: 'integer',
+      },
       is_locked: {
         label: '鍵アカウント',
         nullable: false,
+        type: 'integer',
+      },
+      last_fetched_at: {
+        label: '最終取得日時',
+        nullable: true,
+        type: 'integer',
+      },
+      moved_to_profile_id: {
+        label: '移転先プロフィール ID',
+        nullable: true,
         type: 'integer',
       },
       server_id: {
         label: 'サーバー ID',
         nullable: false,
         type: 'integer',
+      },
+      url: {
+        label: 'URL',
+        nullable: false,
+        type: 'text',
       },
       username: {
         label: 'ユーザー名',
@@ -913,6 +1218,11 @@ export const TABLE_REGISTRY: TableRegistry = {
       created_at_ms: {
         label: '作成日時',
         nullable: false,
+        type: 'integer',
+      },
+      display_post_id: {
+        label: '表示投稿 ID',
+        nullable: true,
         type: 'integer',
       },
       local_account_id: {
