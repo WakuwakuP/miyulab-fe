@@ -10,10 +10,8 @@ import {
 } from 'react'
 import type { StatusAddAppIndex, TimelineConfigV2 } from 'types/types'
 import { compilePhase1ForTagTimeline } from 'util/db/query-ir/compat/compilePhase1'
-import {
-  configToQueryPlan,
-  enrichQueryPlan,
-} from 'util/db/query-ir/compat/configToNodes'
+import { configToQueryPlan } from 'util/db/query-ir/compat/configToNodes'
+import { normalizeQueryPlanForExecution } from 'util/db/query-ir/compat/normalizeQueryPlan'
 import {
   type ChangeHint,
   getSqliteDb,
@@ -124,7 +122,7 @@ export function useFilteredTagTimeline(config: TimelineConfigV2): {
   const phase1Result = useMemo(() => {
     const ctx = { localAccountIds, queryLimit, serverIds }
     const plan = config.queryPlan
-      ? enrichQueryPlan(config.queryPlan, ctx)
+      ? normalizeQueryPlanForExecution(config.queryPlan, ctx)
       : configToQueryPlan(config, ctx)
     return compilePhase1ForTagTimeline(plan)
   }, [config, localAccountIds, serverIds, queryLimit])

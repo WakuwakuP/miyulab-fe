@@ -10,10 +10,8 @@ import {
 } from 'react'
 import type { StatusAddAppIndex, TimelineConfigV2 } from 'types/types'
 import { compilePhase1ForTimeline } from 'util/db/query-ir/compat/compilePhase1'
-import {
-  configToQueryPlan,
-  enrichQueryPlan,
-} from 'util/db/query-ir/compat/configToNodes'
+import { configToQueryPlan } from 'util/db/query-ir/compat/configToNodes'
+import { normalizeQueryPlanForExecution } from 'util/db/query-ir/compat/normalizeQueryPlan'
 import {
   type ChangeHint,
   getSqliteDb,
@@ -120,14 +118,14 @@ export function useFilteredTimeline(config: TimelineConfigV2): {
   }, [config.backendFilter, apps])
 
   // 2. IR パイプライン: config → QueryPlan → Phase1 SQL
-  //    queryPlan が保存されている場合は enrichQueryPlan でコンテキストを注入して使用
+  //    queryPlan が保存されている場合は normalizeQueryPlanForExecution でコンテキストを注入して使用
   const localAccountIds = useLocalAccountIds(targetBackendUrls)
   const serverIds = useServerIds(targetBackendUrls)
 
   const phase1Result = useMemo(() => {
     const ctx = { localAccountIds, queryLimit, serverIds }
     const plan = config.queryPlan
-      ? enrichQueryPlan(config.queryPlan, ctx)
+      ? normalizeQueryPlanForExecution(config.queryPlan, ctx)
       : configToQueryPlan(config, ctx)
     return compilePhase1ForTimeline(plan)
   }, [config, localAccountIds, serverIds, queryLimit])

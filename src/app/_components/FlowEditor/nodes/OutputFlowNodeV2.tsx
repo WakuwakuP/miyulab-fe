@@ -4,11 +4,11 @@ import { Handle, Position } from '@xyflow/react'
 import { ArrowDownToLine, X } from 'lucide-react'
 import { memo, useCallback } from 'react'
 import { useFlowActions } from '../FlowCanvas'
-import type { OutputNodeData } from '../types'
+import type { OutputFlowNodeDataV2 } from '../types'
 
-type Props = { id: string; data: OutputNodeData; selected?: boolean }
+type Props = { id: string; data: OutputFlowNodeDataV2; selected?: boolean }
 
-export const OutputFlowNode = memo(function OutputFlowNode({
+export const OutputFlowNodeV2 = memo(function OutputFlowNodeV2({
   id,
   data,
   selected,
@@ -39,7 +39,7 @@ export const OutputFlowNode = memo(function OutputFlowNode({
       <div className="flex items-center gap-2 mb-1">
         <ArrowDownToLine className="h-4 w-4 text-green-400" />
         <span className="text-xs font-bold text-green-400 uppercase tracking-wider flex-1">
-          Output
+          output
         </span>
         <button
           className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-gray-700 text-gray-500 hover:text-red-400 transition-all"
@@ -50,10 +50,10 @@ export const OutputFlowNode = memo(function OutputFlowNode({
         </button>
       </div>
       <div className="text-sm font-medium text-white">
-        {data.sort.direction === 'DESC' ? '新しい順' : '古い順'}
+        {data.config.sort.direction === 'DESC' ? '新しい順' : '古い順'}
       </div>
       <div className="text-[10px] text-gray-500 mt-0.5">
-        {data.pagination.limit} 件取得
+        {data.config.pagination.limit} 件
       </div>
     </div>
   )

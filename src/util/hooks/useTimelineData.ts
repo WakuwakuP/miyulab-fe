@@ -17,7 +17,7 @@ const noopLoadMore = () => {}
  *
  * ルーティング優先順位:
  * 1. `queryPlan` あり → type ベースルーティング (IR コンパイルパス)
- *    - 各 Hook が enrichQueryPlan → compilePhase1ForTimeline で直接処理
+ *    - 各 Hook が normalizeQueryPlanForExecution → compilePhase1ForTimeline で直接処理
  *    - nodesToWhere 由来の customQuery よりも正確（accountScope/moderation 保持）
  * 2. `customQuery` が非空 → `useCustomQueryTimeline` (後方互換)
  * 3. type ベースルーティング
@@ -50,7 +50,7 @@ export function useTimelineData(config: TimelineConfigV2): {
   const customQueryTimeline = useCustomQueryTimeline(config)
 
   // queryPlan が保存されている場合は IR コンパイルパスを優先
-  // (各 Hook 内で enrichQueryPlan → compilePhase1 で直接処理される)
+  // (各 Hook 内で normalizeQueryPlanForExecution → compilePhase1 で直接処理される)
   if (config.queryPlan) {
     switch (config.type) {
       case 'home':

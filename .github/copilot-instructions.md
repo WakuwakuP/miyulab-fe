@@ -10,9 +10,11 @@ yarn dev              # 開発サーバー起動 (HTTPS, --experimental-https)
 yarn build            # 本番ビルド — コミット前に必ず成功を確認
 yarn check            # Biome lint & format チェック
 yarn check:fix        # Biome 自動修正
+yarn test             # vitest テスト実行
 ```
 
 **コミット前に `yarn build` と `yarn check` を必ず実行すること。** Husky pre-commit hookでもlint-stagedが走る。
+**`npx`でビルド・コードチェック・テストを実行してはいけない**
 
 ## Tech Stack
 

@@ -37,10 +37,10 @@ import {
 } from 'react'
 import { FlowNodePanel } from './FlowNodePanel'
 import {
-  FilterFlowNode,
-  MergeFlowNode,
-  OutputFlowNode,
-  SourceFlowNode,
+  GetIdsFlowNode,
+  LookupRelatedFlowNode,
+  MergeFlowNodeV2,
+  OutputFlowNodeV2,
 } from './nodes'
 import type { FlowEdge, FlowNode } from './types'
 
@@ -121,10 +121,10 @@ function DeletableEdge({
 // --------------- Node / Edge type registries ---------------
 
 const nodeTypes: NodeTypes = {
-  filter: FilterFlowNode,
-  merge: MergeFlowNode,
-  output: OutputFlowNode,
-  source: SourceFlowNode,
+  'get-ids': GetIdsFlowNode,
+  'lookup-related': LookupRelatedFlowNode,
+  'merge-v2': MergeFlowNodeV2,
+  'output-v2': OutputFlowNodeV2,
 }
 
 const edgeTypes: EdgeTypes = {

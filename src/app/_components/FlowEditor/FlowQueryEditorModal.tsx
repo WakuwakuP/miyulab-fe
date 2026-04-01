@@ -1,11 +1,8 @@
 'use client'
 
 // ============================================================
-// FlowQueryEditorModal — フルスクリーンフローエディタモーダル
+// FlowQueryEditorModal — QueryPlanV2 ベースのフルスクリーンフローエディタ
 // ============================================================
-//
-// ノード/エッジの状態を一元管理し、FlowCanvas に controlled props で渡す。
-// ツールバーからのノード追加・削除もここで処理する。
 
 import {
   addEdge,
@@ -16,6 +13,8 @@ import {
   type OnNodesChange,
   ReactFlowProvider,
 } from '@xyflow/react'
+import { InstanceBlockManager } from 'app/_parts/InstanceBlockManager'
+import { MuteManager } from 'app/_parts/MuteManager'
 import {
   Dialog,
   DialogContent,
@@ -25,54 +24,87 @@ import {
 import {
   ArrowDownToLine,
   BarChart3,
-  Code,
-  Database,
-  Eye,
   Filter,
   GitMerge,
-  Globe,
-  Hash,
-  MessageSquare,
+  Link2,
   Play,
   Shield,
-  User,
-  Zap,
+  VolumeX,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { compileQueryPlan } from 'util/db/query-ir/compile'
-import type { FilterNode, QueryPlan } from 'util/db/query-ir/nodes'
-import type { ExecutionStep, IdCollectStep } from 'util/db/query-ir/plan'
-import { validateQueryPlan } from 'util/db/query-ir/validate'
+import type { BackendFilter, TimelineConfigV2 } from 'types/types'
+import { resolveBackendUrlFromAccountId } from 'util/accountResolver'
+import { compilePhase1ForTimeline } from 'util/db/query-ir/compat/compilePhase1'
+import type { ConfigToNodesContext } from 'util/db/query-ir/compat/configToNodes'
+import { configToQueryPlan } from 'util/db/query-ir/compat/configToNodes'
+import { nodesToWhere } from 'util/db/query-ir/compat/nodesToWhere'
+import { normalizeQueryPlanForExecution } from 'util/db/query-ir/compat/normalizeQueryPlan'
+import type { QueryPlan } from 'util/db/query-ir/nodes'
+import { isQueryPlanV2, type QueryPlanV2 } from 'util/db/query-ir/nodes'
+import { migrateQueryPlanV1ToV2 } from 'util/db/query-ir/v2/migrateV1ToV2'
+import { validateQueryPlanV2 } from 'util/db/query-ir/v2/validateV2'
 import { FlowCanvas, type ViewportCenterFn } from './FlowCanvas'
-import { flowToQueryPlan } from './flowToQueryPlan'
+import { flowToQueryPlanV2 } from './flowToQueryPlanV2'
 import { queryPlanToFlow } from './queryPlanToFlow'
-import type {
-  FilterNodeData,
-  FlowEdge,
-  FlowGraphState,
-  FlowNode,
-} from './types'
+import type { FlowEdge, FlowGraphState, FlowNode } from './types'
 
 // --------------- Props ---------------
 
 type FlowQueryEditorModalProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
-  initialPlan?: QueryPlan
-  onSave: (plan: QueryPlan) => void
+  /** 編集対象のタイムライン設定 */
+  config: TimelineConfigV2
+  onSave: (updates: Partial<TimelineConfigV2>) => void
 }
 
-// --------------- Default plan ---------------
+// --------------- Default QueryPlanV2 ---------------
 
-const DEFAULT_PLAN: QueryPlan = {
-  composites: [],
-  filters: [],
-  pagination: { kind: 'pagination', limit: 50 },
-  sort: { direction: 'DESC', field: 'created_at_ms', kind: 'sort' },
-  source: { kind: 'source', table: 'posts' },
+function createDefaultQueryPlanV2(): QueryPlanV2 {
+  const a =
+    typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `a-${Date.now()}`
+  const b =
+    typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `b-${Date.now() + 1}`
+  return {
+    edges: [{ source: a, target: b }],
+    nodes: [
+      {
+        id: a,
+        node: { filters: [], kind: 'get-ids', table: 'posts' },
+      },
+      {
+        id: b,
+        node: {
+          kind: 'output-v2',
+          pagination: { limit: 50 },
+          sort: { direction: 'DESC', field: 'created_at_ms' },
+        },
+      },
+    ],
+    version: 2,
+  }
 }
 
-// --------------- Add-node menu items ---------------
+function planFromConfig(config: TimelineConfigV2): QueryPlanV2 {
+  if (config.queryPlan) {
+    if (isQueryPlanV2(config.queryPlan)) {
+      return config.queryPlan
+    }
+    return migrateQueryPlanV1ToV2(config.queryPlan)
+  }
+  const ctx: ConfigToNodesContext = {
+    localAccountIds: [],
+    queryLimit: 50,
+    serverIds: [],
+  }
+  return migrateQueryPlanV1ToV2(configToQueryPlan(config, ctx))
+}
+
+// --------------- Add-node menu (V2) ---------------
 
 type AddMenuItem = {
   icon: React.ReactNode
@@ -85,260 +117,75 @@ const ADD_MENU_ITEMS: AddMenuItem[] = [
   {
     createNode: (id, vp) => ({
       data: {
-        config: { kind: 'source', table: 'posts' },
-        nodeType: 'source',
+        config: { filters: [], kind: 'get-ids', table: 'posts' },
+        nodeType: 'get-ids',
       },
       id,
       position: vp,
-      type: 'source',
+      type: 'get-ids',
     }),
-    description: '投稿または通知テーブル',
-    icon: <Database className="h-3.5 w-3.5 text-blue-400" />,
-    label: 'ソース',
+    description: 'テーブルから ID を取得',
+    icon: <BarChart3 className="h-3.5 w-3.5 text-sky-400" />,
+    label: 'getIds',
   },
   {
     createNode: (id, vp) => ({
       data: {
-        filter: { kind: 'timeline-scope', timelineKeys: ['home'] },
-        label: 'TL: home',
-        nodeType: 'filter',
-      } satisfies FilterNodeData,
-      id,
-      position: vp,
-      type: 'filter',
-    }),
-    description: 'ホーム/ローカル/連合',
-    icon: <Globe className="h-3.5 w-3.5 text-emerald-400" />,
-    label: 'タイムライン',
-  },
-  {
-    createNode: (id, vp) => ({
-      data: {
-        filter: {
-          branches: [
-            [
-              {
-                accountScope: [1],
-                kind: 'timeline-scope',
-                timelineKeys: ['home'],
-              },
-            ],
-            [
-              {
-                accountScope: [2],
-                kind: 'timeline-scope',
-                timelineKeys: ['local'],
-              },
-            ],
+        config: {
+          joinConditions: [
+            {
+              inputColumn: 'actor_profile_id',
+              lookupColumn: 'author_profile_id',
+            },
           ],
-          kind: 'or-group',
-        } satisfies FilterNode,
-        label: 'OR分岐 (2条件)',
-        nodeType: 'filter',
-      } satisfies FilterNodeData,
-      id,
-      position: vp,
-      type: 'filter',
-    }),
-    description: '条件のOR結合',
-    icon: <Filter className="h-3.5 w-3.5 text-cyan-400" />,
-    label: 'OR分岐',
-  },
-  {
-    createNode: (id, vp) => ({
-      data: {
-        filter: { kind: 'exists-filter', mode: 'exists', table: 'post_media' },
-        label: '存在: post_media',
-        nodeType: 'filter',
-      } satisfies FilterNodeData,
-      id,
-      position: vp,
-      type: 'filter',
-    }),
-    description: 'メディア付き投稿のみ',
-    icon: <Eye className="h-3.5 w-3.5 text-indigo-400" />,
-    label: 'メディアあり',
-  },
-  {
-    createNode: (id, vp) => ({
-      data: {
-        filter: {
-          column: 'name',
-          kind: 'table-filter',
-          op: 'IN',
-          table: 'notification_types',
-          value: ['mention', 'favourite', 'reblog'],
+          kind: 'lookup-related',
+          lookupTable: 'posts',
         },
-        label: 'notification_types.name IN mention, favourite, reblog',
-        nodeType: 'filter',
-      } satisfies FilterNodeData,
-      id,
-      position: vp,
-      type: 'filter',
-    }),
-    description: '通知の種類でフィルタ',
-    icon: <MessageSquare className="h-3.5 w-3.5 text-pink-400" />,
-    label: '通知タイプ',
-  },
-  {
-    createNode: (id, vp) => ({
-      data: {
-        filter: {
-          column: 'name',
-          kind: 'table-filter',
-          op: '=',
-          table: 'hashtags',
-          value: '',
-        },
-        label: 'hashtags.name = ',
-        nodeType: 'filter',
-      } satisfies FilterNodeData,
-      id,
-      position: vp,
-      type: 'filter',
-    }),
-    description: 'タグでフィルタ',
-    icon: <Hash className="h-3.5 w-3.5 text-teal-400" />,
-    label: 'ハッシュタグ',
-  },
-  {
-    createNode: (id, vp) => ({
-      data: {
-        filter: {
-          column: 'acct',
-          kind: 'table-filter',
-          op: '=',
-          table: 'profiles',
-          value: '',
-        },
-        label: 'profiles.acct = ',
-        nodeType: 'filter',
-      } satisfies FilterNodeData,
-      id,
-      position: vp,
-      type: 'filter',
-    }),
-    description: 'アカウントでフィルタ',
-    icon: <User className="h-3.5 w-3.5 text-purple-400" />,
-    label: 'アカウント',
-  },
-  {
-    createNode: (id, vp) => ({
-      data: {
-        filter: {
-          kind: 'aerial-reply-filter',
-          notificationTypes: ['favourite', 'reaction', 'reblog'],
-          timeWindowMs: 180000,
-        },
-        label: '空中リプ (180秒)',
-        nodeType: 'filter',
-      } satisfies FilterNodeData,
-      id,
-      position: vp,
-      type: 'filter',
-    }),
-    description: 'ふぁぼ/ブースト後の返信',
-    icon: <Zap className="h-3.5 w-3.5 text-yellow-400" />,
-    label: '空中リプ検出',
-  },
-  {
-    createNode: (id, vp) => ({
-      data: {
-        filter: {
-          column: 'favourites_count',
-          kind: 'table-filter',
-          op: '>=',
-          table: 'post_stats',
-          value: 10,
-        },
-        label: 'post_stats.favourites_count >= 10',
-        nodeType: 'filter',
-      } satisfies FilterNodeData,
-      id,
-      position: vp,
-      type: 'filter',
-    }),
-    description: 'ふぁぼ数でフィルタ',
-    icon: <BarChart3 className="h-3.5 w-3.5 text-amber-400" />,
-    label: 'ふぁぼ数',
-  },
-  {
-    createNode: (id, vp) => ({
-      data: {
-        filter: {
-          apply: ['mute', 'instance-block'],
-          kind: 'moderation-filter',
-        },
-        label: 'モデレーション: mute, instance-block',
-        nodeType: 'filter',
-      } satisfies FilterNodeData,
-      id,
-      position: vp,
-      type: 'filter',
-    }),
-    description: 'ミュート/ブロック適用',
-    icon: <Shield className="h-3.5 w-3.5 text-red-400" />,
-    label: 'モデレーション',
-  },
-  {
-    createNode: (id, vp) => ({
-      data: {
-        filter: { kind: 'backend-filter', localAccountIds: [] },
-        label: 'アカウント: 未選択',
-        nodeType: 'filter',
-      } satisfies FilterNodeData,
-      id,
-      position: vp,
-      type: 'filter',
-    }),
-    description: '表示アカウント選択',
-    icon: <Globe className="h-3.5 w-3.5 text-emerald-400" />,
-    label: 'バックエンド',
-  },
-  {
-    createNode: (id, vp) => ({
-      data: {
-        filter: { kind: 'raw-sql-filter', referencedTables: [], where: '' },
-        label: 'SQL: ',
-        nodeType: 'filter',
-      } satisfies FilterNodeData,
-      id,
-      position: vp,
-      type: 'filter',
-    }),
-    description: 'SQL WHERE を直接記述',
-    icon: <Code className="h-3.5 w-3.5 text-orange-400" />,
-    label: 'カスタムSQL',
-  },
-  {
-    createNode: (id, vp) => ({
-      data: {
-        limit: 50,
-        nodeType: 'merge',
-        strategy: 'interleave-by-time' as const,
+        nodeType: 'lookup-related',
       },
       id,
       position: vp,
-      type: 'merge',
+      type: 'lookup-related',
     }),
-    description: '複数ソースを時間順に結合',
+    description: '関連テーブルへ相関検索',
+    icon: <Link2 className="h-3.5 w-3.5 text-violet-400" />,
+    label: 'lookupRelated',
+  },
+  {
+    createNode: (id, vp) => ({
+      data: {
+        config: {
+          kind: 'merge-v2',
+          limit: 50,
+          strategy: 'interleave-by-time',
+        },
+        nodeType: 'merge-v2',
+      },
+      id,
+      position: vp,
+      type: 'merge-v2',
+    }),
+    description: '複数ソースを結合',
     icon: <GitMerge className="h-3.5 w-3.5 text-cyan-400" />,
-    label: 'マージ',
+    label: 'merge',
   },
   {
     createNode: (id, vp) => ({
       data: {
-        nodeType: 'output',
-        pagination: { kind: 'pagination', limit: 50 },
-        sort: { direction: 'DESC', field: 'created_at_ms', kind: 'sort' },
+        config: {
+          kind: 'output-v2',
+          pagination: { limit: 50 },
+          sort: { direction: 'DESC', field: 'created_at_ms' },
+        },
+        nodeType: 'output-v2',
       },
       id,
       position: vp,
-      type: 'output',
+      type: 'output-v2',
     }),
     description: 'ソート & ページネーション',
     icon: <ArrowDownToLine className="h-3.5 w-3.5 text-green-400" />,
-    label: '出力',
+    label: 'output',
   },
 ]
 
@@ -347,35 +194,44 @@ const ADD_MENU_ITEMS: AddMenuItem[] = [
 export function FlowQueryEditorModal({
   open,
   onOpenChange,
-  initialPlan,
+  config,
   onSave,
 }: FlowQueryEditorModalProps) {
-  const plan = initialPlan ?? DEFAULT_PLAN
+  const [label, setLabel] = useState(config.label ?? '')
+  const [showMuteManager, setShowMuteManager] = useState(false)
+  const [showBlockManager, setShowBlockManager] = useState(false)
 
-  // --- viewport center ref (FlowCanvas が更新する) ---
   const viewportCenterRef = useRef<ViewportCenterFn | null>(null)
-
-  // --- F-4: add-node counters (component-scoped via useRef) ---
   const addNodeCounterRef = useRef(1000)
   const addJitterIndexRef = useRef(0)
 
-  // --- controlled state for nodes / edges ---
-  // F-1: 初期値は空配列。open 時に useEffect で初期化する
   const [nodes, setNodes] = useState<FlowNode[]>([])
   const [edges, setEdges] = useState<FlowEdge[]>([])
 
-  // --- F-2: open 時に plan からフローを再生成 ---
+  const resolvedPlanV2 = useMemo(() => {
+    try {
+      return planFromConfig(config)
+    } catch {
+      return createDefaultQueryPlanV2()
+    }
+  }, [config])
+
   useEffect(() => {
     if (open) {
-      const flow = queryPlanToFlow(plan)
+      setLabel(config.label ?? '')
+    }
+  }, [open, config.label])
+
+  useEffect(() => {
+    if (open) {
+      const flow = queryPlanToFlow(resolvedPlanV2)
       setNodes(flow.nodes)
       setEdges(flow.edges)
       addNodeCounterRef.current = 1000
       addJitterIndexRef.current = 0
     }
-  }, [open, plan])
+  }, [open, resolvedPlanV2])
 
-  // --- React Flow change handlers ---
   const onNodesChange: OnNodesChange = useCallback(
     (changes) =>
       setNodes((nds) => applyNodeChanges(changes, nds) as FlowNode[]),
@@ -391,7 +247,6 @@ export function FlowQueryEditorModal({
     [],
   )
 
-  // --- add / delete ---
   const handleAddNode = useCallback((item: AddMenuItem) => {
     const id = `add-${++addNodeCounterRef.current}`
     const center = viewportCenterRef.current
@@ -416,50 +271,146 @@ export function FlowQueryEditorModal({
     [],
   )
 
-  // --- derive QueryPlan from current graph ---
   const flowState: FlowGraphState = useMemo(
     () => ({ edges, nodes }),
     [nodes, edges],
   )
-  const currentPlan = useMemo(() => flowToQueryPlan(flowState), [flowState])
 
-  // --- validate ---
+  const currentPlanV2 = useMemo(() => {
+    try {
+      return flowToQueryPlanV2(flowState)
+    } catch {
+      return createDefaultQueryPlanV2()
+    }
+  }, [flowState])
+
   const validation = useMemo(
-    () => validateQueryPlan(currentPlan),
-    [currentPlan],
+    () => validateQueryPlanV2(currentPlanV2),
+    [currentPlanV2],
   )
 
-  // --- SQL preview ---
+  const previewCtx = useMemo((): ConfigToNodesContext => {
+    const outN = currentPlanV2.nodes.find((n) => n.node.kind === 'output-v2')
+    const limit =
+      outN?.node.kind === 'output-v2' ? outN.node.pagination.limit : 50
+    return {
+      localAccountIds: [],
+      queryLimit: limit,
+      serverIds: [],
+    }
+  }, [currentPlanV2])
+
   const sqlPreview = useMemo(() => {
     try {
-      const compiled = compileQueryPlan(currentPlan)
-      const idStep = compiled.steps.find(
-        (s: ExecutionStep) => s.type === 'id-collect',
-      ) as IdCollectStep | undefined
-      return idStep?.sql ?? '(プレビュー不可)'
+      const v1 = normalizeQueryPlanForExecution(currentPlanV2, previewCtx)
+      return compilePhase1ForTimeline(v1).sql
     } catch {
-      return '(コンパイルエラー)'
+      return '(プレビュー生成エラー)'
     }
-  }, [currentPlan])
+  }, [currentPlanV2, previewCtx])
 
-  // --- save ---
+  const handleFlowSave = useCallback(
+    (plan: QueryPlanV2) => {
+      const v1ForExtract = normalizeQueryPlanForExecution(
+        plan,
+        previewCtx,
+      ) as QueryPlan
+
+      const moderationNode = v1ForExtract.filters.find(
+        (f) => f.kind === 'moderation-filter',
+      )
+      const applyMute =
+        moderationNode?.kind === 'moderation-filter' &&
+        moderationNode.apply.includes('mute')
+      const applyBlock =
+        moderationNode?.kind === 'moderation-filter' &&
+        moderationNode.apply.includes('instance-block')
+
+      const backendNode = v1ForExtract.filters.find(
+        (f) => f.kind === 'backend-filter',
+      )
+      let backendFilter: BackendFilter | undefined
+      if (
+        backendNode?.kind === 'backend-filter' &&
+        backendNode.localAccountIds.length > 0
+      ) {
+        const urls = backendNode.localAccountIds
+          .map((id) => resolveBackendUrlFromAccountId(id))
+          .filter((u): u is string => u != null)
+        if (urls.length === 0) {
+          backendFilter = { mode: 'all' }
+        } else if (urls.length === 1) {
+          backendFilter = { backendUrl: urls[0], mode: 'single' }
+        } else {
+          backendFilter = { backendUrls: urls, mode: 'composite' }
+        }
+      } else {
+        backendFilter = { mode: 'all' }
+      }
+
+      const customQuery = nodesToWhere(v1ForExtract.filters)
+
+      const updates: Partial<TimelineConfigV2> = {
+        accountFilter: undefined,
+        advancedQuery: true,
+        applyInstanceBlock: applyBlock || undefined,
+        applyMuteFilter: applyMute || undefined,
+        backendFilter,
+        customQuery: customQuery.trim() || undefined,
+        excludeReblogs: undefined,
+        excludeReplies: undefined,
+        excludeSensitive: undefined,
+        excludeSpoiler: undefined,
+        followsOnly: undefined,
+        label: label.trim() || undefined,
+        languageFilter: undefined,
+        minMediaCount: undefined,
+        notificationFilter: undefined,
+        onlyMedia: undefined,
+        queryPlan: plan,
+        tagConfig: undefined,
+        timelineTypes: undefined,
+        visibilityFilter: undefined,
+      }
+
+      onSave(updates)
+      onOpenChange(false)
+    },
+    [label, onSave, onOpenChange, previewCtx],
+  )
+
   const handleSave = useCallback(() => {
-    onSave(currentPlan)
-    onOpenChange(false)
-  }, [currentPlan, onSave, onOpenChange])
+    onSave({ label: label.trim() || undefined })
+  }, [label, onSave])
+
+  const handleSaveFlow = useCallback(() => {
+    handleFlowSave(currentPlanV2)
+  }, [currentPlanV2, handleFlowSave])
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent className="max-w-[95vw] w-[95vw] h-[90vh] p-0 bg-gray-900 border-gray-700 flex flex-col overflow-hidden [&>button]:hidden">
-        {/* Header */}
         <DialogHeader className="px-4 py-3 border-b border-gray-700 shrink-0">
-          <div className="flex items-center justify-between">
-            <DialogTitle className="text-white text-base font-bold flex items-center gap-2">
-              <Filter className="h-5 w-5 text-cyan-400" />
-              フローエディタ
-            </DialogTitle>
-            <div className="flex items-center gap-2">
-              {/* Validation status */}
+          <div className="flex flex-wrap items-center gap-3 justify-between">
+            <div className="flex flex-wrap items-center gap-2 min-w-0 flex-1">
+              <DialogTitle className="text-white text-base font-bold flex items-center gap-2 shrink-0">
+                <Filter className="h-5 w-5 text-cyan-400" />
+                フローエディタ
+              </DialogTitle>
+              <label className="flex items-center gap-2 text-sm text-gray-300 min-w-0 flex-1 max-w-md">
+                <span className="text-xs text-gray-500 shrink-0">
+                  Display Name
+                </span>
+                <input
+                  className="flex-1 min-w-0 rounded bg-gray-800 border border-gray-600 px-2 py-1 text-sm text-white"
+                  onChange={(e) => setLabel(e.target.value)}
+                  placeholder="空のときは自動名"
+                  type="text"
+                  value={label}
+                />
+              </label>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
               {!validation.valid && (
                 <span className="text-xs text-red-400 bg-red-900/30 px-2 py-1 rounded">
                   ⚠️ {validation.errors[0]}
@@ -471,6 +422,22 @@ export function FlowQueryEditorModal({
                 </span>
               )}
               <button
+                className="px-2 py-1.5 rounded bg-gray-700 text-xs text-gray-300 hover:bg-gray-600 flex items-center gap-1"
+                onClick={() => setShowMuteManager(true)}
+                type="button"
+              >
+                <VolumeX className="h-3.5 w-3.5" />
+                ミュート
+              </button>
+              <button
+                className="px-2 py-1.5 rounded bg-gray-700 text-xs text-gray-300 hover:bg-gray-600 flex items-center gap-1"
+                onClick={() => setShowBlockManager(true)}
+                type="button"
+              >
+                <Shield className="h-3.5 w-3.5" />
+                ブロック
+              </button>
+              <button
                 className="px-3 py-1.5 rounded bg-gray-700 text-sm text-gray-300 hover:bg-gray-600 transition-colors"
                 onClick={() => onOpenChange(false)}
                 type="button"
@@ -478,18 +445,25 @@ export function FlowQueryEditorModal({
                 キャンセル
               </button>
               <button
-                className="px-3 py-1.5 rounded bg-blue-600 text-sm text-white hover:bg-blue-500 transition-colors flex items-center gap-1"
+                className="px-3 py-1.5 rounded bg-slate-600 text-sm text-gray-200 hover:bg-slate-500"
                 onClick={handleSave}
                 type="button"
               >
+                名前のみ保存
+              </button>
+              <button
+                className="px-3 py-1.5 rounded bg-blue-600 text-sm text-white hover:bg-blue-500 transition-colors flex items-center gap-1"
+                disabled={!validation.valid}
+                onClick={handleSaveFlow}
+                type="button"
+              >
                 <Play className="h-3.5 w-3.5" />
-                保存して適用
+                クエリを保存
               </button>
             </div>
           </div>
         </DialogHeader>
 
-        {/* Toolbar */}
         <div className="px-4 py-2 border-b border-gray-700 shrink-0 flex items-center gap-2 overflow-x-auto">
           <span className="text-xs text-gray-500 mr-1 shrink-0">
             ノード追加:
@@ -508,7 +482,6 @@ export function FlowQueryEditorModal({
           ))}
         </div>
 
-        {/* Canvas */}
         <div className="flex-1 min-h-0">
           <ReactFlowProvider>
             <FlowCanvas
@@ -524,7 +497,6 @@ export function FlowQueryEditorModal({
           </ReactFlowProvider>
         </div>
 
-        {/* SQL Preview Footer */}
         <div className="border-t border-gray-700 px-4 py-2 shrink-0 bg-gray-950">
           <details>
             <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-300 transition-colors">
@@ -536,6 +508,13 @@ export function FlowQueryEditorModal({
           </details>
         </div>
       </DialogContent>
+
+      {showMuteManager && (
+        <MuteManager onClose={() => setShowMuteManager(false)} />
+      )}
+      {showBlockManager && (
+        <InstanceBlockManager onClose={() => setShowBlockManager(false)} />
+      )}
     </Dialog>
   )
 }

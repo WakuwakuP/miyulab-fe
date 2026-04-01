@@ -4,11 +4,11 @@ import { Handle, Position } from '@xyflow/react'
 import { GitMerge, X } from 'lucide-react'
 import { memo, useCallback } from 'react'
 import { useFlowActions } from '../FlowCanvas'
-import type { MergeNodeData } from '../types'
+import type { MergeFlowNodeDataV2 } from '../types'
 
-type Props = { id: string; data: MergeNodeData; selected?: boolean }
+type Props = { id: string; data: MergeFlowNodeDataV2; selected?: boolean }
 
-export const MergeFlowNode = memo(function MergeFlowNode({
+export const MergeFlowNodeV2 = memo(function MergeFlowNodeV2({
   id,
   data,
   selected,
@@ -22,6 +22,13 @@ export const MergeFlowNode = memo(function MergeFlowNode({
     },
     [deleteNode, id],
   )
+
+  const stratLabel =
+    data.config.strategy === 'interleave-by-time'
+      ? '時間順'
+      : data.config.strategy === 'union'
+        ? 'union'
+        : 'intersect'
 
   return (
     <div
@@ -39,7 +46,7 @@ export const MergeFlowNode = memo(function MergeFlowNode({
       <div className="flex items-center gap-2 mb-1">
         <GitMerge className="h-4 w-4 text-cyan-400" />
         <span className="text-xs font-bold text-cyan-400 uppercase tracking-wider flex-1">
-          Merge
+          merge
         </span>
         <button
           className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-gray-700 text-gray-500 hover:text-red-400 transition-all"
@@ -49,9 +56,9 @@ export const MergeFlowNode = memo(function MergeFlowNode({
           <X className="h-3 w-3" />
         </button>
       </div>
-      <div className="text-sm font-medium text-white">時間順マージ</div>
+      <div className="text-sm font-medium text-white">{stratLabel}</div>
       <div className="text-[10px] text-gray-500 mt-0.5">
-        limit: {data.limit}
+        limit: {data.config.limit}
       </div>
       <Handle
         className="!w-3 !h-3 !bg-cyan-400 !border-2 !border-cyan-600"

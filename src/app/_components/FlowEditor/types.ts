@@ -1,111 +1,74 @@
 // ============================================================
-// FlowEditor — Visual query editor types
+// FlowEditor — Visual query editor types (QueryPlanV2)
 // ============================================================
 
 import type { Edge, Node } from '@xyflow/react'
 import type {
-  FilterNode,
-  Pagination,
-  SortSpec,
-  SourceNode,
+  GetIdsNode,
+  LookupRelatedNode,
+  MergeNodeV2,
+  OutputNodeV2,
 } from 'util/db/query-ir/nodes'
 
-// --------------- Visual Node Data Types ---------------
-
-/** ソースノードのデータ */
-export type SourceNodeData = {
-  nodeType: 'source'
-  config: SourceNode
+export type GetIdsFlowNodeData = {
+  nodeType: 'get-ids'
+  config: GetIdsNode
 }
 
-/** フィルタノードのデータ (任意の FilterNode を保持) */
-export type FilterNodeData = {
-  nodeType: 'filter'
-  filter: FilterNode
-  /** UI表示用ラベル */
-  label: string
+export type LookupRelatedFlowNodeData = {
+  nodeType: 'lookup-related'
+  config: LookupRelatedNode
 }
 
-/** OR分岐ノードのデータ */
-export type OrBranchNodeData = {
-  nodeType: 'or-branch'
-  /** ブランチ数 (入力ハンドル数を決定) */
-  branchCount: number
+export type MergeFlowNodeDataV2 = {
+  nodeType: 'merge-v2'
+  config: MergeNodeV2
 }
 
-/** マージノードのデータ (異なるソーステーブルの合成) */
-export type MergeNodeData = {
-  nodeType: 'merge'
-  strategy: 'interleave-by-time'
-  limit: number
+export type OutputFlowNodeDataV2 = {
+  nodeType: 'output-v2'
+  config: OutputNodeV2
 }
 
-/** 出力ノードのデータ */
-export type OutputNodeData = {
-  nodeType: 'output'
-  sort: SortSpec
-  pagination: Pagination
-}
-
-/** 全ビジュアルノードデータの Union */
 export type FlowNodeData =
-  | SourceNodeData
-  | FilterNodeData
-  | OrBranchNodeData
-  | MergeNodeData
-  | OutputNodeData
+  | GetIdsFlowNodeData
+  | LookupRelatedFlowNodeData
+  | MergeFlowNodeDataV2
+  | OutputFlowNodeDataV2
 
-/** React Flow ノードの型 */
 export type FlowNode = Node<FlowNodeData>
 
-/** React Flow エッジの型 */
 export type FlowEdge = Edge
 
-// --------------- Flow Graph ↔ QueryPlan ---------------
-
-/** フローグラフの状態 */
 export type FlowGraphState = {
   nodes: FlowNode[]
   edges: FlowEdge[]
 }
 
-// --------------- Node type identifiers for React Flow ---------------
-
-export const FLOW_NODE_TYPES = {
-  filter: 'filter',
-  merge: 'merge',
-  orBranch: 'or-branch',
-  output: 'output',
-  source: 'source',
+export const FLOW_NODE_TYPES_V2 = {
+  'get-ids': 'get-ids',
+  'lookup-related': 'lookup-related',
+  'merge-v2': 'merge-v2',
+  'output-v2': 'output-v2',
 } as const
 
-// --------------- Filter label generation ---------------
-
-/** FilterNode から UI 表示用ラベルを生成 */
-export function getFilterLabel(filter: FilterNode): string {
-  switch (filter.kind) {
-    case 'timeline-scope': {
-      const tlLabel = `TL: ${filter.timelineKeys.join(', ')}`
-      if (filter.accountScope && filter.accountScope.length > 0) {
-        return `${tlLabel} (Acc: ${filter.accountScope.join(', ')})`
-      }
-      return tlLabel
-    }
-    case 'backend-filter':
-      return `アカウント: ${filter.localAccountIds.length > 0 ? filter.localAccountIds.join(', ') : '未選択'}`
-    case 'exists-filter':
-      return `${filter.mode === 'not-exists' ? '非' : ''}存在: ${filter.table}`
-    case 'table-filter':
-      return `${filter.table}.${filter.column} ${filter.op}${filter.value !== undefined ? ` ${String(filter.value)}` : ''}`
-    case 'moderation-filter':
-      return `モデレーション: ${filter.apply.join(', ')}`
-    case 'raw-sql-filter':
-      return `SQL: ${filter.where.slice(0, 30)}${filter.where.length > 30 ? '...' : ''}`
-    case 'aerial-reply-filter':
-      return `空中リプ (${filter.timeWindowMs / 1000}秒)`
-    case 'or-group':
-      return `OR分岐 (${filter.branches.length}条件)`
+export function getNodeLabelV2(
+  data:
+    | GetIdsFlowNodeData
+    | LookupRelatedFlowNodeData
+    | MergeFlowNodeDataV2
+    | OutputFlowNodeDataV2,
+): string {
+  switch (data.nodeType) {
+    case 'get-ids':
+      return `getIds: ${data.config.table} (${data.config.filters.length}条件)`
+    case 'lookup-related':
+      return `lookup: ${data.config.lookupTable}`
+    case 'merge-v2':
+      return `merge: ${data.config.strategy}`
+    case 'output-v2':
+      return `output: ${data.config.sort.direction} LIMIT ${data.config.pagination.limit}`
     default:
-      return 'フィルタ'
+      return 'node'
   }
 }

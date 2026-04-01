@@ -1,20 +1,19 @@
 'use client'
 
 import { Handle, Position } from '@xyflow/react'
-import { Database, X } from 'lucide-react'
+import { Link2, X } from 'lucide-react'
 import { memo, useCallback } from 'react'
 import { useFlowActions } from '../FlowCanvas'
-import type { SourceNodeData } from '../types'
+import type { LookupRelatedFlowNodeData } from '../types'
 
-type Props = { id: string; data: SourceNodeData; selected?: boolean }
+type Props = { id: string; data: LookupRelatedFlowNodeData; selected?: boolean }
 
-export const SourceFlowNode = memo(function SourceFlowNode({
+export const LookupRelatedFlowNode = memo(function LookupRelatedFlowNode({
   id,
   data,
   selected,
 }: Props) {
   const { deleteNode } = useFlowActions()
-  const isNotification = data.config.table === 'notifications'
 
   const handleDelete = useCallback(
     (e: React.MouseEvent) => {
@@ -28,14 +27,19 @@ export const SourceFlowNode = memo(function SourceFlowNode({
     <div
       className={`rounded-lg border-2 px-4 py-3 min-w-[180px] shadow-md transition-all ${
         selected
-          ? 'border-blue-400 shadow-blue-400/20'
-          : 'border-blue-600 shadow-black/20'
+          ? 'border-violet-400 shadow-violet-400/20'
+          : 'border-violet-600 shadow-black/20'
       } bg-gray-900 group`}
     >
+      <Handle
+        className="!w-3 !h-3 !bg-violet-400 !border-2 !border-violet-600"
+        position={Position.Left}
+        type="target"
+      />
       <div className="flex items-center gap-2 mb-1">
-        <Database className="h-4 w-4 text-blue-400" />
-        <span className="text-xs font-bold text-blue-400 uppercase tracking-wider flex-1">
-          Source
+        <Link2 className="h-4 w-4 text-violet-400" />
+        <span className="text-xs font-bold text-violet-400 uppercase tracking-wider flex-1">
+          lookup
         </span>
         <button
           className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-gray-700 text-gray-500 hover:text-red-400 transition-all"
@@ -46,13 +50,13 @@ export const SourceFlowNode = memo(function SourceFlowNode({
         </button>
       </div>
       <div className="text-sm font-medium text-white">
-        {isNotification ? '🔔 通知' : '📝 投稿'}
+        {data.config.lookupTable}
       </div>
       <div className="text-[10px] text-gray-500 mt-0.5">
-        {data.config.table}
+        結合 {data.config.joinConditions.length} 件
       </div>
       <Handle
-        className="!w-3 !h-3 !bg-blue-400 !border-2 !border-blue-600"
+        className="!w-3 !h-3 !bg-violet-400 !border-2 !border-violet-600"
         position={Position.Right}
         type="source"
       />

@@ -16,7 +16,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { TimelineEditPanel } from 'app/_components/TimelineEditPanel'
+import { FlowQueryEditorModal } from 'app/_components/FlowEditor'
 import { TimelineSummary } from 'app/_components/TimelineSummary'
 import {
   type ChangeEvent,
@@ -40,8 +40,7 @@ import {
   RiLogoutBoxRLine,
 } from 'react-icons/ri'
 
-import type { App, TimelineConfigV2, TimelineType } from 'types/types'
-import { runExplainQueryPlan } from 'util/explainQueryPlan'
+import type { TimelineConfigV2, TimelineType } from 'types/types'
 import { AppsContext } from 'util/provider/AppsProvider'
 import {
   SetTimelineContext,
@@ -125,24 +124,20 @@ function generateId(): string {
 }
 
 const TimelineItem = ({
-  apps,
-  editingId,
+  flowEditorId,
   folderGroupKey,
   onDelete,
+  onOpenFlowEditor,
   onRemoveFromFolder,
-  onToggleEdit,
   onToggleVisibility,
-  onUpdate,
   timeline,
 }: {
-  apps: App[]
-  editingId: string | null
+  flowEditorId: string | null
   folderGroupKey?: string
   onDelete?: (id: string) => void
+  onOpenFlowEditor: (id: string) => void
   onRemoveFromFolder?: (id: string) => void
-  onToggleEdit: (id: string) => void
   onToggleVisibility: (id: string) => void
-  onUpdate: (id: string, updates: Partial<TimelineConfigV2>) => void
   timeline: TimelineConfigV2
 }) => {
   const {
@@ -161,12 +156,7 @@ const TimelineItem = ({
 
   const displayName = timeline.label || getDefaultTimelineName(timeline)
 
-  const isEditing = editingId === timeline.id
-
-  const handleCopyExplain = useCallback(async () => {
-    const result = await runExplainQueryPlan(timeline, apps)
-    await navigator.clipboard.writeText(result)
-  }, [timeline, apps])
+  const isFlowOpen = flowEditorId === timeline.id
 
   return (
     <div
@@ -205,10 +195,10 @@ const TimelineItem = ({
         <div className="flex items-center space-x-1">
           <button
             className={`hover:text-white ${
-              isEditing ? 'text-blue-400' : 'text-gray-400'
+              isFlowOpen ? 'text-blue-400' : 'text-gray-400'
             }`}
-            onClick={() => onToggleEdit(timeline.id)}
-            title="Edit timeline settings"
+            onClick={() => onOpenFlowEditor(timeline.id)}
+            title="フローエディタで編集"
             type="button"
           >
             <RiEditLine size={16} />
@@ -235,18 +225,6 @@ const TimelineItem = ({
           )}
         </div>
       </div>
-
-      {isEditing && (
-        <TimelineEditPanel
-          config={timeline}
-          onCancel={() => onToggleEdit(timeline.id)}
-          onCopyExplain={handleCopyExplain}
-          onSave={(updates) => {
-            onUpdate(timeline.id, updates)
-            onToggleEdit(timeline.id)
-          }}
-        />
-      )}
     </div>
   )
 }
@@ -546,8 +524,8 @@ const AddTagTimelineDialog = ({
 export const TimelineManagement = () => {
   const timelineSettings = useContext(TimelineContext)
   const setTimelineSettings = useContext(SetTimelineContext)
-  const apps = useContext(AppsContext)
-  const [editingId, setEditingId] = useState<string | null>(null)
+  const _apps = useContext(AppsContext)
+  const [flowEditorId, setFlowEditorId] = useState<string | null>(null)
   const [showAddTagDialog, setShowAddTagDialog] = useState(false)
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(
     new Set(),
@@ -613,11 +591,11 @@ export const TimelineManagement = () => {
         ...prev,
         timelines: prev.timelines.filter((timeline) => timeline.id !== id),
       }))
-      if (editingId === id) {
-        setEditingId(null)
+      if (flowEditorId === id) {
+        setFlowEditorId(null)
       }
     },
-    [setTimelineSettings, editingId],
+    [setTimelineSettings, flowEditorId],
   )
 
   const onUpdate = useCallback(
@@ -633,9 +611,14 @@ export const TimelineManagement = () => {
     [setTimelineSettings],
   )
 
-  const onToggleEdit = useCallback((id: string) => {
-    setEditingId((prev) => (prev === id ? null : id))
+  const onOpenFlowEditor = useCallback((id: string) => {
+    setFlowEditorId(id)
   }, [])
+
+  const flowEditorConfig = useMemo(
+    () => sortedTimelines.find((t) => t.id === flowEditorId) ?? null,
+    [sortedTimelines, flowEditorId],
+  )
 
   const onRemoveFromFolder = useCallback(
     (id: string) => {
@@ -1054,15 +1037,13 @@ export const TimelineManagement = () => {
                           >
                             {column.members.map((timeline) => (
                               <TimelineItem
-                                apps={apps}
-                                editingId={editingId}
+                                flowEditorId={flowEditorId}
                                 folderGroupKey={column.groupKey}
                                 key={timeline.id}
                                 onDelete={onDelete}
+                                onOpenFlowEditor={onOpenFlowEditor}
                                 onRemoveFromFolder={onRemoveFromFolder}
-                                onToggleEdit={onToggleEdit}
                                 onToggleVisibility={onToggleVisibility}
-                                onUpdate={onUpdate}
                                 timeline={timeline}
                               />
                             ))}
@@ -1083,13 +1064,11 @@ export const TimelineManagement = () => {
                   const timeline = column.timeline
                   return (
                     <TimelineItem
-                      apps={apps}
-                      editingId={editingId}
+                      flowEditorId={flowEditorId}
                       key={timeline.id}
                       onDelete={onDelete}
-                      onToggleEdit={onToggleEdit}
+                      onOpenFlowEditor={onOpenFlowEditor}
                       onToggleVisibility={onToggleVisibility}
-                      onUpdate={onUpdate}
                       timeline={timeline}
                     />
                   )
@@ -1149,6 +1128,19 @@ export const TimelineManagement = () => {
           </button>
         </div>
       </div>
+
+      {flowEditorConfig && (
+        <FlowQueryEditorModal
+          config={flowEditorConfig}
+          onOpenChange={(o) => {
+            if (!o) setFlowEditorId(null)
+          }}
+          onSave={(updates) => {
+            onUpdate(flowEditorConfig.id, updates)
+          }}
+          open={flowEditorId != null}
+        />
+      )}
     </div>
   )
 }

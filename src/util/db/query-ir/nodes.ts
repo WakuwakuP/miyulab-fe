@@ -199,3 +199,129 @@ export function isAerialReplyFilter(
 export function isOrGroup(node: FilterNode): node is OrGroup {
   return node.kind === 'or-group'
 }
+
+// ============================================================
+// Query IR V2 — グラフベースのノード定義
+// ============================================================
+
+/** 既存の QueryPlan 形状 (V1) */
+export type QueryPlanV1 = QueryPlan
+
+/** 単一フィルタ条件 (getIds 内部) */
+export type FilterCondition = {
+  table: string
+  column: string
+  op: FilterOp
+  value?: FilterValue
+}
+
+/** EXISTS / COUNT 条件 */
+export type ExistsCondition = {
+  table: string
+  mode: 'exists' | 'not-exists' | 'count-gte' | 'count-lte' | 'count-eq'
+  countValue?: number
+  innerFilters?: FilterCondition[]
+}
+
+/** getIds のフィルタ */
+export type GetIdsFilter = FilterCondition | ExistsCondition
+
+/** テーブルからフィルタした ID リストを取得 */
+export type GetIdsNode = {
+  kind: 'get-ids'
+  table: string
+  filters: GetIdsFilter[]
+  orBranches?: GetIdsFilter[][]
+}
+
+/** ID リストから関連テーブルの ID を相関検索 */
+export type LookupRelatedNode = {
+  kind: 'lookup-related'
+  lookupTable: string
+  joinConditions: JoinCondition[]
+  timeCondition?: TimeCondition
+  aggregate?: AggregateMode
+}
+
+export type JoinCondition = {
+  inputColumn: string
+  lookupColumn: string
+  resolve?: {
+    via: string
+    inputKey: string
+    lookupKey: string
+    matchColumn: string
+  }
+}
+
+export type TimeCondition = {
+  lookupTimeColumn: string
+  inputTimeColumn: string
+  afterInput: boolean
+  windowMs: number
+}
+
+export type AggregateMode = {
+  column: string
+  function: 'MIN' | 'MAX'
+}
+
+/** 複数の ID リストを結合 */
+export type MergeNodeV2 = {
+  kind: 'merge-v2'
+  strategy: 'union' | 'intersect' | 'interleave-by-time'
+  limit: number
+}
+
+/** 最終出力 */
+export type OutputNodeV2 = {
+  kind: 'output-v2'
+  sort: {
+    field: string
+    direction: 'ASC' | 'DESC'
+  }
+  pagination: {
+    limit: number
+    offset?: number
+  }
+}
+
+export type QueryNodeV2 =
+  | GetIdsNode
+  | LookupRelatedNode
+  | MergeNodeV2
+  | OutputNodeV2
+
+export type QueryPlanV2Node = {
+  id: string
+  node: QueryNodeV2
+}
+
+export type QueryPlanV2Edge = {
+  source: string
+  target: string
+}
+
+export type QueryPlanV2 = {
+  version: 2
+  nodes: QueryPlanV2Node[]
+  edges: QueryPlanV2Edge[]
+  /**
+   * V1 からの移行で GetIds に落とせなかった FilterNode。
+   * 実行時は v2ToV1 で QueryPlan.filters にマージされる。
+   */
+  legacyV1Overlay?: {
+    filters: FilterNode[]
+  }
+}
+
+export function isQueryPlanV2(
+  plan: QueryPlanV1 | QueryPlanV2 | undefined,
+): plan is QueryPlanV2 {
+  return (
+    plan != null &&
+    typeof plan === 'object' &&
+    'version' in plan &&
+    plan.version === 2
+  )
+}
