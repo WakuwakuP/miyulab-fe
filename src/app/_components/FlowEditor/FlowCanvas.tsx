@@ -291,7 +291,9 @@ export function FlowCanvas({
         </div>
         {selectedNode && (
           <FlowNodePanel
+            edges={edges}
             node={selectedNode}
+            nodes={nodes}
             onClose={() => setSelectedNodeId(null)}
             onDelete={() => {
               if (selectedNodeId) onDeleteNode(selectedNodeId)

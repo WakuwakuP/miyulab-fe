@@ -226,12 +226,20 @@ export type ExistsCondition = {
 /** getIds のフィルタ */
 export type GetIdsFilter = FilterCondition | ExistsCondition
 
+/** 上流ノードの出力 ID をフィルタ値として受け取る設定 */
+export type GetIdsInputBinding = {
+  /** この table のどのカラムに上流 ID を IN で適用するか */
+  column: string
+}
+
 /** テーブルからフィルタした ID リストを取得 */
 export type GetIdsNode = {
   kind: 'get-ids'
   table: string
   filters: GetIdsFilter[]
   orBranches?: GetIdsFilter[][]
+  /** 上流ノード接続時: その出力 ID を IN 条件として適用するカラム */
+  inputBinding?: GetIdsInputBinding
 }
 
 /** ID リストから関連テーブルの ID を相関検索 */

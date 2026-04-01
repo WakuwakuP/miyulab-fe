@@ -23,6 +23,8 @@ export const GetIdsFlowNode = memo(function GetIdsFlowNode({
     [deleteNode, id],
   )
 
+  const binding = data.config.inputBinding
+
   return (
     <div
       className={`rounded-lg border-2 px-4 py-3 min-w-[180px] shadow-md transition-all ${
@@ -31,6 +33,12 @@ export const GetIdsFlowNode = memo(function GetIdsFlowNode({
           : 'border-sky-600 shadow-black/20'
       } bg-gray-900 group`}
     >
+      <Handle
+        className="!w-3 !h-3 !border-2 !border-sky-400 !bg-gray-900"
+        id="ids-in"
+        position={Position.Left}
+        type="target"
+      />
       <div className="flex items-center gap-2 mb-1">
         <BarChart3 className="h-4 w-4 text-sky-400" />
         <span className="text-xs font-bold text-sky-400 uppercase tracking-wider flex-1">
@@ -51,6 +59,11 @@ export const GetIdsFlowNode = memo(function GetIdsFlowNode({
           ? ` / OR ${data.config.orBranches.length} 枝`
           : ''}
       </div>
+      {binding && (
+        <div className="text-[10px] text-sky-400 mt-0.5">
+          ← {binding.column}
+        </div>
+      )}
       <Handle
         className="!w-3 !h-3 !bg-sky-400 !border-2 !border-sky-600"
         position={Position.Right}

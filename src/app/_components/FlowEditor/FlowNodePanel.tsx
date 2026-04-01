@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from 'components/ui/select'
-import { Plus, Trash2, X } from 'lucide-react'
+import { Link, Plus, Trash2, X } from 'lucide-react'
 import { useMemo } from 'react'
 import type { TableOption } from 'util/db/query-ir/completion'
 import {
@@ -29,12 +29,14 @@ import type {
 } from 'util/db/query-ir/nodes'
 import { ValueInput } from '../NodeEditor/ValueInput'
 import type {
+  FlowEdge,
   FlowNode,
   GetIdsFlowNodeData,
   LookupRelatedFlowNodeData,
   MergeFlowNodeDataV2,
   OutputFlowNodeDataV2,
 } from './types'
+import { getNodeLabelV2 } from './types'
 
 // --------------- Filter helpers ---------------
 
@@ -69,13 +71,22 @@ function isFilterCondition(f: GetIdsFilter): f is FilterCondition {
 }
 
 type Props = {
+  edges: FlowEdge[]
   node: FlowNode
+  nodes: FlowNode[]
   onUpdate: (id: string, data: FlowNode['data']) => void
   onDelete: () => void
   onClose: () => void
 }
 
-export function FlowNodePanel({ node, onUpdate, onDelete, onClose }: Props) {
+export function FlowNodePanel({
+  edges,
+  node,
+  nodes,
+  onUpdate,
+  onDelete,
+  onClose,
+}: Props) {
   const data = node.data as { nodeType: string }
 
   return (
@@ -92,7 +103,12 @@ export function FlowNodePanel({ node, onUpdate, onDelete, onClose }: Props) {
       </div>
 
       {data.nodeType === 'get-ids' && (
-        <GetIdsPanel node={node} onUpdate={onUpdate} />
+        <GetIdsPanel
+          edges={edges}
+          node={node}
+          nodes={nodes}
+          onUpdate={onUpdate}
+        />
       )}
       {data.nodeType === 'lookup-related' && (
         <LookupRelatedPanel node={node} onUpdate={onUpdate} />
@@ -118,10 +134,14 @@ export function FlowNodePanel({ node, onUpdate, onDelete, onClose }: Props) {
 }
 
 function GetIdsPanel({
+  edges,
   node,
+  nodes,
   onUpdate,
 }: {
+  edges: FlowEdge[]
   node: FlowNode
+  nodes: FlowNode[]
   onUpdate: Props['onUpdate']
 }) {
   const data = node.data as GetIdsFlowNodeData
@@ -141,8 +161,28 @@ function GetIdsPanel({
     [isKnownSource, sourceTable, tables],
   )
 
+  // 上流接続ノード
+  const upstreamNodes = useMemo(
+    () =>
+      edges
+        .filter((e) => e.target === node.id)
+        .map((e) => nodes.find((n) => n.id === e.source))
+        .filter((n): n is FlowNode => n != null),
+    [edges, nodes, node.id],
+  )
+
+  // このテーブルのフィルタ可能カラム（inputBinding 用）
+  const bindableColumns = useMemo(
+    () => getFilterableColumns(data.config.table),
+    [data.config.table],
+  )
+
+  function updateConfig(patch: Partial<typeof data.config>) {
+    onUpdate(node.id, { ...data, config: { ...data.config, ...patch } })
+  }
+
   function updateFilters(filters: GetIdsFilter[]) {
-    onUpdate(node.id, { ...data, config: { ...data.config, filters } })
+    updateConfig({ filters })
   }
 
   function updateFilter(idx: number, filter: GetIdsFilter) {
@@ -185,10 +225,7 @@ function GetIdsPanel({
         </span>
         <Select
           onValueChange={(v) =>
-            onUpdate(node.id, {
-              ...data,
-              config: { ...data.config, table: v },
-            })
+            updateConfig({ inputBinding: undefined, table: v })
           }
           value={data.config.table}
         >
@@ -203,6 +240,64 @@ function GetIdsPanel({
             ))}
           </SelectContent>
         </Select>
+      </div>
+
+      {/* 入力バインド */}
+      <div className="rounded border border-sky-900/60 bg-sky-950/30 p-2">
+        <div className="flex items-center gap-1.5 mb-2">
+          <Link className="h-3 w-3 text-sky-400" />
+          <span className="text-xs font-semibold text-sky-300">
+            入力バインド
+          </span>
+        </div>
+        {upstreamNodes.length === 0 ? (
+          <p className="text-[10px] text-gray-600">
+            ← 接続なし（左ハンドルに別ノードを繋ぐと有効）
+          </p>
+        ) : (
+          <>
+            <div className="mb-1.5">
+              <span className="text-[10px] text-gray-400 block mb-0.5">
+                接続元
+              </span>
+              <div className="flex flex-wrap gap-1">
+                {upstreamNodes.map((n) => (
+                  <span
+                    className="rounded bg-gray-700 border border-gray-600 px-1.5 py-0.5 text-[10px] text-gray-300"
+                    key={n.id}
+                  >
+                    {getNodeLabelV2(n.data)}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div>
+              <span className="text-[10px] text-gray-400 block mb-0.5">
+                バインド先カラム
+              </span>
+              <Select
+                onValueChange={(col) =>
+                  updateConfig({
+                    inputBinding: col ? { column: col } : undefined,
+                  })
+                }
+                value={data.config.inputBinding?.column ?? ''}
+              >
+                <SelectTrigger className="w-full h-6 text-xs bg-gray-700 border-gray-600 text-white">
+                  <SelectValue placeholder="カラムを選択" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">（なし）</SelectItem>
+                  {bindableColumns.map((c) => (
+                    <SelectItem key={c.name} value={c.name}>
+                      {c.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </>
+        )}
       </div>
 
       <div>
