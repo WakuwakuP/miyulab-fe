@@ -92,6 +92,78 @@ export function getTableEntry(table: string): TableRegistryEntry | undefined {
   return TABLE_REGISTRY[table]
 }
 
+// --------------- Join column options ---------------
+
+/** JoinCondition / TimeCondition で使用可能なカラム（PK/FK を含む） */
+const JOIN_COLUMN_MAP: Record<string, ColumnOption[]> = {
+  notifications: [
+    { label: '通知 ID', name: 'id', nullable: false, type: 'integer' },
+    {
+      label: 'アクターのプロフィール ID',
+      name: 'actor_profile_id',
+      nullable: true,
+      type: 'integer',
+    },
+    {
+      label: '関連投稿 ID',
+      name: 'related_post_id',
+      nullable: true,
+      type: 'integer',
+    },
+    {
+      label: '通知種別 ID',
+      name: 'notification_type_id',
+      nullable: false,
+      type: 'integer',
+    },
+    {
+      label: '作成日時',
+      name: 'created_at_ms',
+      nullable: false,
+      type: 'integer',
+    },
+  ],
+  posts: [
+    { label: '投稿 ID', name: 'id', nullable: false, type: 'integer' },
+    {
+      label: '著者のプロフィール ID',
+      name: 'author_profile_id',
+      nullable: false,
+      type: 'integer',
+    },
+    {
+      label: 'リブログ元投稿 ID',
+      name: 'reblog_of_post_id',
+      nullable: true,
+      type: 'integer',
+    },
+    {
+      label: '引用元投稿 ID',
+      name: 'quote_of_post_id',
+      nullable: true,
+      type: 'integer',
+    },
+    {
+      label: '作成日時',
+      name: 'created_at_ms',
+      nullable: false,
+      type: 'integer',
+    },
+  ],
+}
+
+/** JoinCondition / TimeCondition 向けカラム一覧を返す (PK/FK を含む) */
+export function getJoinableColumns(table: string): ColumnOption[] {
+  return JOIN_COLUMN_MAP[table] ?? []
+}
+
+/** ミリ秒タイムスタンプカラム一覧を返す (TimeCondition 用) */
+export function getTimeColumns(table: string): ColumnOption[] {
+  return getJoinableColumns(table).filter(
+    (c) => c.type === 'integer' && c.name.endsWith('_ms'),
+  )
+}
+
 // --------------- Exists filter tables ---------------
 
 /** ExistsFilter で使用可能なテーブル一覧 (1:N カーディナリティ) */

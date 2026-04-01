@@ -19,13 +19,17 @@ import {
   getExistsFilterTables,
   getFilterableColumns,
   getFilterableTables,
+  getJoinableColumns,
   getKnownValues,
+  getTimeColumns,
 } from 'util/db/query-ir/completion'
 import type {
   ExistsCondition,
   FilterCondition,
   FilterOp,
   GetIdsFilter,
+  JoinCondition,
+  TimeCondition,
 } from 'util/db/query-ir/nodes'
 import { ValueInput } from '../NodeEditor/ValueInput'
 import type {
@@ -38,7 +42,36 @@ import type {
 } from './types'
 import { getNodeLabelV2 } from './types'
 
-// --------------- Filter helpers ---------------
+// --------------- Flat column option for FilterConditionRow ---------------
+
+type FlatColumnOption = {
+  columnLabel: string
+  columnName: string
+  tableLabel: string
+  tableName: string
+}
+
+/** filterableTables から全カラムをフラット展開する */
+function buildFlatColumns(filterableTables: TableOption[]): FlatColumnOption[] {
+  const result: FlatColumnOption[] = []
+  for (const t of filterableTables) {
+    for (const col of getFilterableColumns(t.table)) {
+      result.push({
+        columnLabel: col.label,
+        columnName: col.name,
+        tableLabel: t.label,
+        tableName: t.table,
+      })
+    }
+  }
+  return result
+}
+
+function flatColumnKey(
+  opt: Pick<FlatColumnOption, 'tableName' | 'columnName'>,
+) {
+  return `${opt.tableName}:${opt.columnName}`
+}
 
 const ALL_OPS: FilterOp[] = [
   '=',
@@ -111,7 +144,12 @@ export function FlowNodePanel({
         />
       )}
       {data.nodeType === 'lookup-related' && (
-        <LookupRelatedPanel node={node} onUpdate={onUpdate} />
+        <LookupRelatedPanel
+          edges={edges}
+          node={node}
+          nodes={nodes}
+          onUpdate={onUpdate}
+        />
       )}
       {data.nodeType === 'merge-v2' && (
         <MergePanelV2 node={node} onUpdate={onUpdate} />
@@ -161,6 +199,11 @@ function GetIdsPanel({
     [isKnownSource, sourceTable, tables],
   )
 
+  const flatColumns = useMemo(
+    () => buildFlatColumns(filterableTables),
+    [filterableTables],
+  )
+
   // 上流接続ノード
   const upstreamNodes = useMemo(
     () =>
@@ -196,13 +239,15 @@ function GetIdsPanel({
   }
 
   function addTableFilter() {
-    const firstTable = filterableTables[0]
-    if (!firstTable) return
-    const cols = getFilterableColumns(firstTable.table)
+    const mainTableOption =
+      filterableTables.find((t) => t.table === data.config.table) ??
+      filterableTables[0]
+    if (!mainTableOption) return
+    const cols = getFilterableColumns(mainTableOption.table)
     const newFilter: FilterCondition = {
       column: cols[0]?.name ?? '',
       op: '=',
-      table: firstTable.table,
+      table: mainTableOption.table,
     }
     updateFilters([...data.config.filters, newFilter])
   }
@@ -344,7 +389,7 @@ function GetIdsPanel({
           return isFilterCondition(filter) ? (
             <FilterConditionRow
               filter={filter}
-              filterableTables={filterableTables}
+              flatColumns={flatColumns}
               key={key}
               onDelete={() => deleteFilter(idx)}
               onUpdate={(f) => updateFilter(idx, f)}
@@ -366,38 +411,32 @@ function GetIdsPanel({
 
 function FilterConditionRow({
   filter,
-  filterableTables,
+  flatColumns,
   onUpdate,
   onDelete,
 }: {
   filter: FilterCondition
-  filterableTables: TableOption[]
+  flatColumns: FlatColumnOption[]
   onUpdate: (f: FilterCondition) => void
   onDelete: () => void
 }) {
-  const columns = useMemo(
-    () => getFilterableColumns(filter.table),
-    [filter.table],
-  )
   const knownValues = useMemo(
     () => getKnownValues(filter.table, filter.column),
     [filter.table, filter.column],
   )
-  const currentColType =
-    columns.find((c) => c.name === filter.column)?.type ?? 'text'
+  const currentType =
+    getFilterableColumns(filter.table).find((c) => c.name === filter.column)
+      ?.type ?? 'text'
 
-  function handleTableChange(table: string) {
-    const cols = getFilterableColumns(table)
+  function handleColumnKey(key: string) {
+    const [tbl, ...rest] = key.split(':')
+    const col = rest.join(':')
     onUpdate({
-      column: cols[0]?.name ?? '',
+      column: col,
       op: '=',
-      table,
+      table: tbl,
       value: undefined,
     })
-  }
-
-  function handleColumnChange(column: string) {
-    onUpdate({ ...filter, column, op: '=', value: undefined })
   }
 
   function handleOpChange(op: FilterOp) {
@@ -407,6 +446,11 @@ function FilterConditionRow({
       value: NO_VALUE_OPS.has(op) ? undefined : filter.value,
     })
   }
+
+  const selectedKey = flatColumnKey({
+    columnName: filter.column,
+    tableName: filter.table,
+  })
 
   return (
     <div className="rounded border border-gray-700 bg-gray-800 p-2 mb-2">
@@ -424,38 +468,23 @@ function FilterConditionRow({
       </div>
 
       <div className="mb-1.5">
-        <span className="text-[10px] text-gray-400 block mb-0.5">テーブル</span>
-        <Select onValueChange={handleTableChange} value={filter.table}>
+        <span className="text-[10px] text-gray-400 block mb-0.5">カラム</span>
+        <Select onValueChange={handleColumnKey} value={selectedKey}>
           <SelectTrigger className="w-full h-6 text-xs bg-gray-700 border-gray-600 text-white">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {filterableTables.map((t) => (
-              <SelectItem key={t.table} value={t.table}>
-                {t.label}
-              </SelectItem>
-            ))}
+            {flatColumns.map((c) => {
+              const k = flatColumnKey(c)
+              return (
+                <SelectItem key={k} value={k}>
+                  {c.tableLabel} / {c.columnLabel}
+                </SelectItem>
+              )
+            })}
           </SelectContent>
         </Select>
       </div>
-
-      {columns.length > 0 && (
-        <div className="mb-1.5">
-          <span className="text-[10px] text-gray-400 block mb-0.5">カラム</span>
-          <Select onValueChange={handleColumnChange} value={filter.column}>
-            <SelectTrigger className="w-full h-6 text-xs bg-gray-700 border-gray-600 text-white">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {columns.map((c) => (
-                <SelectItem key={c.name} value={c.name}>
-                  {c.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      )}
 
       <div className={NO_VALUE_OPS.has(filter.op) ? undefined : 'mb-1.5'}>
         <span className="text-[10px] text-gray-400 block mb-0.5">演算子</span>
@@ -478,7 +507,7 @@ function FilterConditionRow({
 
       <ValueInput
         column={filter.column}
-        columnType={currentColType}
+        columnType={currentType}
         knownValues={knownValues}
         onChange={(value) => onUpdate({ ...filter, value })}
         op={filter.op}
@@ -583,27 +612,111 @@ function ExistsConditionRow({
 }
 
 function LookupRelatedPanel({
+  edges,
   node,
+  nodes,
   onUpdate,
 }: {
+  edges: FlowEdge[]
   node: FlowNode
+  nodes: FlowNode[]
   onUpdate: Props['onUpdate']
 }) {
   const data = node.data as LookupRelatedFlowNodeData
   const tables = useMemo(() => getAllFilterableTables(), [])
 
+  // 上流ノードのテーブルを取得
+  const upstreamTable = useMemo(() => {
+    const srcId = edges.find((e) => e.target === node.id)?.source
+    if (!srcId) return undefined
+    const src = nodes.find((n) => n.id === srcId)
+    if (!src) return undefined
+    const d = src.data as { config?: { table?: string } }
+    return d.config?.table
+  }, [edges, node.id, nodes])
+
+  const inputColumns = useMemo(
+    () => (upstreamTable ? getJoinableColumns(upstreamTable) : []),
+    [upstreamTable],
+  )
+
+  const lookupColumns = useMemo(
+    () => getJoinableColumns(data.config.lookupTable),
+    [data.config.lookupTable],
+  )
+
+  const inputTimeColumns = useMemo(
+    () => (upstreamTable ? getTimeColumns(upstreamTable) : []),
+    [upstreamTable],
+  )
+
+  const lookupTimeColumns = useMemo(
+    () => getTimeColumns(data.config.lookupTable),
+    [data.config.lookupTable],
+  )
+
+  const updateConfig = (patch: Partial<LookupRelatedFlowNodeData['config']>) =>
+    onUpdate(node.id, {
+      ...data,
+      config: { ...data.config, ...patch },
+    })
+
+  // ---- Join conditions ----
+  const updateJoinCondition = (idx: number, patch: Partial<JoinCondition>) => {
+    const next = data.config.joinConditions.map((c, i) =>
+      i === idx ? { ...c, ...patch } : c,
+    )
+    updateConfig({ joinConditions: next })
+  }
+
+  const addJoinCondition = () =>
+    updateConfig({
+      joinConditions: [
+        ...data.config.joinConditions,
+        { inputColumn: '', lookupColumn: '' },
+      ],
+    })
+
+  const removeJoinCondition = (idx: number) =>
+    updateConfig({
+      joinConditions: data.config.joinConditions.filter((_, i) => i !== idx),
+    })
+
+  // ---- Time condition ----
+  const hasTime = !!data.config.timeCondition
+
+  const updateTimeCondition = (patch: Partial<TimeCondition>) =>
+    updateConfig({
+      timeCondition: {
+        ...defaultTimeCondition(inputTimeColumns, lookupTimeColumns),
+        ...data.config.timeCondition,
+        ...patch,
+      },
+    })
+
+  const toggleTime = () => {
+    if (hasTime) {
+      updateConfig({ timeCondition: undefined })
+    } else {
+      updateConfig({
+        timeCondition: defaultTimeCondition(
+          inputTimeColumns,
+          lookupTimeColumns,
+        ),
+      })
+    }
+  }
+
   return (
     <div className="space-y-3">
+      {/* 検索先テーブル */}
       <div>
         <span className="text-xs font-semibold text-gray-300 block mb-1">
           検索先テーブル
         </span>
         <Select
           onValueChange={(v) =>
-            onUpdate(node.id, {
-              ...data,
-              config: { ...data.config, lookupTable: v },
-            })
+            updateConfig({ lookupTable: v, timeCondition: undefined })
           }
           value={data.config.lookupTable}
         >
@@ -619,8 +732,210 @@ function LookupRelatedPanel({
           </SelectContent>
         </Select>
       </div>
+
+      {/* JOIN 条件 */}
+      <div>
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-xs font-semibold text-gray-300">
+            結合条件
+            {data.config.joinConditions.length > 0 && (
+              <span className="ml-1 text-gray-500">
+                ({data.config.joinConditions.length})
+              </span>
+            )}
+          </span>
+          <button
+            className="flex items-center gap-0.5 rounded bg-blue-900/40 border border-blue-700/50 px-1.5 py-0.5 text-[10px] text-blue-400 hover:bg-blue-900/70 hover:text-blue-300 transition-colors"
+            onClick={addJoinCondition}
+            type="button"
+          >
+            <Plus className="h-2.5 w-2.5" />
+            追加
+          </button>
+        </div>
+        {data.config.joinConditions.length === 0 && (
+          <p className="text-[10px] text-gray-600">条件なし</p>
+        )}
+        {data.config.joinConditions.map((cond, idx) => {
+          const key = `jc-${idx}-${cond.inputColumn}-${cond.lookupColumn}`
+          return (
+            <div className="flex items-center gap-1 mb-1" key={key}>
+              <div className="flex-1 min-w-0">
+                <Select
+                  onValueChange={(v) =>
+                    updateJoinCondition(idx, { inputColumn: v })
+                  }
+                  value={cond.inputColumn}
+                >
+                  <SelectTrigger className="w-full h-6 text-[10px] bg-gray-700 border-gray-600 text-white">
+                    <SelectValue placeholder="入力側" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {inputColumns.map((c) => (
+                      <SelectItem key={c.name} value={c.name}>
+                        {c.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <span className="text-[10px] text-gray-500 shrink-0">→</span>
+              <div className="flex-1 min-w-0">
+                <Select
+                  onValueChange={(v) =>
+                    updateJoinCondition(idx, { lookupColumn: v })
+                  }
+                  value={cond.lookupColumn}
+                >
+                  <SelectTrigger className="w-full h-6 text-[10px] bg-gray-700 border-gray-600 text-white">
+                    <SelectValue placeholder="検索先側" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {lookupColumns.map((c) => (
+                      <SelectItem key={c.name} value={c.name}>
+                        {c.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <button
+                className="shrink-0 p-0.5 rounded hover:bg-red-900/40 text-gray-500 hover:text-red-400 transition-colors"
+                onClick={() => removeJoinCondition(idx)}
+                type="button"
+              >
+                <Trash2 className="h-3 w-3" />
+              </button>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* 時刻条件 */}
+      <div className="rounded border border-gray-700 p-2">
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-xs font-semibold text-gray-300">時刻条件</span>
+          <button
+            className={`rounded px-1.5 py-0.5 text-[10px] border transition-colors ${
+              hasTime
+                ? 'bg-sky-900/50 border-sky-700/60 text-sky-300'
+                : 'bg-gray-700 border-gray-600 text-gray-500'
+            }`}
+            onClick={toggleTime}
+            type="button"
+          >
+            {hasTime ? '有効' : '無効'}
+          </button>
+        </div>
+        {hasTime && data.config.timeCondition && (
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] text-gray-400 w-14 shrink-0">
+                入力側
+              </span>
+              <Select
+                onValueChange={(v) =>
+                  updateTimeCondition({ inputTimeColumn: v })
+                }
+                value={data.config.timeCondition.inputTimeColumn}
+              >
+                <SelectTrigger className="flex-1 h-6 text-[10px] bg-gray-700 border-gray-600 text-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {inputTimeColumns.map((c) => (
+                    <SelectItem key={c.name} value={c.name}>
+                      {c.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] text-gray-400 w-14 shrink-0">
+                検索先側
+              </span>
+              <Select
+                onValueChange={(v) =>
+                  updateTimeCondition({ lookupTimeColumn: v })
+                }
+                value={data.config.timeCondition.lookupTimeColumn}
+              >
+                <SelectTrigger className="flex-1 h-6 text-[10px] bg-gray-700 border-gray-600 text-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {lookupTimeColumns.map((c) => (
+                    <SelectItem key={c.name} value={c.name}>
+                      {c.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] text-gray-400 w-14 shrink-0">
+                方向
+              </span>
+              <div className="flex gap-1">
+                <button
+                  className={`rounded px-1.5 py-0.5 text-[10px] border transition-colors ${
+                    data.config.timeCondition.afterInput
+                      ? 'bg-sky-900/50 border-sky-700 text-sky-300'
+                      : 'bg-gray-700 border-gray-600 text-gray-400'
+                  }`}
+                  onClick={() => updateTimeCondition({ afterInput: true })}
+                  type="button"
+                >
+                  後
+                </button>
+                <button
+                  className={`rounded px-1.5 py-0.5 text-[10px] border transition-colors ${
+                    !data.config.timeCondition.afterInput
+                      ? 'bg-sky-900/50 border-sky-700 text-sky-300'
+                      : 'bg-gray-700 border-gray-600 text-gray-400'
+                  }`}
+                  onClick={() => updateTimeCondition({ afterInput: false })}
+                  type="button"
+                >
+                  前
+                </button>
+              </div>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] text-gray-400 w-14 shrink-0">
+                窓（分）
+              </span>
+              <input
+                className="flex-1 rounded bg-gray-700 border border-gray-600 px-2 py-0.5 text-xs text-white"
+                min={0}
+                onChange={(e) =>
+                  updateTimeCondition({
+                    windowMs: Math.max(0, Number(e.target.value)) * 60000,
+                  })
+                }
+                step={0.5}
+                type="number"
+                value={data.config.timeCondition.windowMs / 60000}
+              />
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
+}
+
+function defaultTimeCondition(
+  inputCols: { name: string }[],
+  lookupCols: { name: string }[],
+): TimeCondition {
+  return {
+    afterInput: true,
+    inputTimeColumn: inputCols[0]?.name ?? 'created_at_ms',
+    lookupTimeColumn: lookupCols[0]?.name ?? 'created_at_ms',
+    windowMs: 180000,
+  }
 }
 
 function MergePanelV2({

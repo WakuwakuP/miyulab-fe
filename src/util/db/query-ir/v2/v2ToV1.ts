@@ -68,13 +68,35 @@ function getIdsToFilterNodes(node: GetIdsNode): FilterNode[] {
 function lookupToAerialFallback(
   lookup: LookupRelatedNode,
   inputTable: string,
+  getIdsNode?: GetIdsNode,
 ): AerialReplyFilter | null {
   if (inputTable !== 'notifications' || lookup.lookupTable !== 'posts') {
     return null
   }
+  // getIds の notification_types.name フィルタから通知種別を抽出
+  let notificationTypes: string[] = ['favourite', 'reaction', 'reblog']
+  if (getIdsNode) {
+    const typeFilters = getIdsNode.filters.filter(
+      (f): f is import('../nodes').FilterCondition =>
+        'op' in f &&
+        f.table === 'notification_types' &&
+        f.column === 'name' &&
+        (f.op === '=' || f.op === 'IN'),
+    )
+    if (typeFilters.length > 0) {
+      const extracted = typeFilters.flatMap((f) =>
+        Array.isArray(f.value)
+          ? (f.value as string[])
+          : f.value != null
+            ? [String(f.value)]
+            : [],
+      )
+      if (extracted.length > 0) notificationTypes = extracted
+    }
+  }
   return {
     kind: 'aerial-reply-filter',
-    notificationTypes: ['favourite', 'reaction', 'reblog'],
+    notificationTypes,
     timeWindowMs: lookup.timeCondition?.windowMs ?? 180000,
   }
 }
@@ -139,7 +161,7 @@ function tryLinearizeFromOutput(
         return getIdsNodeOnlyToPlan(n, outNode, overlay)
       }
       const last = lookups[lookups.length - 1]
-      const aerial = lookupToAerialFallback(last, n.table)
+      const aerial = lookupToAerialFallback(last, n.table, n)
       if (!aerial) return null
       return {
         composites: [],
