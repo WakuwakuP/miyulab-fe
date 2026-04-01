@@ -323,16 +323,17 @@ function GetIdsPanel({
               <Select
                 onValueChange={(col) =>
                   updateConfig({
-                    inputBinding: col ? { column: col } : undefined,
+                    inputBinding:
+                      col && col !== '__none__' ? { column: col } : undefined,
                   })
                 }
-                value={data.config.inputBinding?.column ?? ''}
+                value={data.config.inputBinding?.column ?? '__none__'}
               >
                 <SelectTrigger className="w-full h-6 text-xs bg-gray-700 border-gray-600 text-white">
                   <SelectValue placeholder="カラムを選択" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">（なし）</SelectItem>
+                  <SelectItem value="__none__">（なし）</SelectItem>
                   {bindableColumns.map((c) => (
                     <SelectItem key={c.name} value={c.name}>
                       {c.label}
