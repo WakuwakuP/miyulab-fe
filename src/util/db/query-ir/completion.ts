@@ -132,6 +132,12 @@ const JOIN_COLUMN_MAP: Record<string, ColumnOption[]> = {
       type: 'integer',
     },
     {
+      label: '配信元サーバー ID',
+      name: 'origin_server_id',
+      nullable: false,
+      type: 'integer',
+    },
+    {
       label: 'リブログ元投稿 ID',
       name: 'reblog_of_post_id',
       nullable: true,
