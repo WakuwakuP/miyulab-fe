@@ -70,6 +70,36 @@ export const TABLE_REGISTRY: TableRegistry = {
     table: 'blocked_instances',
   },
 
+  card_types: {
+    cardinality: 'lookup',
+    columns: {
+      name: {
+        knownValues: ['link', 'photo', 'video', 'rich'],
+        label: 'カード種別名',
+        nullable: false,
+        type: 'text',
+      },
+    },
+    hints: {
+      isSmallLookup: true,
+    },
+    joinPaths: {
+      posts: {
+        column: 'id',
+        sourceColumn: 'id',
+        via: [
+          {
+            fromColumn: 'post_id',
+            table: 'link_cards',
+            toColumn: 'card_type_id',
+          },
+        ],
+      },
+    },
+    label: 'カード種別',
+    table: 'card_types',
+  },
+
   hashtags: {
     cardinality: '1:N',
     columns: {
@@ -131,6 +161,81 @@ export const TABLE_REGISTRY: TableRegistry = {
     },
     label: 'リンクカード',
     table: 'link_cards',
+  },
+
+  local_accounts: {
+    cardinality: '1:1',
+    columns: {
+      acct: {
+        label: 'アカウント ID',
+        nullable: false,
+        type: 'text',
+      },
+      backend_type: {
+        label: 'バックエンド種別',
+        nullable: false,
+        type: 'text',
+      },
+      display_order: {
+        label: '表示順',
+        nullable: false,
+        type: 'integer',
+      },
+      is_active: {
+        label: 'アクティブ',
+        nullable: false,
+        type: 'integer',
+      },
+    },
+    joinPaths: {
+      notifications: {
+        column: 'id',
+        sourceColumn: 'local_account_id',
+      },
+      posts: {
+        column: 'id',
+        sourceColumn: 'id',
+        via: [
+          {
+            fromColumn: 'post_id',
+            table: 'post_interactions',
+            toColumn: 'local_account_id',
+          },
+        ],
+      },
+    },
+    label: 'ローカルアカウント',
+    table: 'local_accounts',
+  },
+
+  media_types: {
+    cardinality: 'lookup',
+    columns: {
+      name: {
+        knownValues: ['unknown', 'image', 'gifv', 'video', 'audio'],
+        label: 'メディア種別名',
+        nullable: false,
+        type: 'text',
+      },
+    },
+    hints: {
+      isSmallLookup: true,
+    },
+    joinPaths: {
+      posts: {
+        column: 'id',
+        sourceColumn: 'id',
+        via: [
+          {
+            fromColumn: 'post_id',
+            table: 'post_media',
+            toColumn: 'media_type_id',
+          },
+        ],
+      },
+    },
+    label: 'メディア種別',
+    table: 'media_types',
   },
 
   muted_accounts: {
@@ -230,6 +335,79 @@ export const TABLE_REGISTRY: TableRegistry = {
     joinPaths: {},
     label: '通知',
     table: 'notifications',
+  },
+
+  poll_options: {
+    cardinality: '1:N',
+    columns: {
+      sort_order: {
+        label: '順序',
+        nullable: false,
+        type: 'integer',
+      },
+      title: {
+        label: 'タイトル',
+        nullable: false,
+        type: 'text',
+      },
+      votes_count: {
+        label: '得票数',
+        nullable: true,
+        type: 'integer',
+      },
+    },
+    hints: {
+      preferExists: true,
+    },
+    joinPaths: {
+      posts: {
+        column: 'poll_id',
+        sourceColumn: 'id',
+        via: [
+          {
+            fromColumn: 'post_id',
+            table: 'polls',
+            toColumn: 'id',
+          },
+        ],
+      },
+    },
+    label: '投票選択肢',
+    table: 'poll_options',
+  },
+
+  poll_votes: {
+    cardinality: '1:N',
+    columns: {
+      local_account_id: {
+        label: 'ローカルアカウント ID',
+        nullable: false,
+        type: 'integer',
+      },
+      voted: {
+        label: '投票済み',
+        nullable: false,
+        type: 'integer',
+      },
+    },
+    hints: {
+      preferExists: true,
+    },
+    joinPaths: {
+      posts: {
+        column: 'poll_id',
+        sourceColumn: 'id',
+        via: [
+          {
+            fromColumn: 'post_id',
+            table: 'polls',
+            toColumn: 'id',
+          },
+        ],
+      },
+    },
+    label: '投票記録',
+    table: 'poll_votes',
   },
 
   polls: {

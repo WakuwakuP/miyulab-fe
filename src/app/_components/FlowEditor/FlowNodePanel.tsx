@@ -200,8 +200,11 @@ function GetIdsPanel({
   )
 
   const flatColumns = useMemo(
-    () => buildFlatColumns(filterableTables),
-    [filterableTables],
+    () =>
+      buildFlatColumns(
+        filterableTables.filter((t) => t.table === data.config.table),
+      ),
+    [filterableTables, data.config.table],
   )
 
   // 上流接続ノード
@@ -479,7 +482,7 @@ function FilterConditionRow({
               const k = flatColumnKey(c)
               return (
                 <SelectItem key={k} value={k}>
-                  {c.tableLabel} / {c.columnLabel}
+                  {c.columnLabel}
                 </SelectItem>
               )
             })}
