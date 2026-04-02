@@ -5,6 +5,7 @@ import { BarChart3, X } from 'lucide-react'
 import { memo, useCallback } from 'react'
 import { useFlowActions } from '../FlowCanvas'
 import type { GetIdsFlowNodeData } from '../types'
+import { NodeExecBadge } from './NodeExecBadge'
 
 type Props = { id: string; data: GetIdsFlowNodeData; selected?: boolean }
 
@@ -13,7 +14,7 @@ export const GetIdsFlowNode = memo(function GetIdsFlowNode({
   data,
   selected,
 }: Props) {
-  const { deleteNode } = useFlowActions()
+  const { deleteNode, execStatus } = useFlowActions()
 
   const handleDelete = useCallback(
     (e: React.MouseEvent) => {
@@ -27,12 +28,16 @@ export const GetIdsFlowNode = memo(function GetIdsFlowNode({
   const outputIdColumn = data.config.outputIdColumn
   const outputTimeColumn = data.config.outputTimeColumn
 
+  const isRunning = execStatus?.nodeStates[id] === 'running'
+
   return (
     <div
       className={`rounded-lg border-2 px-4 py-3 min-w-[180px] shadow-md transition-all ${
-        selected
-          ? 'border-sky-400 shadow-sky-400/20'
-          : 'border-sky-600 shadow-black/20'
+        isRunning
+          ? 'border-amber-400 shadow-amber-400/20'
+          : selected
+            ? 'border-sky-400 shadow-sky-400/20'
+            : 'border-sky-600 shadow-black/20'
       } bg-gray-900 group`}
     >
       <Handle
@@ -79,6 +84,7 @@ export const GetIdsFlowNode = memo(function GetIdsFlowNode({
           ← {bindings.map((b) => b.column).join(', ')}
         </div>
       )}
+      <NodeExecBadge execStatus={execStatus} nodeId={id} />
       <Handle
         className="!w-3 !h-3 !bg-sky-400 !border-2 !border-sky-600"
         position={Position.Right}

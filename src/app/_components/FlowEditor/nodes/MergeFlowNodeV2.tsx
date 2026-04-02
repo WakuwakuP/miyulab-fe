@@ -5,6 +5,7 @@ import { GitMerge, X } from 'lucide-react'
 import { memo, useCallback } from 'react'
 import { useFlowActions } from '../FlowCanvas'
 import type { MergeFlowNodeDataV2 } from '../types'
+import { NodeExecBadge } from './NodeExecBadge'
 
 type Props = { id: string; data: MergeFlowNodeDataV2; selected?: boolean }
 
@@ -13,7 +14,7 @@ export const MergeFlowNodeV2 = memo(function MergeFlowNodeV2({
   data,
   selected,
 }: Props) {
-  const { deleteNode } = useFlowActions()
+  const { deleteNode, execStatus } = useFlowActions()
 
   const handleDelete = useCallback(
     (e: React.MouseEvent) => {
@@ -30,12 +31,16 @@ export const MergeFlowNodeV2 = memo(function MergeFlowNodeV2({
         ? 'union'
         : 'intersect'
 
+  const isRunning = execStatus?.nodeStates[id] === 'running'
+
   return (
     <div
       className={`rounded-lg border-2 px-4 py-3 min-w-[160px] shadow-md transition-all ${
-        selected
-          ? 'border-cyan-400 shadow-cyan-400/20'
-          : 'border-cyan-600 shadow-black/20'
+        isRunning
+          ? 'border-amber-400 shadow-amber-400/20'
+          : selected
+            ? 'border-cyan-400 shadow-cyan-400/20'
+            : 'border-cyan-600 shadow-black/20'
       } bg-gray-900 group`}
     >
       <Handle
@@ -60,6 +65,7 @@ export const MergeFlowNodeV2 = memo(function MergeFlowNodeV2({
       <div className="text-[10px] text-gray-500 mt-0.5">
         limit: {data.config.limit}
       </div>
+      <NodeExecBadge execStatus={execStatus} nodeId={id} />
       <Handle
         className="!w-3 !h-3 !bg-cyan-400 !border-2 !border-cyan-600"
         position={Position.Right}

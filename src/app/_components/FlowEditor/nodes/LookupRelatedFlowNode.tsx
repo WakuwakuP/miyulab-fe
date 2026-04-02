@@ -5,6 +5,7 @@ import { Link2, X } from 'lucide-react'
 import { memo, useCallback } from 'react'
 import { useFlowActions } from '../FlowCanvas'
 import type { LookupRelatedFlowNodeData } from '../types'
+import { NodeExecBadge } from './NodeExecBadge'
 
 type Props = { id: string; data: LookupRelatedFlowNodeData; selected?: boolean }
 
@@ -13,7 +14,7 @@ export const LookupRelatedFlowNode = memo(function LookupRelatedFlowNode({
   data,
   selected,
 }: Props) {
-  const { deleteNode } = useFlowActions()
+  const { deleteNode, execStatus } = useFlowActions()
 
   const handleDelete = useCallback(
     (e: React.MouseEvent) => {
@@ -23,12 +24,16 @@ export const LookupRelatedFlowNode = memo(function LookupRelatedFlowNode({
     [deleteNode, id],
   )
 
+  const isRunning = execStatus?.nodeStates[id] === 'running'
+
   return (
     <div
       className={`rounded-lg border-2 px-4 py-3 min-w-[180px] shadow-md transition-all ${
-        selected
-          ? 'border-violet-400 shadow-violet-400/20'
-          : 'border-violet-600 shadow-black/20'
+        isRunning
+          ? 'border-amber-400 shadow-amber-400/20'
+          : selected
+            ? 'border-violet-400 shadow-violet-400/20'
+            : 'border-violet-600 shadow-black/20'
       } bg-gray-900 group`}
     >
       <Handle
@@ -55,6 +60,7 @@ export const LookupRelatedFlowNode = memo(function LookupRelatedFlowNode({
       <div className="text-[10px] text-gray-500 mt-0.5">
         結合 {data.config.joinConditions.length} 件
       </div>
+      <NodeExecBadge execStatus={execStatus} nodeId={id} />
       <Handle
         className="!w-3 !h-3 !bg-violet-400 !border-2 !border-violet-600"
         position={Position.Right}

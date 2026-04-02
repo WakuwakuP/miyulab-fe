@@ -45,6 +45,28 @@ export type FlowGraphState = {
   edges: FlowEdge[]
 }
 
+// --------------- 実行状態 ---------------
+
+/** ノード実行状態 */
+export type NodeExecState = 'idle' | 'running' | 'done' | 'error'
+
+/** テスト実行の全体状態 */
+export type FlowExecStatus = {
+  /** 各ノードの実行状態 */
+  nodeStates: Record<string, NodeExecState>
+  /** 各ノードの実行統計 (実行完了後) */
+  nodeStats: Record<
+    string,
+    { cacheHit: boolean; durationMs: number; rowCount: number }
+  >
+  /** 全体の実行時間 (実行完了後) */
+  totalDurationMs: number | null
+  /** 実行中かどうか */
+  running: boolean
+  /** エラーメッセージ */
+  error: string | null
+}
+
 export const FLOW_NODE_TYPES_V2 = {
   'get-ids': 'get-ids',
   'lookup-related': 'lookup-related',

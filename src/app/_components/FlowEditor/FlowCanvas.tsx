@@ -42,16 +42,19 @@ import {
   MergeFlowNodeV2,
   OutputFlowNodeV2,
 } from './nodes'
-import type { FlowEdge, FlowNode } from './types'
+import type { FlowEdge, FlowExecStatus, FlowNode } from './types'
 
 // --------------- FlowActions Context ---------------
 
 export type FlowActions = {
   deleteNode: (id: string) => void
+  /** テスト実行の状態 (存在する場合) */
+  execStatus: FlowExecStatus | null
 }
 
 const FlowActionsContext = createContext<FlowActions>({
   deleteNode: () => {},
+  execStatus: null,
 })
 
 export function useFlowActions(): FlowActions {
@@ -145,6 +148,8 @@ type FlowCanvasProps = {
   onUpdateNodeData: (id: string, data: FlowNode['data']) => void
   /** 親がビューポート中央のフロー座標を取得するための ref */
   viewportCenterRef?: React.MutableRefObject<ViewportCenterFn | null>
+  /** テスト実行の状態 */
+  execStatus?: FlowExecStatus | null
 }
 
 // --------------- Inner component (inside ReactFlow) ---------------
@@ -193,6 +198,7 @@ export function FlowCanvas({
   onDeleteNode,
   onUpdateNodeData,
   viewportCenterRef,
+  execStatus,
 }: FlowCanvasProps) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [didInitialFit, setDidInitialFit] = useState(false)
@@ -211,8 +217,8 @@ export function FlowCanvas({
   )
 
   const flowActions = useMemo<FlowActions>(
-    () => ({ deleteNode: onDeleteNode }),
-    [onDeleteNode],
+    () => ({ deleteNode: onDeleteNode, execStatus: execStatus ?? null }),
+    [onDeleteNode, execStatus],
   )
 
   // fitView は初回のみ実行し、以降はノード追加で勝手にビューが動かないようにする

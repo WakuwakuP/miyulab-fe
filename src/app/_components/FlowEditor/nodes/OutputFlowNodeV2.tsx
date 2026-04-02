@@ -1,7 +1,7 @@
 'use client'
 
 import { Handle, Position } from '@xyflow/react'
-import { ArrowDownToLine, X } from 'lucide-react'
+import { ArrowDownToLine, Loader2, X } from 'lucide-react'
 import { memo, useCallback } from 'react'
 import { useFlowActions } from '../FlowCanvas'
 import type { OutputFlowNodeDataV2 } from '../types'
@@ -13,7 +13,7 @@ export const OutputFlowNodeV2 = memo(function OutputFlowNodeV2({
   data,
   selected,
 }: Props) {
-  const { deleteNode } = useFlowActions()
+  const { deleteNode, execStatus } = useFlowActions()
 
   const handleDelete = useCallback(
     (e: React.MouseEvent) => {
@@ -23,12 +23,18 @@ export const OutputFlowNodeV2 = memo(function OutputFlowNodeV2({
     [deleteNode, id],
   )
 
+  const isRunning = execStatus?.nodeStates[id] === 'running'
+  const stat = execStatus?.nodeStats[id]
+  const totalMs = execStatus?.totalDurationMs
+
   return (
     <div
       className={`rounded-lg border-2 px-4 py-3 min-w-[160px] shadow-md transition-all ${
-        selected
-          ? 'border-green-400 shadow-green-400/20'
-          : 'border-green-600 shadow-black/20'
+        isRunning
+          ? 'border-amber-400 shadow-amber-400/20'
+          : selected
+            ? 'border-green-400 shadow-green-400/20'
+            : 'border-green-600 shadow-black/20'
       } bg-gray-900 group`}
     >
       <Handle
@@ -55,6 +61,34 @@ export const OutputFlowNodeV2 = memo(function OutputFlowNodeV2({
       <div className="text-[10px] text-gray-500 mt-0.5">
         {data.config.pagination.limit} 件
       </div>
+      {/* 実行状態: running */}
+      {isRunning && (
+        <div className="flex items-center gap-1 mt-1.5 text-[10px] text-amber-400">
+          <Loader2 className="h-3 w-3 animate-spin" />
+          <span>Phase2/3 実行中…</span>
+        </div>
+      )}
+      {/* 実行状態: error */}
+      {execStatus?.nodeStates[id] === 'error' && (
+        <div className="mt-1.5 text-[10px] text-red-400">
+          ❌ {execStatus.error ?? 'エラー'}
+        </div>
+      )}
+      {/* 実行状態: done — 結果サマリー */}
+      {execStatus?.nodeStates[id] === 'done' && stat && (
+        <div className="mt-1.5 space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-green-400 bg-green-400/10 px-1.5 py-0.5 rounded-full">
+              ✅ {stat.rowCount.toLocaleString()} 件取得
+            </span>
+          </div>
+          {totalMs != null && (
+            <div className="text-[10px] text-gray-400">
+              合計: {totalMs.toFixed(0)}ms
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 })

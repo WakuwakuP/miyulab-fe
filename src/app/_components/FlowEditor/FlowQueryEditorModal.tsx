@@ -27,23 +27,45 @@ import {
   Filter,
   GitMerge,
   Link2,
+  Loader2,
   Play,
   Shield,
   VolumeX,
+  Zap,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import type { BackendFilter, TimelineConfigV2 } from 'types/types'
 import { resolveBackendUrlFromAccountId } from 'util/accountResolver'
 import type { ConfigToNodesContext } from 'util/db/query-ir/compat/configToNodes'
 import { configToQueryPlan } from 'util/db/query-ir/compat/configToNodes'
+import { topoSort } from 'util/db/query-ir/executor/topoSort'
+import type { SerializedGraphPlan } from 'util/db/query-ir/executor/types'
 import type { QueryPlanV2 } from 'util/db/query-ir/nodes'
 import { isQueryPlanV2 } from 'util/db/query-ir/nodes'
 import { migrateQueryPlanV1ToV2 } from 'util/db/query-ir/v2/migrateV1ToV2'
 import { validateQueryPlanV2 } from 'util/db/query-ir/v2/validateV2'
+import { getSqliteDb } from 'util/db/sqlite'
+import { AppsContext } from 'util/provider/AppsProvider'
+import {
+  normalizeBackendFilter,
+  resolveBackendUrls,
+} from 'util/timelineConfigValidator'
 import { FlowCanvas, type ViewportCenterFn } from './FlowCanvas'
 import { flowToQueryPlanV2 } from './flowToQueryPlanV2'
 import { queryPlanToFlow } from './queryPlanToFlow'
-import type { FlowEdge, FlowGraphState, FlowNode } from './types'
+import type {
+  FlowEdge,
+  FlowExecStatus,
+  FlowGraphState,
+  FlowNode,
+} from './types'
 
 // --------------- Props ---------------
 
@@ -400,6 +422,97 @@ export function FlowQueryEditorModal({
     handleFlowSave(currentPlanV2)
   }, [currentPlanV2, handleFlowSave])
 
+  // --------------- テスト実行 ---------------
+
+  const apps = useContext(AppsContext)
+  const [execStatus, setExecStatus] = useState<FlowExecStatus | null>(null)
+
+  const handleTestExec = useCallback(async () => {
+    if (!validation.valid) return
+
+    const plan = currentPlanV2
+
+    // ノード実行順序を取得
+    let order: string[]
+    try {
+      order = topoSort(plan)
+    } catch {
+      setExecStatus({
+        error: 'トポロジカルソートに失敗しました',
+        nodeStates: {},
+        nodeStats: {},
+        running: false,
+        totalDurationMs: null,
+      })
+      return
+    }
+
+    // 初期状態: 全ノード idle
+    const initStates: Record<string, 'idle' | 'running' | 'done' | 'error'> = {}
+    for (const nId of order) initStates[nId] = 'idle'
+
+    setExecStatus({
+      error: null,
+      nodeStates: initStates,
+      nodeStats: {},
+      running: true,
+      totalDurationMs: null,
+    })
+
+    // 全ノードを running 表示にする (実際の実行は Worker 内で一括)
+    const runningStates = { ...initStates }
+    for (const nId of order) runningStates[nId] = 'running'
+    setExecStatus((prev) =>
+      prev ? { ...prev, nodeStates: runningStates } : prev,
+    )
+
+    try {
+      // backendUrls を解決
+      const backendFilter = extractBackendFilter(plan)
+      const normalized = normalizeBackendFilter(backendFilter, apps)
+      const backendUrls = resolveBackendUrls(normalized, apps)
+
+      const handle = await getSqliteDb()
+      const result = await handle.executeGraphPlan(
+        plan as unknown as SerializedGraphPlan,
+        { backendUrls },
+      )
+
+      // 結果から各ノードの状態を構築
+      const doneStates: Record<string, 'idle' | 'running' | 'done' | 'error'> =
+        {}
+      for (const nId of order) {
+        doneStates[nId] = result.meta.nodeStats[nId] ? 'done' : 'idle'
+      }
+
+      setExecStatus({
+        error: null,
+        nodeStates: doneStates,
+        nodeStats: result.meta.nodeStats,
+        running: false,
+        totalDurationMs: result.meta.totalDurationMs,
+      })
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '実行エラー'
+      // エラー時は全ノードを error にする
+      const errorStates: Record<string, 'idle' | 'running' | 'done' | 'error'> =
+        {}
+      for (const nId of order) errorStates[nId] = 'error'
+      setExecStatus({
+        error: msg,
+        nodeStates: errorStates,
+        nodeStats: {},
+        running: false,
+        totalDurationMs: null,
+      })
+    }
+  }, [validation.valid, currentPlanV2, apps])
+
+  // モーダル閉じたら実行状態リセット
+  useEffect(() => {
+    if (!open) setExecStatus(null)
+  }, [open])
+
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent className="max-w-[95vw] w-[95vw] h-[90vh] p-0 bg-gray-900 border-gray-700 flex flex-col overflow-hidden [&>button]:hidden">
@@ -451,6 +564,20 @@ export function FlowQueryEditorModal({
                 ブロック
               </button>
               <button
+                className="px-2 py-1.5 rounded bg-amber-700 text-xs text-amber-100 hover:bg-amber-600 flex items-center gap-1 disabled:opacity-50"
+                disabled={!validation.valid || (execStatus?.running ?? false)}
+                onClick={handleTestExec}
+                title="現在のフローをテスト実行"
+                type="button"
+              >
+                {execStatus?.running ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Zap className="h-3.5 w-3.5" />
+                )}
+                テスト実行
+              </button>
+              <button
                 className="px-3 py-1.5 rounded bg-gray-700 text-sm text-gray-300 hover:bg-gray-600 transition-colors"
                 onClick={() => onOpenChange(false)}
                 type="button"
@@ -499,6 +626,7 @@ export function FlowQueryEditorModal({
           <ReactFlowProvider>
             <FlowCanvas
               edges={edges}
+              execStatus={execStatus}
               nodes={nodes}
               onConnect={onConnect}
               onDeleteNode={handleDeleteNode}
@@ -514,10 +642,39 @@ export function FlowQueryEditorModal({
           <details>
             <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-300 transition-colors">
               プラン概要
+              {execStatus?.totalDurationMs != null && (
+                <span className="ml-2 text-emerald-400">
+                  (実行済: {execStatus.totalDurationMs.toFixed(0)}ms)
+                </span>
+              )}
+              {execStatus?.error && (
+                <span className="ml-2 text-red-400">
+                  (エラー: {execStatus.error})
+                </span>
+              )}
             </summary>
             <pre className="mt-1 text-xs text-gray-300 font-mono overflow-x-auto whitespace-pre-wrap max-h-24 overflow-y-auto">
               {planSummary}
             </pre>
+            {execStatus &&
+              !execStatus.running &&
+              Object.keys(execStatus.nodeStats).length > 0 && (
+                <div className="mt-2 border-t border-gray-800 pt-1">
+                  <div className="text-[10px] text-gray-500 mb-1">
+                    ノード実行統計:
+                  </div>
+                  {Object.entries(execStatus.nodeStats).map(([nId, s]) => (
+                    <div
+                      className="text-[10px] text-gray-400 font-mono"
+                      key={nId}
+                    >
+                      [{nId.slice(0, 8)}] {s.rowCount} 件 /{' '}
+                      {s.durationMs.toFixed(1)}ms
+                      {s.cacheHit ? ' 💾cache' : ''}
+                    </div>
+                  ))}
+                </div>
+              )}
           </details>
         </div>
       </DialogContent>
