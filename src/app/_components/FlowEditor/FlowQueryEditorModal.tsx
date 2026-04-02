@@ -24,6 +24,7 @@ import {
 import {
   ArrowDownToLine,
   BarChart3,
+  BookTemplate,
   Filter,
   GitMerge,
   Link2,
@@ -58,6 +59,7 @@ import {
   resolveBackendUrls,
 } from 'util/timelineConfigValidator'
 import { FlowCanvas, type ViewportCenterFn } from './FlowCanvas'
+import { FLOW_PRESETS } from './flowPresets'
 import { flowToQueryPlanV2 } from './flowToQueryPlanV2'
 import { queryPlanToFlow } from './queryPlanToFlow'
 import type {
@@ -303,6 +305,7 @@ export function FlowQueryEditorModal({
   const viewportCenterRef = useRef<ViewportCenterFn | null>(null)
   const addNodeCounterRef = useRef(1000)
   const addJitterIndexRef = useRef(0)
+  const prevOpenRef = useRef(false)
 
   const [nodes, setNodes] = useState<FlowNode[]>([])
   const [edges, setEdges] = useState<FlowEdge[]>([])
@@ -321,14 +324,17 @@ export function FlowQueryEditorModal({
     }
   }, [open, config.label])
 
+  // モーダルが開いた瞬間のみフローを初期化する
+  // resolvedPlanV2 の参照変更で再初期化しないようにする
   useEffect(() => {
-    if (open) {
-      const flow = queryPlanToFlow(resolvedPlanV2)
-      setNodes(flow.nodes)
-      setEdges(flow.edges)
-      addNodeCounterRef.current = 1000
-      addJitterIndexRef.current = 0
-    }
+    const justOpened = open && !prevOpenRef.current
+    prevOpenRef.current = open
+    if (!justOpened) return
+    const flow = queryPlanToFlow(resolvedPlanV2)
+    setNodes(flow.nodes)
+    setEdges(flow.edges)
+    addNodeCounterRef.current = 1000
+    addJitterIndexRef.current = 0
   }, [open, resolvedPlanV2])
 
   const onNodesChange: OnNodesChange = useCallback(
@@ -356,6 +362,17 @@ export function FlowQueryEditorModal({
     const pos = { x: center.x + j.x, y: center.y + j.y }
     const newNode = item.createNode(id, pos)
     setNodes((nds) => [...nds, newNode])
+  }, [])
+
+  const handleLoadPreset = useCallback((presetId: string) => {
+    const preset = FLOW_PRESETS.find((p) => p.id === presetId)
+    if (!preset) return
+    const plan = preset.plan()
+    const flow = queryPlanToFlow(plan)
+    setNodes(flow.nodes)
+    setEdges(flow.edges)
+    addNodeCounterRef.current = 1000
+    addJitterIndexRef.current = 0
   }, [])
 
   const handleDeleteNode = useCallback((id: string) => {
@@ -618,6 +635,24 @@ export function FlowQueryEditorModal({
             >
               {item.icon}
               {item.label}
+            </button>
+          ))}
+
+          <span className="mx-1 text-gray-700 shrink-0">|</span>
+
+          <span className="text-xs text-gray-500 mr-1 shrink-0">
+            <BookTemplate className="h-3 w-3 inline mr-0.5" />
+            サンプル:
+          </span>
+          {FLOW_PRESETS.map((preset) => (
+            <button
+              className="flex items-center gap-1 px-2 py-1 rounded bg-indigo-950/40 border border-indigo-800/40 text-xs text-indigo-300 hover:bg-indigo-900/50 hover:border-indigo-700/50 transition-colors whitespace-nowrap shrink-0"
+              key={preset.id}
+              onClick={() => handleLoadPreset(preset.id)}
+              title={preset.description}
+              type="button"
+            >
+              {preset.label}
             </button>
           ))}
         </div>

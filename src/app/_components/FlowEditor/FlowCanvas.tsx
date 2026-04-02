@@ -234,7 +234,7 @@ export function FlowCanvas({
 
   return (
     <FlowActionsContext value={flowActions}>
-      <div className="flex h-full">
+      <div className="flex h-full flow-editor-root">
         <div className="flex-1 relative flow-canvas-root">
           <ReactFlow
             defaultEdgeOptions={{
@@ -265,7 +265,7 @@ export function FlowCanvas({
               variant={BackgroundVariant.Dots}
             />
             <Controls
-              className="!bg-gray-800 !border-gray-700 !shadow-lg"
+              className="!bg-gray-800 !border-gray-700 !shadow-lg !rounded-lg"
               showInteractive={false}
             />
             <MiniMap
@@ -274,7 +274,7 @@ export function FlowCanvas({
               nodeColor="#4b5563"
             />
           </ReactFlow>
-          {/* React Flow デフォルトノードスタイルの上書き */}
+          {/* React Flow デフォルトスタイルの上書き + フローエディタ固有スタイル */}
           <style>{`
             .flow-canvas-root .react-flow__node {
               background: transparent !important;
@@ -292,6 +292,43 @@ export function FlowCanvas({
             }
             .flow-canvas-root .react-flow__edge {
               cursor: pointer;
+            }
+            /* Controls ボタンのダークテーマ */
+            .flow-canvas-root .react-flow__controls-button {
+              background: #1f2937 !important;
+              border: 1px solid #374151 !important;
+              border-radius: 6px !important;
+              fill: #9ca3af !important;
+              transition: all 0.15s ease;
+              width: 28px !important;
+              height: 28px !important;
+            }
+            .flow-canvas-root .react-flow__controls-button:hover {
+              background: #374151 !important;
+              fill: #e5e7eb !important;
+              border-color: #4b5563 !important;
+            }
+            .flow-canvas-root .react-flow__controls {
+              gap: 4px;
+            }
+            /* ノード設定パネル: Select のトランケート修正 */
+            .flow-editor-root button[role="combobox"] > span {
+              display: block !important;
+              -webkit-line-clamp: unset !important;
+              -webkit-box-orient: unset !important;
+              overflow: hidden;
+              text-overflow: ellipsis;
+              white-space: nowrap;
+            }
+            /* ノード設定パネル: input/select のテキスト色修正 */
+            .flow-editor-root input,
+            .flow-editor-root select,
+            .flow-editor-root textarea {
+              color: #fff !important;
+              background-color: transparent;
+            }
+            .flow-editor-root input::placeholder {
+              color: #6b7280 !important;
             }
           `}</style>
         </div>
