@@ -128,13 +128,21 @@ function buildGetIdsNode(
 ): GetIdsNode {
   const isNotification = config.type === 'notification'
   const isTag = config.type === 'tag'
+  const isTimelineScope = !isNotification && !isTag && timelineKeys.length > 0
 
-  const table = isNotification ? 'notifications' : 'posts'
+  // home/local/public は timeline_entries からクエリ開始
+  // (post_id を出力して Output で posts を参照)
+  const table = isNotification
+    ? 'notifications'
+    : isTimelineScope
+      ? 'timeline_entries'
+      : 'posts'
   const filters: GetIdsFilter[] = []
   let orBranches: GetIdsFilter[][] | undefined
 
   // --- Timeline Scope (home/local/public) ---
-  if (!isNotification && !isTag && timelineKeys.length > 0) {
+  if (isTimelineScope) {
+    // timeline_entries がソーステーブルなので direct filter
     filters.push({
       column: 'timeline_key',
       op: 'IN',
@@ -235,6 +243,8 @@ function buildGetIdsNode(
     filters,
     kind: 'get-ids',
     orBranches,
+    // timeline_entries は post_id を出力 ID として使用
+    outputIdColumn: isTimelineScope ? 'post_id' : undefined,
     table,
   }
 }

@@ -104,12 +104,27 @@ function lookupToAerialFallback(
 /**
  * getIds 単体（子なし）から QueryPlan を構築
  */
+/**
+ * timeline_entries ソースを posts に正規化する。
+ *
+ * compilePhase1ForTimeline は固定テンプレート
+ *   FROM timeline_entries te INNER JOIN posts p ON p.id = te.post_id
+ * を使い、sourceAlias = 'p' (= posts) でフィルタを解決する。
+ * sourceTable が 'timeline_entries' だと同テーブルフィルタが
+ * 'direct' 戦略 → p.local_account_id (posts には存在しない) を生成してしまう。
+ * 'posts' に正規化すれば timeline_entries フィルタは 'exists' 戦略になり正しい SQL になる。
+ */
+function normalizeSourceTable(table: string): string {
+  return table === 'timeline_entries' ? 'posts' : table
+}
+
 function getIdsNodeOnlyToPlan(
   g: GetIdsNode,
   out: OutputNodeV2,
   overlay: FilterNode[] | undefined,
 ): QueryPlan {
   const filters = [...getIdsToFilterNodes(g), ...(overlay ?? [])]
+  const table = normalizeSourceTable(g.table)
   return {
     composites: [],
     filters,
@@ -124,10 +139,10 @@ function getIdsNodeOnlyToPlan(
       kind: 'sort',
     },
     source: {
-      idColumn: g.outputIdColumn,
+      idColumn: table === g.table ? g.outputIdColumn : undefined,
       kind: 'source',
-      table: g.table,
-      timeColumn: g.outputTimeColumn,
+      table,
+      timeColumn: table === g.table ? g.outputTimeColumn : undefined,
     },
   }
 }
@@ -205,6 +220,7 @@ function mergeV2ToPlan(
     const n = byId.get(sid)?.node
     if (!n || n.kind !== 'get-ids') return null
     const g = n
+    const table = normalizeSourceTable(g.table)
     sources.push({
       composites: [],
       filters: getIdsToFilterNodes(g),
@@ -219,10 +235,10 @@ function mergeV2ToPlan(
         kind: 'sort',
       },
       source: {
-        idColumn: g.outputIdColumn,
+        idColumn: table === g.table ? g.outputIdColumn : undefined,
         kind: 'source',
-        table: g.table,
-        timeColumn: g.outputTimeColumn,
+        table,
+        timeColumn: table === g.table ? g.outputTimeColumn : undefined,
       },
     })
   }
