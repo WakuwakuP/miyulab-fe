@@ -231,8 +231,29 @@ function GetIdsPanel({
     [edges, nodes, node.id],
   )
 
+  // 上流バインド用カラム候補 (id を含む PK/FK カラム)
+  const bindableColumns = useMemo(() => {
+    const join = getJoinableColumns(data.config.table)
+    if (join.length > 0) return join
+    return getOutputIdColumns(data.config.table)
+  }, [data.config.table])
+
   // 後方互換: 旧 inputBinding は sourceNodeId がないため破棄して空配列に正規化
   const inputBindings: GetIdsInputBinding[] = data.config.inputBindings ?? []
+
+  // フィルタ条件に紐付かないスタンドアロンバインド
+  const filterBoundColumns = useMemo(() => {
+    const cols = new Set<string>()
+    for (const f of data.config.filters) {
+      if ('column' in f) cols.add(f.column)
+    }
+    return cols
+  }, [data.config.filters])
+
+  const standaloneBindings = useMemo(
+    () => inputBindings.filter((b) => !filterBoundColumns.has(b.column)),
+    [inputBindings, filterBoundColumns],
+  )
 
   function updateConfig(patch: Partial<typeof data.config>) {
     onUpdate(node.id, { ...data, config: { ...data.config, ...patch } })
@@ -406,6 +427,132 @@ function GetIdsPanel({
               ))}
             </SelectContent>
           </Select>
+        </div>
+      )}
+
+      {upstreamNodes.length > 0 && bindableColumns.length > 0 && (
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-1">
+              <Link className="h-3 w-3 text-sky-400" />
+              <span className="text-xs font-semibold text-gray-300">
+                上流入力バインド
+                {standaloneBindings.length > 0 && (
+                  <span className="ml-1 text-gray-500">
+                    ({standaloneBindings.length})
+                  </span>
+                )}
+              </span>
+            </div>
+            <button
+              className="flex items-center gap-0.5 rounded bg-sky-900/40 border border-sky-700/50 px-1.5 py-0.5 text-[10px] text-sky-400 hover:bg-sky-900/70 hover:text-sky-300 transition-colors"
+              onClick={() => {
+                const usedCols = new Set(inputBindings.map((b) => b.column))
+                const col = bindableColumns.find((c) => !usedCols.has(c.name))
+                if (!col) return
+                setInputBinding(col.name, upstreamNodes[0].id)
+              }}
+              title="上流バインドを追加"
+              type="button"
+            >
+              <Plus className="h-2.5 w-2.5" />
+              バインド
+            </button>
+          </div>
+
+          {standaloneBindings.length === 0 && (
+            <p className="text-xs text-gray-600">
+              上流ノードの出力IDを任意のカラムにバインドできます
+            </p>
+          )}
+
+          {standaloneBindings.map((binding) => {
+            const boundNode = upstreamNodes.find(
+              (n) => n.id === binding.sourceNodeId,
+            )
+            return (
+              <div
+                className="rounded border border-sky-800/50 bg-sky-950/30 p-2 mb-2"
+                key={`bind-${binding.column}`}
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[10px] font-semibold text-sky-400">
+                    IDバインド
+                  </span>
+                  <button
+                    className="p-0.5 rounded hover:bg-gray-700 text-gray-500 hover:text-red-400 transition-colors"
+                    onClick={() => setInputBinding(binding.column, null)}
+                    type="button"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+
+                <div className="mb-1.5">
+                  <span className="text-[10px] text-gray-400 block mb-0.5">
+                    対象カラム
+                  </span>
+                  <Select
+                    onValueChange={(v) => {
+                      setInputBinding(binding.column, null)
+                      setInputBinding(v, binding.sourceNodeId)
+                    }}
+                    value={binding.column}
+                  >
+                    <SelectTrigger className="w-full h-6 text-xs bg-gray-700 border-gray-600 text-white">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-60">
+                      {bindableColumns.map((c) => (
+                        <SelectItem
+                          key={c.name}
+                          textValue={c.label}
+                          value={c.name}
+                        >
+                          <span className="block">{c.label}</span>
+                          <span className="block text-[10px] text-gray-500 font-mono">
+                            {c.name}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {upstreamNodes.length === 1 ? (
+                  <span className="block rounded bg-gray-700 border border-gray-600 px-1.5 py-0.5 text-[10px] text-gray-300">
+                    ← {getNodeLabelV2(upstreamNodes[0].data)}
+                  </span>
+                ) : (
+                  <div>
+                    <span className="text-[10px] text-gray-400 block mb-0.5">
+                      ソースノード
+                    </span>
+                    <Select
+                      onValueChange={(v) => setInputBinding(binding.column, v)}
+                      value={binding.sourceNodeId}
+                    >
+                      <SelectTrigger className="w-full h-6 text-xs bg-gray-700 border-gray-600 text-white">
+                        <SelectValue placeholder="上流ノードを選択…" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-60">
+                        {upstreamNodes.map((n) => (
+                          <SelectItem key={n.id} value={n.id}>
+                            {getNodeLabelV2(n.data)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {!boundNode && (
+                      <p className="text-[10px] text-amber-400 mt-0.5">
+                        上流ノードを選択してください
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
 
