@@ -165,33 +165,48 @@ export function useGraphTimeline(config: TimelineConfigV2): {
 
       recordDuration(result.meta.totalDurationMs)
 
-      if (result.meta.sourceType === 'notification') {
-        // 通知パス
-        const notifications: NotificationAddAppIndex[] = []
-        for (const row of result.detailRows) {
+      // --- posts の変換 ---
+      let postMap: Map<number, StatusAddAppIndex> | undefined
+      if (result.posts.detailRows.length > 0) {
+        const maps = buildBatchMapsFromResults(
+          result.posts.batchResults as Parameters<
+            typeof buildBatchMapsFromResults
+          >[0],
+        )
+        postMap = new Map()
+        for (const row of result.posts.detailRows) {
+          const status = assembleStatusFromBatch(row, maps)
+          const appIndex = resolveAppIndex(status.backendUrl, apps)
+          if (appIndex < 0) continue
+          postMap.set(status.post_id, { ...status, appIndex })
+        }
+      }
+
+      // --- notifications の変換 ---
+      let notifMap: Map<number, NotificationAddAppIndex> | undefined
+      if (result.notifications.detailRows.length > 0) {
+        notifMap = new Map()
+        for (const row of result.notifications.detailRows) {
           const backendUrl = (row[1] as string) || ''
           const appIndex = resolveAppIndex(backendUrl, apps)
           if (appIndex < 0) continue
           const stored = rowToStoredNotification(row)
-          notifications.push({ ...stored, appIndex })
+          notifMap.set(stored.notification_id, { ...stored, appIndex })
         }
-        setData(notifications)
-      } else {
-        // ポストパス
-        const maps = buildBatchMapsFromResults(
-          result.batchResults as Parameters<
-            typeof buildBatchMapsFromResults
-          >[0],
-        )
-        const statuses: StatusAddAppIndex[] = []
-        for (const row of result.detailRows) {
-          const status = assembleStatusFromBatch(row, maps)
-          const appIndex = resolveAppIndex(status.backendUrl, apps)
-          if (appIndex < 0) continue
-          statuses.push({ ...status, appIndex })
-        }
-        setData(statuses)
       }
+
+      // --- displayOrder に基づいて結果を組み立て ---
+      const items: (StatusAddAppIndex | NotificationAddAppIndex)[] = []
+      for (const entry of result.displayOrder) {
+        if (entry.table === 'posts' && postMap) {
+          const status = postMap.get(entry.id)
+          if (status) items.push(status)
+        } else if (entry.table === 'notifications' && notifMap) {
+          const notif = notifMap.get(entry.id)
+          if (notif) items.push(notif)
+        }
+      }
+      setData(items)
     } catch (e) {
       console.error('[useGraphTimeline] fetch error:', e)
     }

@@ -616,9 +616,16 @@ export async function executeQueryPlan(
       if (precomputedResults[i]) continue
       const stepResult = result.stepResults[i]
       if (stepResult?.type === 'id-collect') {
+        // Legacy path — rows lack 'table' field, add it from step.source
+        const rowsWithTable = stepResult.rows.map(
+          (r: { id: number; createdAtMs: number }) => ({
+            ...r,
+            table: step.source,
+          }),
+        )
         setCachedIdCollect(
           { binds: step.binds, sql: step.sql },
-          stepResult.rows,
+          rowsWithTable,
           result.capturedVersions,
           step.source,
         )

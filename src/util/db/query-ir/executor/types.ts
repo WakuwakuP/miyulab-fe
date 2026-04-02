@@ -152,12 +152,20 @@ export type GraphExecuteOptions = {
  *
  * Output ノードが構築した Phase2/Phase3 の結果と
  * 各ノードの実行統計を返す。
+ * posts と notifications は別々に格納され、displayOrder で表示順序を保持する。
  */
 export type GraphExecuteResult = {
-  /** Phase2: 詳細データ行 */
-  detailRows: (string | number | null)[][]
-  /** Phase3: バッチエンリッチメント結果 */
-  batchResults: Record<string, (string | number | null)[][]>
+  /** Post の Phase2 詳細データ行 + Phase3 バッチエンリッチメント */
+  posts: {
+    detailRows: (string | number | null)[][]
+    batchResults: Record<string, (string | number | null)[][]>
+  }
+  /** Notification の詳細データ行 */
+  notifications: {
+    detailRows: (string | number | null)[][]
+  }
+  /** 表示順序 — (table, id) ペアの配列 (sort 適用済み) */
+  displayOrder: DisplayOrderEntry[]
   /** メタ情報 */
   meta: {
     sourceType: 'post' | 'notification' | 'mixed'
@@ -167,4 +175,10 @@ export type GraphExecuteResult = {
   }
   /** テーブルバージョンスナップショット（キャッシュ検証用） */
   capturedVersions: Record<string, number>
+}
+
+/** displayOrder の各エントリ */
+export type DisplayOrderEntry = {
+  table: 'posts' | 'notifications'
+  id: number
 }

@@ -1,12 +1,11 @@
 // ============================================================
 // Graph Executor — Output ノードエグゼキュータ
 //
-// 最終的な [{id, createdAtMs}] を受け取り:
+// 最終的な [{table, id, createdAtMs}] を受け取り:
 // 1. sort + pagination 適用
-// 2. sourceType 推定
-// 3. Phase2: 詳細データ取得 (posts or notifications)
-// 4. Phase3: バッチエンリッチメント
-// 5. reblog 展開
+// 2. rows を table でグループ化
+// 3. posts → Phase2 + Phase3, notifications → 通知クエリ
+// 4. displayOrder で表示順序を保持
 // ============================================================
 
 import type { DbExec } from '../../sqlite/queries/executionEngine'
@@ -22,10 +21,13 @@ import {
 } from '../../sqlite/queries/statusSelect'
 import type { OutputNodeV2 } from '../nodes'
 import type { NodeOutputRow } from '../plan'
-import type { GraphExecuteResult, NodeOutput } from './types'
+import type { DisplayOrderEntry, GraphExecuteResult, NodeOutput } from './types'
 
 // reblog_of_post_id のカラムインデックス (STATUS_BASE_SELECT の [25])
 const REBLOG_POST_ID_COLUMN_INDEX = 25
+
+/** Output ノードで受入可能なテーブル */
+const SUPPORTED_TABLES = new Set(['posts', 'notifications'])
 
 /**
  * Output ノードを実行し、最終的な GraphExecuteResult を構築する。
@@ -59,34 +61,70 @@ export function executeOutput(
   const limit = node.pagination.limit
   rows = rows.slice(offset, offset + limit)
 
+  // --- 2. 未対応テーブルガード ---
+  const unsupported = rows.filter((r) => !SUPPORTED_TABLES.has(r.table))
+  if (unsupported.length > 0) {
+    const tables = [...new Set(unsupported.map((r) => r.table))]
+    throw new Error(
+      `Output ノードは posts と notifications のみ対応しています。未対応テーブル: ${tables.join(', ')}`,
+    )
+  }
+
   if (rows.length === 0) {
     return {
-      batchResults: {},
-      detailRows: [],
-      sourceType: inferSourceType(input.sourceTable),
+      displayOrder: [],
+      notifications: { detailRows: [] },
+      posts: { batchResults: {}, detailRows: [] },
+      sourceType: inferSourceType(rows),
     }
   }
 
-  // --- 2. sourceType 推定 ---
-  const sourceType = inferSourceType(input.sourceTable)
+  // --- 3. table でグループ化 ---
+  const postRows = rows.filter((r) => r.table === 'posts')
+  const notifRows = rows.filter((r) => r.table === 'notifications')
 
-  // --- 3/4. Phase2 + Phase3 実行 ---
-  if (sourceType === 'notification') {
-    return executeNotificationOutput(db, rows)
+  // --- 4. displayOrder 構築 ---
+  const displayOrder: DisplayOrderEntry[] = rows.map((r) => ({
+    id: r.id,
+    table: r.table as 'posts' | 'notifications',
+  }))
+
+  // --- 5. sourceType 推定 ---
+  const sourceType = inferSourceType(rows)
+
+  // --- 6. 各テーブルの Phase2/Phase3 実行 ---
+  const postsResult =
+    postRows.length > 0
+      ? executePostOutput(db, postRows, backendUrls)
+      : {
+          batchResults: {} as Record<string, (string | number | null)[][]>,
+          detailRows: [] as (string | number | null)[][],
+        }
+  const notifsResult =
+    notifRows.length > 0
+      ? executeNotificationOutput(db, notifRows)
+      : { detailRows: [] as (string | number | null)[][] }
+
+  return {
+    displayOrder,
+    notifications: notifsResult,
+    posts: postsResult,
+    sourceType,
   }
-
-  return executePostOutput(db, rows, backendUrls)
 }
 
 // --------------- sourceType 推定 ---------------
 
 function inferSourceType(
-  sourceTable: string,
+  rows: NodeOutputRow[],
 ): 'post' | 'notification' | 'mixed' {
-  if (sourceTable === 'notifications') return 'notification'
-  if (sourceTable === 'posts' || sourceTable === 'timeline_entries')
+  if (rows.length === 0) return 'post'
+  const tables = new Set(rows.map((r) => r.table))
+  if (tables.size === 1) {
+    if (tables.has('notifications')) return 'notification'
     return 'post'
-  return 'post'
+  }
+  return 'mixed'
 }
 
 // --------------- Post 出力 ---------------
@@ -95,8 +133,9 @@ function executePostOutput(
   db: DbExec,
   rows: NodeOutputRow[],
   backendUrls: string[],
-): Omit<GraphExecuteResult, 'meta' | 'capturedVersions'> & {
-  sourceType: 'post'
+): {
+  detailRows: (string | number | null)[][]
+  batchResults: Record<string, (string | number | null)[][]>
 } {
   let postIds = rows.map((r) => r.id)
 
@@ -130,7 +169,6 @@ function executePostOutput(
   return {
     batchResults,
     detailRows,
-    sourceType: 'post',
   }
 }
 
@@ -139,8 +177,8 @@ function executePostOutput(
 function executeNotificationOutput(
   db: DbExec,
   rows: NodeOutputRow[],
-): Omit<GraphExecuteResult, 'meta' | 'capturedVersions'> & {
-  sourceType: 'notification'
+): {
+  detailRows: (string | number | null)[][]
 } {
   const notifIds = rows.map((r) => r.id)
   const placeholders = notifIds.map(() => '?').join(',')
@@ -162,9 +200,7 @@ function executeNotificationOutput(
   })
 
   return {
-    batchResults: {},
     detailRows,
-    sourceType: 'notification',
   }
 }
 

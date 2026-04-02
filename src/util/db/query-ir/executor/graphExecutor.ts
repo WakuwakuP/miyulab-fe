@@ -144,7 +144,7 @@ export function executeGraphPlan(
           const cachedOutput: NodeOutput = {
             hash: output.hash,
             rows: cached,
-            sourceTable: node.table,
+            sourceTable: output.sourceTable,
           }
           outputs.set(nodeId, cachedOutput)
           nodeStats[nodeId] = {
@@ -252,14 +252,15 @@ export function executeGraphPlan(
           incoming.length > 0 ? outputs.get(incoming[0]) : undefined
         if (!firstInput) {
           return {
-            batchResults: {},
             capturedVersions: captureVersionsFn(),
-            detailRows: [],
+            displayOrder: [],
             meta: {
               nodeStats,
               sourceType: 'post',
               totalDurationMs: performance.now() - start,
             },
+            notifications: { detailRows: [] },
+            posts: { batchResults: {}, detailRows: [] },
           }
         }
 
@@ -269,18 +270,19 @@ export function executeGraphPlan(
         nodeStats[nodeId] = {
           cacheHit: false,
           durationMs: performance.now() - nodeStart,
-          rowCount: result.detailRows.length,
+          rowCount: result.displayOrder.length,
         }
 
         return {
-          batchResults: result.batchResults,
           capturedVersions: captureVersionsFn(),
-          detailRows: result.detailRows,
+          displayOrder: result.displayOrder,
           meta: {
             nodeStats,
             sourceType: result.sourceType,
             totalDurationMs,
           },
+          notifications: result.notifications,
+          posts: result.posts,
         }
       }
     }
@@ -288,13 +290,14 @@ export function executeGraphPlan(
 
   // Output ノードに到達しなかった場合のフォールバック
   return {
-    batchResults: {},
     capturedVersions: captureVersionsFn(),
-    detailRows: [],
+    displayOrder: [],
     meta: {
       nodeStats,
       sourceType: 'post',
       totalDurationMs: performance.now() - start,
     },
+    notifications: { detailRows: [] },
+    posts: { batchResults: {}, detailRows: [] },
   }
 }

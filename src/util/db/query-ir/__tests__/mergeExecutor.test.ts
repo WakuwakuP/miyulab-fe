@@ -12,11 +12,15 @@ function mkNode(strategy: MergeNodeV2['strategy'], limit = 0): MergeNodeV2 {
 
 /** NodeOutput を簡潔に生成する */
 function mkInput(
-  rows: { id: number; createdAtMs: number }[],
+  rows: { id: number; createdAtMs: number; table?: string }[],
   hash = 'h',
   sourceTable = 'posts',
 ): NodeOutput {
-  return { hash, rows, sourceTable }
+  return {
+    hash,
+    rows: rows.map((r) => ({ ...r, table: r.table ?? sourceTable })),
+    sourceTable,
+  }
 }
 
 describe('executeMerge', () => {
@@ -102,6 +106,40 @@ describe('executeMerge', () => {
       expect(result.rows).toHaveLength(1)
       expect(result.rows[0].id).toBe(1)
       expect(result.rows[0].createdAtMs).toBe(100)
+    })
+
+    it('(table, id) 複合キーで重複排除 — 異なるテーブルの同一IDは共存する', () => {
+      // Arrange: posts.id=1 と notifications.id=1 は別の行
+      const node = mkNode('union')
+      const inputs: NodeOutput[] = [
+        mkInput([{ createdAtMs: 100, id: 1 }], 'a', 'posts'),
+        mkInput([{ createdAtMs: 200, id: 1 }], 'b', 'notifications'),
+      ]
+
+      // Act
+      const result = executeMerge(node, inputs)
+
+      // Assert: 異なるテーブルなので両方残る
+      expect(result.rows).toHaveLength(2)
+      expect(result.rows.map((r) => r.table)).toEqual(
+        expect.arrayContaining(['posts', 'notifications']),
+      )
+    })
+
+    it('(table, id) 複合キーで重複排除 — 同一テーブルの同一IDは1件にまとめられる', () => {
+      // Arrange: 両方 posts.id=1
+      const node = mkNode('union')
+      const inputs: NodeOutput[] = [
+        mkInput([{ createdAtMs: 100, id: 1, table: 'posts' }], 'a', 'posts'),
+        mkInput([{ createdAtMs: 200, id: 1, table: 'posts' }], 'b', 'posts'),
+      ]
+
+      // Act
+      const result = executeMerge(node, inputs)
+
+      // Assert: 同一テーブル・同一IDなので1件
+      expect(result.rows).toHaveLength(1)
+      expect(result.rows[0].table).toBe('posts')
     })
 
     it('和集合の結果がcreatedAtMsの降順でソートされて返ること', () => {
@@ -603,7 +641,7 @@ describe('executeMerge', () => {
       expect(result.sourceTable).toBe('notifications')
     })
 
-    it("入力のsourceTableが混在している時、sourceTableが'posts'になること", () => {
+    it("入力のsourceTableが混在している時、sourceTableが'mixed'になること", () => {
       // Arrange
       const node = mkNode('union')
       const inputs: NodeOutput[] = [
@@ -615,7 +653,7 @@ describe('executeMerge', () => {
       const result = executeMerge(node, inputs)
 
       // Assert
-      expect(result.sourceTable).toBe('posts')
+      expect(result.sourceTable).toBe('mixed')
     })
 
     it('入力が1件の時、その入力のsourceTableがそのまま返ること', () => {

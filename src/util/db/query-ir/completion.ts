@@ -351,6 +351,54 @@ export function getOutputIdColumns(table: string): ColumnOption[] {
   return idCols
 }
 
+// --------------- Output table resolution ---------------
+
+/**
+ * FK カラム名 → ターゲットテーブル名の明示的マッピング。
+ * スキーマの FK 定義に基づく。新しい FK が追加された場合はここに追記する。
+ */
+const FK_TARGET_TABLE: Record<string, string> = {
+  actor_profile_id: 'profiles',
+  author_profile_id: 'profiles',
+  card_type_id: 'card_types',
+  display_post_id: 'posts',
+  local_account_id: 'local_accounts',
+  media_type_id: 'media_types',
+  moved_to_profile_id: 'profiles',
+  notification_type_id: 'notification_types',
+  origin_server_id: 'servers',
+  post_id: 'posts',
+  profile_id: 'profiles',
+  quote_of_post_id: 'posts',
+  reblog_of_post_id: 'posts',
+  related_post_id: 'posts',
+  server_id: 'servers',
+  visibility_id: 'visibility_types',
+}
+
+/**
+ * ソーステーブルと出力 ID カラムから、行が所属するターゲットテーブルを解決する。
+ *
+ * - `outputIdColumn` が `'id'` → ソーステーブル自身
+ * - FK カラム名に一致 → `FK_TARGET_TABLE` から解決
+ * - フォールバック → ソーステーブル
+ *
+ * @example
+ * resolveOutputTable('timeline_entries', 'post_id')  // → 'posts'
+ * resolveOutputTable('notifications', 'id')          // → 'notifications'
+ * resolveOutputTable('notifications', 'related_post_id') // → 'posts'
+ */
+export function resolveOutputTable(
+  sourceTable: string,
+  outputIdColumn: string,
+): string {
+  if (outputIdColumn === 'id') return sourceTable
+  return FK_TARGET_TABLE[outputIdColumn] ?? sourceTable
+}
+
+/** Output ノードで受入可能なテーブル */
+export const SUPPORTED_OUTPUT_TABLES = new Set(['posts', 'notifications'])
+
 // --------------- Exists filter tables ---------------
 
 /** ExistsFilter で使用可能なテーブル一覧 (1:N カーディナリティ) */

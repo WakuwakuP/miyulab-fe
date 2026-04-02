@@ -7,10 +7,15 @@ import type { BindValue } from './nodes'
 // --------------- Node output row type ---------------
 
 /**
- * getIds ノードの出力行。
- * ID と時刻を常にペアで持ち、マージ・キャッシュの基本単位となる。
+ * 各ノードの出力行。
+ * 所属テーブル・ID・時刻を常に保持し、マージ・キャッシュの基本単位となる。
+ *
+ * `table` は行が最終的に所属するテーブルを示す。
+ * 例: `timeline_entries.post_id` を出力する場合、table は `'posts'`。
+ * FK カラムから解決される（{@link resolveOutputTable} を参照）。
  */
 export type NodeOutputRow = {
+  table: string
   id: number
   createdAtMs: number
 }

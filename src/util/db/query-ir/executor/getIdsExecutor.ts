@@ -6,7 +6,7 @@
 // ============================================================
 
 import type { DbExec } from '../../sqlite/queries/executionEngine'
-import { getDefaultTimeColumn } from '../completion'
+import { getDefaultTimeColumn, resolveOutputTable } from '../completion'
 import type {
   BindValue,
   ExistsFilter,
@@ -215,9 +215,15 @@ export function executeGetIds(
     returnValue: 'resultRows',
   })
 
+  const outputTable = resolveOutputTable(
+    node.table,
+    node.outputIdColumn ?? 'id',
+  )
+
   const rows: NodeOutputRow[] = rawRows.map((row) => ({
     createdAtMs: row[1] as number,
     id: row[0] as number,
+    table: outputTable,
   }))
 
   const hash = `getids:${sql}:${JSON.stringify(binds)}:${rows.length}`
@@ -225,7 +231,7 @@ export function executeGetIds(
   return {
     binds,
     dependentTables,
-    output: { hash, rows, sourceTable: node.table },
+    output: { hash, rows, sourceTable: outputTable },
     sql,
   }
 }

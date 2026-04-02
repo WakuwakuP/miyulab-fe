@@ -1,13 +1,27 @@
 // ============================================================
 // Graph Executor — Merge ノードエグゼキュータ
 //
-// 複数の [{id, createdAtMs}] ストリームをインメモリで結合する。
+// 複数の [{table, id, createdAtMs}] ストリームをインメモリで結合する。
 // SQL は不要。strategy に応じて union / intersect / interleave-by-time を実行する。
+// 重複排除は (table, id) の複合キーで行う。
 // ============================================================
 
 import type { MergeNodeV2 } from '../nodes'
 import type { NodeOutputRow } from '../plan'
 import type { NodeOutput } from './types'
+
+/** (table, id) 複合キーを生成する */
+function rowKey(row: NodeOutputRow): string {
+  return `${row.table}\0${row.id}`
+}
+
+/** rows から sourceTable を導出する (全行同一 → そのテーブル, 混在 → 'mixed') */
+function deriveSourceTable(rows: NodeOutputRow[], fallback: string): string {
+  if (rows.length === 0) return fallback
+  const tables = new Set(rows.map((r) => r.table))
+  if (tables.size === 1) return rows[0].table
+  return 'mixed'
+}
 
 /**
  * Merge ノードを実行し、NodeOutput を返す。
@@ -22,10 +36,6 @@ export function executeMerge(
   if (inputs.length === 0) {
     return { hash: 'merge:empty', rows: [], sourceTable: 'posts' }
   }
-
-  // sourceTable を推定: 全入力が同じなら共通、異なれば 'mixed' 扱いで posts を使用
-  const sourceTables = new Set(inputs.map((i) => i.sourceTable))
-  const sourceTable = sourceTables.size === 1 ? inputs[0].sourceTable : 'posts'
 
   let rows: NodeOutputRow[]
 
@@ -48,6 +58,8 @@ export function executeMerge(
     rows = rows.slice(0, node.limit)
   }
 
+  const sourceTable = deriveSourceTable(rows, inputs[0].sourceTable)
+
   const inputHashes = inputs.map((i) => i.hash).join('+')
   const hash = `merge:${node.strategy}:${inputHashes}:${rows.length}`
 
@@ -56,13 +68,14 @@ export function executeMerge(
 
 // --------------- Strategy 実装 ---------------
 
-/** Union: 全入力の和集合（ID 重複排除、createdAtMs DESC でソート） */
+/** Union: 全入力の和集合（(table, id) 重複排除、createdAtMs DESC でソート） */
 function mergeUnion(inputs: NodeOutput[]): NodeOutputRow[] {
-  const seen = new Map<number, NodeOutputRow>()
+  const seen = new Map<string, NodeOutputRow>()
   for (const input of inputs) {
     for (const row of input.rows) {
-      if (!seen.has(row.id)) {
-        seen.set(row.id, row)
+      const key = rowKey(row)
+      if (!seen.has(key)) {
+        seen.set(key, row)
       }
     }
   }
@@ -71,22 +84,22 @@ function mergeUnion(inputs: NodeOutput[]): NodeOutputRow[] {
   return result
 }
 
-/** Intersect: 全入力の共通集合（全入力に存在する ID のみ） */
+/** Intersect: 全入力の共通集合（全入力に存在する (table, id) のみ） */
 function mergeIntersect(inputs: NodeOutput[]): NodeOutputRow[] {
   if (inputs.length === 0) return []
   if (inputs.length === 1) return [...inputs[0].rows]
 
-  // 最初の入力の ID セットから開始
-  let commonIds = new Set(inputs[0].rows.map((r) => r.id))
+  // 最初の入力のキーセットから開始
+  let commonKeys = new Set(inputs[0].rows.map(rowKey))
 
   // 残りの入力と交差
   for (let i = 1; i < inputs.length; i++) {
-    const currentIds = new Set(inputs[i].rows.map((r) => r.id))
-    commonIds = new Set([...commonIds].filter((id) => currentIds.has(id)))
+    const currentKeys = new Set(inputs[i].rows.map(rowKey))
+    commonKeys = new Set([...commonKeys].filter((k) => currentKeys.has(k)))
   }
 
-  // 最初の入力から共通 ID の行を取得
-  const result = inputs[0].rows.filter((r) => commonIds.has(r.id))
+  // 最初の入力から共通キーの行を取得
+  const result = inputs[0].rows.filter((r) => commonKeys.has(rowKey(r)))
   result.sort((a, b) => b.createdAtMs - a.createdAtMs)
   return result
 }
@@ -94,12 +107,13 @@ function mergeIntersect(inputs: NodeOutput[]): NodeOutputRow[] {
 /** Interleave-by-time: createdAtMs 降順で全入力をインターリーブ */
 function mergeInterleaveByTime(inputs: NodeOutput[]): NodeOutputRow[] {
   const allRows: NodeOutputRow[] = []
-  const seen = new Set<number>()
+  const seen = new Set<string>()
 
   for (const input of inputs) {
     for (const row of input.rows) {
-      if (!seen.has(row.id)) {
-        seen.add(row.id)
+      const key = rowKey(row)
+      if (!seen.has(key)) {
+        seen.add(key)
         allRows.push(row)
       }
     }

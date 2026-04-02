@@ -22,8 +22,8 @@ describe('WorkerNodeCache', () => {
         upstreamHash: 'h1',
       }
       const rows: NodeOutputRow[] = [
-        { createdAtMs: 1000, id: 1 },
-        { createdAtMs: 2000, id: 2 },
+        { createdAtMs: 1000, id: 1, table: 'posts' },
+        { createdAtMs: 2000, id: 2, table: 'posts' },
       ]
       cache.set(params, rows, ['users'])
 
@@ -48,8 +48,12 @@ describe('WorkerNodeCache', () => {
     it('同一キーに対して set を2回呼んだ時、後から保存した rows で上書きされること', () => {
       // Arrange
       const params: NodeCacheKey = { binds: [], nodeId: 'n1', sql: 'SELECT 1' }
-      const rows1: NodeOutputRow[] = [{ createdAtMs: 1000, id: 1 }]
-      const rows2: NodeOutputRow[] = [{ createdAtMs: 9000, id: 99 }]
+      const rows1: NodeOutputRow[] = [
+        { createdAtMs: 1000, id: 1, table: 'posts' },
+      ]
+      const rows2: NodeOutputRow[] = [
+        { createdAtMs: 9000, id: 99, table: 'posts' },
+      ]
       cache.set(params, rows1, ['t'])
 
       // Act
@@ -64,8 +68,12 @@ describe('WorkerNodeCache', () => {
       // Arrange
       const params1: NodeCacheKey = { binds: [], nodeId: 'n1', sql: 'SELECT 1' }
       const params2: NodeCacheKey = { binds: [], nodeId: 'n2', sql: 'SELECT 2' }
-      const rows1: NodeOutputRow[] = [{ createdAtMs: 1000, id: 1 }]
-      const rows2: NodeOutputRow[] = [{ createdAtMs: 2000, id: 2 }]
+      const rows1: NodeOutputRow[] = [
+        { createdAtMs: 1000, id: 1, table: 'posts' },
+      ]
+      const rows2: NodeOutputRow[] = [
+        { createdAtMs: 2000, id: 2, table: 'posts' },
+      ]
       cache.set(params1, rows1, ['t1'])
       cache.set(params2, rows2, ['t2'])
 
@@ -93,7 +101,9 @@ describe('WorkerNodeCache', () => {
     it('dependentTables が空配列の時、テーブル依存なしとして保存され get で rows が返ること', () => {
       // Arrange
       const params: NodeCacheKey = { binds: [], nodeId: 'n1', sql: 'SELECT 1' }
-      const rows: NodeOutputRow[] = [{ createdAtMs: 1000, id: 1 }]
+      const rows: NodeOutputRow[] = [
+        { createdAtMs: 1000, id: 1, table: 'posts' },
+      ]
       cache.set(params, rows, [])
 
       // Act
@@ -116,7 +126,9 @@ describe('WorkerNodeCache', () => {
         sql: 'SELECT 1',
         upstreamHash: 'h1',
       }
-      const rows: NodeOutputRow[] = [{ createdAtMs: 1000, id: 1 }]
+      const rows: NodeOutputRow[] = [
+        { createdAtMs: 1000, id: 1, table: 'posts' },
+      ]
       cache.set(params, rows, ['t'])
       const sameParams: NodeCacheKey = {
         binds: [1, 'a'],
@@ -146,7 +158,9 @@ describe('WorkerNodeCache', () => {
         sql: 'SELECT 1',
         upstreamHash: 'h1',
       }
-      const rows: NodeOutputRow[] = [{ createdAtMs: 1000, id: 1 }]
+      const rows: NodeOutputRow[] = [
+        { createdAtMs: 1000, id: 1, table: 'posts' },
+      ]
       cache.set(params1, rows, ['t'])
 
       // Act
@@ -170,7 +184,9 @@ describe('WorkerNodeCache', () => {
         sql: 'SELECT 2',
         upstreamHash: 'h1',
       }
-      const rows: NodeOutputRow[] = [{ createdAtMs: 1000, id: 1 }]
+      const rows: NodeOutputRow[] = [
+        { createdAtMs: 1000, id: 1, table: 'posts' },
+      ]
       cache.set(params1, rows, ['t'])
 
       // Act
@@ -194,7 +210,9 @@ describe('WorkerNodeCache', () => {
         sql: 'SELECT 1',
         upstreamHash: 'h1',
       }
-      const rows: NodeOutputRow[] = [{ createdAtMs: 1000, id: 1 }]
+      const rows: NodeOutputRow[] = [
+        { createdAtMs: 1000, id: 1, table: 'posts' },
+      ]
       cache.set(params1, rows, ['t'])
 
       // Act
@@ -218,7 +236,9 @@ describe('WorkerNodeCache', () => {
         sql: 'SELECT 1',
         upstreamHash: 'h1',
       }
-      const rows: NodeOutputRow[] = [{ createdAtMs: 1000, id: 1 }]
+      const rows: NodeOutputRow[] = [
+        { createdAtMs: 1000, id: 1, table: 'posts' },
+      ]
       cache.set(params1, rows, ['t'])
 
       // Act
@@ -242,7 +262,9 @@ describe('WorkerNodeCache', () => {
         sql: 'SELECT 1',
         upstreamHash: 'h2',
       }
-      const rows: NodeOutputRow[] = [{ createdAtMs: 1000, id: 1 }]
+      const rows: NodeOutputRow[] = [
+        { createdAtMs: 1000, id: 1, table: 'posts' },
+      ]
       cache.set(params1, rows, ['t'])
 
       // Act
@@ -266,8 +288,12 @@ describe('WorkerNodeCache', () => {
         sql: 'SELECT 1',
         upstreamHash: '',
       }
-      const rowsUndefined: NodeOutputRow[] = [{ createdAtMs: 1000, id: 1 }]
-      const rowsEmpty: NodeOutputRow[] = [{ createdAtMs: 2000, id: 2 }]
+      const rowsUndefined: NodeOutputRow[] = [
+        { createdAtMs: 1000, id: 1, table: 'posts' },
+      ]
+      const rowsEmpty: NodeOutputRow[] = [
+        { createdAtMs: 2000, id: 2, table: 'posts' },
+      ]
       cache.set(paramsUndefined, rowsUndefined, ['t'])
       cache.set(paramsEmpty, rowsEmpty, ['t'])
 
@@ -293,8 +319,12 @@ describe('WorkerNodeCache', () => {
         sql: 'SELECT 1',
         upstreamHash: 'h1',
       }
-      const rowsNoHash: NodeOutputRow[] = [{ createdAtMs: 1000, id: 1 }]
-      const rowsWithHash: NodeOutputRow[] = [{ createdAtMs: 2000, id: 2 }]
+      const rowsNoHash: NodeOutputRow[] = [
+        { createdAtMs: 1000, id: 1, table: 'posts' },
+      ]
+      const rowsWithHash: NodeOutputRow[] = [
+        { createdAtMs: 2000, id: 2, table: 'posts' },
+      ]
       cache.set(paramsNoHash, rowsNoHash, ['t'])
       cache.set(paramsWithHash, rowsWithHash, ['t'])
 
@@ -314,7 +344,9 @@ describe('WorkerNodeCache', () => {
         nodeId: 'n1',
         sql: 'SELECT 1',
       }
-      const rows: NodeOutputRow[] = [{ createdAtMs: 1000, id: 1 }]
+      const rows: NodeOutputRow[] = [
+        { createdAtMs: 1000, id: 1, table: 'posts' },
+      ]
       cache.set(params, rows, ['t'])
 
       // Act
@@ -327,7 +359,9 @@ describe('WorkerNodeCache', () => {
     it('binds が空配列の時、正しくキーが生成されキャッシュが機能すること', () => {
       // Arrange
       const params: NodeCacheKey = { binds: [], nodeId: 'n1', sql: 'SELECT 1' }
-      const rows: NodeOutputRow[] = [{ createdAtMs: 1000, id: 1 }]
+      const rows: NodeOutputRow[] = [
+        { createdAtMs: 1000, id: 1, table: 'posts' },
+      ]
       cache.set(params, rows, ['t'])
 
       // Act
@@ -345,7 +379,9 @@ describe('WorkerNodeCache', () => {
     it('set 後にテーブルバージョンが変わっていない時、get でキャッシュヒットすること', () => {
       // Arrange
       const params: NodeCacheKey = { binds: [], nodeId: 'n1', sql: 'SELECT 1' }
-      const rows: NodeOutputRow[] = [{ createdAtMs: 1000, id: 1 }]
+      const rows: NodeOutputRow[] = [
+        { createdAtMs: 1000, id: 1, table: 'posts' },
+      ]
       cache.set(params, rows, ['tableA'])
 
       // Act
@@ -358,7 +394,9 @@ describe('WorkerNodeCache', () => {
     it('set 後に依存テーブルの bumpVersion が呼ばれた時、get で null が返ること', () => {
       // Arrange
       const params: NodeCacheKey = { binds: [], nodeId: 'n1', sql: 'SELECT 1' }
-      const rows: NodeOutputRow[] = [{ createdAtMs: 1000, id: 1 }]
+      const rows: NodeOutputRow[] = [
+        { createdAtMs: 1000, id: 1, table: 'posts' },
+      ]
       cache.set(params, rows, ['tableA'])
       cache.bumpVersion('tableA')
 
@@ -372,7 +410,9 @@ describe('WorkerNodeCache', () => {
     it('バージョン不一致で get 時に無効化された後、同一キーで再度 get した時もエントリが削除されていて null が返ること', () => {
       // Arrange
       const params: NodeCacheKey = { binds: [], nodeId: 'n1', sql: 'SELECT 1' }
-      const rows: NodeOutputRow[] = [{ createdAtMs: 1000, id: 1 }]
+      const rows: NodeOutputRow[] = [
+        { createdAtMs: 1000, id: 1, table: 'posts' },
+      ]
       cache.set(params, rows, ['tableA'])
       cache.bumpVersion('tableA')
       cache.get(params) // 1回目の get でエントリが削除される
@@ -387,7 +427,9 @@ describe('WorkerNodeCache', () => {
     it('依存テーブルに含まれないテーブルの bumpVersion が呼ばれた時、キャッシュが無効化されないこと', () => {
       // Arrange
       const params: NodeCacheKey = { binds: [], nodeId: 'n1', sql: 'SELECT 1' }
-      const rows: NodeOutputRow[] = [{ createdAtMs: 1000, id: 1 }]
+      const rows: NodeOutputRow[] = [
+        { createdAtMs: 1000, id: 1, table: 'posts' },
+      ]
       cache.set(params, rows, ['tableA'])
       cache.bumpVersion('tableB') // 依存していないテーブル
 
@@ -403,7 +445,9 @@ describe('WorkerNodeCache', () => {
       cache.bumpVersion('tableA') // version = 1
       cache.bumpVersion('tableA') // version = 2
       const params: NodeCacheKey = { binds: [], nodeId: 'n1', sql: 'SELECT 1' }
-      const rows: NodeOutputRow[] = [{ createdAtMs: 1000, id: 1 }]
+      const rows: NodeOutputRow[] = [
+        { createdAtMs: 1000, id: 1, table: 'posts' },
+      ]
       cache.set(params, rows, ['tableA']) // スナップショットは version 2
 
       // Act
@@ -421,7 +465,9 @@ describe('WorkerNodeCache', () => {
     it('複数テーブルに依存するエントリで、1つのテーブルだけバージョンが変わった時、キャッシュが無効化されること', () => {
       // Arrange
       const params: NodeCacheKey = { binds: [], nodeId: 'n1', sql: 'SELECT 1' }
-      const rows: NodeOutputRow[] = [{ createdAtMs: 1000, id: 1 }]
+      const rows: NodeOutputRow[] = [
+        { createdAtMs: 1000, id: 1, table: 'posts' },
+      ]
       cache.set(params, rows, ['tableA', 'tableB', 'tableC'])
       cache.bumpVersion('tableB') // 1つだけバージョンアップ
 
@@ -435,7 +481,9 @@ describe('WorkerNodeCache', () => {
     it('複数テーブルに依存するエントリで、すべてのテーブルのバージョンが変わった時、キャッシュが無効化されること', () => {
       // Arrange
       const params: NodeCacheKey = { binds: [], nodeId: 'n1', sql: 'SELECT 1' }
-      const rows: NodeOutputRow[] = [{ createdAtMs: 1000, id: 1 }]
+      const rows: NodeOutputRow[] = [
+        { createdAtMs: 1000, id: 1, table: 'posts' },
+      ]
       cache.set(params, rows, ['tableA', 'tableB'])
       cache.bumpVersion('tableA')
       cache.bumpVersion('tableB')
@@ -450,7 +498,9 @@ describe('WorkerNodeCache', () => {
     it('複数テーブルに依存するエントリで、どのテーブルもバージョンが変わっていない時、キャッシュヒットすること', () => {
       // Arrange
       const params: NodeCacheKey = { binds: [], nodeId: 'n1', sql: 'SELECT 1' }
-      const rows: NodeOutputRow[] = [{ createdAtMs: 1000, id: 1 }]
+      const rows: NodeOutputRow[] = [
+        { createdAtMs: 1000, id: 1, table: 'posts' },
+      ]
       cache.set(params, rows, ['tableA', 'tableB', 'tableC'])
 
       // Act
@@ -464,8 +514,12 @@ describe('WorkerNodeCache', () => {
       // Arrange
       const params1: NodeCacheKey = { binds: [], nodeId: 'n1', sql: 'SELECT 1' }
       const params2: NodeCacheKey = { binds: [], nodeId: 'n2', sql: 'SELECT 2' }
-      const rows1: NodeOutputRow[] = [{ createdAtMs: 1000, id: 1 }]
-      const rows2: NodeOutputRow[] = [{ createdAtMs: 2000, id: 2 }]
+      const rows1: NodeOutputRow[] = [
+        { createdAtMs: 1000, id: 1, table: 'posts' },
+      ]
+      const rows2: NodeOutputRow[] = [
+        { createdAtMs: 2000, id: 2, table: 'posts' },
+      ]
       cache.set(params1, rows1, ['tableA'])
       cache.set(params2, rows2, ['tableB'])
       cache.bumpVersion('tableA') // tableA のみ更新
@@ -482,7 +536,9 @@ describe('WorkerNodeCache', () => {
     it('依存テーブルが未登録（バージョン 0 扱い）の状態で set し、その後 bumpVersion された時、無効化されること', () => {
       // Arrange
       const params: NodeCacheKey = { binds: [], nodeId: 'n1', sql: 'SELECT 1' }
-      const rows: NodeOutputRow[] = [{ createdAtMs: 1000, id: 1 }]
+      const rows: NodeOutputRow[] = [
+        { createdAtMs: 1000, id: 1, table: 'posts' },
+      ]
       cache.set(params, rows, ['tableA']) // tableA 未登録 → スナップショットは version 0
       cache.bumpVersion('tableA') // version 0 → 1
 
@@ -632,7 +688,9 @@ describe('WorkerNodeCache', () => {
     it('syncVersions で依存テーブルのバージョンが上がった場合、既存キャッシュが無効化されること', () => {
       // Arrange
       const params: NodeCacheKey = { binds: [], nodeId: 'n1', sql: 'SELECT 1' }
-      const rows: NodeOutputRow[] = [{ createdAtMs: 1000, id: 1 }]
+      const rows: NodeOutputRow[] = [
+        { createdAtMs: 1000, id: 1, table: 'posts' },
+      ]
       cache.set(params, rows, ['tableA']) // スナップショットは tableA version 0
       cache.syncVersions(new Map([['tableA', 3]])) // tableA が 3 に跳ぶ
 
@@ -713,8 +771,8 @@ describe('WorkerNodeCache', () => {
       // Arrange
       const params1: NodeCacheKey = { binds: [], nodeId: 'n1', sql: 'SELECT 1' }
       const params2: NodeCacheKey = { binds: [], nodeId: 'n2', sql: 'SELECT 2' }
-      cache.set(params1, [{ createdAtMs: 1000, id: 1 }], ['t1'])
-      cache.set(params2, [{ createdAtMs: 2000, id: 2 }], ['t2'])
+      cache.set(params1, [{ createdAtMs: 1000, id: 1, table: 'posts' }], ['t1'])
+      cache.set(params2, [{ createdAtMs: 2000, id: 2, table: 'posts' }], ['t2'])
 
       // Act
       cache.clear()
@@ -727,7 +785,7 @@ describe('WorkerNodeCache', () => {
     it('clear 後に以前 set したキーで get した時、null が返ること', () => {
       // Arrange
       const params: NodeCacheKey = { binds: [], nodeId: 'n1', sql: 'SELECT 1' }
-      cache.set(params, [{ createdAtMs: 1000, id: 1 }], ['t'])
+      cache.set(params, [{ createdAtMs: 1000, id: 1, table: 'posts' }], ['t'])
       cache.clear()
 
       // Act
@@ -741,12 +799,12 @@ describe('WorkerNodeCache', () => {
       // Arrange
       cache.set(
         { binds: [], nodeId: 'n1', sql: 'SELECT 1' },
-        [{ createdAtMs: 1000, id: 1 }],
+        [{ createdAtMs: 1000, id: 1, table: 'posts' }],
         ['t'],
       )
       cache.set(
         { binds: [], nodeId: 'n2', sql: 'SELECT 2' },
-        [{ createdAtMs: 2000, id: 2 }],
+        [{ createdAtMs: 2000, id: 2, table: 'posts' }],
         ['t'],
       )
 
@@ -796,7 +854,7 @@ describe('WorkerNodeCache', () => {
       // Arrange
       cache.set(
         { binds: [], nodeId: 'n1', sql: 'SELECT 1' },
-        [{ createdAtMs: 1000, id: 1 }],
+        [{ createdAtMs: 1000, id: 1, table: 'posts' }],
         ['t'],
       )
 
@@ -810,8 +868,8 @@ describe('WorkerNodeCache', () => {
     it('同一キーで set を2回呼んだ時、size が 1 のままであること', () => {
       // Arrange
       const params: NodeCacheKey = { binds: [], nodeId: 'n1', sql: 'SELECT 1' }
-      cache.set(params, [{ createdAtMs: 1000, id: 1 }], ['t'])
-      cache.set(params, [{ createdAtMs: 2000, id: 2 }], ['t'])
+      cache.set(params, [{ createdAtMs: 1000, id: 1, table: 'posts' }], ['t'])
+      cache.set(params, [{ createdAtMs: 2000, id: 2, table: 'posts' }], ['t'])
 
       // Act
       const result = cache.size
@@ -823,7 +881,11 @@ describe('WorkerNodeCache', () => {
     it('バージョン不一致で get 時に無効化された後、size が減少すること', () => {
       // Arrange
       const params: NodeCacheKey = { binds: [], nodeId: 'n1', sql: 'SELECT 1' }
-      cache.set(params, [{ createdAtMs: 1000, id: 1 }], ['tableA'])
+      cache.set(
+        params,
+        [{ createdAtMs: 1000, id: 1, table: 'posts' }],
+        ['tableA'],
+      )
       expect(cache.size).toBe(1) // 前提条件の確認
       cache.bumpVersion('tableA')
 
@@ -843,8 +905,12 @@ describe('WorkerNodeCache', () => {
     it('set → bumpVersion → set の順で操作した時、新しいバージョンでエントリが保存され get できること', () => {
       // Arrange
       const params: NodeCacheKey = { binds: [], nodeId: 'n1', sql: 'SELECT 1' }
-      const rows1: NodeOutputRow[] = [{ createdAtMs: 1000, id: 1 }]
-      const rows2: NodeOutputRow[] = [{ createdAtMs: 2000, id: 2 }]
+      const rows1: NodeOutputRow[] = [
+        { createdAtMs: 1000, id: 1, table: 'posts' },
+      ]
+      const rows2: NodeOutputRow[] = [
+        { createdAtMs: 2000, id: 2, table: 'posts' },
+      ]
       cache.set(params, rows1, ['tableA']) // スナップショット version 0
       cache.bumpVersion('tableA') // version = 1
 
@@ -859,8 +925,12 @@ describe('WorkerNodeCache', () => {
     it('set → bumpVersion → get(null) → 再度 set → get の順で操作した時、再キャッシュが正しく動作すること', () => {
       // Arrange
       const params: NodeCacheKey = { binds: [], nodeId: 'n1', sql: 'SELECT 1' }
-      const rows1: NodeOutputRow[] = [{ createdAtMs: 1000, id: 1 }]
-      const rows2: NodeOutputRow[] = [{ createdAtMs: 2000, id: 2 }]
+      const rows1: NodeOutputRow[] = [
+        { createdAtMs: 1000, id: 1, table: 'posts' },
+      ]
+      const rows2: NodeOutputRow[] = [
+        { createdAtMs: 2000, id: 2, table: 'posts' },
+      ]
       cache.set(params, rows1, ['tableA'])
       cache.bumpVersion('tableA')
       const missResult = cache.get(params) // null が返り、エントリ削除
@@ -878,7 +948,9 @@ describe('WorkerNodeCache', () => {
       // Arrange
       cache.syncVersions(new Map([['tableA', 5]])) // tableA = 5
       const params: NodeCacheKey = { binds: [], nodeId: 'n1', sql: 'SELECT 1' }
-      const rows: NodeOutputRow[] = [{ createdAtMs: 1000, id: 1 }]
+      const rows: NodeOutputRow[] = [
+        { createdAtMs: 1000, id: 1, table: 'posts' },
+      ]
       cache.set(params, rows, ['tableA']) // スナップショット tableA version 5
       cache.bumpVersion('tableA') // tableA = 6
 
@@ -893,12 +965,14 @@ describe('WorkerNodeCache', () => {
       // Arrange
       cache.set(
         { binds: [], nodeId: 'n1', sql: 'SELECT 1' },
-        [{ createdAtMs: 9000, id: 99 }],
+        [{ createdAtMs: 9000, id: 99, table: 'posts' }],
         ['t'],
       )
       cache.clear()
       const params: NodeCacheKey = { binds: [], nodeId: 'n1', sql: 'SELECT 1' }
-      const rows: NodeOutputRow[] = [{ createdAtMs: 1000, id: 1 }]
+      const rows: NodeOutputRow[] = [
+        { createdAtMs: 1000, id: 1, table: 'posts' },
+      ]
 
       // Act
       cache.set(params, rows, ['t'])

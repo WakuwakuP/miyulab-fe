@@ -6,6 +6,7 @@
 // ============================================================
 
 import type { DbExec } from '../../sqlite/queries/executionEngine'
+import { resolveOutputTable } from '../completion'
 import type { BindValue, LookupRelatedNode } from '../nodes'
 import type { NodeOutputRow } from '../plan'
 import type { NodeOutput } from './types'
@@ -113,9 +114,13 @@ export function executeLookupRelated(
     returnValue: 'resultRows',
   })
 
+  // LookupRelated は常に lookupTable の id を出力する
+  const outputTable = resolveOutputTable(node.lookupTable, 'id')
+
   const rows: NodeOutputRow[] = rawRows.map((row) => ({
     createdAtMs: row[1] as number,
     id: row[0] as number,
+    table: outputTable,
   }))
 
   const hash = `lookup:${sql}:${JSON.stringify(binds)}:${rows.length}`
@@ -123,7 +128,7 @@ export function executeLookupRelated(
   return {
     binds,
     dependentTables,
-    output: { hash, rows, sourceTable: node.lookupTable },
+    output: { hash, rows, sourceTable: outputTable },
     sql,
   }
 }
