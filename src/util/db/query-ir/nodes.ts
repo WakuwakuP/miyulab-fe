@@ -249,8 +249,12 @@ export type GetIdsNode = {
   orBranches?: GetIdsFilter[][]
   /** 出力する ID カラム (省略時はテーブルの PK = 'id') */
   outputIdColumn?: string
-  /** 出力する時刻カラム (省略時は 'created_at_ms')。マージ・キャッシュに使用 */
-  outputTimeColumn?: string
+  /**
+   * 出力する時刻カラム (省略時は 'created_at_ms')。マージ・キャッシュに使用。
+   * `null` を指定するとテーブルに時刻カラムがないことを示し、
+   * createdAtMs には 0 が設定され ROWID 降順でソートされる。
+   */
+  outputTimeColumn?: string | null
   /**
    * 上流ノード接続時: 各フィルタカラムに対して「どの上流ノードの出力を使うか」を指定する。
    * フィルタ条件ごとに独立して設定可能。

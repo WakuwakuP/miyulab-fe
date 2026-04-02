@@ -71,7 +71,10 @@ export function compileGetIds(
 ): GetIdsCompileResult {
   const alias = getSourceAlias(node.table)
   const idCol = node.outputIdColumn ?? 'id'
-  const timeCol = node.outputTimeColumn ?? 'created_at_ms'
+  const timeCol =
+    node.outputTimeColumn !== null
+      ? (node.outputTimeColumn ?? 'created_at_ms')
+      : null
 
   const whereConditions: string[] = []
   const allBinds: BindValue[] = []
@@ -156,13 +159,20 @@ export function compileGetIds(
   const groupByStr = needsGroupBy ? `GROUP BY ${alias}.${idCol}` : ''
   const limitStr = limit != null ? `LIMIT ${limit}` : ''
 
+  const selectTime = timeCol
+    ? `${alias}.${timeCol} AS created_at_ms`
+    : '0 AS created_at_ms'
+  const orderBy = timeCol
+    ? `ORDER BY ${alias}.${timeCol} DESC`
+    : `ORDER BY ${alias}.rowid DESC`
+
   const sql = [
-    `SELECT ${alias}.${idCol} AS id, ${alias}.${timeCol} AS created_at_ms`,
+    `SELECT ${alias}.${idCol} AS id, ${selectTime}`,
     `FROM ${node.table} ${alias}`,
     joinStr,
     whereStr,
     groupByStr,
-    `ORDER BY ${alias}.${timeCol} DESC`,
+    orderBy,
     limitStr,
   ]
     .filter(Boolean)

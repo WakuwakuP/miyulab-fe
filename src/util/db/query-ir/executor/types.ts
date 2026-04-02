@@ -79,7 +79,7 @@ export type SerializedGetIdsNode = {
   filters: SerializedGetIdsFilter[]
   orBranches?: SerializedGetIdsFilter[][]
   outputIdColumn?: string
-  outputTimeColumn?: string
+  outputTimeColumn?: string | null
   inputBindings?: { column: string; sourceNodeId: string }[]
 }
 
