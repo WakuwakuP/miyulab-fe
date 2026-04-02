@@ -271,7 +271,15 @@ function GetIdsPanel({
         nextBindings = [...inputBindings, { column, sourceNodeId }]
       }
     }
+    // バインド設定と同時にフィルタ値もクリアして、1回の updateConfig で完結させる
+    const nextFilters =
+      sourceNodeId !== null
+        ? data.config.filters.map((f) =>
+            'op' in f && f.column === column ? { ...f, value: undefined } : f,
+          )
+        : data.config.filters
     updateConfig({
+      filters: nextFilters,
       inputBinding: undefined,
       inputBindings: nextBindings.length > 0 ? nextBindings : undefined,
     })
@@ -489,9 +497,8 @@ function FilterConditionRow({
   function handleBindToggle(checked: boolean) {
     if (checked && upstreamNodes.length > 0) {
       // 上流が1つならそのまま自動選択、複数なら先頭をデフォルト
-      const defaultNode = upstreamNodes[0]
-      onSetInputBinding(filter.column, defaultNode.id)
-      onUpdate({ ...filter, value: undefined })
+      // フィルタ値のクリアは親の setInputBinding 内で一括処理
+      onSetInputBinding(filter.column, upstreamNodes[0].id)
     } else {
       onSetInputBinding(filter.column, null)
     }
