@@ -12,8 +12,7 @@ import type {
   StatusAddAppIndex,
   TimelineConfigV2,
 } from 'types/types'
-import { useFilteredTimeline } from 'util/hooks/useFilteredTimeline'
-import { useNotifications } from 'util/hooks/useNotifications'
+import { useTimelineData } from 'util/hooks/useTimelineData'
 import { AppsContext } from './AppsProvider'
 import { StatusStoreActionsContext } from './StatusStoreProvider'
 
@@ -54,15 +53,25 @@ export const HomeTimelineProvider = ({ children }: { children: ReactNode }) => {
   const apps = useContext(AppsContext)
   const storeActions = useContext(StatusStoreActionsContext)
 
-  // useFilteredTimeline用の安定した設定オブジェクト
+  // useTimelineData用の安定した設定オブジェクト
   const homeConfig = useMemo<TimelineConfigV2>(
     () => ({ id: '__legacy_home', order: 0, type: 'home', visible: true }),
     [],
   )
 
-  // IndexedDBからリアクティブにデータ取得（2-phase query）
-  const { data: homeTimeline } = useFilteredTimeline(homeConfig)
-  const { data: notifications } = useNotifications()
+  const notifConfig = useMemo<TimelineConfigV2>(
+    () => ({
+      id: '__legacy_notifications',
+      order: 0,
+      type: 'notification',
+      visible: true,
+    }),
+    [],
+  )
+
+  // グラフ実行エンジン経由でデータ取得
+  const { data: homeTimeline } = useTimelineData(homeConfig)
+  const { data: notifications } = useTimelineData(notifConfig)
 
   // 既存APIとの互換性を保つためのラッパー
   // appIndex → backendUrl への変換をここで行う
@@ -102,8 +111,10 @@ export const HomeTimelineProvider = ({ children }: { children: ReactNode }) => {
   )
 
   return (
-    <HomeTimelineContext.Provider value={homeTimeline}>
-      <NotificationsContext.Provider value={notifications}>
+    <HomeTimelineContext.Provider value={homeTimeline as StatusAddAppIndex[]}>
+      <NotificationsContext.Provider
+        value={notifications as NotificationAddAppIndex[]}
+      >
         <SetActionsContext.Provider value={setActionsValue}>
           {children}
         </SetActionsContext.Provider>
