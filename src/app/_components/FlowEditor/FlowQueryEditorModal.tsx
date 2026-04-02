@@ -34,13 +34,10 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { BackendFilter, TimelineConfigV2 } from 'types/types'
 import { resolveBackendUrlFromAccountId } from 'util/accountResolver'
-import { compilePhase1ForTimeline } from 'util/db/query-ir/compat/compilePhase1'
 import type { ConfigToNodesContext } from 'util/db/query-ir/compat/configToNodes'
 import { configToQueryPlan } from 'util/db/query-ir/compat/configToNodes'
-import { nodesToWhere } from 'util/db/query-ir/compat/nodesToWhere'
-import { normalizeQueryPlanForExecution } from 'util/db/query-ir/compat/normalizeQueryPlan'
-import type { QueryPlan } from 'util/db/query-ir/nodes'
-import { isQueryPlanV2, type QueryPlanV2 } from 'util/db/query-ir/nodes'
+import type { QueryPlanV2 } from 'util/db/query-ir/nodes'
+import { isQueryPlanV2 } from 'util/db/query-ir/nodes'
 import { migrateQueryPlanV1ToV2 } from 'util/db/query-ir/v2/migrateV1ToV2'
 import { validateQueryPlanV2 } from 'util/db/query-ir/v2/validateV2'
 import { FlowCanvas, type ViewportCenterFn } from './FlowCanvas'
@@ -189,6 +186,86 @@ const ADD_MENU_ITEMS: AddMenuItem[] = [
   },
 ]
 
+// --------------- V2 plan analysis helpers ---------------
+
+/** V2 plan の GetIds ノードから backendFilter を抽出する */
+function extractBackendFilter(plan: QueryPlanV2): BackendFilter {
+  for (const n of plan.nodes) {
+    if (n.node.kind !== 'get-ids') continue
+    const f = n.node.filters.find(
+      (f) => 'column' in f && f.column === 'local_account_id' && f.op === 'IN',
+    )
+    if (!f || !('value' in f) || !f.value) continue
+    const urls = (f.value as number[])
+      .map((id) => resolveBackendUrlFromAccountId(id))
+      .filter((u): u is string => u != null)
+    if (urls.length === 0) return { mode: 'all' }
+    if (urls.length === 1) return { backendUrl: urls[0], mode: 'single' }
+    return { backendUrls: urls, mode: 'composite' }
+  }
+  return { mode: 'all' }
+}
+
+/** V2 plan から moderation (mute/block) 設定を検出する */
+function extractModeration(plan: QueryPlanV2): {
+  applyBlock: boolean
+  applyMute: boolean
+} {
+  let hasMute = false
+  let hasBlock = false
+  for (const n of plan.nodes) {
+    if (n.node.kind !== 'get-ids') continue
+    for (const f of n.node.filters) {
+      if ('mode' in f && f.mode === 'not-exists') {
+        if (f.table === 'muted_accounts') hasMute = true
+        if (f.table === 'blocked_instances') hasBlock = true
+      }
+    }
+  }
+  return { applyBlock: hasBlock, applyMute: hasMute }
+}
+
+/** V2 plan のノード構成をテキスト要約する */
+function summarizeV2Plan(plan: QueryPlanV2): string {
+  const lines: string[] = []
+  for (const n of plan.nodes) {
+    const { kind } = n.node
+    switch (kind) {
+      case 'get-ids': {
+        const node = n.node
+        const filterCount = node.filters.length
+        lines.push(
+          `[${n.id.slice(0, 8)}] GetIds(${node.table}) — ${filterCount} filters`,
+        )
+        break
+      }
+      case 'lookup-related': {
+        const node = n.node
+        lines.push(`[${n.id.slice(0, 8)}] LookupRelated(${node.lookupTable})`)
+        break
+      }
+      case 'merge-v2': {
+        const node = n.node
+        lines.push(
+          `[${n.id.slice(0, 8)}] Merge(${node.strategy}, limit=${node.limit})`,
+        )
+        break
+      }
+      case 'output-v2': {
+        const node = n.node
+        lines.push(
+          `[${n.id.slice(0, 8)}] Output(${node.sort.direction}, limit=${node.pagination.limit})`,
+        )
+        break
+      }
+    }
+  }
+  const edgeLines = plan.edges.map(
+    (e) => `  ${e.source.slice(0, 8)} → ${e.target.slice(0, 8)}`,
+  )
+  return `Nodes:\n${lines.join('\n')}\n\nEdges:\n${edgeLines.join('\n')}`
+}
+
 // --------------- Component ---------------
 
 export function FlowQueryEditorModal({
@@ -289,94 +366,30 @@ export function FlowQueryEditorModal({
     [currentPlanV2],
   )
 
-  const previewCtx = useMemo((): ConfigToNodesContext => {
-    const outN = currentPlanV2.nodes.find((n) => n.node.kind === 'output-v2')
-    const limit =
-      outN?.node.kind === 'output-v2' ? outN.node.pagination.limit : 50
-    return {
-      localAccountIds: [],
-      queryLimit: limit,
-      serverIds: [],
-    }
-  }, [currentPlanV2])
-
-  const sqlPreview = useMemo(() => {
-    try {
-      const v1 = normalizeQueryPlanForExecution(currentPlanV2, previewCtx)
-      return compilePhase1ForTimeline(v1).sql
-    } catch {
-      return '(プレビュー生成エラー)'
-    }
-  }, [currentPlanV2, previewCtx])
+  const planSummary = useMemo(
+    () => summarizeV2Plan(currentPlanV2),
+    [currentPlanV2],
+  )
 
   const handleFlowSave = useCallback(
     (plan: QueryPlanV2) => {
-      const v1ForExtract = normalizeQueryPlanForExecution(
-        plan,
-        previewCtx,
-      ) as QueryPlan
-
-      const moderationNode = v1ForExtract.filters.find(
-        (f) => f.kind === 'moderation-filter',
-      )
-      const applyMute =
-        moderationNode?.kind === 'moderation-filter' &&
-        moderationNode.apply.includes('mute')
-      const applyBlock =
-        moderationNode?.kind === 'moderation-filter' &&
-        moderationNode.apply.includes('instance-block')
-
-      const backendNode = v1ForExtract.filters.find(
-        (f) => f.kind === 'backend-filter',
-      )
-      let backendFilter: BackendFilter | undefined
-      if (
-        backendNode?.kind === 'backend-filter' &&
-        backendNode.localAccountIds.length > 0
-      ) {
-        const urls = backendNode.localAccountIds
-          .map((id) => resolveBackendUrlFromAccountId(id))
-          .filter((u): u is string => u != null)
-        if (urls.length === 0) {
-          backendFilter = { mode: 'all' }
-        } else if (urls.length === 1) {
-          backendFilter = { backendUrl: urls[0], mode: 'single' }
-        } else {
-          backendFilter = { backendUrls: urls, mode: 'composite' }
-        }
-      } else {
-        backendFilter = { mode: 'all' }
-      }
-
-      const customQuery = nodesToWhere(v1ForExtract.filters)
+      const { applyBlock, applyMute } = extractModeration(plan)
+      const backendFilter = extractBackendFilter(plan)
 
       const updates: Partial<TimelineConfigV2> = {
-        accountFilter: undefined,
         advancedQuery: true,
         applyInstanceBlock: applyBlock || undefined,
         applyMuteFilter: applyMute || undefined,
         backendFilter,
-        customQuery: customQuery.trim() || undefined,
-        excludeReblogs: undefined,
-        excludeReplies: undefined,
-        excludeSensitive: undefined,
-        excludeSpoiler: undefined,
-        followsOnly: undefined,
+        customQuery: undefined,
         label: label.trim() || undefined,
-        languageFilter: undefined,
-        minMediaCount: undefined,
-        notificationFilter: undefined,
-        onlyMedia: undefined,
         queryPlan: plan,
-        tagConfig: undefined,
-        timelineTypes: undefined,
-        visibilityFilter: undefined,
       }
 
       onSave(updates)
       onOpenChange(false)
     },
-    [label, onSave, onOpenChange, previewCtx],
+    [label, onSave, onOpenChange],
   )
 
   const handleSave = useCallback(() => {
@@ -500,10 +513,10 @@ export function FlowQueryEditorModal({
         <div className="border-t border-gray-700 px-4 py-2 shrink-0 bg-gray-950">
           <details>
             <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-300 transition-colors">
-              SQL プレビュー
+              プラン概要
             </summary>
             <pre className="mt-1 text-xs text-gray-300 font-mono overflow-x-auto whitespace-pre-wrap max-h-24 overflow-y-auto">
-              {sqlPreview}
+              {planSummary}
             </pre>
           </details>
         </div>
