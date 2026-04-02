@@ -23,7 +23,8 @@ export const GetIdsFlowNode = memo(function GetIdsFlowNode({
     [deleteNode, id],
   )
 
-  const binding = data.config.inputBinding
+  const bindings = data.config.inputBindings ?? []
+  const outputIdColumn = data.config.outputIdColumn
 
   return (
     <div
@@ -59,9 +60,14 @@ export const GetIdsFlowNode = memo(function GetIdsFlowNode({
           ? ` / OR ${data.config.orBranches.length} 枝`
           : ''}
       </div>
-      {binding && (
+      {outputIdColumn && outputIdColumn !== 'id' && (
+        <div className="text-[10px] text-emerald-400 mt-0.5">
+          → {outputIdColumn}
+        </div>
+      )}
+      {bindings.length > 0 && (
         <div className="text-[10px] text-sky-400 mt-0.5">
-          ← {binding.column}
+          ← {bindings.map((b) => b.column).join(', ')}
         </div>
       )}
       <Handle

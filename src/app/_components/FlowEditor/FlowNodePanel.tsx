@@ -11,6 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from 'components/ui/select'
+import { Switch } from 'components/ui/switch'
 import { Link, Plus, Trash2, X } from 'lucide-react'
 import { useMemo } from 'react'
 import type { TableOption } from 'util/db/query-ir/completion'
@@ -21,6 +22,7 @@ import {
   getFilterableTables,
   getJoinableColumns,
   getKnownValues,
+  getOutputIdColumns,
   getTimeColumns,
 } from 'util/db/query-ir/completion'
 import type {
@@ -32,6 +34,7 @@ import type {
   JoinCondition,
   TimeCondition,
 } from 'util/db/query-ir/nodes'
+import { searchColumnValuesDirect } from 'util/db/sqlite/stores/statusReadStore'
 import { ValueInput } from '../NodeEditor/ValueInput'
 import type {
   FlowEdge,
@@ -208,6 +211,11 @@ function GetIdsPanel({
     [filterableTables, data.config.table],
   )
 
+  const outputIdColumns = useMemo(
+    () => getOutputIdColumns(data.config.table),
+    [data.config.table],
+  )
+
   // 上流接続ノード
   const upstreamNodes = useMemo(
     () =>
@@ -218,7 +226,8 @@ function GetIdsPanel({
     [edges, nodes, node.id],
   )
 
-  // このテーブルのフィルタ可能カラム（inputBinding 用）は FilterConditionRow 内で参照する
+  // 後方互換: 旧 inputBinding は sourceNodeId がないため破棄して空配列に正規化
+  const inputBindings: GetIdsInputBinding[] = data.config.inputBindings ?? []
 
   function updateConfig(patch: Partial<typeof data.config>) {
     onUpdate(node.id, { ...data, config: { ...data.config, ...patch } })
@@ -236,15 +245,36 @@ function GetIdsPanel({
 
   function deleteFilter(idx: number) {
     const f = data.config.filters[idx]
-    const isFC = f && 'op' in f
-    const clearBinding =
-      isFC && data.config.inputBinding?.column === (f as FilterCondition).column
+    const col = f && 'op' in f ? (f as FilterCondition).column : undefined
     const nextFilters = data.config.filters.filter((_, i) => i !== idx)
-    if (clearBinding) {
-      updateConfig({ filters: nextFilters, inputBinding: undefined })
+    const nextBindings = col
+      ? inputBindings.filter((b) => b.column !== col)
+      : inputBindings
+    updateConfig({
+      filters: nextFilters,
+      inputBinding: undefined,
+      inputBindings: nextBindings.length > 0 ? nextBindings : undefined,
+    })
+  }
+
+  function setInputBinding(column: string, sourceNodeId: string | null) {
+    let nextBindings: GetIdsInputBinding[]
+    if (sourceNodeId === null) {
+      nextBindings = inputBindings.filter((b) => b.column !== column)
     } else {
-      updateFilters(nextFilters)
+      const existing = inputBindings.find((b) => b.column === column)
+      if (existing) {
+        nextBindings = inputBindings.map((b) =>
+          b.column === column ? { column, sourceNodeId } : b,
+        )
+      } else {
+        nextBindings = [...inputBindings, { column, sourceNodeId }]
+      }
     }
+    updateConfig({
+      inputBinding: undefined,
+      inputBindings: nextBindings.length > 0 ? nextBindings : undefined,
+    })
   }
 
   function addTableFilter() {
@@ -271,6 +301,9 @@ function GetIdsPanel({
     updateFilters([...data.config.filters, newFilter])
   }
 
+  const currentOutputIdColumn =
+    data.config.outputIdColumn ?? outputIdColumns[0]?.name ?? 'id'
+
   return (
     <div className="space-y-3">
       <div>
@@ -279,7 +312,12 @@ function GetIdsPanel({
         </span>
         <Select
           onValueChange={(v) =>
-            updateConfig({ inputBinding: undefined, table: v })
+            updateConfig({
+              inputBinding: undefined,
+              inputBindings: undefined,
+              outputIdColumn: undefined,
+              table: v,
+            })
           }
           value={data.config.table}
         >
@@ -301,6 +339,32 @@ function GetIdsPanel({
           {data.config.table}
         </p>
       </div>
+
+      {outputIdColumns.length > 1 && (
+        <div>
+          <span className="text-xs font-semibold text-gray-300 block mb-1">
+            出力IDカラム
+          </span>
+          <Select
+            onValueChange={(v) => updateConfig({ outputIdColumn: v })}
+            value={currentOutputIdColumn}
+          >
+            <SelectTrigger className="w-full h-7 text-xs bg-gray-700 border-gray-600 text-white">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="max-h-60">
+              {outputIdColumns.map((c) => (
+                <SelectItem key={c.name} textValue={c.label} value={c.name}>
+                  <span className="block">{c.label}</span>
+                  <span className="block text-[10px] text-gray-500 font-mono">
+                    {c.name}
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
       <div>
         <div className="flex items-center justify-between mb-2">
@@ -347,14 +411,10 @@ function GetIdsPanel({
             <FilterConditionRow
               filter={filter}
               flatColumns={flatColumns}
-              inputBinding={data.config.inputBinding}
+              inputBindings={inputBindings}
               key={key}
               onDelete={() => deleteFilter(idx)}
-              onSetInputBinding={(col) =>
-                updateConfig({
-                  inputBinding: col ? { column: col } : undefined,
-                })
-              }
+              onSetInputBinding={setInputBinding}
               onUpdate={(f) => updateFilter(idx, f)}
               upstreamNodes={upstreamNodes}
             />
@@ -377,7 +437,7 @@ function FilterConditionRow({
   filter,
   flatColumns,
   upstreamNodes,
-  inputBinding,
+  inputBindings,
   onSetInputBinding,
   onUpdate,
   onDelete,
@@ -385,8 +445,8 @@ function FilterConditionRow({
   filter: FilterCondition
   flatColumns: FlatColumnOption[]
   upstreamNodes: FlowNode[]
-  inputBinding: GetIdsInputBinding | undefined
-  onSetInputBinding: (column: string | undefined) => void
+  inputBindings: GetIdsInputBinding[]
+  onSetInputBinding: (column: string, sourceNodeId: string | null) => void
   onUpdate: (f: FilterCondition) => void
   onDelete: () => void
 }) {
@@ -399,13 +459,17 @@ function FilterConditionRow({
       ?.type ?? 'text'
 
   const hasUpstream = upstreamNodes.length > 0
-  const isInputMode = hasUpstream && inputBinding?.column === filter.column
+  const currentBinding = inputBindings.find((b) => b.column === filter.column)
+  const isInputMode = hasUpstream && currentBinding != null
+  const boundUpstreamNode = upstreamNodes.find(
+    (n) => n.id === currentBinding?.sourceNodeId,
+  )
   const showValueArea = !NO_VALUE_OPS.has(filter.op)
 
   function handleColumnKey(key: string) {
     const [tbl, ...rest] = key.split(':')
     const col = rest.join(':')
-    if (isInputMode) onSetInputBinding(undefined)
+    if (isInputMode) onSetInputBinding(filter.column, null)
     onUpdate({
       column: col,
       op: '=',
@@ -422,13 +486,19 @@ function FilterConditionRow({
     })
   }
 
-  function toggleInputMode() {
-    if (isInputMode) {
-      onSetInputBinding(undefined)
-    } else {
-      onSetInputBinding(filter.column)
+  function handleBindToggle(checked: boolean) {
+    if (checked && upstreamNodes.length > 0) {
+      // 上流が1つならそのまま自動選択、複数なら先頭をデフォルト
+      const defaultNode = upstreamNodes[0]
+      onSetInputBinding(filter.column, defaultNode.id)
       onUpdate({ ...filter, value: undefined })
+    } else {
+      onSetInputBinding(filter.column, null)
     }
+  }
+
+  function handleSourceNodeChange(nodeId: string) {
+    onSetInputBinding(filter.column, nodeId)
   }
 
   const selectedKey = flatColumnKey({
@@ -497,39 +567,50 @@ function FilterConditionRow({
 
       {showValueArea && (
         <div>
-          <div className="flex items-center justify-between mb-0.5">
-            <span className="text-[10px] text-gray-400">値</span>
-            {hasUpstream && (
-              <button
-                className={`flex items-center gap-0.5 rounded px-1 py-0.5 text-[10px] border transition-colors ${
-                  isInputMode
-                    ? 'bg-sky-900/60 border-sky-700/70 text-sky-300'
-                    : 'bg-gray-700/60 border-gray-600 text-gray-500 hover:text-sky-400 hover:border-sky-700/50'
-                }`}
-                onClick={toggleInputMode}
-                title={isInputMode ? '手動入力に戻す' : '入力から割り当て'}
-                type="button"
-              >
+          {hasUpstream && (
+            <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center gap-1 text-[10px] text-gray-400">
                 <Link className="h-2.5 w-2.5" />
-                入力
-              </button>
-            )}
-          </div>
-          {isInputMode ? (
-            <div className="rounded bg-sky-950/40 border border-sky-800/50 px-2 py-1.5">
-              <p className="text-[10px] text-sky-400 mb-1">
-                上流ノードの出力を使用
-              </p>
-              <div className="flex flex-wrap gap-1">
-                {upstreamNodes.map((n) => (
-                  <span
-                    className="rounded bg-gray-700 border border-gray-600 px-1.5 py-0.5 text-[10px] text-gray-300"
-                    key={n.id}
-                  >
-                    {getNodeLabelV2(n.data)}
-                  </span>
-                ))}
+                上流バインド
               </div>
+              <Switch
+                checked={isInputMode}
+                className="h-4 w-7 [&>span]:h-3 [&>span]:w-3 [&>span]:data-[state=checked]:translate-x-3"
+                onCheckedChange={handleBindToggle}
+              />
+            </div>
+          )}
+          {isInputMode ? (
+            <div className="rounded bg-sky-950/40 border border-sky-800/50 px-2 py-1.5 space-y-1.5">
+              <p className="text-[10px] text-sky-400">
+                上流ノードの出力IDをバインド
+              </p>
+              {upstreamNodes.length === 1 ? (
+                <span className="block rounded bg-gray-700 border border-gray-600 px-1.5 py-0.5 text-[10px] text-gray-300">
+                  {getNodeLabelV2(upstreamNodes[0].data)}
+                </span>
+              ) : (
+                <Select
+                  onValueChange={handleSourceNodeChange}
+                  value={currentBinding?.sourceNodeId ?? ''}
+                >
+                  <SelectTrigger className="w-full h-6 text-xs bg-gray-700 border-gray-600 text-white">
+                    <SelectValue placeholder="上流ノードを選択…" />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-60">
+                    {upstreamNodes.map((n) => (
+                      <SelectItem key={n.id} value={n.id}>
+                        {getNodeLabelV2(n.data)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {!boundUpstreamNode && upstreamNodes.length > 1 && (
+                <p className="text-[10px] text-amber-400">
+                  上流ノードを選択してください
+                </p>
+              )}
             </div>
           ) : (
             <ValueInput
@@ -538,6 +619,7 @@ function FilterConditionRow({
               knownValues={knownValues}
               onChange={(value) => onUpdate({ ...filter, value })}
               op={filter.op}
+              searchValues={searchColumnValuesDirect}
               table={filter.table}
               value={filter.value ?? null}
             />

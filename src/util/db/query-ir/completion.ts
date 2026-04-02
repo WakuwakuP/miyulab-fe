@@ -170,6 +170,127 @@ export function getTimeColumns(table: string): ColumnOption[] {
   )
 }
 
+// --------------- Output ID column options ---------------
+
+/**
+ * テーブルごとの出力 ID カラム候補
+ * getIds ノードが下流へ渡す整数 ID カラムの一覧
+ */
+const OUTPUT_ID_COLUMNS_MAP: Record<string, ColumnOption[]> = {
+  local_accounts: [
+    {
+      label: 'ローカルアカウント ID',
+      name: 'id',
+      nullable: false,
+      type: 'integer',
+    },
+    {
+      label: 'プロフィール ID',
+      name: 'profile_id',
+      nullable: true,
+      type: 'integer',
+    },
+    {
+      label: 'サーバー ID',
+      name: 'server_id',
+      nullable: false,
+      type: 'integer',
+    },
+  ],
+  notifications: [
+    {
+      label: '通知 ID',
+      name: 'id',
+      nullable: false,
+      type: 'integer',
+    },
+    {
+      label: 'アクターのプロフィール ID',
+      name: 'actor_profile_id',
+      nullable: true,
+      type: 'integer',
+    },
+    {
+      label: '関連投稿 ID',
+      name: 'related_post_id',
+      nullable: true,
+      type: 'integer',
+    },
+    {
+      label: '通知種別 ID',
+      name: 'notification_type_id',
+      nullable: false,
+      type: 'integer',
+    },
+  ],
+  posts: [
+    { label: '投稿 ID', name: 'id', nullable: false, type: 'integer' },
+    {
+      label: '著者のプロフィール ID',
+      name: 'author_profile_id',
+      nullable: false,
+      type: 'integer',
+    },
+    {
+      label: '配信元サーバー ID',
+      name: 'origin_server_id',
+      nullable: false,
+      type: 'integer',
+    },
+    {
+      label: 'リブログ元投稿 ID',
+      name: 'reblog_of_post_id',
+      nullable: true,
+      type: 'integer',
+    },
+    {
+      label: '引用元投稿 ID',
+      name: 'quote_of_post_id',
+      nullable: true,
+      type: 'integer',
+    },
+  ],
+  profiles: [
+    { label: 'プロフィール ID', name: 'id', nullable: false, type: 'integer' },
+  ],
+}
+
+/**
+ * getIds ノードの出力 ID カラム候補を返す。
+ * テーブルの PK や FK など、下流ノードへ渡せる整数 ID カラムの一覧。
+ */
+export function getOutputIdColumns(table: string): ColumnOption[] {
+  if (OUTPUT_ID_COLUMNS_MAP[table]) {
+    return OUTPUT_ID_COLUMNS_MAP[table]
+  }
+  // フォールバック: レジストリの整数カラムから ID 系カラムを抽出
+  const entry = TABLE_REGISTRY[table]
+  if (!entry)
+    return [{ label: 'ID', name: 'id', nullable: false, type: 'integer' }]
+  const idCols: ColumnOption[] = Object.entries(entry.columns)
+    .filter(
+      ([name, meta]) =>
+        meta.type === 'integer' &&
+        !name.endsWith('_ms') &&
+        !name.startsWith('is_'),
+    )
+    .map(([name, meta]) => ({
+      label: meta.label,
+      name,
+      nullable: meta.nullable,
+      type: 'integer' as const,
+    }))
+  if (!idCols.some((c) => c.name === 'id')) {
+    idCols.unshift({
+      label: 'ID',
+      name: 'id',
+      nullable: false,
+      type: 'integer',
+    })
+  }
+  return idCols
+}
+
 // --------------- Exists filter tables ---------------
 
 /** ExistsFilter で使用可能なテーブル一覧 (1:N カーディナリティ) */

@@ -261,12 +261,12 @@ export const QUERY_COMPLETIONS = {
 /** 許可リスト（安全なテーブル＋カラムの組み合わせ） */
 export const ALLOWED_COLUMN_VALUES: Record<string, string[]> = {
   hashtags: ['name', 'display_name'],
-  local_accounts: ['backend_url'],
+  local_accounts: ['acct', 'backend_type', 'backend_url'],
   notification_types: ['name'],
   post_backend_ids: ['local_id', 'server_id'],
   post_mentions: ['acct'],
   posts: ['object_uri', 'language'],
-  profiles: ['acct'],
+  profiles: ['acct', 'display_name'],
   servers: ['host'],
   visibility_types: ['name'],
 }

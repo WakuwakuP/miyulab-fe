@@ -230,6 +230,11 @@ export type GetIdsFilter = FilterCondition | ExistsCondition
 export type GetIdsInputBinding = {
   /** この table のどのカラムに上流 ID を IN で適用するか */
   column: string
+  /**
+   * どの上流ノード (FlowNode.id) の出力を使うか。
+   * 上流が複数ある場合に指定必須。単一の場合も明示的に持つ。
+   */
+  sourceNodeId: string
 }
 
 /** テーブルからフィルタした ID リストを取得 */
@@ -238,8 +243,15 @@ export type GetIdsNode = {
   table: string
   filters: GetIdsFilter[]
   orBranches?: GetIdsFilter[][]
-  /** 上流ノード接続時: その出力 ID を IN 条件として適用するカラム */
-  inputBinding?: GetIdsInputBinding
+  /** 出力する ID カラム (省略時はテーブルの PK = 'id') */
+  outputIdColumn?: string
+  /**
+   * 上流ノード接続時: 各フィルタカラムに対して「どの上流ノードの出力を使うか」を指定する。
+   * フィルタ条件ごとに独立して設定可能。
+   */
+  inputBindings?: GetIdsInputBinding[]
+  /** @deprecated inputBindings を使用してください */
+  inputBinding?: { column: string }
 }
 
 /** ID リストから関連テーブルの ID を相関検索 */
