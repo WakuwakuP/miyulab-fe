@@ -217,6 +217,12 @@ export type FilterCondition = {
   column: string
   op: FilterOp
   value?: FilterValue
+  /**
+   * 上流ノードの出力 ID を値として使用する場合のソースノード ID。
+   * 設定時は `value` の代わりに上流ノードの出力行 ID が op に従って注入される。
+   * 主に `IN` / `NOT IN` 演算子と組み合わせて使用する。
+   */
+  upstreamSourceNodeId?: string
 }
 
 /** EXISTS / COUNT 条件 */
@@ -255,12 +261,9 @@ export type GetIdsNode = {
    * createdAtMs には 0 が設定され ROWID 降順でソートされる。
    */
   outputTimeColumn?: string | null
-  /**
-   * 上流ノード接続時: 各フィルタカラムに対して「どの上流ノードの出力を使うか」を指定する。
-   * フィルタ条件ごとに独立して設定可能。
-   */
+  /** @deprecated FilterCondition.upstreamSourceNodeId を使用してください */
   inputBindings?: GetIdsInputBinding[]
-  /** @deprecated inputBindings を使用してください */
+  /** @deprecated FilterCondition.upstreamSourceNodeId を使用してください */
   inputBinding?: { column: string }
 }
 

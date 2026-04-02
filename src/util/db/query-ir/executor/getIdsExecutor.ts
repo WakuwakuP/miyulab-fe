@@ -86,7 +86,20 @@ export function compileGetIds(
 
   // --- 通常フィルタ ---
   for (const filter of node.filters) {
-    const filterNode = getIdsFilterToFilterNode(filter)
+    // upstreamSourceNodeId がある場合は上流ノードの出力IDを値として注入
+    let effectiveFilter = filter
+    if ('upstreamSourceNodeId' in filter && filter.upstreamSourceNodeId) {
+      const upstream = upstreamOutputs.get(filter.upstreamSourceNodeId)
+      if (upstream && upstream.rows.length > 0) {
+        const ids = upstream.rows.map((r) => r.id)
+        effectiveFilter = { ...filter, value: ids }
+      } else {
+        // 上流が空: IN → 結果なし (空配列), NOT IN → 全パス (空配列)
+        effectiveFilter = { ...filter, value: [] }
+      }
+    }
+
+    const filterNode = getIdsFilterToFilterNode(effectiveFilter)
     const compiled = compileFilterNode(filterNode, node.table, alias)
     if (compiled.sql && compiled.sql !== '1=1') {
       whereConditions.push(compiled.sql)
@@ -125,22 +138,6 @@ export function compileGetIds(
           ? branchSqls[0]
           : `(${branchSqls.join(' OR ')})`,
       )
-    }
-  }
-
-  // --- inputBindings: 上流ノードの出力 ID を IN 句に注入 ---
-  if (node.inputBindings) {
-    for (const binding of node.inputBindings) {
-      const upstream = upstreamOutputs.get(binding.sourceNodeId)
-      if (upstream && upstream.rows.length > 0) {
-        const ids = upstream.rows.map((r) => r.id)
-        const placeholders = ids.map(() => '?').join(', ')
-        whereConditions.push(`${alias}.${binding.column} IN (${placeholders})`)
-        allBinds.push(...ids)
-      } else {
-        // 上流が空の場合は結果も空になる
-        whereConditions.push('0')
-      }
     }
   }
 
