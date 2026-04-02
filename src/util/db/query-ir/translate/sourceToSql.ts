@@ -2,6 +2,7 @@
 // Query IR — Source node SQL translator
 // ============================================================
 
+import { getDefaultTimeColumn } from '../completion'
 import type { SourceNode } from '../nodes'
 import type { JoinClause } from '../plan'
 
@@ -38,7 +39,8 @@ export type SourceSql = {
  */
 export function translateSource(source: SourceNode): SourceSql {
   const alias = getSourceAlias(source.table)
-  const orderField = source.orderBy ?? 'created_at_ms'
+  const orderField =
+    source.orderBy ?? getDefaultTimeColumn(source.table) ?? 'rowid'
   const orderDir = source.orderDirection ?? 'DESC'
 
   return {

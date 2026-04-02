@@ -2,6 +2,7 @@
 // Query IR — PlanCompiler: QueryPlan → ExecutionPlan
 // ============================================================
 
+import { getDefaultTimeColumn } from './completion'
 import type { BindValue, MergeNode, QueryPlan, TagCombination } from './nodes'
 import type {
   BatchEnrichStep,
@@ -145,7 +146,9 @@ export function compileSingleSource(plan: QueryPlan): ExecutionPlan {
   // idColumn/timeColumn は GetIdsNode から流れてくる。AS でエイリアスして
   // 結果行は常に [id, created_at_ms] の順になることを保証する。
   const idCol = `${alias}.${plan.source.idColumn ?? 'id'}`
-  const timeCol = `${alias}.${plan.source.timeColumn ?? 'created_at_ms'}`
+  const timeColName =
+    plan.source.timeColumn ?? getDefaultTimeColumn(sourceTable)
+  const timeCol = timeColName ? `${alias}.${timeColName}` : '0'
 
   const sql = [
     `SELECT ${idCol} AS id, ${timeCol} AS created_at_ms`,

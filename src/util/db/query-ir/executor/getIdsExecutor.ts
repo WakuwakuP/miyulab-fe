@@ -74,9 +74,7 @@ export function compileGetIds(
   const idCol = node.outputIdColumn ?? 'id'
   const timeCol =
     node.outputTimeColumn !== null
-      ? (node.outputTimeColumn ??
-        getDefaultTimeColumn(node.table) ??
-        'created_at_ms')
+      ? (node.outputTimeColumn ?? getDefaultTimeColumn(node.table))
       : null
 
   const whereConditions: string[] = []

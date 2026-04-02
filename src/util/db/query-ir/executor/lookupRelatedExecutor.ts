@@ -6,7 +6,7 @@
 // ============================================================
 
 import type { DbExec } from '../../sqlite/queries/executionEngine'
-import { resolveOutputTable } from '../completion'
+import { getDefaultTimeColumn, resolveOutputTable } from '../completion'
 import type { BindValue, LookupRelatedNode } from '../nodes'
 import type { NodeOutputRow } from '../plan'
 import type { NodeOutput } from './types'
@@ -93,7 +93,10 @@ export function executeLookupRelated(
     selectExpr = `${lt}.id AS id, ${node.aggregate.function}(${lt}.${node.aggregate.column}) AS created_at_ms`
     groupByStr = `GROUP BY ${lt}.id`
   } else {
-    selectExpr = `${lt}.id AS id, ${lt}.created_at_ms AS created_at_ms`
+    const defaultTimeCol = getDefaultTimeColumn(node.lookupTable)
+    selectExpr = defaultTimeCol
+      ? `${lt}.id AS id, ${lt}.${defaultTimeCol} AS created_at_ms`
+      : `${lt}.id AS id, 0 AS created_at_ms`
   }
 
   const whereStr =
