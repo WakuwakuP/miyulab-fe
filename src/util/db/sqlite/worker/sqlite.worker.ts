@@ -7,6 +7,10 @@
 
 /// <reference lib="webworker" />
 
+import {
+  executeGraphPlan as runGraphPlan,
+  syncGraphCacheVersions,
+} from '../../query-ir/executor/graphExecutor'
 import { logSlowQueryExplain } from '../explainLogger'
 import { buildTimelineKey, resolveLocalAccountId } from '../helpers'
 import type { TableName, WorkerMessage, WorkerRequest } from '../protocol'
@@ -498,6 +502,20 @@ self.onmessage = (
           undefined,
           result.totalDurationMs,
         )
+        break
+      }
+
+      // ---- GraphPlan 実行 (V2 グラフエンジン) ----
+      case 'executeGraphPlan': {
+        // テーブルバージョンをグラフキャッシュに同期
+        syncGraphCacheVersions(tableVersions)
+        const result = runGraphPlan(
+          db,
+          msg.plan,
+          msg.options,
+          captureTableVersions,
+        )
+        sendResponse(msg.id, result, undefined, result.meta.totalDurationMs)
         break
       }
 

@@ -5,6 +5,11 @@
  */
 
 import type {
+  GraphExecuteOptions,
+  GraphExecuteResult,
+  SerializedGraphPlan,
+} from '../query-ir/executor/types'
+import type {
   BindValue,
   FetchTimelineRequest,
   FetchTimelineResult,
@@ -72,6 +77,16 @@ export type DbHandle = {
     plan: SerializedExecutionPlan,
     sessionTag?: string,
   ) => Promise<QueryPlanResult>
+
+  /**
+   * GraphPlan (V2 グラフ) を Worker で実行する。
+   * 各ノードを個別実行し、Output ノードで Phase2/Phase3 を構築する。
+   */
+  executeGraphPlan: (
+    plan: SerializedGraphPlan,
+    options: GraphExecuteOptions,
+    sessionTag?: string,
+  ) => Promise<GraphExecuteResult>
 
   /**
    * タイムラインを一括取得する。

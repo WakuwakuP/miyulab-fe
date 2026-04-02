@@ -63,6 +63,7 @@ async function initWorkerMode(
     execAsyncTimed,
     execBatch,
     executeQueryPlan,
+    executeGraphPlan,
     sendCommand,
     cancelStaleRequests,
     fetchTimeline,
@@ -75,6 +76,7 @@ async function initWorkerMode(
     execAsync,
     execAsyncTimed,
     execBatch,
+    executeGraphPlan,
     executeQueryPlan,
     fetchTimeline,
     persistence,
@@ -209,6 +211,13 @@ async function initMainThreadFallback(
         }
         throw e
       }
+    },
+
+    executeGraphPlan: async (plan, options) => {
+      const { executeGraphPlan: runGraph } = await import(
+        '../query-ir/executor/graphExecutor'
+      )
+      return runGraph(db as never, plan, options, () => ({}))
     },
 
     executeQueryPlan: async (plan) => {

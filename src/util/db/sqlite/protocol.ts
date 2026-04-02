@@ -5,6 +5,10 @@
  * 04-reactive-behavior-analysis.md の修正版プロトコルに基づく。
  */
 
+import type { ExecuteGraphPlanRequest } from '../query-ir/executor/types'
+
+export type { ExecuteGraphPlanRequest }
+
 // ================================================================
 // 共通型
 // ================================================================
@@ -340,6 +344,7 @@ export type WorkerRequest =
   | BulkUpsertCustomEmojisRequest
   | FetchTimelineRequest
   | ExecuteQueryPlanRequest
+  | ExecuteGraphPlanRequest
 
 // ================================================================
 // Worker → Main Thread (レスポンス)
