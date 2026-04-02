@@ -66,34 +66,37 @@ export function subscribe(table: TableName, fn: ChangeListener): () => void {
  */
 const DEBOUNCE_MS = 80
 
-/** debounce 用: フラッシュ待ちのテーブル名セット */
-const pendingNotifications = new Set<TableName>()
-
-/** debounce 用: フラッシュ待ちのヒント蓄積配列 */
-const pendingHints: ChangeHint[] = []
+/** debounce 用: テーブル別ヒント蓄積 */
+type PendingEntry = {
+  hints: ChangeHint[]
+  /** hint なしの notifyChange が 1 回でもあった場合 true */
+  hasHintlessChange: boolean
+}
+const pendingByTable = new Map<TableName, PendingEntry>()
 
 /** debounce 用: スケジュール済みタイマー ID */
 let timerId: ReturnType<typeof setTimeout> | null = null
 
 /**
  * 保留中の通知をフラッシュし、リスナーを発火する。
- * 蓄積されたヒントをまとめてリスナーに渡す。
+ *
+ * テーブルごとに蓄積されたヒントを渡す。
+ * hintless 変更があったテーブルは空配列を渡し、全サブスクライバーの再取得を保証する。
  */
 function flushNotifications(): void {
   timerId = null
-  const tables = [...pendingNotifications]
-  const hints = [...pendingHints]
-  pendingNotifications.clear()
-  pendingHints.length = 0
-  for (const t of tables) {
-    const set = listeners.get(t)
-    if (set) {
-      for (const fn of set) {
-        try {
-          fn(hints)
-        } catch (e) {
-          console.error('Change listener error:', e)
-        }
+  const snapshot = new Map(pendingByTable)
+  pendingByTable.clear()
+  for (const [table, entry] of snapshot) {
+    const set = listeners.get(table)
+    if (!set) continue
+    // hintless 変更があった場合は空配列 → 全サブスクライバーが再取得
+    const hints = entry.hasHintlessChange ? [] : entry.hints
+    for (const fn of set) {
+      try {
+        fn(hints)
+      } catch (e) {
+        console.error('Change listener error:', e)
       }
     }
   }
@@ -113,9 +116,15 @@ function flushNotifications(): void {
  * @param hint - オプションの変更ヒント（timelineType / backendUrl / tag）
  */
 export function notifyChange(table: TableName, hint?: ChangeHint): void {
-  pendingNotifications.add(table)
+  let entry = pendingByTable.get(table)
+  if (!entry) {
+    entry = { hasHintlessChange: false, hints: [] }
+    pendingByTable.set(table, entry)
+  }
   if (hint) {
-    pendingHints.push(hint)
+    entry.hints.push(hint)
+  } else {
+    entry.hasHintlessChange = true
   }
   if (timerId != null) return
   timerId = setTimeout(flushNotifications, DEBOUNCE_MS)

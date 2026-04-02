@@ -476,6 +476,15 @@ async function initMainThreadFallback(
               timelineType: command.timelineType,
             }
             break
+          case 'updateStatus':
+          case 'updateStatusAction':
+          case 'addNotification':
+          case 'bulkAddNotifications':
+          case 'updateNotificationStatusAction':
+            hint = {
+              backendUrl: command.backendUrl,
+            }
+            break
         }
         for (const table of result.changedTables as TableName[]) {
           onNotify(table, hint)

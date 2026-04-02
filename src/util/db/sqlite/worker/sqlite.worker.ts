@@ -361,13 +361,17 @@ self.onmessage = (
           msg.action,
           msg.value,
         )
-        sendResponse(msg.id, { ok: true }, r.changedTables)
+        sendResponse(msg.id, { ok: true }, r.changedTables, undefined, {
+          backendUrl: msg.backendUrl,
+        })
         break
       }
 
       case 'updateStatus': {
         const r = handleUpdateStatus(db, msg.statusJson, msg.backendUrl)
-        sendResponse(msg.id, { ok: true }, r.changedTables)
+        sendResponse(msg.id, { ok: true }, r.changedTables, undefined, {
+          backendUrl: msg.backendUrl,
+        })
         break
       }
 
@@ -419,7 +423,9 @@ self.onmessage = (
           msg.notificationJson,
           msg.backendUrl,
         )
-        sendResponse(msg.id, { ok: true }, r.changedTables)
+        sendResponse(msg.id, { ok: true }, r.changedTables, undefined, {
+          backendUrl: msg.backendUrl,
+        })
         break
       }
 
@@ -429,7 +435,9 @@ self.onmessage = (
           msg.notificationsJson,
           msg.backendUrl,
         )
-        sendResponse(msg.id, { ok: true }, r.changedTables)
+        sendResponse(msg.id, { ok: true }, r.changedTables, undefined, {
+          backendUrl: msg.backendUrl,
+        })
         break
       }
 
@@ -441,7 +449,9 @@ self.onmessage = (
           msg.action,
           msg.value,
         )
-        sendResponse(msg.id, { ok: true }, r.changedTables)
+        sendResponse(msg.id, { ok: true }, r.changedTables, undefined, {
+          backendUrl: msg.backendUrl,
+        })
         break
       }
 
