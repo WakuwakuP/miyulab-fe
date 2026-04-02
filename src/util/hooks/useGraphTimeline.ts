@@ -31,12 +31,16 @@ import {
   getSqliteDb,
   subscribe,
 } from 'util/db/sqlite/connection'
-import { rowToStoredNotification } from 'util/db/sqlite/notificationStore'
+import {
+  addNotification,
+  rowToStoredNotification,
+} from 'util/db/sqlite/notificationStore'
 import {
   assembleStatusFromBatch,
   buildBatchMapsFromResults,
 } from 'util/db/sqlite/statusStore'
 import { TIMELINE_QUERY_LIMIT } from 'util/environment'
+import { GetClient } from 'util/GetClient'
 import { useQueryDuration } from 'util/hooks/useQueryDuration'
 import {
   useLocalAccountIds,
@@ -50,6 +54,19 @@ import {
 import { useConfigRefresh } from 'util/timelineRefresh'
 
 // --------------- 定数 ---------------
+
+/** status を持つべき通知タイプ */
+const TYPES_WITH_STATUS = new Set([
+  'mention',
+  'favourite',
+  'reblog',
+  'reaction',
+  'poll_expired',
+  'status',
+  'emoji_reaction',
+  'poll',
+  'update',
+])
 
 /** appIndex を解決する */
 function resolveAppIndex(
@@ -222,6 +239,43 @@ export function useGraphTimeline(config: TimelineConfigV2): {
 
     return unsubscribe
   }, [fetchData, subscribeTable, configTimelineTypes, targetBackendUrls])
+
+  // ---- 通知の missing status 取得 ----
+  // data に含まれる通知は rowToStoredNotification で構築されるため
+  // SqliteStoredNotification の backendUrl を持つ
+  type NotifWithBackend = NotificationAddAppIndex & { backendUrl: string }
+
+  const fetchedIdsRef = useRef(new Set<string>())
+  useEffect(() => {
+    if (config.type !== 'notification') return
+    const notifications = data.filter(
+      (item): item is NotifWithBackend =>
+        'type' in item && 'backendUrl' in item,
+    )
+    const missing = notifications.filter(
+      (n) =>
+        n.status === undefined &&
+        TYPES_WITH_STATUS.has(n.type) &&
+        !fetchedIdsRef.current.has(`${n.backendUrl}:${n.id}`),
+    )
+    if (missing.length === 0) return
+
+    for (const n of missing) {
+      const key = `${n.backendUrl}:${n.id}`
+      fetchedIdsRef.current.add(key)
+
+      const app = apps.find((a) => a.backendUrl === n.backendUrl)
+      if (!app) continue
+
+      const client = GetClient(app)
+      client
+        .getNotification(n.id)
+        .then((res) => addNotification(res.data, n.backendUrl))
+        .catch((err) =>
+          console.warn('Failed to fetch notification status:', err),
+        )
+    }
+  }, [data, apps, config.type])
 
   return { data, loadMore, queryDuration }
 }
