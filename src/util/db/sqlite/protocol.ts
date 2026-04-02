@@ -240,7 +240,6 @@ export type SerializedStep =
       source: string
       sql: string
       binds: BindValue[]
-      columns: Record<string, number>
       timeLowerBound?: { fromStep: number; column: string }
     }
   | {
@@ -266,6 +265,12 @@ export type SerializedExecutionPlan = {
     sourceType: 'post' | 'notification' | 'mixed' | 'precomputed'
     requiresReblogExpansion: boolean
   }
+  /**
+   * キャッシュヒットした IdCollectStep の結果を Worker に事前渡しする。
+   * キー = stepIndex（`steps` 配列内の index）。
+   * Worker は id-collect ステップを実行する代わりにこの値を使う（Phase 2c）。
+   */
+  precomputedResults?: Record<number, IdCollectResult>
 }
 
 export type ExecuteQueryPlanRequest = {
@@ -276,7 +281,7 @@ export type ExecuteQueryPlanRequest = {
 
 export type IdCollectResult = {
   type: 'id-collect'
-  rows: (string | number | null)[][]
+  rows: { id: number; createdAtMs: number }[]
 }
 
 export type MergeResult = {
@@ -303,6 +308,11 @@ export type StepResult =
 export type QueryPlanResult = {
   stepResults: StepResult[]
   totalDurationMs: number
+  /**
+   * 実行時点のテーブルバージョンスナップショット。
+   * キャッシュの有効性検証に使用する（Phase 2 キャッシュ）。
+   */
+  capturedVersions?: Record<string, number>
 }
 
 // ================================================================

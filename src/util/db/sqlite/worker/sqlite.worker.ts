@@ -37,6 +37,22 @@ let db: RawDb = null
 // biome-ignore lint/suspicious/noExplicitAny: sqlite-wasm module type
 let sqlite3Module: any = null
 
+// テーブルごとの書き込みバージョン — 書き込みのたびにインクリメント
+const tableVersions = new Map<string, number>()
+
+/** 書き込みが発生したテーブルのバージョンをインクリメントする */
+function bumpTableVersions(tables: TableName[] | undefined): void {
+  if (!tables) return
+  for (const t of tables) {
+    tableVersions.set(t, (tableVersions.get(t) ?? 0) + 1)
+  }
+}
+
+/** 現在のテーブルバージョンスナップショットを返す */
+function captureTableVersions(): Record<string, number> {
+  return Object.fromEntries(tableVersions)
+}
+
 // ================================================================
 // 初期化
 // ================================================================
@@ -209,6 +225,8 @@ function sendResponse(
   durationMs?: number,
   changeHint?: { timelineType?: string; backendUrl?: string; tag?: string },
 ): void {
+  // 書き込みが伴う場合はバージョンをインクリメント
+  bumpTableVersions(changedTables)
   const response: WorkerMessage = {
     changedTables,
     changeHint,
@@ -469,7 +487,17 @@ self.onmessage = (
       // ---- ExecutionPlan 汎用実行 ----
       case 'executeQueryPlan': {
         const result = runQueryPlan(db, msg.plan)
-        sendResponse(msg.id, result, undefined, result.totalDurationMs)
+        // capturedVersions をレスポンスに付加してキャッシュ検証に使う
+        const resultWithVersions = {
+          ...result,
+          capturedVersions: captureTableVersions(),
+        }
+        sendResponse(
+          msg.id,
+          resultWithVersions,
+          undefined,
+          result.totalDurationMs,
+        )
         break
       }
 

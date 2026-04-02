@@ -123,7 +123,12 @@ function getIdsNodeOnlyToPlan(
       field: out.sort.field,
       kind: 'sort',
     },
-    source: { kind: 'source', table: g.table },
+    source: {
+      idColumn: g.outputIdColumn,
+      kind: 'source',
+      table: g.table,
+      timeColumn: g.outputTimeColumn,
+    },
   }
 }
 
@@ -213,7 +218,12 @@ function mergeV2ToPlan(
         field: out.sort.field,
         kind: 'sort',
       },
-      source: { kind: 'source', table: g.table },
+      source: {
+        idColumn: g.outputIdColumn,
+        kind: 'source',
+        table: g.table,
+        timeColumn: g.outputTimeColumn,
+      },
     })
   }
 

@@ -9,6 +9,11 @@
  * timeline キューは同一クエリ (SQL + bind + returnValue) が未処理なら重複追加しない。
  */
 
+import {
+  getCachedIdCollect,
+  setCachedIdCollect,
+  syncTableVersions,
+} from 'util/db/query-ir/idCollectCache'
 import type { QueueKind } from '../dbQueue'
 import {
   getMaxConsecutiveOther,
@@ -23,6 +28,7 @@ import type {
   ExecRequest,
   FetchTimelineRequest,
   FetchTimelineResult,
+  IdCollectResult,
   QueryPlanResult,
   SendCommandPayload,
   SerializedExecutionPlan,
@@ -557,22 +563,65 @@ export function execBatch(
 /**
  * ExecutionPlan を Worker で実行する。
  * Plan 003: 汎用実行エンジン経由。
+ *
+ * Phase 2c: id-collect ステップのキャッシュを事前チェックし、
+ * ヒット分は precomputedResults として Worker に渡して DB 実行をスキップさせる。
+ * 実行後は capturedVersions でキャッシュを更新する。
  */
-export function executeQueryPlan(
+export async function executeQueryPlan(
   plan: SerializedExecutionPlan,
   sessionTag?: string,
 ): Promise<QueryPlanResult> {
+  // キャッシュヒットした id-collect ステップをキャッシュから集める
+  const precomputedResults: Record<number, IdCollectResult> = {}
+  for (let i = 0; i < plan.steps.length; i++) {
+    const step = plan.steps[i]
+    if (step.type !== 'id-collect') continue
+    const cached = getCachedIdCollect({ binds: step.binds, sql: step.sql })
+    if (cached) {
+      precomputedResults[i] = { rows: cached, type: 'id-collect' }
+    }
+  }
+
+  const planWithCache: SerializedExecutionPlan =
+    Object.keys(precomputedResults).length > 0
+      ? { ...plan, precomputedResults }
+      : plan
+
   const id = nextId++
-  const message = { id, plan, type: 'executeQueryPlan' } as {
+  const message = { id, plan: planWithCache, type: 'executeQueryPlan' } as {
     type: string
     id: number
     [key: string]: unknown
   }
-  return sendRequest(
+  const result = (await sendRequest(
     message,
     'timeline',
     sessionTag,
-  ) as Promise<QueryPlanResult>
+  )) as QueryPlanResult
+
+  // capturedVersions でローカルバージョンを同期し、新規実行分をキャッシュに保存
+  if (result.capturedVersions) {
+    syncTableVersions(result.capturedVersions)
+
+    for (let i = 0; i < plan.steps.length; i++) {
+      const step = plan.steps[i]
+      if (step.type !== 'id-collect') continue
+      // Worker で実際に実行されたステップのみキャッシュ保存（precomputed は除外）
+      if (precomputedResults[i]) continue
+      const stepResult = result.stepResults[i]
+      if (stepResult?.type === 'id-collect') {
+        setCachedIdCollect(
+          { binds: step.binds, sql: step.sql },
+          stepResult.rows,
+          result.capturedVersions,
+          step.source,
+        )
+      }
+    }
+  }
+
+  return result
 }
 
 /**

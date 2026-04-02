@@ -51,10 +51,15 @@ function executeIdCollect(
   db: DbExec,
   step: Extract<SerializedStep, { type: 'id-collect' }>,
 ): IdCollectResult {
-  const rows = db.exec(step.sql, {
+  const rawRows = db.exec(step.sql, {
     bind: step.binds.length > 0 ? step.binds : undefined,
     returnValue: 'resultRows',
   })
+  // SQL は常に `SELECT ... AS id, ... AS created_at_ms` の順で返す
+  const rows = rawRows.map((row) => ({
+    createdAtMs: row[1] as number,
+    id: row[0] as number,
+  }))
   return { rows, type: 'id-collect' }
 }
 
@@ -72,8 +77,8 @@ function executeMerge(
         sourceStep.type === 'id-collect' ? sourceStep.source : 'post'
       for (const row of prev.rows) {
         allItems.push({
-          createdAtMs: row[1] as number,
-          id: row[0] as number,
+          createdAtMs: row.createdAtMs,
+          id: row.id,
           type: sourceType,
         })
       }
@@ -155,7 +160,7 @@ function updateContext(
   _plan: SerializedExecutionPlan,
 ): void {
   if (step.type === 'id-collect' && result.type === 'id-collect') {
-    const ids = result.rows.map((row) => row[0] as number)
+    const ids = result.rows.map((row) => row.id)
     ctx.collectedIds.set(stepIndex, ids)
 
     // Determine which ID list to populate based on source
@@ -197,9 +202,12 @@ export function executeQueryPlan(
     let result: StepResult
 
     switch (step.type) {
-      case 'id-collect':
-        result = executeIdCollect(db, step)
+      case 'id-collect': {
+        // Phase 2c: precomputed キャッシュヒット時はDB実行をスキップ
+        const precomputed = plan.precomputedResults?.[i]
+        result = precomputed ?? executeIdCollect(db, step)
         break
+      }
       case 'merge':
         result = executeMerge(step, stepResults, plan)
         break

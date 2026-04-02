@@ -142,8 +142,13 @@ export function compileSingleSource(plan: QueryPlan): ExecutionPlan {
     ? `OFFSET ${plan.pagination.offset}`
     : ''
 
+  // idColumn/timeColumn は GetIdsNode から流れてくる。AS でエイリアスして
+  // 結果行は常に [id, created_at_ms] の順になることを保証する。
+  const idCol = `${alias}.${plan.source.idColumn ?? 'id'}`
+  const timeCol = `${alias}.${plan.source.timeColumn ?? 'created_at_ms'}`
+
   const sql = [
-    `SELECT ${alias}.id, ${alias}.created_at_ms`,
+    `SELECT ${idCol} AS id, ${timeCol} AS created_at_ms`,
     `FROM ${from}`,
     joinStr,
     whereStr,
@@ -162,7 +167,6 @@ export function compileSingleSource(plan: QueryPlan): ExecutionPlan {
   // Phase 1: IdCollectStep
   steps.push({
     binds: allBinds,
-    columns: { createdAtMs: 1, id: 0 },
     source: sourceTable,
     sql,
     type: 'id-collect',
@@ -196,9 +200,16 @@ export function compileSingleSource(plan: QueryPlan): ExecutionPlan {
 
 // --------------- Merge node compilation ---------------
 
+/** IdCollectStep のハッシュキーを生成（SQL + binds の文字列化）*/
+function idCollectStepKey(step: IdCollectStep): string {
+  return `${step.sql}\0${JSON.stringify(step.binds)}`
+}
+
 export function compileMergeNode(mergeNode: MergeNode): ExecutionPlan {
   const steps: ExecutionStep[] = []
   const stepIndices: number[] = []
+  // 同一 SQL+binds の IdCollectStep を検出してインデックスを再利用
+  const stepKeyMap = new Map<string, number>()
 
   for (const subPlan of mergeNode.sources) {
     const subResult = compileSingleSource(subPlan)
@@ -206,8 +217,17 @@ export function compileMergeNode(mergeNode: MergeNode): ExecutionPlan {
       | IdCollectStep
       | undefined
     if (idStep) {
-      stepIndices.push(steps.length)
-      steps.push(idStep)
+      const key = idCollectStepKey(idStep)
+      const existing = stepKeyMap.get(key)
+      if (existing !== undefined) {
+        // 重複 SQL — 既存ステップのインデックスを再利用
+        stepIndices.push(existing)
+      } else {
+        const idx = steps.length
+        stepKeyMap.set(key, idx)
+        stepIndices.push(idx)
+        steps.push(idStep)
+      }
     }
   }
 

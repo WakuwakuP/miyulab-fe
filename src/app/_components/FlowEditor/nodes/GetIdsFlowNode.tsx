@@ -25,6 +25,7 @@ export const GetIdsFlowNode = memo(function GetIdsFlowNode({
 
   const bindings = data.config.inputBindings ?? []
   const outputIdColumn = data.config.outputIdColumn
+  const outputTimeColumn = data.config.outputTimeColumn
 
   return (
     <div
@@ -60,9 +61,17 @@ export const GetIdsFlowNode = memo(function GetIdsFlowNode({
           ? ` / OR ${data.config.orBranches.length} 枝`
           : ''}
       </div>
-      {outputIdColumn && outputIdColumn !== 'id' && (
+      {(outputIdColumn || outputTimeColumn) && (
         <div className="text-[10px] text-emerald-400 mt-0.5">
-          → {outputIdColumn}
+          →{' '}
+          {[
+            outputIdColumn && outputIdColumn !== 'id' ? outputIdColumn : 'id',
+            outputTimeColumn && outputTimeColumn !== 'created_at_ms'
+              ? outputTimeColumn
+              : null,
+          ]
+            .filter(Boolean)
+            .join(', ')}
         </div>
       )}
       {bindings.length > 0 && (

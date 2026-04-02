@@ -95,7 +95,6 @@ function resolveStep(
     case 'id-collect':
       return {
         binds: step.binds,
-        columns: step.columns as Record<string, number>,
         source: step.source,
         sql: step.sql,
         timeLowerBound: step.timeLowerBound,
@@ -183,27 +182,13 @@ export function transformQueryPlanResult(result: QueryPlanResult): {
   const maps = buildBatchMapsFromEnrichResult(batchResult)
 
   // Phase1 から backendUrl / timelineTypes マップを構築
+  // compile.ts の Phase1 は id + created_at_ms のみ SELECT するため、
+  // backendUrl と timelineTypes は detail-fetch の結果から取得する
   const backendUrlMap = new Map<number, string>()
-  const timelineTypesMap = new Map<number, string>()
   for (const idResult of idCollectResults) {
     for (const row of idResult.rows) {
-      const id = row[0] as number
-      // IdCollectStep columns: { id: 0, createdAtMs: 1 }
-      // backendUrl と timelineTypes は Phase1 の SELECT に含まれないことがある
-      // その場合は detail-fetch の結果から取得
-      if (row.length > 2 && row[2] != null) {
-        backendUrlMap.set(id, row[2] as string)
-      }
-      if (row.length > 3 && row[3] != null) {
-        timelineTypesMap.set(id, row[3] as string)
-      }
-    }
-  }
-
-  // timelineTypes をバッチマップに上書き
-  if (timelineTypesMap.size > 0) {
-    for (const [id, types] of timelineTypesMap) {
-      maps.timelineTypesMap.set(id, types)
+      // row は { id, createdAtMs } の構造化型 — 追加カラムは含まない
+      void row
     }
   }
 

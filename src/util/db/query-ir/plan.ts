@@ -4,6 +4,17 @@
 
 import type { BindValue } from './nodes'
 
+// --------------- Node output row type ---------------
+
+/**
+ * getIds ノードの出力行。
+ * ID と時刻を常にペアで持ち、マージ・キャッシュの基本単位となる。
+ */
+export type NodeOutputRow = {
+  id: number
+  createdAtMs: number
+}
+
 // --------------- Execution Steps ---------------
 
 /** Phase 1: ID collection step */
@@ -11,17 +22,10 @@ export type IdCollectStep = {
   type: 'id-collect'
   /** Source table name */
   source: string
-  /** Generated SQL query */
+  /** Generated SQL query (always SELECT id AS id, <timeCol> AS created_at_ms) */
   sql: string
   /** Bind parameters */
   binds: BindValue[]
-  /** Column index mapping for result extraction */
-  columns: {
-    id: number
-    createdAtMs?: number
-    backendUrl?: number
-    timelineTypes?: number
-  }
   /** Optional time lower bound from another step */
   timeLowerBound?: {
     fromStep: number

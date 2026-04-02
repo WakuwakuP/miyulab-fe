@@ -25,7 +25,9 @@ describe('compileQueryPlan', () => {
 
       const firstStep = result.steps[0] as IdCollectStep
       expect(firstStep.type).toBe('id-collect')
-      expect(firstStep.sql).toContain('SELECT p.id, p.created_at_ms')
+      expect(firstStep.sql).toContain(
+        'SELECT p.id AS id, p.created_at_ms AS created_at_ms',
+      )
       expect(firstStep.sql).toContain('FROM posts p')
       expect(firstStep.sql).toContain('ORDER BY p.created_at_ms DESC')
       expect(firstStep.sql).toContain('LIMIT 50')

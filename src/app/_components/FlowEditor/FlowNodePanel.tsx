@@ -216,6 +216,11 @@ function GetIdsPanel({
     [data.config.table],
   )
 
+  const outputTimeColumns = useMemo(
+    () => getTimeColumns(data.config.table),
+    [data.config.table],
+  )
+
   // 上流接続ノード
   const upstreamNodes = useMemo(
     () =>
@@ -312,6 +317,9 @@ function GetIdsPanel({
   const currentOutputIdColumn =
     data.config.outputIdColumn ?? outputIdColumns[0]?.name ?? 'id'
 
+  const currentOutputTimeColumn =
+    data.config.outputTimeColumn ?? 'created_at_ms'
+
   return (
     <div className="space-y-3">
       <div>
@@ -324,6 +332,7 @@ function GetIdsPanel({
               inputBinding: undefined,
               inputBindings: undefined,
               outputIdColumn: undefined,
+              outputTimeColumn: undefined,
               table: v,
             })
           }
@@ -362,6 +371,32 @@ function GetIdsPanel({
             </SelectTrigger>
             <SelectContent className="max-h-60">
               {outputIdColumns.map((c) => (
+                <SelectItem key={c.name} textValue={c.label} value={c.name}>
+                  <span className="block">{c.label}</span>
+                  <span className="block text-[10px] text-gray-500 font-mono">
+                    {c.name}
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {outputTimeColumns.length > 1 && (
+        <div>
+          <span className="text-xs font-semibold text-gray-300 block mb-1">
+            出力時刻カラム
+          </span>
+          <Select
+            onValueChange={(v) => updateConfig({ outputTimeColumn: v })}
+            value={currentOutputTimeColumn}
+          >
+            <SelectTrigger className="w-full h-7 text-xs bg-gray-700 border-gray-600 text-white">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="max-h-60">
+              {outputTimeColumns.map((c) => (
                 <SelectItem key={c.name} textValue={c.label} value={c.name}>
                   <span className="block">{c.label}</span>
                   <span className="block text-[10px] text-gray-500 font-mono">

@@ -37,6 +37,10 @@ export type SourceNode = {
   orderBy?: string
   /** ソート方向 (デフォルト: 'DESC') */
   orderDirection?: 'ASC' | 'DESC'
+  /** SELECT する ID カラム名 (デフォルト: 'id')。AS id でエイリアスされる */
+  idColumn?: string
+  /** SELECT する時刻カラム名 (デフォルト: 'created_at_ms')。AS created_at_ms でエイリアスされる */
+  timeColumn?: string
 }
 
 // --------------- Filter Nodes ---------------
@@ -245,6 +249,8 @@ export type GetIdsNode = {
   orBranches?: GetIdsFilter[][]
   /** 出力する ID カラム (省略時はテーブルの PK = 'id') */
   outputIdColumn?: string
+  /** 出力する時刻カラム (省略時は 'created_at_ms')。マージ・キャッシュに使用 */
+  outputTimeColumn?: string
   /**
    * 上流ノード接続時: 各フィルタカラムに対して「どの上流ノードの出力を使うか」を指定する。
    * フィルタ条件ごとに独立して設定可能。

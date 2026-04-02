@@ -26,20 +26,24 @@ function createMockDb(
 describe('executeQueryPlan', () => {
   describe('IdCollectStep', () => {
     it('Phase1 クエリを実行して行データを返す', () => {
-      const mockRows: (string | number | null)[][] = [
+      const mockRawRows: (string | number | null)[][] = [
         [1, 1000],
         [2, 2000],
         [3, 3000],
       ]
-      const db = createMockDb(new Map([['SELECT', mockRows]]))
+      const expectedRows = [
+        { createdAtMs: 1000, id: 1 },
+        { createdAtMs: 2000, id: 2 },
+        { createdAtMs: 3000, id: 3 },
+      ]
+      const db = createMockDb(new Map([['SELECT', mockRawRows]]))
       const plan: SerializedExecutionPlan = {
         meta: { requiresReblogExpansion: false, sourceType: 'post' },
         steps: [
           {
             binds: [],
-            columns: { createdAtMs: 1, id: 0 },
             source: 'posts',
-            sql: 'SELECT p.id, p.created_at_ms FROM posts p LIMIT 50',
+            sql: 'SELECT p.id AS id, p.created_at_ms AS created_at_ms FROM posts p LIMIT 50',
             type: 'id-collect',
           },
         ],
@@ -50,7 +54,7 @@ describe('executeQueryPlan', () => {
       expect(result.stepResults[0].type).toBe('id-collect')
       const step0 = result.stepResults[0]
       if (step0.type === 'id-collect') {
-        expect(step0.rows).toEqual(mockRows)
+        expect(step0.rows).toEqual(expectedRows)
       }
       expect(result.totalDurationMs).toBeGreaterThanOrEqual(0)
     })
@@ -68,7 +72,6 @@ describe('executeQueryPlan', () => {
         steps: [
           {
             binds: [0],
-            columns: { id: 0 },
             source: 'posts',
             sql: 'SELECT p.id FROM posts p WHERE p.is_sensitive = ?',
             type: 'id-collect',
@@ -106,14 +109,12 @@ describe('executeQueryPlan', () => {
         steps: [
           {
             binds: [],
-            columns: { createdAtMs: 1, id: 0 },
             source: 'notifications',
             sql: 'SELECT n.id, n.created_at_ms FROM notifications n',
             type: 'id-collect',
           },
           {
             binds: [],
-            columns: { createdAtMs: 1, id: 0 },
             source: 'posts',
             sql: 'SELECT p.id, p.created_at_ms FROM posts p',
             type: 'id-collect',
@@ -167,14 +168,12 @@ describe('executeQueryPlan', () => {
         steps: [
           {
             binds: [],
-            columns: { createdAtMs: 1, id: 0 },
             source: 'notifications',
             sql: 'SELECT n',
             type: 'id-collect',
           },
           {
             binds: [],
-            columns: { createdAtMs: 1, id: 0 },
             source: 'posts',
             sql: 'SELECT p',
             type: 'id-collect',
@@ -218,7 +217,6 @@ describe('executeQueryPlan', () => {
         steps: [
           {
             binds: [],
-            columns: { id: 0 },
             source: 'posts',
             sql: 'SELECT p.id, p.created_at_ms FROM posts',
             type: 'id-collect',
@@ -245,7 +243,6 @@ describe('executeQueryPlan', () => {
         steps: [
           {
             binds: [],
-            columns: { id: 0 },
             source: 'posts',
             sql: 'SELECT p.id FROM posts WHERE 1=0',
             type: 'id-collect',
@@ -279,7 +276,6 @@ describe('executeQueryPlan', () => {
         steps: [
           {
             binds: [],
-            columns: { id: 0 },
             source: 'posts',
             sql: 'SELECT p.id, p.created_at_ms FROM posts',
             type: 'id-collect',
@@ -326,7 +322,6 @@ describe('executeQueryPlan', () => {
         steps: [
           {
             binds: [],
-            columns: { id: 0 },
             source: 'posts',
             sql: 'SELECT p.id, p.created_at_ms FROM posts',
             type: 'id-collect',
@@ -357,7 +352,6 @@ describe('executeQueryPlan', () => {
         steps: [
           {
             binds: [],
-            columns: { id: 0 },
             source: 'posts',
             sql: 'SELECT p.id FROM posts WHERE 1=0',
             type: 'id-collect',
@@ -399,7 +393,6 @@ describe('executeQueryPlan', () => {
         steps: [
           {
             binds: [],
-            columns: { createdAtMs: 1, id: 0 },
             source: 'posts',
             sql: 'SELECT p.id, p.created_at_ms FROM posts p',
             type: 'id-collect',
@@ -443,7 +436,6 @@ describe('executeQueryPlan', () => {
         steps: [
           {
             binds: [],
-            columns: { createdAtMs: 1, id: 0 },
             source: 'notifications',
             sql: 'SELECT n.id, n.created_at_ms FROM notifications n',
             type: 'id-collect',
@@ -486,14 +478,12 @@ describe('executeQueryPlan', () => {
         steps: [
           {
             binds: [],
-            columns: { createdAtMs: 1, id: 0 },
             source: 'notifications',
             sql: 'SELECT n.id, n.created_at_ms FROM notifications n',
             type: 'id-collect',
           },
           {
             binds: [],
-            columns: { createdAtMs: 1, id: 0 },
             source: 'posts',
             sql: 'SELECT p.id, p.created_at_ms FROM posts p',
             type: 'id-collect',
