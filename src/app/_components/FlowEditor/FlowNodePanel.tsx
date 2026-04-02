@@ -17,6 +17,7 @@ import { useMemo } from 'react'
 import type { TableOption } from 'util/db/query-ir/completion'
 import {
   getAllFilterableTables,
+  getDefaultTimeColumn,
   getExistsFilterTables,
   getFilterableColumns,
   getFilterableTables,
@@ -339,7 +340,9 @@ function GetIdsPanel({
     data.config.outputIdColumn ?? outputIdColumns[0]?.name ?? 'id'
 
   const currentOutputTimeColumn =
-    data.config.outputTimeColumn ?? 'created_at_ms'
+    data.config.outputTimeColumn ??
+    getDefaultTimeColumn(data.config.table) ??
+    null
 
   return (
     <div className="space-y-3">
@@ -404,7 +407,7 @@ function GetIdsPanel({
         </div>
       )}
 
-      {outputTimeColumns.length > 1 && (
+      {outputTimeColumns.length > 1 && currentOutputTimeColumn && (
         <div>
           <span className="text-xs font-semibold text-gray-300 block mb-1">
             出力時刻カラム

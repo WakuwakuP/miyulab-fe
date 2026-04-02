@@ -96,6 +96,32 @@ export function getTableEntry(table: string): TableRegistryEntry | undefined {
 
 /** JoinCondition / TimeCondition で使用可能なカラム（PK/FK を含む） */
 const JOIN_COLUMN_MAP: Record<string, ColumnOption[]> = {
+  local_accounts: [
+    {
+      label: 'ローカルアカウント ID',
+      name: 'id',
+      nullable: false,
+      type: 'integer',
+    },
+    {
+      label: 'プロフィール ID',
+      name: 'profile_id',
+      nullable: true,
+      type: 'integer',
+    },
+    {
+      label: 'サーバー ID',
+      name: 'server_id',
+      nullable: false,
+      type: 'integer',
+    },
+    {
+      label: '作成日時',
+      name: 'created_at',
+      nullable: false,
+      type: 'integer',
+    },
+  ],
   notifications: [
     { label: '通知 ID', name: 'id', nullable: false, type: 'integer' },
     {
@@ -165,9 +191,43 @@ export function getJoinableColumns(table: string): ColumnOption[] {
 
 /** ミリ秒タイムスタンプカラム一覧を返す (TimeCondition 用) */
 export function getTimeColumns(table: string): ColumnOption[] {
-  return getJoinableColumns(table).filter(
-    (c) => c.type === 'integer' && c.name.endsWith('_ms'),
+  // joinable カラムから時刻系カラムを抽出
+  const joinable = getJoinableColumns(table).filter(
+    (c) =>
+      c.type === 'integer' &&
+      (c.name.endsWith('_ms') || c.name.startsWith('created_at')),
   )
+  if (joinable.length > 0) return joinable
+
+  // フォールバック: レジストリから created_at* カラムを探す
+  const entry = TABLE_REGISTRY[table]
+  if (!entry) return []
+  return Object.entries(entry.columns)
+    .filter(
+      ([name, meta]) =>
+        meta.type === 'integer' && name.startsWith('created_at'),
+    )
+    .map(([name, meta]) => ({
+      label: meta.label,
+      name,
+      nullable: meta.nullable,
+      type: 'integer' as const,
+    }))
+}
+
+/**
+ * テーブルのデフォルト時刻カラム名を返す。
+ * `created_at_ms` があればそれを、なければ `created_at` を、
+ * どちらもなければ `null` (時刻カラムなし) を返す。
+ */
+export function getDefaultTimeColumn(table: string): string | null {
+  const timeCols = getTimeColumns(table)
+  const ms = timeCols.find((c) => c.name === 'created_at_ms')
+  if (ms) return ms.name
+  const plain = timeCols.find((c) => c.name === 'created_at')
+  if (plain) return plain.name
+  if (timeCols.length > 0) return timeCols[0].name
+  return null
 }
 
 // --------------- Output ID column options ---------------

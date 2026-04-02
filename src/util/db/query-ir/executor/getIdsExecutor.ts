@@ -6,6 +6,7 @@
 // ============================================================
 
 import type { DbExec } from '../../sqlite/queries/executionEngine'
+import { getDefaultTimeColumn } from '../completion'
 import type {
   BindValue,
   ExistsFilter,
@@ -73,7 +74,9 @@ export function compileGetIds(
   const idCol = node.outputIdColumn ?? 'id'
   const timeCol =
     node.outputTimeColumn !== null
-      ? (node.outputTimeColumn ?? 'created_at_ms')
+      ? (node.outputTimeColumn ??
+        getDefaultTimeColumn(node.table) ??
+        'created_at_ms')
       : null
 
   const whereConditions: string[] = []
