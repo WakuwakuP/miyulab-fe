@@ -34,7 +34,7 @@ function makeKey(params: NodeCacheKey): string {
     params.sql,
     JSON.stringify(params.binds),
   ]
-  if (params.upstreamHash) parts.push(params.upstreamHash)
+  if (params.upstreamHash != null) parts.push(params.upstreamHash)
   return parts.join('\0')
 }
 
