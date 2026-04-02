@@ -2,7 +2,38 @@
 
 ## 概要
 
-UI がデータベースから投稿を取得する仕組み。パフォーマンスのために **2 フェーズクエリ戦略** を採用し、フィルタ条件は `statusFilter.ts` の `buildFilterConditions()` が SQL に変換する。
+UI がデータベースから投稿を取得する仕組み。**グラフ実行エンジン**（QueryPlanV2）が DAG として定義されたクエリグラフを Worker 内で実行し、最終的に **2 フェーズクエリ戦略** で詳細データを取得する。
+
+## グラフ実行エンジン (QueryPlanV2)
+
+### アーキテクチャ
+
+```
+TimelineConfigV2 → configToQueryPlanV2() → QueryPlanV2 (DAG)
+                                              ↓
+                              Worker: executeGraphPlan()
+                                              ↓
+                          DAG トポロジカルソート → ノード順次実行
+                                              ↓
+                          GetIds → LookupRelated → Merge → Output
+                                              ↓
+                          Output: Phase2 + Phase3 バッチクエリ
+                                              ↓
+                          NodeOutputRow[] → UI Hook
+```
+
+### ノード種別
+
+| ノード | 役割 | 入力 | 出力 |
+|---|---|---|---|
+| GetIds | テーブルからフィルタ付き ID 取得 | フィルタ条件 | `[{id, createdAtMs}]` |
+| LookupRelated | 関連テーブルへの相関検索 | 上流 ID | `[{id, createdAtMs}]` |
+| MergeV2 | 複数ソースの結合 | 複数上流 | `[{id, createdAtMs}]` (interleave/union/intersect) |
+| OutputV2 | ソート・ページネーション・詳細取得 | 上流 ID | Phase2/Phase3 結果 |
+
+### WorkerNodeCache
+
+Worker スレッド内でノード結果をキャッシュする。テーブルバージョン番号でキャッシュ無効化を管理し、上流ノードのハッシュ変更も検知する。
 
 ## 2 フェーズクエリ
 
