@@ -56,7 +56,7 @@ describe('handleRemoveFromTimeline', () => {
 
     const result = handleRemoveFromTimeline(db, 1, 'home', 42)
 
-    expect(result).toEqual({ changedTables: ['posts'] })
+    expect(result).toEqual({ changedTables: ['posts', 'timeline_entries'] })
 
     // BEGIN + COMMIT
     expect(calls[0].sql).toBe('BEGIN;')
@@ -104,7 +104,7 @@ describe('handleRemoveFromTimeline', () => {
 
     const result = handleRemoveFromTimeline(db, 1, 'home', 42)
 
-    expect(result).toEqual({ changedTables: ['posts'] })
+    expect(result).toEqual({ changedTables: ['posts', 'timeline_entries'] })
 
     // timeline_entries からの DELETE は実行される
     const deleteEntry = calls.find(
