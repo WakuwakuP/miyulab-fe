@@ -54,7 +54,7 @@ export function handleRemoveFromTimeline(
     throw e
   }
 
-  return { changedTables: ['posts'] }
+  return { changedTables: ['posts', 'timeline_entries'] }
 }
 
 export function handleDeleteEvent(

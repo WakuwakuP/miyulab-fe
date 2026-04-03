@@ -32,8 +32,8 @@ function isExistsCondition(f: unknown): f is ExistsCondition {
 
 describe('FLOW_PRESETS', () => {
   describe('一覧取得', () => {
-    it('6件のプリセットが返ること', () => {
-      expect(FLOW_PRESETS).toHaveLength(6)
+    it('8件のプリセットが返ること', () => {
+      expect(FLOW_PRESETS).toHaveLength(8)
     })
 
     it('すべてのプリセットが id, label, description, plan を持つこと', () => {
@@ -153,27 +153,33 @@ describe('FLOW_PRESETS', () => {
   })
 
   describe('ホームタイムライン プリセット', () => {
-    it('get-ids ノードが posts テーブルを参照していること', () => {
+    it('get-ids ノードが timeline_entries テーブルを参照していること', () => {
       const plan = getPreset('home').plan()
       const nodes = getIdsNodes(plan)
 
       expect(nodes).toHaveLength(1)
-      expect(nodes[0].table).toBe('posts')
+      expect(nodes[0].table).toBe('timeline_entries')
     })
 
-    it("get-ids ノードのフィルタに timeline_entries.timeline_type IN ['home'] 条件が含まれること", () => {
+    it("get-ids ノードのフィルタに timeline_entries.timeline_key IN ['home'] 条件が含まれること", () => {
       const plan = getPreset('home').plan()
       const nodes = getIdsNodes(plan)
       const timelineFilter = nodes[0].filters.find(
         (f): f is FilterCondition =>
           isFilterCondition(f) &&
           f.table === 'timeline_entries' &&
-          f.column === 'timeline_type' &&
+          f.column === 'timeline_key' &&
           f.op === 'IN',
       )
 
       expect(timelineFilter).toBeDefined()
       expect(timelineFilter?.value).toEqual(['home'])
+    })
+
+    it('post_id を出力 ID カラムとして使うこと', () => {
+      const plan = getPreset('home').plan()
+      const nodes = getIdsNodes(plan)
+      expect(nodes[0].outputIdColumn).toBe('post_id')
     })
 
     it('getIds → output の2ノード構成であること', () => {
@@ -189,22 +195,22 @@ describe('FLOW_PRESETS', () => {
   })
 
   describe('ローカルタイムライン プリセット', () => {
-    it('get-ids ノードが posts テーブルを参照していること', () => {
+    it('get-ids ノードが timeline_entries テーブルを参照していること', () => {
       const plan = getPreset('local').plan()
       const nodes = getIdsNodes(plan)
 
       expect(nodes).toHaveLength(1)
-      expect(nodes[0].table).toBe('posts')
+      expect(nodes[0].table).toBe('timeline_entries')
     })
 
-    it("get-ids ノードのフィルタに timeline_entries.timeline_type IN ['local'] 条件が含まれること", () => {
+    it("get-ids ノードのフィルタに timeline_entries.timeline_key IN ['local'] 条件が含まれること", () => {
       const plan = getPreset('local').plan()
       const nodes = getIdsNodes(plan)
       const timelineFilter = nodes[0].filters.find(
         (f): f is FilterCondition =>
           isFilterCondition(f) &&
           f.table === 'timeline_entries' &&
-          f.column === 'timeline_type' &&
+          f.column === 'timeline_key' &&
           f.op === 'IN',
       )
 
@@ -254,12 +260,12 @@ describe('FLOW_PRESETS', () => {
   })
 
   describe('ハッシュタグフィルタ プリセット', () => {
-    it('get-ids ノードが posts テーブルを参照していること', () => {
+    it('get-ids ノードが post_hashtags テーブルを参照していること', () => {
       const plan = getPreset('hashtag').plan()
       const nodes = getIdsNodes(plan)
 
       expect(nodes).toHaveLength(1)
-      expect(nodes[0].table).toBe('posts')
+      expect(nodes[0].table).toBe('post_hashtags')
     })
 
     it('get-ids ノードのフィルタに post_hashtags テーブルの exists 条件が含まれること', () => {
@@ -292,97 +298,107 @@ describe('FLOW_PRESETS', () => {
       )
       expect(innerFilter).toBeDefined()
     })
+
+    it('出力 ID が post_id であること', () => {
+      const plan = getPreset('hashtag').plan()
+      const nodes = getIdsNodes(plan)
+      expect(nodes[0].outputIdColumn).toBe('post_id')
+    })
+  })
+
+  describe('ハッシュタグ（メディア）プリセット', () => {
+    it('getIds が2つ（post_hashtags → posts）であること', () => {
+      const plan = getPreset('hashtag-media').plan()
+      const nodes = getIdsNodes(plan)
+      expect(nodes).toHaveLength(2)
+      expect(nodes[0].table).toBe('post_hashtags')
+      expect(nodes[1].table).toBe('posts')
+    })
+
+    it('2段目の posts に upstreamSourceNodeId と post_media exists があること', () => {
+      const plan = getPreset('hashtag-media').plan()
+      const nodes = getIdsNodes(plan)
+      const postNode = nodes[1]
+      const idIn = postNode.filters.find(
+        (f): f is FilterCondition =>
+          isFilterCondition(f) &&
+          f.table === 'posts' &&
+          f.column === 'id' &&
+          f.op === 'IN',
+      )
+      expect(idIn?.upstreamSourceNodeId).toBeDefined()
+      const mediaExists = postNode.filters.find(
+        (f): f is ExistsCondition =>
+          isExistsCondition(f) &&
+          f.mode === 'exists' &&
+          f.table === 'post_media',
+      )
+      expect(mediaExists).toBeDefined()
+    })
   })
 
   describe('複合タイムライン プリセット', () => {
-    it('get-ids ノードが2つ存在すること', () => {
+    it('get-ids ノードが1つ（timeline_entries）であること', () => {
       const plan = getPreset('composite').plan()
       const nodes = getIdsNodes(plan)
 
-      expect(nodes).toHaveLength(2)
+      expect(nodes).toHaveLength(1)
+      expect(nodes[0].table).toBe('timeline_entries')
     })
 
-    it("1つ目の get-ids が timeline_entries.timeline_type IN ['home'] フィルタを持つこと", () => {
+    it("timeline_key IN ['home','local'] であること", () => {
       const plan = getPreset('composite').plan()
       const nodes = getIdsNodes(plan)
       const filter = nodes[0].filters.find(
         (f): f is FilterCondition =>
           isFilterCondition(f) &&
           f.table === 'timeline_entries' &&
-          f.column === 'timeline_type' &&
+          f.column === 'timeline_key' &&
           f.op === 'IN',
       )
 
       expect(filter).toBeDefined()
-      expect(filter?.value).toEqual(['home'])
+      expect(filter?.value).toEqual(['home', 'local'])
     })
 
-    it("2つ目の get-ids が timeline_entries.timeline_type IN ['local'] フィルタを持つこと", () => {
-      const plan = getPreset('composite').plan()
-      const nodes = getIdsNodes(plan)
-      const filter = nodes[1].filters.find(
-        (f): f is FilterCondition =>
-          isFilterCondition(f) &&
-          f.table === 'timeline_entries' &&
-          f.column === 'timeline_type' &&
-          f.op === 'IN',
-      )
-
-      expect(filter).toBeDefined()
-      expect(filter?.value).toEqual(['local'])
-    })
-
-    it('merge-v2 ノードが1つ存在すること', () => {
+    it('merge ノードを含まないこと', () => {
       const plan = getPreset('composite').plan()
       const mergeNodes = plan.nodes.filter((n) => n.node.kind === 'merge-v2')
 
-      expect(mergeNodes).toHaveLength(1)
+      expect(mergeNodes).toHaveLength(0)
     })
 
-    it('2つの get-ids から merge-v2 へのエッジがそれぞれ存在すること', () => {
+    it('2ノード1エッジの構成であること', () => {
       const plan = getPreset('composite').plan()
-      const getIdsNodeIds = plan.nodes
-        .filter((n) => n.node.kind === 'get-ids')
-        .map((n) => n.id)
-      const mergeNodeId = plan.nodes.find((n) => n.node.kind === 'merge-v2')?.id
 
-      for (const sourceId of getIdsNodeIds) {
-        const edge = plan.edges.find(
-          (e) => e.source === sourceId && e.target === mergeNodeId,
-        )
-        expect(edge).toBeDefined()
-      }
+      expect(plan.nodes).toHaveLength(2)
+      expect(plan.edges).toHaveLength(1)
     })
+  })
 
-    it('merge-v2 から output-v2 へのエッジが存在すること', () => {
-      const plan = getPreset('composite').plan()
-      const mergeNodeId = plan.nodes.find((n) => n.node.kind === 'merge-v2')?.id
-      const outputNodeId = plan.nodes.find(
-        (n) => n.node.kind === 'output-v2',
-      )?.id
-
-      const edge = plan.edges.find(
-        (e) => e.source === mergeNodeId && e.target === outputNodeId,
+  describe('空中リプライ プリセット', () => {
+    it('notifications → lookup-related → merge → output の構成であること', () => {
+      const plan = getPreset('aerial-reply').plan()
+      expect(plan.nodes.some((n) => n.node.kind === 'get-ids')).toBe(true)
+      expect(plan.nodes.some((n) => n.node.kind === 'lookup-related')).toBe(
+        true,
       )
-
-      expect(edge).toBeDefined()
+      expect(plan.nodes.filter((n) => n.node.kind === 'merge-v2')).toHaveLength(
+        1,
+      )
+      expect(plan.nodes.some((n) => n.node.kind === 'output-v2')).toBe(true)
     })
 
-    it('merge-v2 の strategy が interleave-by-time であること', () => {
-      const plan = getPreset('composite').plan()
-      const mergeNode = plan.nodes.find((n) => n.node.kind === 'merge-v2')?.node
-
-      expect(mergeNode.kind).toBe('merge-v2')
-      if (mergeNode.kind === 'merge-v2') {
-        expect(mergeNode.strategy).toBe('interleave-by-time')
+    it('lookup が posts を参照し related_post_id 経由で解決すること', () => {
+      const plan = getPreset('aerial-reply').plan()
+      const lookup = plan.nodes.find((n) => n.node.kind === 'lookup-related')
+      expect(lookup?.node.kind).toBe('lookup-related')
+      if (lookup?.node.kind === 'lookup-related') {
+        expect(lookup.node.lookupTable).toBe('posts')
+        expect(lookup.node.joinConditions[0]?.resolve?.matchColumn).toBe(
+          'related_post_id',
+        )
       }
-    })
-
-    it('4ノード3エッジの構成であること', () => {
-      const plan = getPreset('composite').plan()
-
-      expect(plan.nodes).toHaveLength(4)
-      expect(plan.edges).toHaveLength(3)
     })
   })
 

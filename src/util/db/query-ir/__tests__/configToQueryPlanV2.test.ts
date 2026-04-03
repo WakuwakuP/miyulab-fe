@@ -192,7 +192,7 @@ describe('configToQueryPlanV2', () => {
         'IN',
       )
       expect(filter).toBeDefined()
-      expect(filter!.value).toEqual(['home'])
+      expect(filter?.value).toEqual(['home'])
     })
 
     it('type=homeの時、localAccountIdsが存在すればlocal_account_id INフィルタが含まれること', () => {
@@ -212,7 +212,7 @@ describe('configToQueryPlanV2', () => {
         'IN',
       )
       expect(filter).toBeDefined()
-      expect(filter!.value).toEqual([1, 2])
+      expect(filter?.value).toEqual([1, 2])
     })
 
     it('type=homeの時、outputIdColumnがpost_idであること', () => {
@@ -261,7 +261,7 @@ describe('configToQueryPlanV2', () => {
         'IN',
       )
       expect(filter).toBeDefined()
-      expect(filter!.value).toEqual(['local'])
+      expect(filter?.value).toEqual(['local'])
     })
 
     it('type=localの時、localAccountIdsが空でもlocal_account_idフィルタが追加されないこと', () => {
@@ -328,7 +328,7 @@ describe('configToQueryPlanV2', () => {
         'IN',
       )
       expect(filter).toBeDefined()
-      expect(filter!.value).toEqual(['public'])
+      expect(filter?.value).toEqual(['public'])
     })
 
     it('type=publicの時、outputIdColumnがpost_idであること', () => {
@@ -410,12 +410,12 @@ describe('configToQueryPlanV2', () => {
         const node = getGetIdsNode(plan, 'source')
         const exists = findExists(node.filters, 'post_hashtags', 'exists')
         expect(exists).toBeDefined()
-        expect(exists!.innerFilters).toBeDefined()
-        const inner = exists!.innerFilters!.find(
+        expect(exists?.innerFilters).toBeDefined()
+        const inner = exists?.innerFilters?.find(
           (f) => f.table === 'hashtags' && f.column === 'name' && f.op === 'IN',
         )
         expect(inner).toBeDefined()
-        expect(inner!.value).toEqual(['vitest', 'testing'])
+        expect(inner?.value).toEqual(['vitest', 'testing'])
       })
 
       it('タグ名が大文字を含む時、小文字に正規化されてフィルタに設定されること', () => {
@@ -433,10 +433,10 @@ describe('configToQueryPlanV2', () => {
         const node = getGetIdsNode(plan, 'source')
         const exists = findExists(node.filters, 'post_hashtags', 'exists')
         expect(exists).toBeDefined()
-        const inner = exists!.innerFilters!.find(
+        const inner = exists?.innerFilters?.find(
           (f) => f.table === 'hashtags' && f.column === 'name',
         )
-        expect(inner!.value).toEqual(['vitest', 'testing'])
+        expect(inner?.value).toEqual(['vitest', 'testing'])
       })
     })
 
@@ -483,11 +483,11 @@ describe('configToQueryPlanV2', () => {
         expect(conditions).toHaveLength(2)
 
         const innerValues = conditions.map((ec) => {
-          const inner = ec.innerFilters!.find(
+          const inner = ec.innerFilters?.find(
             (f) =>
               f.table === 'hashtags' && f.column === 'name' && f.op === '=',
           )
-          return inner!.value
+          return inner?.value
         })
         expect(innerValues).toContain('vitest')
         expect(innerValues).toContain('testing')
@@ -617,7 +617,7 @@ describe('configToQueryPlanV2', () => {
           'IN',
         )
         expect(filter).toBeDefined()
-        expect(filter!.value).toEqual(['follow', 'favourite', 'reblog'])
+        expect(filter?.value).toEqual(['follow', 'favourite', 'reblog'])
       })
 
       it('notificationFilterが未指定の時、notification_typesのフィルタが含まれないこと', () => {
@@ -699,7 +699,7 @@ describe('configToQueryPlanV2', () => {
       const plan = configToQueryPlanV2(config, context)
 
       // Assert
-      const mergeNode = findNode(plan, 'merge')!.node as MergeNodeV2
+      const mergeNode = findNode(plan, 'merge')?.node as MergeNodeV2
       expect(mergeNode.strategy).toBe('interleave-by-time')
     })
 
@@ -715,7 +715,7 @@ describe('configToQueryPlanV2', () => {
       const plan = configToQueryPlanV2(config, context)
 
       // Assert
-      const mergeNode = findNode(plan, 'merge')!.node as MergeNodeV2
+      const mergeNode = findNode(plan, 'merge')?.node as MergeNodeV2
       expect(mergeNode.limit).toBe(75)
     })
 
@@ -809,7 +809,7 @@ describe('configToQueryPlanV2', () => {
           'IN',
         )
         expect(filter).toBeDefined()
-        expect(filter!.value).toEqual([key])
+        expect(filter?.value).toEqual([key])
       }
     })
 
@@ -870,7 +870,7 @@ describe('configToQueryPlanV2', () => {
         'timeline_key',
         'IN',
       )
-      expect(filter!.value).toEqual(['local'])
+      expect(filter?.value).toEqual(['local'])
     })
 
     it('timelineTypesが空配列の時、config.typeをtimelineKeyとして単一ソース処理されること', () => {
@@ -895,7 +895,7 @@ describe('configToQueryPlanV2', () => {
         'timeline_key',
         'IN',
       )
-      expect(filter!.value).toEqual(['public'])
+      expect(filter?.value).toEqual(['public'])
     })
   })
 
@@ -956,7 +956,7 @@ describe('configToQueryPlanV2', () => {
         const node = getGetIdsNode(plan, 'source')
         const exists = findExists(node.filters, 'post_media', 'count-gte')
         expect(exists).toBeDefined()
-        expect(exists!.countValue).toBe(2)
+        expect(exists?.countValue).toBe(2)
       })
 
       it('minMediaCountが1の時、count-gte条件(countValue=1)が含まれること', () => {
@@ -971,7 +971,7 @@ describe('configToQueryPlanV2', () => {
         const node = getGetIdsNode(plan, 'source')
         const exists = findExists(node.filters, 'post_media', 'count-gte')
         expect(exists).toBeDefined()
-        expect(exists!.countValue).toBe(1)
+        expect(exists?.countValue).toBe(1)
       })
 
       it('minMediaCountが0の時、メディアフィルタが含まれないこと', () => {
@@ -1000,7 +1000,7 @@ describe('configToQueryPlanV2', () => {
         const node = getGetIdsNode(plan, 'source')
         const countGte = findExists(node.filters, 'post_media', 'count-gte')
         expect(countGte).toBeDefined()
-        expect(countGte!.countValue).toBe(3)
+        expect(countGte?.countValue).toBe(3)
 
         // exists は含まれない（count-gte が優先）
         const simpleExists = findExists(node.filters, 'post_media', 'exists')
@@ -1026,7 +1026,7 @@ describe('configToQueryPlanV2', () => {
           'IN',
         )
         expect(filter).toBeDefined()
-        expect(filter!.value).toEqual(['public'])
+        expect(filter?.value).toEqual(['public'])
       })
 
       it('visibilityFilterが["public","unlisted"]の時、2つの値を含むINフィルタが生成されること', () => {
@@ -1046,7 +1046,7 @@ describe('configToQueryPlanV2', () => {
           'IN',
         )
         expect(filter).toBeDefined()
-        expect(filter!.value).toEqual(['public', 'unlisted'])
+        expect(filter?.value).toEqual(['public', 'unlisted'])
       })
 
       it('visibilityFilterが未指定の時、visibility_typesフィルタが含まれないこと', () => {
@@ -1112,7 +1112,7 @@ describe('configToQueryPlanV2', () => {
           'IN',
         )
         expect(filter).toBeDefined()
-        expect(filter!.value).toEqual(['public', 'unlisted', 'private'])
+        expect(filter?.value).toEqual(['public', 'unlisted', 'private'])
       })
     })
 
@@ -1129,7 +1129,7 @@ describe('configToQueryPlanV2', () => {
         const node = getGetIdsNode(plan, 'source')
         const filter = findFilter(node.filters, 'posts', 'language', 'IN')
         expect(filter).toBeDefined()
-        expect(filter!.value).toEqual(['ja'])
+        expect(filter?.value).toEqual(['ja'])
       })
 
       it('languageFilterが["ja","en"]の時、2つの値を含むINフィルタが生成されること', () => {
@@ -1144,7 +1144,7 @@ describe('configToQueryPlanV2', () => {
         const node = getGetIdsNode(plan, 'source')
         const filter = findFilter(node.filters, 'posts', 'language', 'IN')
         expect(filter).toBeDefined()
-        expect(filter!.value).toEqual(['ja', 'en'])
+        expect(filter?.value).toEqual(['ja', 'en'])
       })
 
       it('languageFilterが未指定の時、languageフィルタが含まれないこと', () => {
@@ -1287,7 +1287,7 @@ describe('configToQueryPlanV2', () => {
         const node = getGetIdsNode(plan, 'source')
         const filter = findFilter(node.filters, 'posts', 'spoiler_text', '=')
         expect(filter).toBeDefined()
-        expect(filter!.value).toBe('')
+        expect(filter?.value).toBe('')
       })
 
       it('excludeSpoiler=falseの時、spoiler_textフィルタが含まれないこと', () => {
@@ -1318,7 +1318,7 @@ describe('configToQueryPlanV2', () => {
         const node = getGetIdsNode(plan, 'source')
         const filter = findFilter(node.filters, 'posts', 'is_sensitive', '=')
         expect(filter).toBeDefined()
-        expect(filter!.value).toBe(0)
+        expect(filter?.value).toBe(0)
       })
 
       it('excludeSensitive=falseの時、is_sensitiveフィルタが含まれないこと', () => {
@@ -1351,7 +1351,7 @@ describe('configToQueryPlanV2', () => {
         const node = getGetIdsNode(plan, 'source')
         const filter = findFilter(node.filters, 'profiles', 'acct', 'IN')
         expect(filter).toBeDefined()
-        expect(filter!.value).toEqual(['user@mastodon.social'])
+        expect(filter?.value).toEqual(['user@mastodon.social'])
       })
 
       it('accountFilter.mode=excludeの時、profiles.acct NOT INフィルタが含まれること', () => {
@@ -1368,7 +1368,7 @@ describe('configToQueryPlanV2', () => {
         const node = getGetIdsNode(plan, 'source')
         const filter = findFilter(node.filters, 'profiles', 'acct', 'NOT IN')
         expect(filter).toBeDefined()
-        expect(filter!.value).toEqual(['spam@example.com'])
+        expect(filter?.value).toEqual(['spam@example.com'])
       })
 
       it('accountFilterが未指定の時、profiles.acctフィルタが含まれないこと', () => {
@@ -1504,10 +1504,10 @@ describe('configToQueryPlanV2', () => {
         const node = getGetIdsNode(plan, 'source')
         const exists = findExists(node.filters, 'muted_accounts', 'not-exists')
         expect(exists).toBeDefined()
-        expect(exists!.innerFilters).toBeDefined()
-        expect(exists!.innerFilters).toHaveLength(2)
+        expect(exists?.innerFilters).toBeDefined()
+        expect(exists?.innerFilters).toHaveLength(2)
 
-        const serverIdValues = exists!.innerFilters!.map((f) => f.value)
+        const serverIdValues = exists?.innerFilters?.map((f) => f.value)
         expect(serverIdValues).toContain(10)
         expect(serverIdValues).toContain(20)
       })
@@ -1524,7 +1524,7 @@ describe('configToQueryPlanV2', () => {
         const node = getGetIdsNode(plan, 'source')
         const exists = findExists(node.filters, 'muted_accounts', 'not-exists')
         expect(exists).toBeDefined()
-        expect(exists!.innerFilters).toBeUndefined()
+        expect(exists?.innerFilters).toBeUndefined()
       })
 
       it('accountFilter.mode=includeの時、ミュートフィルタがスキップされること', () => {
@@ -1636,7 +1636,7 @@ describe('configToQueryPlanV2', () => {
         'IN',
       )
       expect(filter).toBeDefined()
-      expect(filter!.value).toEqual([1])
+      expect(filter?.value).toEqual([1])
     })
 
     it('type=tagの時、localAccountIdsがあればlocal_accounts.id INフィルタが含まれること', () => {
@@ -1651,7 +1651,7 @@ describe('configToQueryPlanV2', () => {
       const node = getGetIdsNode(plan, 'source')
       const filter = findFilter(node.filters, 'local_accounts', 'id', 'IN')
       expect(filter).toBeDefined()
-      expect(filter!.value).toEqual([5])
+      expect(filter?.value).toEqual([5])
     })
 
     it('type=homeの時、localAccountIdsがあればtimeline_entries.local_account_id INフィルタで設定されること', () => {
@@ -1671,7 +1671,7 @@ describe('configToQueryPlanV2', () => {
         'IN',
       )
       expect(filter).toBeDefined()
-      expect(filter!.value).toEqual([3, 4])
+      expect(filter?.value).toEqual([3, 4])
     })
 
     it('type=localの時、localAccountIdsによる追加のlocal_account_idフィルタが生成されないこと（homeのみ）', () => {
@@ -1823,7 +1823,7 @@ describe('configToQueryPlanV2', () => {
 
       const langFilter = findFilter(node.filters, 'posts', 'language', 'IN')
       expect(langFilter).toBeDefined()
-      expect(langFilter!.value).toEqual(['ja', 'en'])
+      expect(langFilter?.value).toEqual(['ja', 'en'])
     })
 
     it('tagタイムラインでvisibilityFilter+excludeRepliesを同時指定した時、hashtagフィルタとコンテンツフィルタの両方が含まれること', () => {
@@ -1852,7 +1852,7 @@ describe('configToQueryPlanV2', () => {
         'IN',
       )
       expect(visFilter).toBeDefined()
-      expect(visFilter!.value).toEqual(['public'])
+      expect(visFilter?.value).toEqual(['public'])
 
       const replyFilter = findFilter(
         node.filters,
@@ -1885,7 +1885,7 @@ describe('configToQueryPlanV2', () => {
         'IN',
       )
       expect(notifFilter).toBeDefined()
-      expect(notifFilter!.value).toEqual(['follow', 'mention'])
+      expect(notifFilter?.value).toEqual(['follow', 'mention'])
 
       const muteExists = findExists(
         node.filters,

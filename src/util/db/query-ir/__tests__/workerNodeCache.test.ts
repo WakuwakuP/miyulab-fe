@@ -562,7 +562,7 @@ describe('WorkerNodeCache', () => {
 
       // Assert
       const versions = cache.captureVersions()
-      expect(versions['tableA']).toBe(1)
+      expect(versions.tableA).toBe(1)
     })
 
     it('既にバージョンが存在するテーブルに bumpVersion を呼んだ時、バージョンが 1 増加すること', () => {
@@ -574,7 +574,7 @@ describe('WorkerNodeCache', () => {
 
       // Assert
       const versions = cache.captureVersions()
-      expect(versions['tableA']).toBe(2)
+      expect(versions.tableA).toBe(2)
     })
 
     it('同じテーブルに対して bumpVersion を複数回呼んだ時、呼んだ回数分バージョンが増加すること', () => {
@@ -589,7 +589,7 @@ describe('WorkerNodeCache', () => {
 
       // Assert
       const versions = cache.captureVersions()
-      expect(versions['tableA']).toBe(5)
+      expect(versions.tableA).toBe(5)
     })
 
     it('あるテーブルの bumpVersion が他のテーブルのバージョンに影響しないこと', () => {
@@ -602,8 +602,8 @@ describe('WorkerNodeCache', () => {
 
       // Assert
       const versions = cache.captureVersions()
-      expect(versions['tableA']).toBe(2)
-      expect(versions['tableB']).toBe(1)
+      expect(versions.tableA).toBe(2)
+      expect(versions.tableB).toBe(1)
     })
   })
 
@@ -620,7 +620,7 @@ describe('WorkerNodeCache', () => {
 
       // Assert
       const versions = cache.captureVersions()
-      expect(versions['tableA']).toBe(5)
+      expect(versions.tableA).toBe(5)
     })
 
     it('外部バージョンがローカルと同じ時、ローカルバージョンが変化しないこと', () => {
@@ -632,7 +632,7 @@ describe('WorkerNodeCache', () => {
 
       // Assert
       const versions = cache.captureVersions()
-      expect(versions['tableA']).toBe(1)
+      expect(versions.tableA).toBe(1)
     })
 
     it('外部バージョンがローカルより小さい時、ローカルバージョンが変化しないこと（巻き戻らないこと）', () => {
@@ -646,7 +646,7 @@ describe('WorkerNodeCache', () => {
 
       // Assert
       const versions = cache.captureVersions()
-      expect(versions['tableA']).toBe(3)
+      expect(versions.tableA).toBe(3)
     })
 
     it('ローカルに存在しないテーブルが外部にある時、そのテーブルのバージョンが新規追加されること', () => {
@@ -657,7 +657,7 @@ describe('WorkerNodeCache', () => {
 
       // Assert
       const versions = cache.captureVersions()
-      expect(versions['tableX']).toBe(10)
+      expect(versions.tableX).toBe(10)
     })
 
     it('外部に存在しないテーブルがローカルにある時、そのテーブルのバージョンが維持されること', () => {
@@ -669,8 +669,8 @@ describe('WorkerNodeCache', () => {
 
       // Assert
       const versions = cache.captureVersions()
-      expect(versions['tableA']).toBe(1)
-      expect(versions['tableB']).toBe(5)
+      expect(versions.tableA).toBe(1)
+      expect(versions.tableB).toBe(5)
     })
 
     it('空の Map を syncVersions に渡した時、ローカルバージョンが変化しないこと', () => {
@@ -682,7 +682,7 @@ describe('WorkerNodeCache', () => {
 
       // Assert
       const versions = cache.captureVersions()
-      expect(versions['tableA']).toBe(1)
+      expect(versions.tableA).toBe(1)
     })
 
     it('syncVersions で依存テーブルのバージョンが上がった場合、既存キャッシュが無効化されること', () => {
@@ -825,7 +825,7 @@ describe('WorkerNodeCache', () => {
 
       // Assert
       const versions = cache.captureVersions()
-      expect(versions['tableA']).toBe(2)
+      expect(versions.tableA).toBe(2)
     })
 
     it('キャッシュが空の状態で clear を呼んでもエラーにならないこと', () => {

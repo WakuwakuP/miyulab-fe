@@ -406,6 +406,11 @@ export const TABLE_REGISTRY: TableRegistry = {
         nullable: false,
         type: 'integer',
       },
+      id: {
+        label: '通知 ID',
+        nullable: false,
+        type: 'integer',
+      },
       is_read: {
         label: '既読',
         nullable: false,
@@ -967,6 +972,11 @@ export const TABLE_REGISTRY: TableRegistry = {
         nullable: true,
         type: 'integer',
       },
+      id: {
+        label: '投稿 ID',
+        nullable: false,
+        type: 'integer',
+      },
       in_reply_to_account_acct: {
         label: 'リプライ先アカウント',
         nullable: true,
@@ -1223,6 +1233,11 @@ export const TABLE_REGISTRY: TableRegistry = {
       display_post_id: {
         label: '表示投稿 ID',
         nullable: true,
+        type: 'integer',
+      },
+      id: {
+        label: 'エントリ ID',
+        nullable: false,
         type: 'integer',
       },
       local_account_id: {

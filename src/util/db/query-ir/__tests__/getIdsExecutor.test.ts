@@ -247,7 +247,7 @@ describe('compileGetIds', () => {
       expect(sql).toContain('p.id IN (?, ?)')
       const whereMatch = sql.match(/WHERE\s+(.+?)\s+ORDER/)
       expect(whereMatch).not.toBeNull()
-      expect(whereMatch![1]).toContain(' AND ')
+      expect(whereMatch?.[1]).toContain(' AND ')
     })
 
     it('通常の静的フィルタとupstreamフィルタが混在する時、binds配列に両方の値が含まれること', () => {

@@ -38,14 +38,15 @@ function homePlan(): QueryPlanV2 {
         node: {
           filters: [
             {
-              column: 'timeline_type',
+              column: 'timeline_key',
               op: 'IN',
               table: 'timeline_entries',
               value: ['home'],
             },
           ],
           kind: 'get-ids',
-          table: 'posts',
+          outputIdColumn: 'post_id',
+          table: 'timeline_entries',
         },
       },
       {
@@ -72,14 +73,15 @@ function localPlan(): QueryPlanV2 {
         node: {
           filters: [
             {
-              column: 'timeline_type',
+              column: 'timeline_key',
               op: 'IN',
               table: 'timeline_entries',
               value: ['local'],
             },
           ],
           kind: 'get-ids',
-          table: 'posts',
+          outputIdColumn: 'post_id',
+          table: 'timeline_entries',
         },
       },
       {
@@ -168,7 +170,8 @@ function hashtagPlan(): QueryPlanV2 {
             },
           ],
           kind: 'get-ids',
-          table: 'posts',
+          outputIdColumn: 'post_id',
+          table: 'post_hashtags',
         },
       },
       {
@@ -184,46 +187,138 @@ function hashtagPlan(): QueryPlanV2 {
   }
 }
 
-function compositePlan(): QueryPlanV2 {
-  const a = uid()
-  const b = uid()
-  const m = uid()
-  const o = uid()
+/** hashtags → post_hashtags → posts（メディア付きのみ） */
+function hashtagMediaPlan(): QueryPlanV2 {
+  const tagNode = uid()
+  const postNode = uid()
+  const out = uid()
   return {
     edges: [
-      { source: a, target: m },
-      { source: b, target: m },
-      { source: m, target: o },
+      { source: tagNode, target: postNode },
+      { source: postNode, target: out },
     ],
     nodes: [
       {
-        id: a,
+        id: tagNode,
         node: {
           filters: [
             {
-              column: 'timeline_type',
-              op: 'IN',
-              table: 'timeline_entries',
-              value: ['home'],
+              innerFilters: [
+                { column: 'name', op: 'IN', table: 'hashtags', value: [] },
+              ],
+              mode: 'exists',
+              table: 'post_hashtags',
             },
+          ],
+          kind: 'get-ids',
+          outputIdColumn: 'post_id',
+          table: 'post_hashtags',
+        },
+      },
+      {
+        id: postNode,
+        node: {
+          filters: [
+            {
+              column: 'id',
+              op: 'IN',
+              table: 'posts',
+              upstreamSourceNodeId: tagNode,
+              value: [],
+            },
+            { mode: 'exists', table: 'post_media' },
           ],
           kind: 'get-ids',
           table: 'posts',
         },
       },
       {
-        id: b,
+        id: out,
+        node: {
+          kind: 'output-v2',
+          pagination: { limit: 50 },
+          sort: { direction: 'DESC', field: 'created_at_ms' },
+        },
+      },
+    ],
+    version: 2,
+  }
+}
+
+function compositePlan(): QueryPlanV2 {
+  const a = uid()
+  const b = uid()
+  return {
+    edges: [{ source: a, target: b }],
+    nodes: [
+      {
+        id: a,
         node: {
           filters: [
             {
-              column: 'timeline_type',
+              column: 'timeline_key',
               op: 'IN',
               table: 'timeline_entries',
-              value: ['local'],
+              value: ['home', 'local'],
             },
           ],
           kind: 'get-ids',
-          table: 'posts',
+          outputIdColumn: 'post_id',
+          table: 'timeline_entries',
+        },
+      },
+      {
+        id: b,
+        node: {
+          kind: 'output-v2',
+          pagination: { limit: 50 },
+          sort: { direction: 'DESC', field: 'created_at_ms' },
+        },
+      },
+    ],
+    version: 2,
+  }
+}
+
+/** 通知 → 関連投稿(lookup) → merge で通知と投稿を合流 */
+function aerialReplyPlan(): QueryPlanV2 {
+  const n = uid()
+  const l = uid()
+  const m = uid()
+  const o = uid()
+  return {
+    edges: [
+      { source: n, target: l },
+      { source: n, target: m },
+      { source: l, target: m },
+      { source: m, target: o },
+    ],
+    nodes: [
+      {
+        id: n,
+        node: {
+          filters: [],
+          kind: 'get-ids',
+          table: 'notifications',
+        },
+      },
+      {
+        id: l,
+        node: {
+          joinConditions: [
+            {
+              inputColumn: 'id',
+              lookupColumn: 'id',
+              resolve: {
+                inputKey: 'id',
+                lookupKey: 'id',
+                matchColumn: 'related_post_id',
+                via: 'notifications',
+              },
+            },
+          ],
+          kind: 'lookup-related',
+          lookupTable: 'posts',
         },
       },
       {
@@ -257,13 +352,25 @@ export const FLOW_PRESETS: FlowPreset[] = [
   makePreset(
     'hashtag',
     'ハッシュタグ',
-    'ハッシュタグでフィルタした投稿',
+    'ハッシュタグでフィルタした投稿（post_hashtags 経由）',
     hashtagPlan,
+  ),
+  makePreset(
+    'hashtag-media',
+    'ハッシュタグ（メディア）',
+    'ハッシュタグに該当しメディア付きの投稿のみ',
+    hashtagMediaPlan,
   ),
   makePreset(
     'composite',
     'ホーム + ローカル',
-    'ホームとローカルを結合',
+    'ホームとローカルを1本のタイムラインエントリクエリで取得',
     compositePlan,
+  ),
+  makePreset(
+    'aerial-reply',
+    '空中リプライ',
+    '通知と関連投稿をマージして表示',
+    aerialReplyPlan,
   ),
 ]

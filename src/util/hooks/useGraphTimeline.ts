@@ -30,6 +30,7 @@ import {
   type ChangeHint,
   getSqliteDb,
   subscribe,
+  type TableName,
 } from 'util/db/sqlite/connection'
 import {
   addNotification,
@@ -130,10 +131,10 @@ export function useGraphTimeline(config: TimelineConfigV2): {
     })
   }, [config, localAccountIds, serverIds, queryLimit])
 
-  // subscribeTable の判定
-  const subscribeTable = useMemo(() => {
-    if (config.type === 'notification') return 'notifications' as const
-    return 'posts' as const
+  /** 投稿系タイムラインは posts に加え timeline_entries の変更でも再取得する */
+  const subscribeTables = useMemo((): TableName[] => {
+    if (config.type === 'notification') return ['notifications']
+    return ['posts', 'timeline_entries']
   }, [config.type])
 
   // ChangeHint マッチング用のタイムラインタイプ配列
@@ -221,7 +222,7 @@ export function useGraphTimeline(config: TimelineConfigV2): {
   // ---- subscribe: 変更通知で再取得 ----
 
   useEffect(() => {
-    const unsubscribe = subscribe(subscribeTable, (hints: ChangeHint[]) => {
+    const onHints = (hints: ChangeHint[]) => {
       // hint なしの場合は常に再取得
       if (hints.length === 0) {
         fetchData()
@@ -250,10 +251,13 @@ export function useGraphTimeline(config: TimelineConfigV2): {
       if (matched) {
         fetchData()
       }
-    })
+    }
 
-    return unsubscribe
-  }, [fetchData, subscribeTable, configTimelineTypes, targetBackendUrls])
+    const unsubs = subscribeTables.map((table) => subscribe(table, onHints))
+    return () => {
+      for (const u of unsubs) u()
+    }
+  }, [fetchData, subscribeTables, configTimelineTypes, targetBackendUrls])
 
   // ---- 通知の missing status 取得 ----
   // data に含まれる通知は rowToStoredNotification で構築されるため

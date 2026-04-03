@@ -440,7 +440,7 @@ export function handleUpsertStatus(
     throw e
   }
 
-  return { changedTables: ['posts'] }
+  return { changedTables: ['posts', 'timeline_entries'] }
 }
 
 export function handleBulkUpsertStatuses(
@@ -487,7 +487,7 @@ export function handleBulkUpsertStatuses(
     throw e
   }
 
-  return { changedTables: ['posts'] }
+  return { changedTables: ['posts', 'timeline_entries'] }
 }
 
 // ================================================================
