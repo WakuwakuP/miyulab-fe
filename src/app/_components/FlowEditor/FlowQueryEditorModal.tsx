@@ -303,7 +303,7 @@ export function FlowQueryEditorModal({
   const [showBlockManager, setShowBlockManager] = useState(false)
 
   const viewportCenterRef = useRef<ViewportCenterFn | null>(null)
-  const addNodeCounterRef = useRef(1000)
+  const addNodeCounterRef = useRef(0)
   const addJitterIndexRef = useRef(0)
   const prevOpenRef = useRef(false)
 
@@ -333,7 +333,7 @@ export function FlowQueryEditorModal({
     const flow = queryPlanToFlow(resolvedPlanV2)
     setNodes(flow.nodes)
     setEdges(flow.edges)
-    addNodeCounterRef.current = 1000
+    addNodeCounterRef.current = 0
     addJitterIndexRef.current = 0
   }, [open, resolvedPlanV2])
 
@@ -353,7 +353,7 @@ export function FlowQueryEditorModal({
   )
 
   const handleAddNode = useCallback((item: AddMenuItem) => {
-    const id = `add-${++addNodeCounterRef.current}`
+    const id = `add-${++addNodeCounterRef.current}-${Date.now().toString(36)}`
     const center = viewportCenterRef.current
       ? viewportCenterRef.current()
       : { x: 300, y: 200 }
@@ -371,7 +371,7 @@ export function FlowQueryEditorModal({
     const flow = queryPlanToFlow(plan)
     setNodes(flow.nodes)
     setEdges(flow.edges)
-    addNodeCounterRef.current = 1000
+    addNodeCounterRef.current = 0
     addJitterIndexRef.current = 0
   }, [])
 
