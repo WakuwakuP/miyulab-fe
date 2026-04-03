@@ -76,6 +76,10 @@ export const StreamingManagerProvider = ({
   const registryRef = useRef<StreamRegistry>(new Map())
   const initIdCounterRef = useRef(0)
   const refFirstRef = useRef(true)
+  /** 初期データ取得済みのストリームキーを追跡（設定変更時の再取得を防止） */
+  const fetchedInitialKeysRef = useRef(new Set<string>())
+  /** apps 変更検出用（バックエンド追加/削除時にフェッチ済みキーをリセット） */
+  const prevAppsKeyRef = useRef('')
 
   // =============================================
   // getStatus: 接続状態の取得
@@ -309,38 +313,47 @@ export const StreamingManagerProvider = ({
 
   // =============================================
   // 初期データ取得（ストリーム接続に伴う）
+  // fetchedInitialKeysRef で取得済みキーを追跡し、
+  // 設定変更時の不要な再フェッチを防止する。
   // =============================================
   const fetchInitialDataForTimelines = useEffectEvent(() => {
+    // apps 変更検出: バックエンド構成が変わった場合のみリセット
+    const currentAppsKey = apps
+      .map((a) => a.backendUrl)
+      .sort()
+      .join('\0')
+    if (currentAppsKey !== prevAppsKeyRef.current) {
+      prevAppsKeyRef.current = currentAppsKey
+      fetchedInitialKeysRef.current.clear()
+    }
+
     // local / public は全 backendUrl に対してデフォルトで初期データを取得
-    const fetchedLocalPublic = new Set<string>()
     for (const app of apps) {
       const { backendUrl } = app
       const client = GetClient(app)
       for (const type of ['local', 'public'] as const) {
         const key = `${type}|${backendUrl}`
-        if (!fetchedLocalPublic.has(key)) {
-          fetchedLocalPublic.add(key)
-          // fetchInitialData は config.type に基づいて動作するため、
-          // local/public 用の最小限の設定を構築して渡す
-          const config: TimelineConfigV2 = {
-            id: `__default_${type}`,
-            order: 0,
-            type,
-            visible: false,
-          }
-          fetchInitialData(client, config, backendUrl).catch((error) => {
-            console.error(
-              `Failed to fetch initial data for ${type} (${backendUrl}):`,
-              error,
-            )
-          })
+        if (fetchedInitialKeysRef.current.has(key)) continue
+        fetchedInitialKeysRef.current.add(key)
+        // fetchInitialData は config.type に基づいて動作するため、
+        // local/public 用の最小限の設定を構築して渡す
+        const config: TimelineConfigV2 = {
+          id: `__default_${type}`,
+          order: 0,
+          type,
+          visible: false,
         }
+        fetchInitialData(client, config, backendUrl).catch((error) => {
+          console.error(
+            `Failed to fetch initial data for ${type} (${backendUrl}):`,
+            error,
+          )
+        })
       }
     }
 
     // tag タイムラインの初期データ取得（tagConfig を持つ全設定が対象）
     // 同一 tag × backendUrl の組み合わせは重複フェッチを防止する
-    const fetchedTags = new Set<string>()
     for (const config of timelineSettings.timelines) {
       if (!config.tagConfig || config.tagConfig.tags.length === 0) continue
 
@@ -350,9 +363,9 @@ export const StreamingManagerProvider = ({
       for (const url of targetUrls) {
         // 未フェッチのタグのみ抽出
         const newTags = config.tagConfig.tags.filter((tag) => {
-          const key = `${tag}|${url}`
-          if (fetchedTags.has(key)) return false
-          fetchedTags.add(key)
+          const key = `tag|${tag}|${url}`
+          if (fetchedInitialKeysRef.current.has(key)) return false
+          fetchedInitialKeysRef.current.add(key)
           return true
         })
         if (newTags.length === 0) continue
@@ -438,6 +451,26 @@ export const StreamingManagerProvider = ({
   })
 
   // =============================================
+  // Effect: アンマウント時のみ全ストリームを切断
+  // =============================================
+  // 設定変更時の cleanup を分離し、ストリームの不要な全再構築を防止する。
+  // syncStreamsEvent が diff ベースで不要ストリームを停止するため、
+  // アンマウント以外で全ストリームを破棄する必要はない。
+  useEffect(() => {
+    return () => {
+      for (const [, entry] of registryRef.current) {
+        if (entry.stream) {
+          stopStream(entry.stream)
+        }
+        if (entry.retryTimer != null) {
+          clearTimeout(entry.retryTimer)
+        }
+      }
+      registryRef.current.clear()
+    }
+  }, [])
+
+  // =============================================
   // Effect: apps / timelineSettings 変更時に同期
   // =============================================
   // biome-ignore lint/correctness/useExhaustiveDependencies: timelineSettings is intentionally included to trigger re-sync when settings change. syncStreamsEvent/fetchInitialDataForTimelines are useEffectEvent and capture the latest values.
@@ -453,19 +486,6 @@ export const StreamingManagerProvider = ({
 
     syncStreamsEvent()
     fetchInitialDataForTimelines()
-
-    // クリーンアップ: 全ストリーム切断
-    return () => {
-      for (const [, entry] of registryRef.current) {
-        if (entry.stream) {
-          stopStream(entry.stream)
-        }
-        if (entry.retryTimer != null) {
-          clearTimeout(entry.retryTimer)
-        }
-      }
-      registryRef.current.clear()
-    }
   }, [apps, timelineSettings])
 
   const streamingManagerValue = useMemo(() => ({ getStatus }), [getStatus])
