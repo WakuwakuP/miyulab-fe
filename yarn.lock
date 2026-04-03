@@ -2069,6 +2069,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@twemoji/parser@npm:16.0.0":
+  version: 16.0.0
+  resolution: "@twemoji/parser@npm:16.0.0"
+  checksum: 10c0/b1976e6ee3354ee7d021a1b97f1befa0db585adee34998f5b27f618a0ab50840e30b7cb5af384365e038f0e91e52680704c111225f8441d2b58ec1a0a6926d4d
+  languageName: node
+  linkType: hard
+
 "@tybys/wasm-util@npm:^0.10.1":
   version: 0.10.1
   resolution: "@tybys/wasm-util@npm:0.10.1"
@@ -5003,6 +5010,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"mfm-js@npm:^0.25.0":
+  version: 0.25.0
+  resolution: "mfm-js@npm:0.25.0"
+  dependencies:
+    "@twemoji/parser": "npm:16.0.0"
+  checksum: 10c0/670d149b20e552b275f0ca3211dfe54a26e61ae881b09279fee6fdd7715dd4503cd7e1e9daf247efb90b0ac65c4ce52c554458479518f98c35bd62284963f98e
+  languageName: node
+  linkType: hard
+
 "mime-db@npm:1.52.0":
   version: 1.52.0
   resolution: "mime-db@npm:1.52.0"
@@ -5199,6 +5215,7 @@ __metadata:
     lint-staged: "npm:^16.4.0"
     lucide-react: "npm:^1.7.0"
     megalodon: "npm:^10.2.4"
+    mfm-js: "npm:^0.25.0"
     misskey-js: "npm:^2026.1.0-beta.0"
     next: "npm:^16.2.1"
     node-emoji: "npm:^2.2.0"

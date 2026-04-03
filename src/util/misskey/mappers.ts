@@ -1,5 +1,6 @@
 import type { Entity } from 'megalodon'
 import type * as Misskey from 'misskey-js'
+import { mfmToHtml, parseMentionsFromMfm } from './mfmRenderer'
 
 // ========================================
 // URL Normalization
@@ -314,7 +315,7 @@ export function mapNoteToStatus(
 
   // Extract mentions from text with enriched data
   const mentions = note.text
-    ? parseMentionsFromText(note.text, note.mentions ?? [], instanceHost)
+    ? parseMentionsFromMfm(note.text, instanceHost)
     : (note.mentions ?? []).map((id) => ({
         acct: '',
         id,
@@ -471,172 +472,4 @@ export function mapNotification(
 
   // Notifications without user (scheduledNotePosted, achievementEarned, etc.)
   return { ...base, account: null }
-}
-
-// ========================================
-// Utilities
-// ========================================
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-}
-
-/**
- * MFM テキストを基本的な HTML に変換する。
- *
- * 対応する MFM 構文:
- * - URL のリンク化
- * - メンション (@user, @user@host) のリンク化
- * - ハッシュタグ (#tag) のリンク化
- * - **bold** → <strong>
- * - ~~strikethrough~~ → <del>
- * - `inline code` → <code>
- * - ```code block``` → <pre><code>
- * - <center> → text-align:center
- * - <small> → <small>
- * - 改行 → <br>
- */
-function mfmToHtml(text: string, instanceHost?: string): string {
-  const host = instanceHost ?? ''
-  let escaped = escapeHtml(text)
-
-  // 衝突を避けるためランダムな nonce をプレースホルダーに含める
-  const nonce = Math.random().toString(36).slice(2, 10)
-
-  // コードブロック（```lang\n...\n```）をプレースホルダーに退避
-  // コード内の MFM 構文が変換されないよう保護する
-  const codePlaceholders: string[] = []
-  escaped = escaped.replace(
-    /```(\w*)\n([\s\S]*?)```/g,
-    (_match, lang: string, code: string) => {
-      const index = codePlaceholders.length
-      const langAttr = lang ? ` class="language-${lang}"` : ''
-      codePlaceholders.push(
-        `<pre><code${langAttr}>${code.replace(/\n$/, '')}</code></pre>`,
-      )
-      return `\x00MFM_CODE_${nonce}_${index}\x00`
-    },
-  )
-
-  // インラインコード（`code`）をプレースホルダーに退避
-  escaped = escaped.replace(/`([^`\n]+)`/g, (_match, code: string) => {
-    const index = codePlaceholders.length
-    codePlaceholders.push(`<code>${code}</code>`)
-    return `\x00MFM_CODE_${nonce}_${index}\x00`
-  })
-
-  // URL をプレースホルダーに置換して後続のメンション/ハッシュタグ変換から保護
-  const urlPlaceholders: string[] = []
-  escaped = escaped.replace(/https?:\/\/[^\s<>&)"']+/g, (url) => {
-    const index = urlPlaceholders.length
-    const safeUrlForHref = url.replace(/"/g, '&quot;').replace(/'/g, '&#39;')
-    urlPlaceholders.push(
-      `<a href="${safeUrlForHref}" rel="noopener noreferrer" target="_blank">${url}</a>`,
-    )
-    return `\x00MFM_URL_${nonce}_${index}\x00`
-  })
-
-  // MFM テキスト装飾
-  // **bold** → <strong>
-  escaped = escaped.replace(
-    /\*\*(.+?)\*\*/g,
-    (_match, content: string) => `<strong>${content}</strong>`,
-  )
-
-  // ~~strikethrough~~ → <del>
-  escaped = escaped.replace(
-    /~~(.+?)~~/g,
-    (_match, content: string) => `<del>${content}</del>`,
-  )
-
-  // <center>text</center> → <div style="text-align:center">text</div>
-  // escapeHtml により &lt;center&gt; に変換済み
-  escaped = escaped.replace(
-    /&lt;center&gt;([\s\S]*?)&lt;\/center&gt;/g,
-    (_match, content: string) =>
-      `<div style="text-align:center">${content}</div>`,
-  )
-
-  // <small>text</small> → <small>text</small>
-  // escapeHtml により &lt;small&gt; に変換済み
-  escaped = escaped.replace(
-    /&lt;small&gt;([\s\S]*?)&lt;\/small&gt;/g,
-    (_match, content: string) => `<small>${content}</small>`,
-  )
-
-  // メンションをリンク化 (@user@host or @user)
-  escaped = escaped.replace(
-    /(?<![\w.])@(\w[\w.-]*)(?:@([\w.-]+\.\w+))?/g,
-    (_match, username: string, mentionHost?: string) => {
-      const acct = mentionHost ? `${username}@${mentionHost}` : username
-      const href = mentionHost
-        ? `https://${mentionHost}/@${username}`
-        : `${host}/@${username}`
-      return `<a href="${href}" class="mention" rel="noopener noreferrer">@${acct}</a>`
-    },
-  )
-
-  // ハッシュタグをリンク化 (#tag)
-  escaped = escaped.replace(
-    /(?<=^|[\s>])#(\w+)/g,
-    (_match, tag: string) =>
-      `<a href="${host}/tags/${tag}" class="hashtag" rel="noopener noreferrer">#${tag}</a>`,
-  )
-
-  // URL プレースホルダーを復元
-  const placeholderRegex = new RegExp(`\x00MFM_URL_${nonce}_(\\d+)\x00`, 'g')
-  escaped = escaped.replace(placeholderRegex, (match, index: string) => {
-    const url = urlPlaceholders[Number(index)]
-    // 未知のプレースホルダーはそのまま残す
-    return url !== undefined ? url : match
-  })
-
-  // コードプレースホルダーを復元
-  const codeRegex = new RegExp(`\x00MFM_CODE_${nonce}_(\\d+)\x00`, 'g')
-  escaped = escaped.replace(codeRegex, (match, index: string) => {
-    const code = codePlaceholders[Number(index)]
-    return code !== undefined ? code : match
-  })
-
-  // 改行を <br> に変換
-  escaped = escaped.replace(/\n/g, '<br>')
-
-  return escaped
-}
-
-/**
- * MFM テキストからメンション情報を抽出する。
- */
-function parseMentionsFromText(
-  text: string,
-  _mentionIds: string[],
-  instanceHost?: string,
-): Entity.Mention[] {
-  const host = instanceHost ?? ''
-  // URL 内のメンションを除外するため、URL を除去してからパース
-  const textWithoutUrls = text.replace(/https?:\/\/[^\s)]+/g, '')
-  const mentionRegex = /(?<![\w.])@(\w[\w.-]*)(?:@([\w.-]+\.\w+))?/g
-  const mentions: Entity.Mention[] = []
-  let match: RegExpExecArray | null
-
-  // biome-ignore lint/suspicious/noAssignInExpressions: regex exec loop pattern
-  while ((match = mentionRegex.exec(textWithoutUrls)) !== null) {
-    const username = match[1]
-    const mentionHost = match[2]
-    const acct = mentionHost ? `${username}@${mentionHost}` : username
-    const url = mentionHost
-      ? `https://${mentionHost}/@${username}`
-      : `${host}/@${username}`
-    // Misskey の note.mentions はテキスト内の出現順と対応しないため、
-    // 安全に紐付けできる情報がない場合は id を空にしておく
-    const id = ''
-    mentions.push({ acct, id, url, username })
-  }
-
-  return mentions
 }
