@@ -5,6 +5,10 @@
  */
 
 import type {
+  FlatFetchRequest,
+  FlatFetchResult,
+} from '../query-ir/executor/flatFetchTypes'
+import type {
   GraphExecuteOptions,
   GraphExecuteResult,
   SerializedGraphPlan,
@@ -87,6 +91,15 @@ export type DbHandle = {
     options: GraphExecuteOptions,
     sessionTag?: string,
   ) => Promise<GraphExecuteResult>
+
+  /**
+   * フラットフェッチを Worker で実行する。
+   * フロー実行で事前フィルタ済みの ID 群から最小限のクエリで Entity を組み立てる。
+   */
+  executeFlatFetch: (
+    request: FlatFetchRequest,
+    sessionTag?: string,
+  ) => Promise<FlatFetchResult>
 
   /**
    * タイムラインを一括取得する。

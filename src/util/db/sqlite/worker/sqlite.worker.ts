@@ -7,6 +7,7 @@
 
 /// <reference lib="webworker" />
 
+import { executeFlatFetch as runFlatFetch } from '../../query-ir/executor/flatFetchExecutor'
 import {
   executeGraphPlan as runGraphPlan,
   syncGraphCacheVersions,
@@ -525,6 +526,13 @@ self.onmessage = (
           msg.options,
           captureTableVersions,
         )
+        sendResponse(msg.id, result, undefined, result.meta.totalDurationMs)
+        break
+      }
+
+      // ---- FlatFetch 実行（フロー実行で事前フィルタ済み ID → Entity 組み立て）----
+      case 'executeFlatFetch': {
+        const result = runFlatFetch(db, msg.request)
         sendResponse(msg.id, result, undefined, result.meta.totalDurationMs)
         break
       }

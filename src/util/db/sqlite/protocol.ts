@@ -5,9 +5,10 @@
  * 04-reactive-behavior-analysis.md の修正版プロトコルに基づく。
  */
 
+import type { ExecuteFlatFetchRequest } from '../query-ir/executor/flatFetchTypes'
 import type { ExecuteGraphPlanRequest } from '../query-ir/executor/types'
 
-export type { ExecuteGraphPlanRequest }
+export type { ExecuteFlatFetchRequest, ExecuteGraphPlanRequest }
 
 // ================================================================
 // 共通型
@@ -345,6 +346,7 @@ export type WorkerRequest =
   | FetchTimelineRequest
   | ExecuteQueryPlanRequest
   | ExecuteGraphPlanRequest
+  | ExecuteFlatFetchRequest
 
 // ================================================================
 // Worker → Main Thread (レスポンス)

@@ -23,6 +23,10 @@ import {
   stopSnapshotRecording,
 } from '../dbQueue'
 import type {
+  FlatFetchRequest,
+  FlatFetchResult,
+} from '../query-ir/executor/flatFetchTypes'
+import type {
   GraphExecuteOptions,
   GraphExecuteResult,
   SerializedGraphPlan,
@@ -656,6 +660,27 @@ export function executeGraphPlan(
     'timeline',
     sessionTag,
   ) as Promise<GraphExecuteResult>
+}
+
+/**
+ * フラットフェッチを Worker で実行する。
+ * フロー実行で事前フィルタ済みの ID 群から最小限のクエリで Entity を組み立てる。
+ */
+export function executeFlatFetch(
+  request: FlatFetchRequest,
+  sessionTag?: string,
+): Promise<FlatFetchResult> {
+  const id = nextId++
+  const message = { id, request, type: 'executeFlatFetch' } as {
+    type: string
+    id: number
+    [key: string]: unknown
+  }
+  return sendRequest(
+    message,
+    'timeline',
+    sessionTag,
+  ) as Promise<FlatFetchResult>
 }
 
 /**

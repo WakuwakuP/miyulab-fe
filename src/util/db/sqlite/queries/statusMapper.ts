@@ -38,7 +38,7 @@ export interface SqliteStoredStatus extends Entity.Status {
 /**
  * emoji_reactions_json カラムの JSON 文字列を Entity.Reaction[] にパースする
  */
-function parseEmojiReactions(json: string | null): Entity.Reaction[] {
+export function parseEmojiReactions(json: string | null): Entity.Reaction[] {
   if (!json) return []
   try {
     return JSON.parse(json) as Entity.Reaction[]
@@ -48,7 +48,7 @@ function parseEmojiReactions(json: string | null): Entity.Reaction[] {
 }
 
 /** カスタム絵文字 JSON をパースする */
-function parseEmojis(json: string | null): Entity.Emoji[] {
+export function parseEmojis(json: string | null): Entity.Emoji[] {
   if (!json) return []
   const parsed = JSON.parse(json) as ({
     shortcode: string
@@ -69,7 +69,9 @@ function parseEmojis(json: string | null): Entity.Emoji[] {
 }
 
 /** メディア添付 JSON をパースする */
-function parseMediaAttachments(json: string | null): Entity.Attachment[] {
+export function parseMediaAttachments(
+  json: string | null,
+): Entity.Attachment[] {
   if (!json) return []
   return (JSON.parse(json) as (Entity.Attachment | null)[]).filter(
     (m): m is Entity.Attachment => m !== null,
@@ -81,7 +83,7 @@ function parseMediaAttachments(json: string | null): Entity.Attachment[] {
  *
  * 新スキーマでは post_mentions に username, url が格納されている。
  */
-function parseMentions(json: string | null): Entity.Mention[] {
+export function parseMentions(json: string | null): Entity.Mention[] {
   if (!json) return []
   return (
     JSON.parse(json) as ({
@@ -141,7 +143,7 @@ function parseInlinePoll(json: string): Entity.Poll {
  *
  * バッチクエリでは poll_votes JOIN により voted / own_votes が含まれる。
  */
-function parseBatchPoll(json: string): Entity.Poll {
+export function parseBatchPoll(json: string): Entity.Poll {
   const p = JSON.parse(json) as {
     id: number
     expires_at: string | null
@@ -195,7 +197,7 @@ function parseBatchPoll(json: string): Entity.Poll {
 /**
  * edited_at_ms (INTEGER | null) を ISO 文字列 | null に変換する
  */
-function editedAtMsToIso(ms: number | null): string | null {
+export function editedAtMsToIso(ms: number | null): string | null {
   return ms != null ? new Date(ms).toISOString() : null
 }
 
@@ -204,7 +206,7 @@ function editedAtMsToIso(ms: number | null): string | null {
 // ================================================================
 
 /** post_interactions の JSON オブジェクト型 */
-interface InteractionsJson {
+export interface InteractionsJson {
   is_favourited: number
   is_reblogged: number
   is_bookmarked: number
@@ -215,7 +217,9 @@ interface InteractionsJson {
 }
 
 /** interactions JSON をパースして返す（null なら null） */
-function parseInteractions(json: string | null): InteractionsJson | null {
+export function parseInteractions(
+  json: string | null,
+): InteractionsJson | null {
   if (!json) return null
   try {
     return JSON.parse(json) as InteractionsJson

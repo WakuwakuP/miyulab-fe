@@ -62,6 +62,7 @@ async function initWorkerMode(
     execAsync,
     execAsyncTimed,
     execBatch,
+    executeFlatFetch,
     executeQueryPlan,
     executeGraphPlan,
     sendCommand,
@@ -76,6 +77,7 @@ async function initWorkerMode(
     execAsync,
     execAsyncTimed,
     execBatch,
+    executeFlatFetch,
     executeGraphPlan,
     executeQueryPlan,
     fetchTimeline,
@@ -211,6 +213,13 @@ async function initMainThreadFallback(
         }
         throw e
       }
+    },
+
+    executeFlatFetch: async (request) => {
+      const { executeFlatFetch: runFlatFetch } = await import(
+        '../query-ir/executor/flatFetchExecutor'
+      )
+      return runFlatFetch(db as never, request)
     },
 
     executeGraphPlan: async (plan, options) => {
