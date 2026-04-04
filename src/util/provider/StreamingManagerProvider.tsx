@@ -1,6 +1,6 @@
 'use client'
 
-import type { Entity, WebSocketInterface } from 'megalodon'
+import type { WebSocketInterface } from 'megalodon'
 import {
   createContext,
   type ReactNode,
@@ -11,60 +11,29 @@ import {
   useMemo,
   useRef,
 } from 'react'
-import type { App, Backend, TimelineConfigV2 } from 'types/types'
-import type { TimelineType as DbTimelineType } from 'util/db/sqlite/statusStore'
-import {
-  handleDeleteEvent,
-  updateStatus,
-  upsertStatus,
-} from 'util/db/sqlite/statusStore'
-import {
-  captureStreamEvent,
-  isRawDataCaptureEnabled,
-} from 'util/debug/rawDataCapture'
-import { GetClient } from 'util/GetClient'
+import type { Backend } from 'types/types'
+import { buildInitialFetchTasks } from 'util/streaming/buildInitialFetchTasks'
 import {
   getRetryDelay,
   MAX_RETRY_COUNT,
   MAX_STREAM_COUNT_WARNING,
 } from 'util/streaming/constants'
 import { deriveRequiredStreams } from 'util/streaming/deriveRequiredStreams'
+import { initializeStream } from 'util/streaming/initializeStream'
+import {
+  INITIAL_FETCH_CONCURRENCY,
+  runWithConcurrencyLimit,
+} from 'util/streaming/runWithConcurrencyLimit'
+import { setupStreamHandlers } from 'util/streaming/setupStreamHandlers'
 import { restartStream, stopStream } from 'util/streaming/stopStream'
 import { parseStreamKey, type StreamType } from 'util/streaming/streamKey'
 import type { StreamEntry, StreamRegistry } from 'util/streaming/streamRegistry'
-import {
-  normalizeBackendFilter,
-  resolveBackendUrls,
-} from 'util/timelineConfigValidator'
-import { fetchInitialData } from 'util/timelineFetcher'
 import { AppsContext } from './AppsProvider'
 import { TimelineContext } from './TimelineProvider'
 
 // ========================================
 // Context 型定義
 // ========================================
-
-/** 初期データフェッチの最大同時実行数（Worker キューの圧迫を防ぐ） */
-const INITIAL_FETCH_CONCURRENCY = 3
-
-/**
- * タスク配列を最大 concurrency 個ずつ並行実行する。
- * 各タスクの失敗はタスク内で catch 済みの想定。
- */
-function runWithConcurrencyLimit(
-  tasks: (() => Promise<void>)[],
-  concurrency: number,
-): void {
-  let index = 0
-  function next(): void {
-    if (index >= tasks.length) return
-    const task = tasks[index++]
-    task().finally(next)
-  }
-  for (let i = 0; i < Math.min(concurrency, tasks.length); i++) {
-    next()
-  }
-}
 
 /**
  * StreamingManagerProvider が公開する API
@@ -162,9 +131,9 @@ export const StreamingManagerProvider = ({
   )
 
   // =============================================
-  // ストリームイベントハンドラのセットアップ
+  // ストリームイベントハンドラのセットアップ（抽出モジュールへの委譲）
   // =============================================
-  const setupStreamHandlers = useCallback(
+  const boundSetupStreamHandlers = useCallback(
     (
       stream: WebSocketInterface,
       key: string,
@@ -172,165 +141,37 @@ export const StreamingManagerProvider = ({
       backendUrl: string,
       options?: { tag?: string; backend?: Backend },
     ): void => {
-      const timelineType = type as DbTimelineType // 'local' | 'public' | 'tag'
-      const tag = options?.tag
-      const backend = options?.backend ?? 'mastodon'
-
-      stream.on('update', async (status: Entity.Status) => {
-        if (isRawDataCaptureEnabled()) {
-          captureStreamEvent({
-            backend,
-            backendUrl,
-            eventType: 'update',
-            origin: 'megalodon',
-            rawData: status,
-            streamType: timelineType,
-            tag,
-          })
-        }
-        await upsertStatus(status, backendUrl, timelineType, tag)
-      })
-
-      stream.on('status_update', async (status: Entity.Status) => {
-        if (isRawDataCaptureEnabled()) {
-          captureStreamEvent({
-            backend,
-            backendUrl,
-            eventType: 'status_update',
-            origin: 'megalodon',
-            rawData: status,
-            streamType: timelineType,
-            tag,
-          })
-        }
-        await updateStatus(status, backendUrl)
-      })
-
-      stream.on('delete', async (id: string) => {
-        if (isRawDataCaptureEnabled()) {
-          captureStreamEvent({
-            backend,
-            backendUrl,
-            eventType: 'delete',
-            origin: 'megalodon',
-            rawData: id,
-            streamType: timelineType,
-            tag,
-          })
-        }
-        await handleDeleteEvent(backendUrl, id, timelineType, tag)
-      })
-
-      stream.on('connect', () => {
-        console.info(`connected ${key}`)
-        updateStreamStatus(key, 'connected')
-        const entry = registryRef.current.get(key)
-        if (entry) {
-          entry.retryCount = 0
-        }
-      })
-
-      stream.on('error', (err: Error | undefined) => {
-        console.warn(`stream error ${key}:`, err?.message ?? 'unknown error')
-        updateStreamStatus(key, 'error')
-        scheduleRetry(key, stream)
-      })
+      setupStreamHandlers(
+        stream,
+        key,
+        type,
+        backendUrl,
+        options,
+        { scheduleRetry, updateStreamStatus },
+        registryRef,
+      )
     },
     [updateStreamStatus, scheduleRetry],
   )
 
   // =============================================
-  // ストリーム生成
+  // ストリーム生成（抽出モジュールへの委譲）
   // =============================================
-  const initializeStream = useCallback(
+  const boundInitializeStream = useCallback(
     async (
       key: string,
       type: StreamType,
       backendUrl: string,
-      app: App,
+      app: Parameters<typeof initializeStream>[3],
       options?: { tag?: string; backend?: Backend },
       initId?: number,
     ): Promise<void> => {
-      try {
-        const client = GetClient(app)
-
-        let stream: WebSocketInterface
-
-        switch (type) {
-          case 'local':
-            stream = await client.localStreaming()
-            break
-          case 'public':
-            stream = await client.publicStreaming()
-            break
-          case 'tag': {
-            const tag = options?.tag
-            if (tag == null)
-              throw new Error('tag is required for tag streaming')
-            stream = await client.tagStreaming(tag)
-            break
-          }
-        }
-
-        // stop() が WebSocket エラーイベントを発火する場合に備え、
-        // レジストリ確認前にエラーハンドラを登録して "Unhandled error" を防止する。
-        // setupStreamHandlers で正式なハンドラが追加された後はそちらが処理する。
-        stream.on('error', () => {})
-
-        // レジストリにまだ必要か確認（非同期処理中に syncStreamsEvent が発火している可能性）
-        const entry = registryRef.current.get(key)
-        if (!entry || (initId !== undefined && entry.initId !== initId)) {
-          stopStream(stream)
-          return
-        }
-
-        // レジストリを更新
-        registryRef.current.set(key, {
-          initId: entry.initId,
-          retryCount: 0,
-          retryTimer: null,
-          status: 'connecting',
-          stream,
-        })
-
-        // イベントハンドラ登録
-        setupStreamHandlers(stream, key, type, backendUrl, options)
-      } catch (error) {
-        console.warn(
-          `Failed to create stream ${key}:`,
-          (error as Error).message,
-        )
-        // エラー発生時もレジストリを更新（リトライ可能な状態にする）
-        const entry = registryRef.current.get(key)
-        if (entry && (initId === undefined || entry.initId === initId)) {
-          entry.status = 'error'
-          entry.retryCount += 1
-
-          if (entry.retryCount > MAX_RETRY_COUNT) {
-            console.warn(
-              `Stream ${key}: max retry count (${MAX_RETRY_COUNT}) exceeded during initialization. Giving up.`,
-            )
-            return
-          }
-
-          const delay = getRetryDelay(entry.retryCount - 1)
-          // 初期化失敗時もリトライをスケジュール
-          entry.retryTimer = setTimeout(() => {
-            const currentEntry = registryRef.current.get(key)
-            if (
-              currentEntry &&
-              (initId === undefined || currentEntry.initId === initId)
-            ) {
-              console.info(
-                `Retrying initialization for ${key} (retry ${entry.retryCount}/${MAX_RETRY_COUNT}, delay ${delay}ms)`,
-              )
-              initializeStream(key, type, backendUrl, app, options, initId)
-            }
-          }, delay)
-        }
-      }
+      await initializeStream(key, type, backendUrl, app, options, initId, {
+        registry: registryRef.current,
+        setupStreamHandlers: boundSetupStreamHandlers,
+      })
     },
-    [setupStreamHandlers],
+    [boundSetupStreamHandlers],
   )
 
   // =============================================
@@ -349,75 +190,11 @@ export const StreamingManagerProvider = ({
       fetchedInitialKeysRef.current.clear()
     }
 
-    // フェッチタスクを収集し、並行度を制限して実行する
-    const tasks: (() => Promise<void>)[] = []
-
-    // local / public は全 backendUrl に対してデフォルトで初期データを取得
-    for (const app of apps) {
-      const { backendUrl } = app
-      const client = GetClient(app)
-      for (const type of ['local', 'public'] as const) {
-        const key = `${type}|${backendUrl}`
-        if (fetchedInitialKeysRef.current.has(key)) continue
-        fetchedInitialKeysRef.current.add(key)
-        // fetchInitialData は config.type に基づいて動作するため、
-        // local/public 用の最小限の設定を構築して渡す
-        const config: TimelineConfigV2 = {
-          id: `__default_${type}`,
-          order: 0,
-          type,
-          visible: false,
-        }
-        tasks.push(() =>
-          fetchInitialData(client, config, backendUrl).catch((error) => {
-            console.error(
-              `Failed to fetch initial data for ${type} (${backendUrl}):`,
-              error,
-            )
-          }),
-        )
-      }
-    }
-
-    // tag タイムラインの初期データ取得（tagConfig を持つ全設定が対象）
-    // 同一 tag × backendUrl の組み合わせは重複フェッチを防止する
-    for (const config of timelineSettings.timelines) {
-      if (!config.tagConfig || config.tagConfig.tags.length === 0) continue
-
-      const filter = normalizeBackendFilter(config.backendFilter, apps)
-      const targetUrls = resolveBackendUrls(filter, apps)
-
-      for (const url of targetUrls) {
-        // 未フェッチのタグのみ抽出
-        const newTags = config.tagConfig.tags.filter((tag) => {
-          const key = `tag|${tag}|${url}`
-          if (fetchedInitialKeysRef.current.has(key)) return false
-          fetchedInitialKeysRef.current.add(key)
-          return true
-        })
-        if (newTags.length === 0) continue
-
-        const app = apps.find((a) => a.backendUrl === url)
-        if (!app) continue
-
-        // fetchInitialData は config.type で分岐するため、type を 'tag' に強制する
-        const tagFetchConfig: TimelineConfigV2 = {
-          ...config,
-          tagConfig: { ...config.tagConfig, tags: newTags },
-          type: 'tag',
-        }
-
-        const client = GetClient(app)
-        tasks.push(() =>
-          fetchInitialData(client, tagFetchConfig, url).catch((error) => {
-            console.error(
-              `Failed to fetch initial data for tag (${url}):`,
-              error,
-            )
-          }),
-        )
-      }
-    }
+    const tasks = buildInitialFetchTasks(
+      apps,
+      timelineSettings.timelines,
+      fetchedInitialKeysRef.current,
+    )
 
     // 並行度を制限して実行（Worker キューの圧迫を防ぐ）
     runWithConcurrencyLimit(tasks, INITIAL_FETCH_CONCURRENCY)
@@ -472,7 +249,7 @@ export const StreamingManagerProvider = ({
             status: 'connecting',
             stream: null,
           })
-          initializeStream(
+          boundInitializeStream(
             key,
             type,
             backendUrl,
