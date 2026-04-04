@@ -285,6 +285,12 @@ export type JoinCondition = {
     lookupKey: string
     matchColumn: string
   }
+  /**
+   * true の場合、canonical acct (acct@host) による同一人物解決を行う。
+   * マルチアカウント環境で同一人物が異なる profile_id を持つ場合に、
+   * profiles + servers テーブルを参照して alias を展開する。
+   */
+  resolveIdentity?: boolean
 }
 
 export type TimeCondition = {

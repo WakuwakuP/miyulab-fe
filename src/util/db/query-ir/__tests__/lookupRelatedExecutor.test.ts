@@ -392,4 +392,158 @@ describe('executeLookupRelated', () => {
       expect(result.output.sourceTable).toBe('notifications')
     })
   })
+
+  describe('resolveIdentity: JOIN ベース (timeCondition あり)', () => {
+    it('resolveIdentity=true の場合、canonical acct CTE と identity_map JOIN を生成する', () => {
+      const db = mockDb()
+      const node: LookupRelatedNode = {
+        joinConditions: [
+          {
+            inputColumn: 'actor_profile_id',
+            lookupColumn: 'author_profile_id',
+            resolveIdentity: true,
+          },
+        ],
+        kind: 'lookup-related',
+        lookupTable: 'posts',
+        timeCondition: {
+          afterInput: true,
+          inputTimeColumn: 'created_at_ms',
+          lookupTimeColumn: 'created_at_ms',
+          windowMs: 180000,
+        },
+      }
+      const input = makeInput([
+        { createdAtMs: 1000, id: 19 },
+        { createdAtMs: 5000, id: 20 },
+      ])
+
+      const result = executeLookupRelated(db, node, input)
+
+      // CTE が含まれる
+      expect(result.sql).toContain('WITH _ri_canonical AS (')
+      expect(result.sql).toContain('_ri0 AS (')
+      // identity_map JOIN
+      expect(result.sql).toContain(
+        'JOIN _ri0 ON _ri0.alias_id = lt.author_profile_id',
+      )
+      // source JOIN は identity_map 経由
+      expect(result.sql).toContain(
+        'JOIN notifications src ON src.actor_profile_id = _ri0.src_id',
+      )
+      // 直接 JOIN は使用されない
+      expect(result.sql).not.toContain(
+        'src.actor_profile_id = lt.author_profile_id',
+      )
+      // per-row 時間条件
+      expect(result.sql).toContain('lt.created_at_ms > src.created_at_ms')
+      expect(result.sql).toContain(
+        'lt.created_at_ms <= src.created_at_ms + 180000',
+      )
+      // profiles, servers が dependentTables に含まれる
+      expect(result.dependentTables).toContain('profiles')
+      expect(result.dependentTables).toContain('servers')
+    })
+
+    it('resolveIdentity CTE の WHERE 句に inputColumn の subquery が含まれる', () => {
+      const db = mockDb()
+      const node: LookupRelatedNode = {
+        joinConditions: [
+          {
+            inputColumn: 'actor_profile_id',
+            lookupColumn: 'author_profile_id',
+            resolveIdentity: true,
+          },
+        ],
+        kind: 'lookup-related',
+        lookupTable: 'posts',
+        timeCondition: {
+          afterInput: true,
+          inputTimeColumn: 'created_at_ms',
+          lookupTimeColumn: 'created_at_ms',
+          windowMs: 60000,
+        },
+      }
+      const input = makeInput([{ createdAtMs: 1000, id: 42 }])
+
+      const result = executeLookupRelated(db, node, input)
+
+      // CTE 内の subquery で actor_profile_id を解決
+      expect(result.sql).toContain(
+        'SELECT DISTINCT actor_profile_id FROM notifications WHERE id IN (?)',
+      )
+      // bind: CTE用 [42] + WHERE用 [42]
+      expect(result.binds).toEqual([42, 42])
+    })
+
+    it('resolveIdentity=false の joinCondition は通常の JOIN を生成する', () => {
+      const db = mockDb()
+      const node: LookupRelatedNode = {
+        joinConditions: [
+          {
+            inputColumn: 'actor_profile_id',
+            lookupColumn: 'author_profile_id',
+          },
+        ],
+        kind: 'lookup-related',
+        lookupTable: 'posts',
+        timeCondition: {
+          afterInput: true,
+          inputTimeColumn: 'created_at_ms',
+          lookupTimeColumn: 'created_at_ms',
+          windowMs: 180000,
+        },
+      }
+      const input = makeInput([{ createdAtMs: 1000, id: 100 }])
+
+      const result = executeLookupRelated(db, node, input)
+
+      // CTE なし
+      expect(result.sql).not.toContain('_ri_canonical')
+      // 通常の JOIN
+      expect(result.sql).toContain(
+        'src.actor_profile_id = lt.author_profile_id',
+      )
+    })
+  })
+
+  describe('resolveIdentity: IN ベース (timeCondition なし)', () => {
+    it('resolveIdentity=true の場合、canonical acct サブクエリで alias を展開する', () => {
+      const db = mockDb()
+      const node: LookupRelatedNode = {
+        joinConditions: [
+          {
+            inputColumn: 'actor_profile_id',
+            lookupColumn: 'author_profile_id',
+            resolveIdentity: true,
+          },
+        ],
+        kind: 'lookup-related',
+        lookupTable: 'posts',
+      }
+      const input = makeInput([
+        { createdAtMs: 1000, id: 10 },
+        { createdAtMs: 2000, id: 20 },
+      ])
+
+      const result = executeLookupRelated(db, node, input)
+
+      // CTE prefix
+      expect(result.sql).toContain('WITH _ri_canonical AS (')
+      // canonical_acct サブクエリ
+      expect(result.sql).toContain(
+        'lt.author_profile_id IN (SELECT c2.id FROM _ri_canonical c2',
+      )
+      expect(result.sql).toContain('c2.canonical_acct IN (')
+      expect(result.sql).toContain(
+        'SELECT c1.canonical_acct FROM _ri_canonical c1',
+      )
+      expect(result.sql).toContain(
+        'SELECT DISTINCT actor_profile_id FROM notifications WHERE id IN (?, ?)',
+      )
+      // profiles, servers が dependentTables に含まれる
+      expect(result.dependentTables).toContain('profiles')
+      expect(result.dependentTables).toContain('servers')
+    })
+  })
 })

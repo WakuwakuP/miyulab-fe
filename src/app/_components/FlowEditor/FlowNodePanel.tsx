@@ -899,53 +899,68 @@ function LookupRelatedPanel({
         {data.config.joinConditions.map((cond, idx) => {
           const key = `jc-${idx}-${cond.inputColumn}-${cond.lookupColumn}`
           return (
-            <div className="flex items-center gap-1 mb-1" key={key}>
-              <div className="flex-1 min-w-0">
-                <Select
-                  onValueChange={(v) =>
-                    updateJoinCondition(idx, { inputColumn: v })
-                  }
-                  value={cond.inputColumn}
+            <div key={key}>
+              <div className="flex items-center gap-1 mb-0.5">
+                <div className="flex-1 min-w-0">
+                  <Select
+                    onValueChange={(v) =>
+                      updateJoinCondition(idx, { inputColumn: v })
+                    }
+                    value={cond.inputColumn}
+                  >
+                    <SelectTrigger className="w-full h-6 text-[10px] bg-gray-700 border-gray-600 text-white">
+                      <SelectValue placeholder="入力側" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-60">
+                      {inputColumns.map((c) => (
+                        <SelectItem key={c.name} value={c.name}>
+                          {c.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <span className="text-[10px] text-gray-500 shrink-0">→</span>
+                <div className="flex-1 min-w-0">
+                  <Select
+                    onValueChange={(v) =>
+                      updateJoinCondition(idx, { lookupColumn: v })
+                    }
+                    value={cond.lookupColumn}
+                  >
+                    <SelectTrigger className="w-full h-6 text-[10px] bg-gray-700 border-gray-600 text-white">
+                      <SelectValue placeholder="検索先側" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-60">
+                      {lookupColumns.map((c) => (
+                        <SelectItem key={c.name} value={c.name}>
+                          {c.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <button
+                  className="shrink-0 p-0.5 rounded hover:bg-red-900/40 text-gray-500 hover:text-red-400 transition-colors"
+                  onClick={() => removeJoinCondition(idx)}
+                  type="button"
                 >
-                  <SelectTrigger className="w-full h-6 text-[10px] bg-gray-700 border-gray-600 text-white">
-                    <SelectValue placeholder="入力側" />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-60">
-                    {inputColumns.map((c) => (
-                      <SelectItem key={c.name} value={c.name}>
-                        {c.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  <Trash2 className="h-3 w-3" />
+                </button>
               </div>
-              <span className="text-[10px] text-gray-500 shrink-0">→</span>
-              <div className="flex-1 min-w-0">
-                <Select
-                  onValueChange={(v) =>
-                    updateJoinCondition(idx, { lookupColumn: v })
-                  }
-                  value={cond.lookupColumn}
-                >
-                  <SelectTrigger className="w-full h-6 text-[10px] bg-gray-700 border-gray-600 text-white">
-                    <SelectValue placeholder="検索先側" />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-60">
-                    {lookupColumns.map((c) => (
-                      <SelectItem key={c.name} value={c.name}>
-                        {c.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <button
-                className="shrink-0 p-0.5 rounded hover:bg-red-900/40 text-gray-500 hover:text-red-400 transition-colors"
-                onClick={() => removeJoinCondition(idx)}
-                type="button"
-              >
-                <Trash2 className="h-3 w-3" />
-              </button>
+              {(cond.inputColumn.includes('profile_id') ||
+                cond.lookupColumn.includes('profile_id')) && (
+                <div className="flex items-center gap-1.5 ml-1 mb-1">
+                  <Switch
+                    checked={cond.resolveIdentity ?? false}
+                    className="scale-[0.6] origin-left"
+                    onCheckedChange={(v) =>
+                      updateJoinCondition(idx, { resolveIdentity: v })
+                    }
+                  />
+                  <span className="text-[9px] text-gray-500">同一人物解決</span>
+                </div>
+              )}
             </div>
           )
         })}
