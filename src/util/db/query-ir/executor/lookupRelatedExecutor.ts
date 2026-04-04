@@ -159,6 +159,13 @@ function executeWithJoin(
   const joinStr = `JOIN ${input.sourceTable} ${src} ON ${joinOns.join(' AND ')}`
   const whereStr = `WHERE ${conditions.join(' AND ')}`
 
+  // Determine ORDER BY direction based on node.order (default furthest => DESC)
+  const orderDirection = node.order === 'nearest' ? 'ASC' : 'DESC'
+  const orderClause = `ORDER BY created_at_ms ${orderDirection}`
+
+  // Apply LIMIT if node.limit is provided
+  const limitClause = node.limit != null ? `LIMIT ${node.limit}` : ''
+
   const sql = [
     `SELECT DISTINCT ${selectExpr}`,
     `FROM ${node.lookupTable} ${lt}`,
@@ -166,7 +173,8 @@ function executeWithJoin(
     joinStr,
     whereStr,
     groupByStr,
-    `ORDER BY created_at_ms DESC`,
+    orderClause,
+    limitClause,
   ]
     .filter(Boolean)
     .join(' ')
@@ -297,6 +305,12 @@ function executeWithIn(
       : `${lt}.id AS id, 0 AS created_at_ms`
   }
 
+  // Determine ORDER BY direction based on node.order (default furthest => DESC)
+  const orderDirection = node.order === 'nearest' ? 'ASC' : 'DESC'
+  const orderClause = `ORDER BY created_at_ms ${orderDirection}`
+  // Apply LIMIT if node.limit is provided
+  const limitClause = node.limit != null ? `LIMIT ${node.limit}` : ''
+
   const whereStr =
     conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
 
@@ -305,7 +319,8 @@ function executeWithIn(
     `FROM ${node.lookupTable} ${lt}`,
     whereStr,
     groupByStr,
-    `ORDER BY created_at_ms DESC`,
+    orderClause,
+    limitClause,
   ]
     .filter(Boolean)
     .join(' ')

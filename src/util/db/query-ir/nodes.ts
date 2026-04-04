@@ -274,6 +274,17 @@ export type LookupRelatedNode = {
   joinConditions: JoinCondition[]
   timeCondition?: TimeCondition
   aggregate?: AggregateMode
+  /**
+   * 取得上限件数。設定しない場合は上限なし。
+   */
+  limit?: number
+  /**
+   * 取得順序。
+   * 'nearest' は入力時間に最も近いレコードを取得し、
+   * 'furthest' は最も離れたレコードを取得する。
+   * 省略時は 'furthest' (現在の DESC ソート) と同等。
+   */
+  order?: 'nearest' | 'furthest'
 }
 
 export type JoinCondition = {
