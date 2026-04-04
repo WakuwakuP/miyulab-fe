@@ -65,7 +65,30 @@ export type FlowExecStatus = {
   running: boolean
   /** エラーメッセージ */
   error: string | null
+  /** デバッグ結果 (実行完了後) */
+  debugResults?: DebugResultItem[]
 }
+
+// --------------- デバッグ結果 ---------------
+
+/** テスト実行結果の1行（投稿 or 通知） */
+export type DebugResultItem =
+  | {
+      table: 'posts'
+      id: number
+      acct: string
+      contentPreview: string
+      createdAt: string
+      isReblog: boolean
+    }
+  | {
+      table: 'notifications'
+      id: number
+      notificationType: string
+      actorAcct: string
+      relatedContentPreview: string
+      createdAt: string
+    }
 
 export const FLOW_NODE_TYPES_V2 = {
   'get-ids': 'get-ids',

@@ -58,11 +58,13 @@ import {
   normalizeBackendFilter,
   resolveBackendUrls,
 } from 'util/timelineConfigValidator'
+import { DebugResultPanel } from './DebugResultPanel'
 import { FlowCanvas, type ViewportCenterFn } from './FlowCanvas'
 import { FLOW_PRESETS } from './flowPresets'
 import { flowToQueryPlanV2 } from './flowToQueryPlanV2'
 import { queryPlanToFlow } from './queryPlanToFlow'
 import type {
+  DebugResultItem,
   FlowEdge,
   FlowExecStatus,
   FlowGraphState,
@@ -290,6 +292,74 @@ function summarizeV2Plan(plan: QueryPlanV2): string {
   return `Nodes:\n${lines.join('\n')}\n\nEdges:\n${edgeLines.join('\n')}`
 }
 
+// --------------- デバッグ結果の抽出 ---------------
+
+/** HTML タグを除去してプレーンテキスト化し、指定文字数で切り詰める */
+function stripHtml(html: string, maxLen = 80): string {
+  const text = html
+    .replace(/<[^>]*>/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return text.length > maxLen ? `${text.slice(0, maxLen)}…` : text
+}
+
+/** ms タイムスタンプを HH:mm 形式に変換 */
+function formatTime(ms: number): string {
+  const d = new Date(ms)
+  return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+}
+
+/**
+ * GraphExecuteResult の生データから DebugResultItem[] を構築する。
+ *
+ * Post row layout (STATUS_BASE_SELECT):
+ *   [0] post_id, [3] created_at_ms, [5] content_html,
+ *   [11] is_reblog, [14] author_acct
+ *
+ * Notification row layout:
+ *   [0] id, [2] created_at_ms, [3] notification_type,
+ *   [6] actor_acct, [15] rp_content
+ */
+function buildDebugResults(
+  displayOrder: { table: 'posts' | 'notifications'; id: number }[],
+  postRows: (string | number | null)[][],
+  notifRows: (string | number | null)[][],
+): DebugResultItem[] {
+  const postMap = new Map<number, (string | number | null)[]>()
+  for (const row of postRows) postMap.set(row[0] as number, row)
+
+  const notifMap = new Map<number, (string | number | null)[]>()
+  for (const row of notifRows) notifMap.set(row[0] as number, row)
+
+  const items: DebugResultItem[] = []
+  for (const entry of displayOrder) {
+    if (entry.table === 'posts') {
+      const row = postMap.get(entry.id)
+      if (!row) continue
+      items.push({
+        acct: (row[14] as string) ?? '',
+        contentPreview: stripHtml((row[5] as string) ?? ''),
+        createdAt: formatTime(row[3] as number),
+        id: entry.id,
+        isReblog: (row[11] as number) === 1,
+        table: 'posts',
+      })
+    } else {
+      const row = notifMap.get(entry.id)
+      if (!row) continue
+      items.push({
+        actorAcct: (row[6] as string) ?? '',
+        createdAt: formatTime(row[2] as number),
+        id: entry.id,
+        notificationType: (row[3] as string) ?? '',
+        relatedContentPreview: stripHtml((row[15] as string) ?? ''),
+        table: 'notifications',
+      })
+    }
+  }
+  return items
+}
+
 // --------------- Component ---------------
 
 export function FlowQueryEditorModal({
@@ -502,7 +572,15 @@ export function FlowQueryEditorModal({
         doneStates[nId] = result.meta.nodeStats[nId] ? 'done' : 'idle'
       }
 
+      // デバッグ結果を構築
+      const debugResults = buildDebugResults(
+        result.displayOrder,
+        result.posts.detailRows,
+        result.notifications.detailRows,
+      )
+
       setExecStatus({
+        debugResults,
         error: null,
         nodeStates: doneStates,
         nodeStats: result.meta.nodeStats,
@@ -710,6 +788,16 @@ export function FlowQueryEditorModal({
                   ))}
                 </div>
               )}
+            {execStatus?.debugResults && execStatus.debugResults.length > 0 && (
+              <details className="mt-2 border-t border-gray-800 pt-1">
+                <summary className="text-[10px] text-gray-500 cursor-pointer hover:text-gray-400 transition-colors">
+                  テスト実行結果 ({execStatus.debugResults.length} 件)
+                </summary>
+                <div className="mt-1">
+                  <DebugResultPanel results={execStatus.debugResults} />
+                </div>
+              </details>
+            )}
           </details>
         </div>
       </DialogContent>
