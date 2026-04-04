@@ -11,8 +11,14 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
-const statusReadStorePath = resolve(__dirname, '../stores/statusReadStore.ts')
-const source = readFileSync(statusReadStorePath, 'utf-8')
+const storesDir = resolve(__dirname, '../stores')
+const source = [
+  'statusTimelineQueries.ts',
+  'statusCustomQueryExec.ts',
+  'statusColumnValues.ts',
+]
+  .map((f) => readFileSync(resolve(storesDir, f), 'utf-8'))
+  .join('\n')
 
 // ─── Phase 1 クエリ: timeline_entries ────────────────────────────
 

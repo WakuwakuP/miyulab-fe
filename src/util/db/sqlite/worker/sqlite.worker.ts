@@ -3,6 +3,14 @@
  *
  * OPFS SAH Pool VFS → 通常 OPFS → インメモリ DB のフォールバックチェーンで SQLite を初期化し、
  * メインスレッドからの RPC メッセージを処理する。
+ *
+ * 各処理は個別モジュールに分割済み:
+ *   - workerState.ts          — 共有 mutable state / テーブルバージョン管理
+ *   - workerInit.ts           — OPFS 初期化フォールバックチェーン
+ *   - workerExecHandlers.ts   — 汎用 exec / execBatch
+ *   - workerExportHandler.ts  — DB エクスポート
+ *   - workerMessageHelpers.ts — sendResponse / sendError
+ *   - workerFetchTimelineHandler.ts — Timeline 一括取得
  */
 
 /// <reference lib="webworker" />
@@ -12,17 +20,22 @@ import {
   executeGraphPlan as runGraphPlan,
   syncGraphCacheVersions,
 } from '../../query-ir/executor/graphExecutor'
-import { logSlowQueryExplain } from '../explainLogger'
 import { buildTimelineKey, resolveLocalAccountId } from '../helpers'
-import type { TableName, WorkerMessage, WorkerRequest } from '../protocol'
+import type { WorkerMessage, WorkerRequest } from '../protocol'
 import { executeQueryPlan as runQueryPlan } from '../queries/executionEngine'
 import { resolvePostIdInternal } from './handlers/statusHelpers'
 import { handleEnforceMaxLength } from './workerCleanup'
+import { handleExec, handleExecBatch } from './workerExecHandlers'
+import { handleExportDatabase } from './workerExportHandler'
+import { handleFetchTimeline } from './workerFetchTimelineHandler'
+import { init } from './workerInit'
+import { sendError, sendResponse } from './workerMessageHelpers'
 import {
   handleAddNotification,
   handleBulkAddNotifications,
   handleUpdateNotificationStatusAction,
 } from './workerNotificationStore'
+import { captureTableVersions, getDb, getTableVersionsMap } from './workerState'
 import {
   handleBulkUpsertCustomEmojis,
   handleBulkUpsertStatuses,
@@ -35,226 +48,9 @@ import {
   handleUpsertStatus,
 } from './workerStatusStore'
 
-// biome-ignore lint/suspicious/noExplicitAny: sqlite-wasm types are not exact
-type RawDb = any
-
-let db: RawDb = null
-// biome-ignore lint/suspicious/noExplicitAny: sqlite-wasm module type
-let sqlite3Module: any = null
-
-// テーブルごとの書き込みバージョン — 書き込みのたびにインクリメント
-const tableVersions = new Map<string, number>()
-
-/** 書き込みが発生したテーブルのバージョンをインクリメントする */
-function bumpTableVersions(tables: TableName[] | undefined): void {
-  if (!tables) return
-  for (const t of tables) {
-    tableVersions.set(t, (tableVersions.get(t) ?? 0) + 1)
-  }
-}
-
-/** 現在のテーブルバージョンスナップショットを返す */
-function captureTableVersions(): Record<string, number> {
-  return Object.fromEntries(tableVersions)
-}
-
-// ================================================================
-// 初期化
-// ================================================================
-
-async function init(origin: string): Promise<'opfs' | 'memory'> {
-  // Turbopack が import.meta.url を無効なスキームに書き換えるため、
-  // Worker 内の相対 URL 解決が失敗する。
-  // メインスレッドから渡された origin を使い絶対 URL で WASM を取得する。
-  const wasmUrl = `${origin}/sqlite3.wasm`
-  const wasmResponse = await fetch(wasmUrl)
-  const wasmBinary = await wasmResponse.arrayBuffer()
-
-  const initSqlite = (await import('@sqlite.org/sqlite-wasm')).default
-  // @ts-expect-error sqlite3InitModule accepts moduleArg but types omit it
-  const sqlite3 = await initSqlite({
-    locateFile: (file: string) => `${origin}/${file}`,
-    wasmBinary,
-  })
-
-  let persistence: 'opfs' | 'memory' = 'memory'
-  sqlite3Module = sqlite3
-
-  // 1. OPFS SAH Pool VFS（最高パフォーマンス）
-  try {
-    const poolVfs = await sqlite3.installOpfsSAHPoolVfs({
-      directory: '/miyulab-fe',
-      name: 'opfs-sahpool',
-    })
-    db = new poolVfs.OpfsSAHPoolDb('/miyulab-fe.sqlite3')
-    persistence = 'opfs'
-    console.info('SQLite Worker: using OPFS SAH Pool persistence')
-  } catch (_e1) {
-    // 2. 通常の OPFS
-    try {
-      db = new sqlite3.oo1.OpfsDb('/miyulab-fe.sqlite3', 'c')
-      persistence = 'opfs'
-      console.info('SQLite Worker: using OPFS persistence')
-    } catch (_e2) {
-      // 3. インメモリ DB フォールバック
-      db = new sqlite3.oo1.DB(':memory:', 'c')
-      persistence = 'memory'
-      console.warn(
-        'SQLite Worker: OPFS not available, using in-memory database.',
-      )
-    }
-  }
-
-  // PRAGMA 設定
-  db.exec('PRAGMA journal_mode=WAL;')
-  db.exec('PRAGMA synchronous=NORMAL;')
-  db.exec('PRAGMA foreign_keys = ON;')
-  db.exec('PRAGMA cache_size = -8000;') // 8MB（デフォルト2MB→8MB）
-  db.exec('PRAGMA temp_store = MEMORY;') // 一時テーブルをメモリに配置
-
-  // スキーマ初期化
-  const { ensureSchema } = await import('../schema')
-  ensureSchema({ db })
-
-  return persistence
-}
-
-// ================================================================
-// 汎用ハンドラ
-// ================================================================
-
-function handleExec(
-  sql: string,
-  bind?: (string | number | null)[],
-  returnValue?: string,
-): { result: unknown; durationMs: number } {
-  const start = performance.now()
-  let result: unknown
-  if (returnValue === 'resultRows') {
-    result = db.exec(sql, {
-      bind: bind ?? undefined,
-      returnValue: 'resultRows',
-    })
-  } else {
-    db.exec(sql, { bind: bind ?? undefined })
-    result = undefined
-  }
-  const durationMs = performance.now() - start
-  logSlowQueryExplain(db, sql, bind, durationMs)
-  return { durationMs, result }
-}
-
-function handleExecBatch(
-  statements: {
-    sql: string
-    bind?: (string | number | null)[]
-    returnValue?: string
-  }[],
-  rollbackOnError: boolean,
-  returnIndices?: number[],
-): unknown {
-  const results = new Map<number, unknown>()
-  const shouldReturn = new Set(returnIndices ?? [])
-
-  if (rollbackOnError) {
-    db.exec('BEGIN;')
-  }
-
-  try {
-    for (let i = 0; i < statements.length; i++) {
-      const stmt = statements[i]
-      const { result } = handleExec(stmt.sql, stmt.bind, stmt.returnValue)
-      if (shouldReturn.has(i) || !returnIndices) {
-        results.set(i, result)
-      }
-    }
-
-    if (rollbackOnError) {
-      db.exec('COMMIT;')
-    }
-  } catch (e) {
-    if (rollbackOnError) {
-      try {
-        db.exec('ROLLBACK;')
-      } catch {
-        /* ロールバックエラーは無視 */
-      }
-    }
-    throw e
-  }
-
-  const resultObj: Record<number, unknown> = {}
-  for (const [k, v] of results) {
-    resultObj[k] = v
-  }
-  return resultObj
-}
-
-// ================================================================
-// DB エクスポート（単一 sqlite3 ファイルとして OPFS に保存）
-// ================================================================
-
-async function handleExportDatabase(): Promise<void> {
-  if (!db || !sqlite3Module) {
-    throw new Error('Database or sqlite3 module not initialized')
-  }
-
-  // WAL を可能な範囲でフラッシュ（PASSIVE: ノンブロッキング）
-  // TRUNCATE は書き込みロックを取得するため、大量データ時に長時間ブロックする。
-  // PASSIVE は進行中の読み書きをブロックせず、可能なページのみチェックポイントする。
-  db.exec('PRAGMA wal_checkpoint(PASSIVE);')
-
-  // DB をシリアライズ
-  const bytes: Uint8Array = sqlite3Module.capi.sqlite3_js_db_export(db)
-  // 新しい ArrayBuffer にコピー（TypeScript 型互換性対策）
-  const copy = new Uint8Array(bytes)
-
-  // OPFS ルートに書き込み
-  const root = await navigator.storage.getDirectory()
-  const fileHandle = await root.getFileHandle('miyulab-fe-backup.sqlite3', {
-    create: true,
-  })
-  const writable = await fileHandle.createWritable()
-  await writable.write(copy.buffer as ArrayBuffer)
-  await writable.close()
-
-  console.info(
-    `SQLite Worker: exported database (${(bytes.byteLength / 1024).toFixed(1)} KB) to OPFS`,
-  )
-}
-
 // ================================================================
 // メッセージルーター
 // ================================================================
-
-function sendResponse(
-  id: number,
-  result: unknown,
-  changedTables?: TableName[],
-  durationMs?: number,
-  changeHint?: { timelineType?: string; backendUrl?: string; tag?: string },
-): void {
-  // 書き込みが伴う場合はバージョンをインクリメント
-  bumpTableVersions(changedTables)
-  const response: WorkerMessage = {
-    changedTables,
-    changeHint,
-    durationMs,
-    id,
-    result,
-    type: 'response',
-  }
-  self.postMessage(response)
-}
-
-function sendError(id: number, error: unknown): void {
-  const response: WorkerMessage = {
-    error: error instanceof Error ? error.message : String(error),
-    id,
-    type: 'error',
-  }
-  self.postMessage(response)
-}
 
 self.onmessage = (
   event: MessageEvent<WorkerRequest | { type: '__init'; origin: string }>,
@@ -289,6 +85,8 @@ self.onmessage = (
     return
   }
 
+  const db = getDb()
+
   try {
     switch (msg.type) {
       // ---- 汎用 ----
@@ -308,9 +106,6 @@ self.onmessage = (
           msg.rollbackOnError,
           msg.returnIndices,
         )
-        // execBatch は書き込み用なので changedTables を推定できないが、
-        // 呼び出し元は主に muted_accounts / blocked_instances 等。
-        // changedTables は個別コマンドで管理するので、ここでは返さない。
         sendResponse(msg.id, result)
         break
       }
@@ -506,7 +301,6 @@ self.onmessage = (
       // ---- ExecutionPlan 汎用実行 ----
       case 'executeQueryPlan': {
         const result = runQueryPlan(db, msg.plan)
-        // capturedVersions をレスポンスに付加してキャッシュ検証に使う
         const resultWithVersions = {
           ...result,
           capturedVersions: captureTableVersions(),
@@ -522,8 +316,7 @@ self.onmessage = (
 
       // ---- GraphPlan 実行 (V2 グラフエンジン) ----
       case 'executeGraphPlan': {
-        // テーブルバージョンをグラフキャッシュに同期
-        syncGraphCacheVersions(tableVersions)
+        syncGraphCacheVersions(getTableVersionsMap())
         const result = runGraphPlan(
           db,
           msg.plan,
@@ -543,78 +336,8 @@ self.onmessage = (
 
       // ---- Timeline 一括取得 ----
       case 'fetchTimeline': {
-        const start = performance.now()
-
-        // Phase1
-        const phase1Rows = db.exec(msg.phase1.sql, {
-          bind: msg.phase1.bind,
-          returnValue: 'resultRows',
-        }) as (string | number | null)[][]
-
-        const postIds = phase1Rows.map(
-          (row: (string | number | null)[]) => row[0] as number,
-        )
-        if (postIds.length === 0) {
-          sendResponse(msg.id, {
-            batchResults: {
-              belongingTags: [],
-              customEmojis: [],
-              interactions: [],
-              media: [],
-              mentions: [],
-              polls: [],
-              profileEmojis: [],
-              timelineTypes: [],
-            },
-            phase1Rows,
-            phase2Rows: [],
-            totalDurationMs: performance.now() - start,
-          })
-          break
-        }
-
-        // Phase2
-        const placeholders = postIds.map(() => '?').join(',')
-        const phase2Sql = msg.phase2BaseSql.replaceAll('{IDS}', placeholders)
-        const phase2Rows = db.exec(phase2Sql, {
-          bind: postIds,
-          returnValue: 'resultRows',
-        }) as (string | number | null)[][]
-
-        // reblog post_id を収集
-        const reblogColIdx = msg.reblogPostIdColumnIndex ?? 25
-        const reblogPostIds: number[] = []
-        for (const row of phase2Rows) {
-          const rbId = row[reblogColIdx] as number | null
-          if (rbId !== null) reblogPostIds.push(rbId)
-        }
-        const allPostIds = [...new Set([...postIds, ...reblogPostIds])]
-        const allPlaceholders = allPostIds.map(() => '?').join(',')
-
-        // Batch 7本を同期実行
-        const runBatch = (sql: string) =>
-          db.exec(sql.replaceAll('{IDS}', allPlaceholders), {
-            bind: allPostIds,
-            returnValue: 'resultRows',
-          }) as (string | number | null)[][]
-
-        const batchResults = {
-          belongingTags: runBatch(msg.batchSqls.belongingTags),
-          customEmojis: runBatch(msg.batchSqls.customEmojis),
-          interactions: runBatch(msg.batchSqls.interactions),
-          media: runBatch(msg.batchSqls.media),
-          mentions: runBatch(msg.batchSqls.mentions),
-          polls: runBatch(msg.batchSqls.polls),
-          profileEmojis: runBatch(msg.batchSqls.profileEmojis),
-          timelineTypes: runBatch(msg.batchSqls.timelineTypes),
-        }
-
-        sendResponse(msg.id, {
-          batchResults,
-          phase1Rows,
-          phase2Rows,
-          totalDurationMs: performance.now() - start,
-        })
+        const result = handleFetchTimeline(msg)
+        sendResponse(msg.id, result)
         break
       }
 

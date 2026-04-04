@@ -1,13 +1,20 @@
-/* eslint-disable @next/next/no-img-element */
 'use client'
 
-import { ProxyImage } from 'app/_parts/ProxyImage'
-import imageCompression from 'browser-image-compression'
+import { EmojiMenu, MentionMenu, TagMenu } from 'app/_parts/AutocompleteMenus'
+import {
+  EMOJI_HIGHLIGHT_REG,
+  EMOJI_REG,
+  MAX_LIST_LENGTH,
+  MENTION_HIGHLIGHT_REG,
+  MENTION_REG,
+  TAG_HIGHLIGHT_REG,
+  TAG_REG,
+} from 'app/_parts/statusRichTextareaConstants'
+import { useMediaUpload } from 'app/_parts/useMediaUpload'
 import type { Entity } from 'megalodon'
 import * as Emoji from 'node-emoji'
 import {
   type ChangeEvent,
-  type ClipboardEventHandler,
   type CSSProperties,
   type Dispatch,
   type KeyboardEvent,
@@ -25,181 +32,11 @@ import {
   type RichTextareaHandle,
 } from 'rich-textarea'
 
-import { GetClient } from 'util/GetClient'
-import { AppsContext } from 'util/provider/AppsProvider'
 import {
   EmojiContext,
-  InstanceContext,
   TagsContext,
   UsersContext,
 } from 'util/provider/ResourceProvider'
-
-const MAX_LIST_LENGTH = 8
-const MENTION_REG = /\B@([\\.@\-+\w]*)$/
-const MENTION_HIGHLIGHT_REG = new RegExp(/@([\\.@\-+\w]*)/, 'g')
-const EMOJI_REG = /\B:([+\w]*)$/
-
-const EMOJI_HIGHLIGHT_REG = new RegExp(/:([+\w]*):/, 'g')
-
-const TAG_REG = /#(\S*)$/
-const TAG_HIGHLIGHT_REG = new RegExp(/#(\S*)/, 'g')
-
-const MentionMenu = ({
-  chars,
-  index,
-  top,
-  left,
-  complete,
-}: {
-  chars: Pick<Entity.Account, 'id' | 'acct' | 'avatar' | 'display_name'>[]
-  index: number
-  top: number
-  left: number
-  complete: (index: number) => void
-}) => {
-  return (
-    <div
-      style={{
-        backgroundColor: 'white',
-        border: '1px solid black',
-        color: 'black',
-        left: left,
-        position: 'fixed',
-        top: top,
-      }}
-    >
-      {chars.map((char, i) => (
-        <div
-          key={char.id}
-          onMouseDown={(e) => {
-            e.preventDefault()
-            complete(i)
-          }}
-          style={{
-            padding: '4px',
-            ...(index === i && {
-              backgroundColor: 'blue',
-              color: 'white',
-            }),
-          }}
-        >
-          <ProxyImage
-            alt={char.display_name}
-            className="mr-2 inline-block h-8 w-8 rounded-full"
-            height={32}
-            src={char.avatar}
-            width={32}
-          />
-          <span>{`@${char.acct}`}</span>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-const EmojiMenu = ({
-  chars,
-  index,
-  top,
-  left,
-  complete,
-}: {
-  chars: Entity.Emoji[]
-  index: number
-  top: number
-  left: number
-  complete: (index: number) => void
-}) => {
-  return (
-    <div
-      style={{
-        backgroundColor: 'white',
-        border: '1px solid black',
-        color: 'black',
-        left: left,
-        position: 'fixed',
-        top: top,
-      }}
-    >
-      {chars.map((char, i) => (
-        <div
-          key={char.shortcode}
-          onMouseDown={(e) => {
-            e.preventDefault()
-            complete(i)
-          }}
-          style={{
-            display: 'flex',
-            padding: '4px',
-            ...(index === i && {
-              backgroundColor: 'blue',
-              color: 'white',
-            }),
-          }}
-        >
-          {char.url === '' ? (
-            <div>{Emoji.emojify(`:${char.shortcode}:`)}</div>
-          ) : (
-            <img
-              alt={char.shortcode}
-              className="mr-1 h-6 w-6"
-              loading="lazy"
-              src={char.url}
-            />
-          )}
-          <div>:{char.shortcode}:</div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars, unused-imports/no-unused-vars
-const Menu = ({
-  chars,
-  index,
-  top,
-  left,
-  complete,
-}: {
-  chars: string[]
-  index: number
-  top: number
-  left: number
-  complete: (index: number) => void
-}) => {
-  return (
-    <div
-      style={{
-        backgroundColor: 'white',
-        border: '1px solid black',
-        color: 'black',
-        left: left,
-        position: 'fixed',
-        top: top,
-      }}
-    >
-      {chars.map((char, i) => (
-        <div
-          key={char}
-          onMouseDown={(e) => {
-            e.preventDefault()
-            complete(i)
-          }}
-          style={{
-            padding: '4px',
-            ...(index === i && {
-              backgroundColor: 'blue',
-              color: 'white',
-            }),
-          }}
-        >
-          {char}
-        </div>
-      ))}
-    </div>
-  )
-}
 
 export const StatusRichTextarea = ({
   text,
@@ -220,13 +57,11 @@ export const StatusRichTextarea = ({
   setUploading: Dispatch<SetStateAction<number>>
   appIndex?: number
 }) => {
-  const apps = useContext(AppsContext)
   const users = useContext(UsersContext)
   const emojis = useContext(EmojiContext)
   const tags = useContext(TagsContext)
-  const instance = useContext(InstanceContext)
 
-  const update_limit = (instance?.upload_limit ?? 16000000) / 1024 / 1024
+  const { onPaste } = useMediaUpload({ appIndex, setAttachments, setUploading })
 
   const ref = useRef<RichTextareaHandle>(null)
 
@@ -334,52 +169,6 @@ export const StatusRichTextarea = ({
     [EMOJI_HIGHLIGHT_REG, { color: 'darkorange' }],
   ])
 
-  const uploadMedia = (file: File) => {
-    if (apps.length <= 0) return
-    const client = GetClient(apps[appIndex])
-    client
-      .uploadMedia(file)
-      .then((res) => {
-        const Attachment = res.data as Entity.Attachment
-        setAttachments((prev) => [...prev, Attachment])
-      })
-      .catch((error) => {
-        console.error('Failed to upload media:', error)
-      })
-      .finally(() => {
-        setUploading((prev) => prev - 1)
-      })
-  }
-
-  const onPaste: ClipboardEventHandler<HTMLTextAreaElement> = (e) => {
-    if (e.clipboardData.types.includes('Files')) {
-      e.preventDefault()
-      const files = e.clipboardData.files
-      if (files.length > 0) {
-        for (let i = 0; i < files.length; i++) {
-          const file = files[i]
-          setUploading((prev) => prev + 1)
-          if (file.type.startsWith('image/')) {
-            imageCompression(file, {
-              maxSizeMB: update_limit,
-              maxWidthOrHeight: 2048,
-              useWebWorker: true,
-            })
-              .then((compressedFile) => {
-                uploadMedia(compressedFile)
-              })
-              .catch((error) => {
-                console.error('Failed to compress image:', error)
-                setUploading((prev) => prev - 1)
-              })
-          } else {
-            uploadMedia(file)
-          }
-        }
-      }
-    }
-  }
-
   return (
     <>
       <RichTextarea
@@ -448,7 +237,6 @@ export const StatusRichTextarea = ({
             isEmoji === false &&
             isTag === false
           ) {
-            // TypeScript knows r.focused is true here, so we can access position properties
             setIsMention(true)
             setPos({
               caret: r.selectionStart,
@@ -528,7 +316,7 @@ export const StatusRichTextarea = ({
         tagFiltered.length > 0 &&
         isTag &&
         createPortal(
-          <Menu
+          <TagMenu
             chars={tagFiltered}
             complete={tagComplete}
             index={index}
