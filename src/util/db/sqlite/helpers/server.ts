@@ -1,4 +1,4 @@
-import { serverIdCache } from './cache'
+import { serverHostCache, serverIdCache } from './cache'
 import type { DbExecCompat } from './types'
 
 /**
@@ -24,5 +24,6 @@ export function ensureServer(db: DbExecCompat, host: string): number {
 
   const id = rows[0][0]
   serverIdCache.set(host, id)
+  serverHostCache.set(id, host)
   return id
 }

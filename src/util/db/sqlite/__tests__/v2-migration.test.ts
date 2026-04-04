@@ -197,11 +197,19 @@ describe('v2.0.0 マイグレーション', () => {
       migrations.push(...savedMigrations)
     })
 
-    it('v2.0.0 DB に対して v2.0.1 と v2.0.2 マイグレーションが適用される', () => {
+    it('v2.0.0 DB に対して v2.0.1, v2.0.2, v2.0.3 マイグレーションが適用される', () => {
       const v2Encoded = encodeSemVer({ major: 2, minor: 0, patch: 0 })
-      // v2.0.1 validate 用に sqlite_master クエリ、v2.0.2 validate 用に notification_types クエリも成功させるモック
+      let canonicalAcctAdded = false
+      // 各マイグレーションの validate/up 用モック
       const db = {
         exec: vi.fn((sql: string, opts?: Record<string, unknown>) => {
+          if (
+            typeof sql === 'string' &&
+            sql.includes('ALTER TABLE profiles ADD COLUMN canonical_acct')
+          ) {
+            canonicalAcctAdded = true
+            return undefined
+          }
           if (typeof sql === 'string' && opts?.returnValue === 'resultRows') {
             if (sql.includes('PRAGMA user_version')) {
               return [[v2Encoded]]
@@ -211,6 +219,22 @@ describe('v2.0.0 マイグレーション', () => {
             }
             if (sql.includes('notification_types')) {
               return [['emoji_reaction']]
+            }
+            if (sql.includes('PRAGMA table_info(profiles)')) {
+              const base = [
+                [0, 'id'],
+                [1, 'actor_uri'],
+                [2, 'username'],
+                [3, 'server_id'],
+                [4, 'acct'],
+              ]
+              if (canonicalAcctAdded) {
+                return [...base, [5, 'canonical_acct']]
+              }
+              return base
+            }
+            if (sql.includes('COUNT(*)') && sql.includes('canonical_acct')) {
+              return [[0]]
             }
           }
           return undefined
@@ -232,6 +256,13 @@ describe('v2.0.0 マイグレーション', () => {
           call[0].includes('UPDATE notification_types'),
       )
       expect(updateCalls).toHaveLength(1)
+      // v2.0.3 の up() による ALTER TABLE が実行される
+      const alterCalls = db.exec.mock.calls.filter(
+        (call) =>
+          typeof call[0] === 'string' &&
+          call[0].includes('ALTER TABLE profiles ADD COLUMN canonical_acct'),
+      )
+      expect(alterCalls).toHaveLength(1)
       // フォールバック (DROP → 再作成) は使用されない
       expect(mockDropAll).not.toHaveBeenCalled()
       expect(mockCreateFresh).not.toHaveBeenCalled()

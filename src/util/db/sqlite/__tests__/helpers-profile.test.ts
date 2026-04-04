@@ -1,6 +1,11 @@
 import type { Entity } from 'megalodon'
-import { emojiIdCache, profileIdCache } from 'util/db/sqlite/helpers/cache'
 import {
+  emojiIdCache,
+  profileIdCache,
+  serverHostCache,
+} from 'util/db/sqlite/helpers/cache'
+import {
+  computeCanonicalAcct,
   ensureProfile,
   syncProfileCustomEmojis,
   syncProfileFields,
@@ -79,11 +84,32 @@ function createMockAccount(
   }
 }
 
+// ─── computeCanonicalAcct ────────────────────────────────────────
+
+describe('computeCanonicalAcct', () => {
+  it('FQN 形式 (acct に @ あり) はそのまま返す', () => {
+    expect(computeCanonicalAcct('alice@example.com', 'other.host')).toBe(
+      'alice@example.com',
+    )
+  })
+
+  it('ローカル形式 (@ なし) は acct@host に正規化する', () => {
+    expect(computeCanonicalAcct('localuser', 'myserver.com')).toBe(
+      'localuser@myserver.com',
+    )
+  })
+})
+
 // ─── ensureProfile ──────────────────────────────────────────────
 
 describe('ensureProfile', () => {
   beforeEach(() => {
     profileIdCache.clear()
+    serverHostCache.clear()
+    // テスト用サーバーホスト
+    serverHostCache.set(1, 'example.com')
+    serverHostCache.set(3, 'myserver.com')
+    serverHostCache.set(42, 'remote.example.com')
   })
 
   it('プロフィールをDBに登録し、IDを返す', () => {
@@ -113,6 +139,7 @@ describe('ensureProfile', () => {
     // 1回目: UPSERT
     expect(calls[0].sql).toContain('INSERT INTO profiles')
     expect(calls[0].sql).toContain('ON CONFLICT(username, server_id)')
+    expect(calls[0].sql).toContain('canonical_acct')
     expect(calls[0].sql).toContain('avatar_static_url')
     expect(calls[0].sql).toContain('header_static_url')
     expect(calls[0].sql).toContain('bio')
@@ -131,11 +158,12 @@ describe('ensureProfile', () => {
     expect(bind[1]).toBe('alice') // username
     expect(bind[2]).toBe(1) // server_id
     expect(bind[3]).toBe('alice@example.com') // acct
-    expect(bind[4]).toBe('Alice') // display_name
-    expect(bind[7]).toBe('https://example.com/avatar_static.png') // avatar_static_url
-    expect(bind[10]).toBe('<p>Hello world</p>') // bio
-    expect(bind[11]).toBe(0) // is_locked
-    expect(bind[12]).toBe(0) // is_bot
+    expect(bind[4]).toBe('alice@example.com') // canonical_acct (FQN なのでそのまま)
+    expect(bind[5]).toBe('Alice') // display_name
+    expect(bind[8]).toBe('https://example.com/avatar_static.png') // avatar_static_url
+    expect(bind[11]).toBe('<p>Hello world</p>') // bio
+    expect(bind[12]).toBe(0) // is_locked
+    expect(bind[13]).toBe(0) // is_bot
 
     // 2回目: SELECT id (新スキーマの PK は id)
     expect(calls[1].sql).toContain('SELECT id FROM profiles')
@@ -179,8 +207,8 @@ describe('ensureProfile', () => {
 
     // 2回目の UPSERT で新しい display_name が使われる
     const secondBind = calls[2].opts?.bind as (string | number | null)[]
-    expect(secondBind[4]).toBe('Bob v2') // display_name
-    expect(secondBind[6]).toBe('https://example.com/bob_v2.png') // avatar_url
+    expect(secondBind[5]).toBe('Bob v2') // display_name
+    expect(secondBind[7]).toBe('https://example.com/bob_v2.png') // avatar_url
   })
 
   it('キャッシュヒット時はDBにUPSERTしつつキャッシュからIDを返す', () => {
@@ -205,7 +233,7 @@ describe('ensureProfile', () => {
     expect(calls[2].sql).toContain('INSERT INTO profiles')
   })
 
-  it('acct が FQN 形式でない場合でもserver_idと組み合わせてUPSERTする', () => {
+  it('acct が FQN 形式でない場合、canonical_acct に host を付加する', () => {
     const { db, calls } = createMockDb([[5]])
 
     const account = createMockAccount({
@@ -224,6 +252,7 @@ describe('ensureProfile', () => {
     expect(bind[1]).toBe('localuser') // username
     expect(bind[2]).toBe(3) // server_id
     expect(bind[3]).toBe('localuser') // acct
+    expect(bind[4]).toBe('localuser@myserver.com') // canonical_acct (host 付加)
 
     // SELECT でも username + server_id で検索
     expect(calls[1].opts?.bind).toEqual(['localuser', 3])
@@ -256,8 +285,8 @@ describe('ensureProfile', () => {
     expect(calls[1].opts?.bind).toEqual(['user1', 42])
 
     // is_locked / is_bot のマッピング確認
-    expect(bind[11]).toBe(1) // is_locked (locked: true → 1)
-    expect(bind[12]).toBe(1) // is_bot (bot: true → 1)
+    expect(bind[12]).toBe(1) // is_locked (locked: true → 1)
+    expect(bind[13]).toBe(1) // is_bot (bot: true → 1)
   })
 })
 

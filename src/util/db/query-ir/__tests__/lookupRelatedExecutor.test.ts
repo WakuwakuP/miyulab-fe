@@ -394,7 +394,7 @@ describe('executeLookupRelated', () => {
   })
 
   describe('resolveIdentity: JOIN ベース (timeCondition あり)', () => {
-    it('resolveIdentity=true の場合、canonical acct CTE と identity_map JOIN を生成する', () => {
+    it('resolveIdentity=true の場合、profiles.canonical_acct を介した JOIN を生成する', () => {
       const db = mockDb()
       const node: LookupRelatedNode = {
         joinConditions: [
@@ -420,16 +420,16 @@ describe('executeLookupRelated', () => {
 
       const result = executeLookupRelated(db, node, input)
 
-      // CTE が含まれる
-      expect(result.sql).toContain('WITH _ri_canonical AS (')
-      expect(result.sql).toContain('_ri0 AS (')
-      // identity_map JOIN
+      // profiles JOIN による同一人物解決
       expect(result.sql).toContain(
-        'JOIN _ri0 ON _ri0.alias_id = lt.author_profile_id',
+        'JOIN profiles _p_lt0 ON lt.author_profile_id = _p_lt0.id',
       )
-      // source JOIN は identity_map 経由
       expect(result.sql).toContain(
-        'JOIN notifications src ON src.actor_profile_id = _ri0.src_id',
+        'JOIN profiles _p_src0 ON _p_lt0.canonical_acct = _p_src0.canonical_acct',
+      )
+      // source JOIN は profiles 経由
+      expect(result.sql).toContain(
+        'JOIN notifications src ON src.actor_profile_id = _p_src0.id',
       )
       // 直接 JOIN は使用されない
       expect(result.sql).not.toContain(
@@ -440,40 +440,10 @@ describe('executeLookupRelated', () => {
       expect(result.sql).toContain(
         'lt.created_at_ms <= src.created_at_ms + 180000',
       )
-      // profiles, servers が dependentTables に含まれる
+      // profiles が dependentTables に含まれる
       expect(result.dependentTables).toContain('profiles')
-      expect(result.dependentTables).toContain('servers')
-    })
-
-    it('resolveIdentity CTE の WHERE 句に inputColumn の subquery が含まれる', () => {
-      const db = mockDb()
-      const node: LookupRelatedNode = {
-        joinConditions: [
-          {
-            inputColumn: 'actor_profile_id',
-            lookupColumn: 'author_profile_id',
-            resolveIdentity: true,
-          },
-        ],
-        kind: 'lookup-related',
-        lookupTable: 'posts',
-        timeCondition: {
-          afterInput: true,
-          inputTimeColumn: 'created_at_ms',
-          lookupTimeColumn: 'created_at_ms',
-          windowMs: 60000,
-        },
-      }
-      const input = makeInput([{ createdAtMs: 1000, id: 42 }])
-
-      const result = executeLookupRelated(db, node, input)
-
-      // CTE 内の subquery で actor_profile_id を解決
-      expect(result.sql).toContain(
-        'SELECT DISTINCT actor_profile_id FROM notifications WHERE id IN (?)',
-      )
-      // bind: CTE用 [42] + WHERE用 [42]
-      expect(result.binds).toEqual([42, 42])
+      // CTE は使用されない
+      expect(result.sql).not.toContain('WITH')
     })
 
     it('resolveIdentity=false の joinCondition は通常の JOIN を生成する', () => {
@@ -498,8 +468,8 @@ describe('executeLookupRelated', () => {
 
       const result = executeLookupRelated(db, node, input)
 
-      // CTE なし
-      expect(result.sql).not.toContain('_ri_canonical')
+      // profiles JOIN なし
+      expect(result.sql).not.toContain('JOIN profiles')
       // 通常の JOIN
       expect(result.sql).toContain(
         'src.actor_profile_id = lt.author_profile_id',
@@ -508,7 +478,7 @@ describe('executeLookupRelated', () => {
   })
 
   describe('resolveIdentity: IN ベース (timeCondition なし)', () => {
-    it('resolveIdentity=true の場合、canonical acct サブクエリで alias を展開する', () => {
+    it('resolveIdentity=true の場合、canonical_acct サブクエリで同一人物の profile ID を展開する', () => {
       const db = mockDb()
       const node: LookupRelatedNode = {
         joinConditions: [
@@ -528,22 +498,19 @@ describe('executeLookupRelated', () => {
 
       const result = executeLookupRelated(db, node, input)
 
-      // CTE prefix
-      expect(result.sql).toContain('WITH _ri_canonical AS (')
-      // canonical_acct サブクエリ
+      // canonical_acct カラムを使用したサブクエリ
       expect(result.sql).toContain(
-        'lt.author_profile_id IN (SELECT c2.id FROM _ri_canonical c2',
+        'lt.author_profile_id IN (SELECT p2.id FROM profiles p2',
       )
-      expect(result.sql).toContain('c2.canonical_acct IN (')
-      expect(result.sql).toContain(
-        'SELECT c1.canonical_acct FROM _ri_canonical c1',
-      )
+      expect(result.sql).toContain('p2.canonical_acct IN (')
+      expect(result.sql).toContain('SELECT p1.canonical_acct FROM profiles p1')
       expect(result.sql).toContain(
         'SELECT DISTINCT actor_profile_id FROM notifications WHERE id IN (?, ?)',
       )
-      // profiles, servers が dependentTables に含まれる
+      // profiles が dependentTables に含まれる
       expect(result.dependentTables).toContain('profiles')
-      expect(result.dependentTables).toContain('servers')
+      // CTE は使用されない
+      expect(result.sql).not.toContain('WITH')
     })
   })
 })

@@ -6,6 +6,9 @@
 /** host → servers.id */
 export const serverIdCache = new Map<string, number>()
 
+/** servers.id → host (逆引き) */
+export const serverHostCache = new Map<number, string>()
+
 /** acct (FQN: username@domain) → profiles.id */
 export const profileIdCache = new Map<string, number>()
 
@@ -18,6 +21,7 @@ export const localAccountIdCache = new Map<string, number | null>()
 /** 全キャッシュをクリアする */
 export function clearAllCaches(): void {
   serverIdCache.clear()
+  serverHostCache.clear()
   profileIdCache.clear()
   emojiIdCache.clear()
   localAccountIdCache.clear()

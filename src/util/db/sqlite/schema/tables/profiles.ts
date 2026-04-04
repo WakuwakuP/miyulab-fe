@@ -8,6 +8,7 @@ export function createProfileTables(db: DbExec): void {
       username            TEXT    NOT NULL,
       server_id           INTEGER NOT NULL,
       acct                TEXT    NOT NULL,
+      canonical_acct      TEXT    NOT NULL DEFAULT '',
       display_name        TEXT    NOT NULL DEFAULT '',
       url                 TEXT    NOT NULL DEFAULT '',
       avatar_url          TEXT    NOT NULL DEFAULT '',
@@ -28,6 +29,9 @@ export function createProfileTables(db: DbExec): void {
   `)
 
   db.exec(`CREATE INDEX IF NOT EXISTS idx_profiles_acct ON profiles(acct);`)
+  db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_profiles_canonical_acct ON profiles(canonical_acct);`,
+  )
   db.exec(
     `CREATE INDEX IF NOT EXISTS idx_profiles_actor_uri ON profiles(actor_uri) WHERE actor_uri IS NOT NULL;`,
   )

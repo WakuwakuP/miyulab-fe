@@ -1,7 +1,36 @@
 import type { Entity } from 'megalodon'
-import { profileIdCache } from './cache'
+import { profileIdCache, serverHostCache } from './cache'
 import { ensureCustomEmoji } from './emoji'
 import type { DbExecCompat } from './types'
+
+/**
+ * acct と server host から canonical_acct を算出する。
+ * acct に '@' が含まれていれば FQN としてそのまま返し、
+ * ローカルアカウント (@ なし) なら `acct@host` に正規化する。
+ */
+export function computeCanonicalAcct(acct: string, host: string): string {
+  return acct.includes('@') ? acct : `${acct}@${host}`
+}
+
+/**
+ * serverId から host を取得する。
+ * キャッシュヒットしない場合は DB を参照する。
+ */
+function resolveServerHost(db: DbExecCompat, serverId: number): string {
+  const cached = serverHostCache.get(serverId)
+  if (cached) return cached
+
+  const rows = db.exec('SELECT host FROM servers WHERE id = ?;', {
+    bind: [serverId],
+    returnValue: 'resultRows',
+  }) as string[][]
+
+  if (rows.length > 0) {
+    serverHostCache.set(serverId, rows[0][0])
+    return rows[0][0]
+  }
+  return ''
+}
 
 /**
  * account に対応する profiles.id を返す。
@@ -16,15 +45,18 @@ export function ensureProfile(
   serverId: number,
 ): number {
   const acct = account.acct
+  const host = resolveServerHost(db, serverId)
+  const canonicalAcct = computeCanonicalAcct(acct, host)
 
   db.exec(
     `INSERT INTO profiles (
-      actor_uri, username, server_id, acct, display_name,
+      actor_uri, username, server_id, acct, canonical_acct, display_name,
       url, avatar_url, avatar_static_url, header_url, header_static_url,
       bio, is_locked, is_bot, last_fetched_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(username, server_id) DO UPDATE SET
       actor_uri         = COALESCE(excluded.actor_uri, profiles.actor_uri),
+      canonical_acct    = excluded.canonical_acct,
       display_name      = excluded.display_name,
       url               = excluded.url,
       avatar_url        = excluded.avatar_url,
@@ -41,6 +73,7 @@ export function ensureProfile(
         account.username, // username
         serverId, // server_id
         acct, // acct
+        canonicalAcct, // canonical_acct
         account.display_name ?? '', // display_name
         account.url ?? '', // url
         account.avatar ?? '', // avatar_url
