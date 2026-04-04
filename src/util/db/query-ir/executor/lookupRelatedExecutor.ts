@@ -159,25 +159,42 @@ function executeWithJoin(
   const joinStr = `JOIN ${input.sourceTable} ${src} ON ${joinOns.join(' AND ')}`
   const whereStr = `WHERE ${conditions.join(' AND ')}`
 
-  // Determine ORDER BY direction based on node.order (default furthest => DESC)
-  const orderDirection = node.order === 'nearest' ? 'ASC' : 'DESC'
-  const orderClause = `ORDER BY created_at_ms ${orderDirection}`
+  // Per-row limit: ROW_NUMBER PARTITION BY src.id で各入力行あたり N 件に制限
+  const usePerRowLimit = node.perLimit != null && !node.aggregate
 
-  // Apply LIMIT if node.limit is provided
-  const limitClause = node.limit != null ? `LIMIT ${node.limit}` : ''
+  let sql: string
+  if (usePerRowLimit) {
+    // nearest + afterInput → ASC (時間が小さい=入力に近い),
+    // nearest + !afterInput → DESC (時間が大きい=入力に近い), etc.
+    const isNearest = node.perLimitOrder === 'nearest'
+    const partitionOrder = isNearest === tc.afterInput ? 'ASC' : 'DESC'
 
-  const sql = [
-    `SELECT DISTINCT ${selectExpr}`,
-    `FROM ${node.lookupTable} ${lt}`,
-    ...extraJoinStrs,
-    joinStr,
-    whereStr,
-    groupByStr,
-    orderClause,
-    limitClause,
-  ]
-    .filter(Boolean)
-    .join(' ')
+    const innerSql = [
+      `SELECT ${selectExpr}, ${src}.id AS _src_id,`,
+      `ROW_NUMBER() OVER (PARTITION BY ${src}.id ORDER BY ${lt}.${tc.lookupTimeColumn} ${partitionOrder}) AS _rn`,
+      `FROM ${node.lookupTable} ${lt}`,
+      ...extraJoinStrs,
+      joinStr,
+      whereStr,
+      groupByStr,
+    ]
+      .filter(Boolean)
+      .join(' ')
+
+    sql = `SELECT DISTINCT id, created_at_ms FROM (${innerSql}) WHERE _rn <= ${node.perLimit} ORDER BY created_at_ms DESC`
+  } else {
+    sql = [
+      `SELECT DISTINCT ${selectExpr}`,
+      `FROM ${node.lookupTable} ${lt}`,
+      ...extraJoinStrs,
+      joinStr,
+      whereStr,
+      groupByStr,
+      `ORDER BY created_at_ms DESC`,
+    ]
+      .filter(Boolean)
+      .join(' ')
+  }
 
   const rawRows = db.exec(sql, {
     bind: binds.length > 0 ? binds : undefined,
@@ -305,25 +322,53 @@ function executeWithIn(
       : `${lt}.id AS id, 0 AS created_at_ms`
   }
 
-  // Determine ORDER BY direction based on node.order (default furthest => DESC)
-  const orderDirection = node.order === 'nearest' ? 'ASC' : 'DESC'
-  const orderClause = `ORDER BY created_at_ms ${orderDirection}`
-  // Apply LIMIT if node.limit is provided
-  const limitClause = node.limit != null ? `LIMIT ${node.limit}` : ''
-
   const whereStr =
     conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
 
-  const sql = [
-    `SELECT ${selectExpr}`,
-    `FROM ${node.lookupTable} ${lt}`,
-    whereStr,
-    groupByStr,
-    orderClause,
-    limitClause,
-  ]
-    .filter(Boolean)
-    .join(' ')
+  // Per-row limit: ROW_NUMBER PARTITION BY lt.{lookupColumn} で各入力値あたり N 件に制限
+  const usePerRowLimit = node.perLimit != null && !node.aggregate
+
+  let sql: string
+  if (usePerRowLimit) {
+    const partitionCol = `${lt}.${node.joinConditions[0].lookupColumn}`
+    const defaultTimeCol = getDefaultTimeColumn(node.lookupTable)
+    const orderCol = node.timeCondition
+      ? `${lt}.${node.timeCondition.lookupTimeColumn}`
+      : defaultTimeCol
+        ? `${lt}.${defaultTimeCol}`
+        : `${lt}.id`
+
+    let partitionOrder: 'ASC' | 'DESC'
+    if (node.timeCondition) {
+      const isNearest = node.perLimitOrder === 'nearest'
+      partitionOrder =
+        isNearest === node.timeCondition.afterInput ? 'ASC' : 'DESC'
+    } else {
+      partitionOrder = node.perLimitOrder === 'nearest' ? 'ASC' : 'DESC'
+    }
+
+    const innerSql = [
+      `SELECT ${selectExpr},`,
+      `ROW_NUMBER() OVER (PARTITION BY ${partitionCol} ORDER BY ${orderCol} ${partitionOrder}) AS _rn`,
+      `FROM ${node.lookupTable} ${lt}`,
+      whereStr,
+      groupByStr,
+    ]
+      .filter(Boolean)
+      .join(' ')
+
+    sql = `SELECT id, created_at_ms FROM (${innerSql}) WHERE _rn <= ${node.perLimit} ORDER BY created_at_ms DESC`
+  } else {
+    sql = [
+      `SELECT ${selectExpr}`,
+      `FROM ${node.lookupTable} ${lt}`,
+      whereStr,
+      groupByStr,
+      `ORDER BY created_at_ms DESC`,
+    ]
+      .filter(Boolean)
+      .join(' ')
+  }
 
   const rawRows = db.exec(sql, {
     bind: binds.length > 0 ? binds : undefined,

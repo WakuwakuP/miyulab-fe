@@ -275,16 +275,23 @@ export type LookupRelatedNode = {
   timeCondition?: TimeCondition
   aggregate?: AggregateMode
   /**
-   * 取得上限件数。設定しない場合は上限なし。
+   * 各入力行あたりの取得上限件数（per-row limit）。
+   * 例: 通知1件に対して最大 N 件の関連投稿を取得する。
+   * 設定しない場合は上限なし。
+   *
+   * 内部的には ROW_NUMBER() OVER (PARTITION BY ...) で実現する。
+   * aggregate が設定されている場合は無視される。
    */
-  limit?: number
+  perLimit?: number
   /**
-   * 取得順序。
-   * 'nearest' は入力時間に最も近いレコードを取得し、
-   * 'furthest' は最も離れたレコードを取得する。
-   * 省略時は 'furthest' (現在の DESC ソート) と同等。
+   * perLimit 使用時の取得順序。
+   * 各入力行の時間を基準に、どちら側のレコードを優先して残すかを指定する。
+   * - 'nearest' : 入力時間に最も近いレコードを優先
+   * - 'furthest' : 入力時間から最も離れたレコードを優先
+   * 省略時は 'furthest' と同等。
+   * perLimit が未設定の場合は無視される。
    */
-  order?: 'nearest' | 'furthest'
+  perLimitOrder?: 'nearest' | 'furthest'
 }
 
 export type JoinCondition = {
