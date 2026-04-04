@@ -25,7 +25,11 @@ import type {
 } from 'types/types'
 import { configToQueryPlanV2 } from 'util/db/query-ir/configToQueryPlanV2'
 import type { SerializedGraphPlan } from 'util/db/query-ir/executor/types'
-import type { QueryPlanV2 } from 'util/db/query-ir/nodes'
+import {
+  isQueryPlanV2,
+  type QueryPlanV2,
+  queryPlanV2ReferencedTables,
+} from 'util/db/query-ir/nodes'
 import {
   type ChangeHint,
   getSqliteDb,
@@ -130,11 +134,24 @@ export function useGraphTimeline(config: TimelineConfigV2): {
     })
   }, [config, localAccountIds, serverIds, queryLimit])
 
-  /** 投稿系タイムラインは posts に加え timeline_entries の変更でも再取得する */
+  /** queryPlan が参照するテーブルも含めて subscribe 対象を決定する */
   const subscribeTables = useMemo((): TableName[] => {
-    if (config.type === 'notification') return ['notifications']
-    return ['posts', 'timeline_entries']
-  }, [config.type])
+    const tables = new Set<TableName>()
+    // デフォルトの subscribe テーブル
+    if (config.type === 'notification') {
+      tables.add('notifications')
+    } else {
+      tables.add('posts')
+      tables.add('timeline_entries')
+    }
+    // queryPlan が参照するテーブルを追加
+    if (plan && isQueryPlanV2(plan)) {
+      const referenced = queryPlanV2ReferencedTables(plan)
+      if (referenced.has('posts')) tables.add('posts')
+      if (referenced.has('notifications')) tables.add('notifications')
+    }
+    return [...tables]
+  }, [config.type, plan])
 
   // ChangeHint マッチング用のタイムラインタイプ配列
   const configTimelineTypes = useMemo(() => {
@@ -173,10 +190,23 @@ export function useGraphTimeline(config: TimelineConfigV2): {
             typeof buildBatchMapsFromResults
           >[0],
         )
+        // backendUrl が空の場合のフォールバック (lookup-related 経由の posts 用)
+        const fallbackAppIndex =
+          targetBackendUrls.length > 0
+            ? resolveAppIndex(targetBackendUrls[0], apps)
+            : -1
         postMap = new Map()
         for (const row of result.posts.detailRows) {
           const status = assembleStatusFromBatch(row, maps)
-          const appIndex = resolveAppIndex(status.backendUrl, apps)
+          let appIndex = resolveAppIndex(status.backendUrl, apps)
+          if (
+            appIndex < 0 &&
+            status.backendUrl === '' &&
+            fallbackAppIndex >= 0
+          ) {
+            appIndex = fallbackAppIndex
+            status.backendUrl = targetBackendUrls[0]
+          }
           if (appIndex < 0) continue
           postMap.set(status.post_id, { ...status, appIndex })
         }

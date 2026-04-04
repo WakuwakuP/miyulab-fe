@@ -358,3 +358,24 @@ export function isQueryPlanV2(
     plan.version === 2
   )
 }
+
+/**
+ * QueryPlanV2 が参照するテーブル名を収集する。
+ *
+ * get-ids の table、lookup-related の lookupTable を走査して返す。
+ * DynamicTimeline のルーティングや subscribeTables の決定に使用する。
+ */
+export function queryPlanV2ReferencedTables(plan: QueryPlanV2): Set<string> {
+  const tables = new Set<string>()
+  for (const entry of plan.nodes) {
+    switch (entry.node.kind) {
+      case 'get-ids':
+        tables.add((entry.node as GetIdsNode).table)
+        break
+      case 'lookup-related':
+        tables.add((entry.node as LookupRelatedNode).lookupTable)
+        break
+    }
+  }
+  return tables
+}
