@@ -50,11 +50,17 @@ export type FlowActions = {
   deleteNode: (id: string) => void
   /** テスト実行の状態 (存在する場合) */
   execStatus: FlowExecStatus | null
+  /** 現在のフローノード一覧 (種別推定用) */
+  nodes: FlowNode[]
+  /** 現在のフローエッジ一覧 (種別推定用) */
+  edges: FlowEdge[]
 }
 
 const FlowActionsContext = createContext<FlowActions>({
   deleteNode: () => {},
+  edges: [],
   execStatus: null,
+  nodes: [],
 })
 
 export function useFlowActions(): FlowActions {
@@ -217,8 +223,13 @@ export function FlowCanvas({
   )
 
   const flowActions = useMemo<FlowActions>(
-    () => ({ deleteNode: onDeleteNode, execStatus: execStatus ?? null }),
-    [onDeleteNode, execStatus],
+    () => ({
+      deleteNode: onDeleteNode,
+      edges,
+      execStatus: execStatus ?? null,
+      nodes,
+    }),
+    [onDeleteNode, execStatus, nodes, edges],
   )
 
   // fitView は初回のみ実行し、以降はノード追加で勝手にビューが動かないようにする

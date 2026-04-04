@@ -2,9 +2,27 @@
 
 import { Handle, Position } from '@xyflow/react'
 import { ArrowDownToLine, Loader2, X } from 'lucide-react'
-import { memo, useCallback } from 'react'
+import { memo, useCallback, useMemo } from 'react'
 import { useFlowActions } from '../FlowCanvas'
+import {
+  type FlowSourceType,
+  inferFlowSourceType,
+} from '../inferFlowSourceType'
 import type { OutputFlowNodeDataV2 } from '../types'
+
+const SOURCE_TYPE_LABEL: Record<FlowSourceType, string> = {
+  mixed: '📝🔔 Posts & Notifications',
+  notification: '🔔 Notifications',
+  post: '📝 Posts',
+  unknown: '',
+}
+
+const SOURCE_TYPE_COLOR: Record<FlowSourceType, string> = {
+  mixed: 'text-purple-400',
+  notification: 'text-amber-400',
+  post: 'text-sky-400',
+  unknown: 'text-gray-500',
+}
 
 type Props = { id: string; data: OutputFlowNodeDataV2; selected?: boolean }
 
@@ -13,7 +31,7 @@ export const OutputFlowNodeV2 = memo(function OutputFlowNodeV2({
   data,
   selected,
 }: Props) {
-  const { deleteNode, execStatus } = useFlowActions()
+  const { deleteNode, execStatus, nodes, edges } = useFlowActions()
 
   const handleDelete = useCallback(
     (e: React.MouseEvent) => {
@@ -21,6 +39,11 @@ export const OutputFlowNodeV2 = memo(function OutputFlowNodeV2({
       deleteNode(id)
     },
     [deleteNode, id],
+  )
+
+  const sourceType = useMemo(
+    () => inferFlowSourceType(id, nodes, edges),
+    [id, nodes, edges],
   )
 
   const isRunning = execStatus?.nodeStates[id] === 'running'
@@ -55,6 +78,13 @@ export const OutputFlowNodeV2 = memo(function OutputFlowNodeV2({
           <X className="h-3 w-3" />
         </button>
       </div>
+      {sourceType !== 'unknown' && (
+        <div
+          className={`text-[11px] font-medium ${SOURCE_TYPE_COLOR[sourceType]}`}
+        >
+          {SOURCE_TYPE_LABEL[sourceType]}
+        </div>
+      )}
       <div className="text-sm font-medium text-white">
         {data.config.sort.direction === 'DESC' ? '新しい順' : '古い順'}
       </div>
