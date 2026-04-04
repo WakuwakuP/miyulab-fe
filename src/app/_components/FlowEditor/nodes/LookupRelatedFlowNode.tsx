@@ -60,12 +60,7 @@ export const LookupRelatedFlowNode = memo(function LookupRelatedFlowNode({
       <div className="text-[10px] text-gray-500 mt-0.5">
         結合 {data.config.joinConditions.length} 件
       </div>
-      {(data.config.limit != null || data.config.order) && (
-        <div className="text-[10px] text-violet-300 mt-0.5">
-          {data.config.order === 'nearest' ? '最近' : '最遠'}
-          {data.config.limit != null && ` ${data.config.limit}件まで`}
-        </div>
-      )}
+
       <NodeExecBadge execStatus={execStatus} nodeId={id} />
       <Handle
         className="!w-3 !h-3 !bg-violet-400 !border-2 !border-violet-600"

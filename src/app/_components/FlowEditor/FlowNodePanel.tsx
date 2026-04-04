@@ -1077,6 +1077,63 @@ function LookupRelatedPanel({
           </div>
         )}
       </div>
+
+      {/* 取得上限 */}
+      <div className="rounded border border-gray-700 p-2">
+        <span className="text-xs font-semibold text-gray-300 block mb-1.5">
+          取得上限
+        </span>
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] text-gray-400 w-14 shrink-0">
+              件数
+            </span>
+            <input
+              className="flex-1 rounded bg-gray-700 border border-gray-600 px-2 py-0.5 text-xs text-white"
+              min={0}
+              onChange={(e) => {
+                const v =
+                  e.target.value === ''
+                    ? undefined
+                    : Math.max(0, Number.parseInt(e.target.value, 10))
+                updateConfig({ limit: Number.isNaN(v) ? undefined : v })
+              }}
+              placeholder="無制限"
+              type="number"
+              value={data.config.limit ?? ''}
+            />
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] text-gray-400 w-14 shrink-0">
+              順序
+            </span>
+            <div className="flex gap-1">
+              <button
+                className={`rounded px-1.5 py-0.5 text-[10px] border transition-colors ${
+                  data.config.order !== 'nearest'
+                    ? 'bg-sky-900/50 border-sky-700 text-sky-300'
+                    : 'bg-gray-700 border-gray-600 text-gray-400'
+                }`}
+                onClick={() => updateConfig({ order: 'furthest' })}
+                type="button"
+              >
+                最遠
+              </button>
+              <button
+                className={`rounded px-1.5 py-0.5 text-[10px] border transition-colors ${
+                  data.config.order === 'nearest'
+                    ? 'bg-sky-900/50 border-sky-700 text-sky-300'
+                    : 'bg-gray-700 border-gray-600 text-gray-400'
+                }`}
+                onClick={() => updateConfig({ order: 'nearest' })}
+                type="button"
+              >
+                最近
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
