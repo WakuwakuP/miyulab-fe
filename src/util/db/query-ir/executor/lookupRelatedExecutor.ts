@@ -3,6 +3,9 @@
 //
 // 上流ノードの出力 ID リストから関連テーブルの ID を相関検索する。
 // joinConditions, timeCondition, aggregate に基づいて SQL を生成する。
+//
+// timeCondition がある場合は JOIN ベースのクエリを生成し、
+// 各入力行に対して個別に時間窓を適用する（per-row 相関）。
 // ============================================================
 
 import type { DbExec } from '../../sqlite/queries/executionEngine'
@@ -37,7 +40,143 @@ export function executeLookupRelated(
     }
   }
 
-  const lt = 'lt' // lookup table alias
+  // timeCondition がありかつ resolve を使わない場合は JOIN ベースで per-row 相関
+  const hasResolve = node.joinConditions.some((jc) => jc.resolve)
+  if (node.timeCondition && !hasResolve) {
+    return executeWithJoin(db, node, input)
+  }
+
+  // それ以外は IN ベース（timeCondition なし、または resolve 使用時）
+  return executeWithIn(db, node, input)
+}
+
+// --------------- JOIN ベース（per-row 相関） ---------------
+
+/**
+ * JOIN ベースの実行。
+ * 上流テーブルと lookup テーブルを JOIN し、
+ * 各入力行に対して個別に時間窓を適用する。
+ */
+function executeWithJoin(
+  db: DbExec,
+  node: LookupRelatedNode,
+  input: NodeOutput,
+): {
+  output: NodeOutput
+  sql: string
+  binds: BindValue[]
+  dependentTables: string[]
+} {
+  const lt = 'lt'
+  const src = 'src'
+  // biome-ignore lint/style/noNonNullAssertion: caller guarantees timeCondition exists
+  const tc = node.timeCondition!
+  const binds: BindValue[] = []
+  const dependentTables = [node.lookupTable, input.sourceTable]
+
+  const ids = input.rows.map((r) => r.id)
+  const placeholders = ids.map(() => '?').join(', ')
+
+  // --- JOIN ON 条件 ---
+  const joinOns: string[] = []
+  for (const jc of node.joinConditions) {
+    if (jc.inputColumn && jc.inputColumn !== 'id') {
+      joinOns.push(`${src}.${jc.inputColumn} = ${lt}.${jc.lookupColumn}`)
+    } else {
+      joinOns.push(`${src}.id = ${lt}.${jc.lookupColumn}`)
+    }
+  }
+
+  // --- WHERE 条件 ---
+  const conditions: string[] = []
+  conditions.push(`${src}.id IN (${placeholders})`)
+  binds.push(...ids)
+
+  // per-row 時間条件
+  if (tc.afterInput) {
+    conditions.push(
+      `${lt}.${tc.lookupTimeColumn} > ${src}.${tc.inputTimeColumn}`,
+    )
+    conditions.push(
+      `${lt}.${tc.lookupTimeColumn} <= ${src}.${tc.inputTimeColumn} + ${tc.windowMs}`,
+    )
+  } else {
+    conditions.push(
+      `${lt}.${tc.lookupTimeColumn} < ${src}.${tc.inputTimeColumn}`,
+    )
+    conditions.push(
+      `${lt}.${tc.lookupTimeColumn} >= ${src}.${tc.inputTimeColumn} - ${tc.windowMs}`,
+    )
+  }
+
+  // --- SELECT 句構築 ---
+  let selectExpr: string
+  let groupByStr = ''
+
+  if (node.aggregate) {
+    selectExpr = `${lt}.id AS id, ${node.aggregate.function}(${lt}.${node.aggregate.column}) AS created_at_ms`
+    groupByStr = `GROUP BY ${lt}.id`
+  } else {
+    const defaultTimeCol = getDefaultTimeColumn(node.lookupTable)
+    selectExpr = defaultTimeCol
+      ? `${lt}.id AS id, ${lt}.${defaultTimeCol} AS created_at_ms`
+      : `${lt}.id AS id, 0 AS created_at_ms`
+  }
+
+  const joinStr = `JOIN ${input.sourceTable} ${src} ON ${joinOns.join(' AND ')}`
+  const whereStr = `WHERE ${conditions.join(' AND ')}`
+
+  const sql = [
+    `SELECT DISTINCT ${selectExpr}`,
+    `FROM ${node.lookupTable} ${lt}`,
+    joinStr,
+    whereStr,
+    groupByStr,
+    `ORDER BY created_at_ms DESC`,
+  ]
+    .filter(Boolean)
+    .join(' ')
+
+  const rawRows = db.exec(sql, {
+    bind: binds.length > 0 ? binds : undefined,
+    returnValue: 'resultRows',
+  })
+
+  const outputTable = resolveOutputTable(node.lookupTable, 'id')
+  const rows: NodeOutputRow[] = rawRows.map((row) => ({
+    createdAtMs: row[1] as number,
+    id: row[0] as number,
+    table: outputTable,
+  }))
+
+  const hash = `lookup:${sql}:${JSON.stringify(binds)}:${rows.length}`
+
+  return {
+    binds,
+    dependentTables,
+    output: { hash, rows, sourceTable: outputTable },
+    sql,
+  }
+}
+
+// --------------- IN ベース（timeCondition なし or resolve） ---------------
+
+/**
+ * IN ベースの実行。
+ * timeCondition がない場合、または resolve がある場合に使用する。
+ * resolve 使用時の timeCondition はグローバル min/max で近似する。
+ */
+function executeWithIn(
+  db: DbExec,
+  node: LookupRelatedNode,
+  input: NodeOutput,
+): {
+  output: NodeOutput
+  sql: string
+  binds: BindValue[]
+  dependentTables: string[]
+} {
+  const lt = 'lt'
   const binds: BindValue[] = []
   const conditions: string[] = []
   const dependentTables = [node.lookupTable, input.sourceTable]
@@ -67,21 +206,18 @@ export function executeLookupRelated(
     }
   }
 
-  // --- 時間条件 ---
+  // --- 時間条件 (グローバル min/max 近似 — resolve 使用時のフォールバック) ---
   if (node.timeCondition) {
     const tc = node.timeCondition
-    // 上流の時間範囲を利用して検索範囲を絞る
     const minTime = Math.min(...input.rows.map((r) => r.createdAtMs))
     const maxTime = Math.max(...input.rows.map((r) => r.createdAtMs))
 
     if (tc.afterInput) {
-      // 上流より後: lookupTime > inputTime AND lookupTime <= inputTime + windowMs
       conditions.push(`${lt}.${tc.lookupTimeColumn} > ?`)
       binds.push(minTime)
       conditions.push(`${lt}.${tc.lookupTimeColumn} <= ?`)
       binds.push(maxTime + tc.windowMs)
     } else {
-      // 上流より前: lookupTime < inputTime AND lookupTime >= inputTime - windowMs
       conditions.push(`${lt}.${tc.lookupTimeColumn} < ?`)
       binds.push(maxTime)
       conditions.push(`${lt}.${tc.lookupTimeColumn} >= ?`)
@@ -94,7 +230,6 @@ export function executeLookupRelated(
   let groupByStr = ''
 
   if (node.aggregate) {
-    // 集約モード: MIN/MAX
     selectExpr = `${lt}.id AS id, ${node.aggregate.function}(${lt}.${node.aggregate.column}) AS created_at_ms`
     groupByStr = `GROUP BY ${lt}.id`
   } else {
@@ -122,9 +257,7 @@ export function executeLookupRelated(
     returnValue: 'resultRows',
   })
 
-  // LookupRelated は常に lookupTable の id を出力する
   const outputTable = resolveOutputTable(node.lookupTable, 'id')
-
   const rows: NodeOutputRow[] = rawRows.map((row) => ({
     createdAtMs: row[1] as number,
     id: row[0] as number,

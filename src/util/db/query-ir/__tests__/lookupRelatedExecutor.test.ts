@@ -40,7 +40,7 @@ describe('executeLookupRelated', () => {
     })
   })
 
-  describe('直接 JOIN (inputColumn=id)', () => {
+  describe('IN ベース: 直接 JOIN (inputColumn=id, timeCondition なし)', () => {
     it('inputColumn が id の場合、上流 ID を直接 IN 句で使用する', () => {
       const db = mockDb()
       const node: LookupRelatedNode = {
@@ -75,7 +75,7 @@ describe('executeLookupRelated', () => {
     })
   })
 
-  describe('inputColumn 自動解決 (inputColumn≠id, resolve なし)', () => {
+  describe('IN ベース: inputColumn 自動解決 (timeCondition なし)', () => {
     it('inputColumn が id 以外の場合、上流テーブルから subquery で取得する', () => {
       const db = mockDb()
       const node: LookupRelatedNode = {
@@ -120,7 +120,7 @@ describe('executeLookupRelated', () => {
     })
   })
 
-  describe('明示的 resolve (中間テーブル経由)', () => {
+  describe('IN ベース: 明示的 resolve (中間テーブル経由)', () => {
     it('resolve が指定されている場合、中間テーブル経由の subquery を生成する', () => {
       const db = mockDb()
       const node: LookupRelatedNode = {
@@ -175,15 +175,53 @@ describe('executeLookupRelated', () => {
 
       const result = executeLookupRelated(db, node, input)
 
-      // resolve が優先されるため、resolve の SQL が生成される
       expect(result.sql).toContain(
         'lt.author_profile_id IN (SELECT actor_profile_id FROM notifications WHERE id IN (?))',
       )
     })
+
+    it('resolve + timeCondition の場合、IN ベース + グローバル時間窓になる', () => {
+      const db = mockDb()
+      const node: LookupRelatedNode = {
+        joinConditions: [
+          {
+            inputColumn: 'id',
+            lookupColumn: 'id',
+            resolve: {
+              inputKey: 'id',
+              lookupKey: 'id',
+              matchColumn: 'related_post_id',
+              via: 'notifications',
+            },
+          },
+        ],
+        kind: 'lookup-related',
+        lookupTable: 'posts',
+        timeCondition: {
+          afterInput: true,
+          inputTimeColumn: 'created_at_ms',
+          lookupTimeColumn: 'created_at_ms',
+          windowMs: 180000,
+        },
+      }
+      const input = makeInput([
+        { createdAtMs: 1000, id: 10 },
+        { createdAtMs: 3000, id: 20 },
+      ])
+
+      const result = executeLookupRelated(db, node, input)
+
+      // resolve があるため IN ベース（グローバル時間窓）
+      expect(result.sql).toContain('lt.id IN (SELECT related_post_id')
+      expect(result.sql).toContain('lt.created_at_ms > ?')
+      expect(result.sql).toContain('lt.created_at_ms <= ?')
+      // JOIN は使用されない
+      expect(result.sql).not.toContain('JOIN')
+    })
   })
 
-  describe('timeCondition', () => {
-    it('afterInput=true の場合、上流時間の後の時間窓で検索する', () => {
+  describe('JOIN ベース: timeCondition あり・resolve なし (per-row 相関)', () => {
+    it('afterInput=true + inputColumn=id の場合、per-row 相関の JOIN クエリを生成する', () => {
       const db = mockDb()
       const node: LookupRelatedNode = {
         joinConditions: [{ inputColumn: 'id', lookupColumn: 'id' }],
@@ -203,15 +241,59 @@ describe('executeLookupRelated', () => {
 
       const result = executeLookupRelated(db, node, input)
 
-      // minTime=1000, maxTime=3000, window=180000
-      expect(result.sql).toContain('lt.created_at_ms > ?')
-      expect(result.sql).toContain('lt.created_at_ms <= ?')
-      // binds: [ids..., minTime, maxTime+window]
-      expect(result.binds).toContain(1000) // minTime
-      expect(result.binds).toContain(3000 + 180000) // maxTime + windowMs
+      // JOIN を使用
+      expect(result.sql).toContain('JOIN notifications src ON src.id = lt.id')
+      expect(result.sql).toContain('src.id IN (?, ?)')
+      // per-row 時間条件
+      expect(result.sql).toContain('lt.created_at_ms > src.created_at_ms')
+      expect(result.sql).toContain(
+        'lt.created_at_ms <= src.created_at_ms + 180000',
+      )
+      // DISTINCT を使用
+      expect(result.sql).toContain('SELECT DISTINCT')
+      // バインドは入力 ID のみ（時間は per-row なので bind 不要）
+      expect(result.binds).toEqual([1, 3])
     })
 
-    it('afterInput=false の場合、上流時間の前の時間窓で検索する', () => {
+    it('afterInput=true + inputColumn=actor_profile_id の場合、inputColumn で JOIN する', () => {
+      const db = mockDb()
+      const node: LookupRelatedNode = {
+        joinConditions: [
+          {
+            inputColumn: 'actor_profile_id',
+            lookupColumn: 'author_profile_id',
+          },
+        ],
+        kind: 'lookup-related',
+        lookupTable: 'posts',
+        timeCondition: {
+          afterInput: true,
+          inputTimeColumn: 'created_at_ms',
+          lookupTimeColumn: 'created_at_ms',
+          windowMs: 180000,
+        },
+      }
+      const input = makeInput([
+        { createdAtMs: 1000, id: 100 },
+        { createdAtMs: 5000, id: 200 },
+      ])
+
+      const result = executeLookupRelated(db, node, input)
+
+      // inputColumn で JOIN
+      expect(result.sql).toContain(
+        'JOIN notifications src ON src.actor_profile_id = lt.author_profile_id',
+      )
+      expect(result.sql).toContain('src.id IN (?, ?)')
+      // per-row 時間条件
+      expect(result.sql).toContain('lt.created_at_ms > src.created_at_ms')
+      expect(result.sql).toContain(
+        'lt.created_at_ms <= src.created_at_ms + 180000',
+      )
+      expect(result.binds).toEqual([100, 200])
+    })
+
+    it('afterInput=false の場合、上流時間の前の時間窓で per-row 検索する', () => {
       const db = mockDb()
       const node: LookupRelatedNode = {
         joinConditions: [{ inputColumn: 'id', lookupColumn: 'id' }],
@@ -231,11 +313,10 @@ describe('executeLookupRelated', () => {
 
       const result = executeLookupRelated(db, node, input)
 
-      // maxTime=8000, minTime=5000, window=60000
-      expect(result.sql).toContain('lt.created_at_ms < ?')
-      expect(result.sql).toContain('lt.created_at_ms >= ?')
-      expect(result.binds).toContain(8000) // maxTime
-      expect(result.binds).toContain(5000 - 60000) // minTime - windowMs
+      expect(result.sql).toContain('lt.created_at_ms < src.created_at_ms')
+      expect(result.sql).toContain(
+        'lt.created_at_ms >= src.created_at_ms - 60000',
+      )
     })
   })
 
