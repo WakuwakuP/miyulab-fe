@@ -42,7 +42,7 @@ export function executeOutput(
   node: OutputNodeV2,
   input: NodeOutput,
   backendUrls: string[],
-): Omit<GraphExecuteResult, 'meta' | 'capturedVersions'> & {
+): Omit<GraphExecuteResult, 'capturedVersions' | 'meta' | 'nodeOutputIds'> & {
   sourceType: 'post' | 'notification' | 'mixed'
 } {
   // --- 1. sort + pagination ---

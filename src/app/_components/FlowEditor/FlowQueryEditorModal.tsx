@@ -64,12 +64,14 @@ import { FLOW_PRESETS } from './flowPresets'
 import { flowToQueryPlanV2 } from './flowToQueryPlanV2'
 import { queryPlanToFlow } from './queryPlanToFlow'
 import type {
+  DebugNodeResult,
   DebugResultItem,
   FlowEdge,
   FlowExecStatus,
   FlowGraphState,
   FlowNode,
 } from './types'
+import { getNodeLabelV2 } from './types'
 
 // --------------- Props ---------------
 
@@ -310,7 +312,7 @@ function formatTime(ms: number): string {
 }
 
 /**
- * GraphExecuteResult の生データから DebugResultItem[] を構築する。
+ * GraphExecuteResult の生データからノード別の DebugNodeResult[] を構築する。
  *
  * Post row layout (STATUS_BASE_SELECT):
  *   [0] post_id, [3] created_at_ms, [5] content_html,
@@ -320,44 +322,67 @@ function formatTime(ms: number): string {
  *   [0] id, [2] created_at_ms, [3] notification_type,
  *   [6] actor_acct, [15] rp_content
  */
-function buildDebugResults(
-  displayOrder: { table: 'posts' | 'notifications'; id: number }[],
+function buildDebugResultsByNode(
+  nodeOutputIds: Record<
+    string,
+    { table: 'posts' | 'notifications'; id: number }[]
+  >,
   postRows: (string | number | null)[][],
   notifRows: (string | number | null)[][],
-): DebugResultItem[] {
+  flowNodes: FlowNode[],
+): DebugNodeResult[] {
   const postMap = new Map<number, (string | number | null)[]>()
   for (const row of postRows) postMap.set(row[0] as number, row)
 
   const notifMap = new Map<number, (string | number | null)[]>()
   for (const row of notifRows) notifMap.set(row[0] as number, row)
 
-  const items: DebugResultItem[] = []
-  for (const entry of displayOrder) {
-    if (entry.table === 'posts') {
-      const row = postMap.get(entry.id)
-      if (!row) continue
-      items.push({
-        acct: (row[14] as string) ?? '',
-        contentPreview: stripHtml((row[5] as string) ?? ''),
-        createdAt: formatTime(row[3] as number),
-        id: entry.id,
-        isReblog: (row[11] as number) === 1,
-        table: 'posts',
-      })
-    } else {
-      const row = notifMap.get(entry.id)
-      if (!row) continue
-      items.push({
-        actorAcct: (row[6] as string) ?? '',
-        createdAt: formatTime(row[2] as number),
-        id: entry.id,
-        notificationType: (row[3] as string) ?? '',
-        relatedContentPreview: stripHtml((row[15] as string) ?? ''),
-        table: 'notifications',
-      })
+  // ReactFlow node ID → label のマップ
+  const flowNodeMap = new Map<string, FlowNode>()
+  for (const fn of flowNodes) flowNodeMap.set(fn.id, fn)
+
+  const results: DebugNodeResult[] = []
+
+  // output-v2 ノードは最終結果なのでスキップ
+  for (const [nodeId, entries] of Object.entries(nodeOutputIds)) {
+    const flowNode = flowNodeMap.get(nodeId)
+    if (!flowNode) continue
+    // output ノードは他のノードの集約なのでスキップ
+    if (flowNode.data.nodeType === 'output-v2') continue
+
+    const label = getNodeLabelV2(flowNode.data)
+    const items: DebugResultItem[] = []
+
+    for (const entry of entries) {
+      if (entry.table === 'posts') {
+        const row = postMap.get(entry.id)
+        if (!row) continue
+        items.push({
+          acct: (row[14] as string) ?? '',
+          contentPreview: stripHtml((row[5] as string) ?? ''),
+          createdAt: formatTime(row[3] as number),
+          id: entry.id,
+          isReblog: (row[11] as number) === 1,
+          table: 'posts',
+        })
+      } else {
+        const row = notifMap.get(entry.id)
+        if (!row) continue
+        items.push({
+          actorAcct: (row[6] as string) ?? '',
+          createdAt: formatTime(row[2] as number),
+          id: entry.id,
+          notificationType: (row[3] as string) ?? '',
+          relatedContentPreview: stripHtml((row[15] as string) ?? ''),
+          table: 'notifications',
+        })
+      }
     }
+
+    results.push({ items, nodeId, nodeLabel: label })
   }
-  return items
+
+  return results
 }
 
 // --------------- Component ---------------
@@ -572,15 +597,16 @@ export function FlowQueryEditorModal({
         doneStates[nId] = result.meta.nodeStats[nId] ? 'done' : 'idle'
       }
 
-      // デバッグ結果を構築
-      const debugResults = buildDebugResults(
-        result.displayOrder,
+      // デバッグ結果をノード別に構築
+      const debugResultsByNode = buildDebugResultsByNode(
+        result.nodeOutputIds,
         result.posts.detailRows,
         result.notifications.detailRows,
+        nodes,
       )
 
       setExecStatus({
-        debugResults,
+        debugResultsByNode,
         error: null,
         nodeStates: doneStates,
         nodeStats: result.meta.nodeStats,
@@ -601,7 +627,7 @@ export function FlowQueryEditorModal({
         totalDurationMs: null,
       })
     }
-  }, [validation.valid, currentPlanV2, apps])
+  }, [validation.valid, currentPlanV2, apps, nodes])
 
   // モーダル閉じたら実行状態リセット
   useEffect(() => {
@@ -788,16 +814,24 @@ export function FlowQueryEditorModal({
                   ))}
                 </div>
               )}
-            {execStatus?.debugResults && execStatus.debugResults.length > 0 && (
-              <details className="mt-2 border-t border-gray-800 pt-1">
-                <summary className="text-[10px] text-gray-500 cursor-pointer hover:text-gray-400 transition-colors">
-                  テスト実行結果 ({execStatus.debugResults.length} 件)
-                </summary>
-                <div className="mt-1">
-                  <DebugResultPanel results={execStatus.debugResults} />
-                </div>
-              </details>
-            )}
+            {execStatus?.debugResultsByNode &&
+              execStatus.debugResultsByNode.length > 0 && (
+                <details className="mt-2 border-t border-gray-800 pt-1">
+                  <summary className="text-[10px] text-gray-500 cursor-pointer hover:text-gray-400 transition-colors">
+                    テスト実行結果 (
+                    {execStatus.debugResultsByNode.reduce(
+                      (sum, n) => sum + n.items.length,
+                      0,
+                    )}{' '}
+                    件 / {execStatus.debugResultsByNode.length} ノード)
+                  </summary>
+                  <div className="mt-1">
+                    <DebugResultPanel
+                      nodeResults={execStatus.debugResultsByNode}
+                    />
+                  </div>
+                </details>
+              )}
           </details>
         </div>
       </DialogContent>

@@ -65,11 +65,18 @@ export type FlowExecStatus = {
   running: boolean
   /** エラーメッセージ */
   error: string | null
-  /** デバッグ結果 (実行完了後) */
-  debugResults?: DebugResultItem[]
+  /** デバッグ結果 — ノード別 (実行完了後) */
+  debugResultsByNode?: DebugNodeResult[]
 }
 
 // --------------- デバッグ結果 ---------------
+
+/** ノード単位のデバッグ結果 */
+export type DebugNodeResult = {
+  nodeId: string
+  nodeLabel: string
+  items: DebugResultItem[]
+}
 
 /** テスト実行結果の1行（投稿 or 通知） */
 export type DebugResultItem =

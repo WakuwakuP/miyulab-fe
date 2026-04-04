@@ -1,32 +1,45 @@
 'use client'
 
-import type { DebugResultItem } from './types'
+import type { DebugNodeResult, DebugResultItem } from './types'
 
 type Props = {
-  results: DebugResultItem[]
+  nodeResults: DebugNodeResult[]
 }
 
-export function DebugResultPanel({ results }: Props) {
-  if (results.length === 0) {
+export function DebugResultPanel({ nodeResults }: Props) {
+  if (nodeResults.length === 0) {
     return <div className="text-[10px] text-gray-500 py-1">結果なし</div>
   }
 
-  const postCount = results.filter((r) => r.table === 'posts').length
-  const notifCount = results.filter((r) => r.table === 'notifications').length
+  return (
+    <div className="space-y-2 max-h-48 overflow-y-auto">
+      {nodeResults.map((nodeResult) => (
+        <NodeSection key={nodeResult.nodeId} nodeResult={nodeResult} />
+      ))}
+    </div>
+  )
+}
+
+function NodeSection({ nodeResult }: { nodeResult: DebugNodeResult }) {
+  const { items, nodeLabel } = nodeResult
+  const postCount = items.filter((r) => r.table === 'posts').length
+  const notifCount = items.filter((r) => r.table === 'notifications').length
 
   return (
-    <div>
-      <div className="text-[10px] text-gray-500 mb-1">
-        結果: {results.length} 件
+    <details open>
+      <summary className="text-[10px] text-gray-400 cursor-pointer hover:text-gray-300 transition-colors font-mono">
+        <span className="text-cyan-400">{nodeLabel}</span>
+        <span className="ml-1 text-gray-500">({items.length} 件</span>
         {postCount > 0 && (
           <span className="ml-1 text-blue-400">📝{postCount}</span>
         )}
         {notifCount > 0 && (
           <span className="ml-1 text-amber-400">🔔{notifCount}</span>
         )}
-      </div>
-      <div className="max-h-40 overflow-y-auto space-y-0.5">
-        {results.map((item) =>
+        <span className="text-gray-500">)</span>
+      </summary>
+      <div className="ml-2 mt-0.5 space-y-0.5">
+        {items.map((item) =>
           item.table === 'posts' ? (
             <PostRow item={item} key={`p-${item.id}`} />
           ) : (
@@ -34,7 +47,7 @@ export function DebugResultPanel({ results }: Props) {
           ),
         )}
       </div>
-    </div>
+    </details>
   )
 }
 

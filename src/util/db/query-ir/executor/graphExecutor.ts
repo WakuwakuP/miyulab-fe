@@ -20,6 +20,7 @@ import { executeMerge } from './mergeExecutor'
 import { executeOutput } from './outputExecutor'
 import { topoSort } from './topoSort'
 import type {
+  DisplayOrderEntry,
   GraphExecuteOptions,
   GraphExecuteResult,
   NodeOutput,
@@ -52,6 +53,22 @@ export function bumpGraphCacheVersion(table: string): void {
 /** テーブルバージョンマップを同期する */
 export function syncGraphCacheVersions(versions: Map<string, number>): void {
   getCache().syncVersions(versions)
+}
+
+// --------------- ヘルパー ---------------
+
+/** outputs Map から各ノードの中間出力 ID をスナップショットする */
+function snapshotNodeOutputIds(
+  outputs: Map<string, NodeOutput>,
+): Record<string, DisplayOrderEntry[]> {
+  const result: Record<string, DisplayOrderEntry[]> = {}
+  for (const [nodeId, output] of outputs) {
+    result[nodeId] = output.rows.map((r) => ({
+      id: r.id,
+      table: r.table as 'posts' | 'notifications',
+    }))
+  }
+  return result
 }
 
 // --------------- メイン実行関数 ---------------
@@ -259,6 +276,7 @@ export function executeGraphPlan(
               sourceType: 'post',
               totalDurationMs: performance.now() - start,
             },
+            nodeOutputIds: snapshotNodeOutputIds(outputs),
             notifications: { detailRows: [] },
             posts: { batchResults: {}, detailRows: [] },
           }
@@ -281,6 +299,7 @@ export function executeGraphPlan(
             sourceType: result.sourceType,
             totalDurationMs,
           },
+          nodeOutputIds: snapshotNodeOutputIds(outputs),
           notifications: result.notifications,
           posts: result.posts,
         }
@@ -297,6 +316,7 @@ export function executeGraphPlan(
       sourceType: 'post',
       totalDurationMs: performance.now() - start,
     },
+    nodeOutputIds: snapshotNodeOutputIds(outputs),
     notifications: { detailRows: [] },
     posts: { batchResults: {}, detailRows: [] },
   }

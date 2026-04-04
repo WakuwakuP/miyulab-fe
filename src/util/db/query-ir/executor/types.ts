@@ -173,6 +173,8 @@ export type GraphExecuteResult = {
     /** 各ノードの実行統計 (nodeId → stats) */
     nodeStats: Record<string, NodeStat>
   }
+  /** 各ノードの中間出力 ID (nodeId → {table, id}[]) */
+  nodeOutputIds: Record<string, DisplayOrderEntry[]>
   /** テーブルバージョンスナップショット（キャッシュ検証用） */
   capturedVersions: Record<string, number>
 }
