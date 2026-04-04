@@ -77,13 +77,21 @@ describe('syncPollData', () => {
     expect(deleteCall).toBeDefined()
     expect(deleteCall?.opts?.bind).toEqual([42])
 
-    // INSERT INTO poll_options — 2回呼ばれる
+    // INSERT INTO poll_options — multi-value INSERT で1回
     const insertCalls = calls.filter((c) =>
       c.sql.includes('INSERT INTO poll_options'),
     )
-    expect(insertCalls).toHaveLength(2)
-    expect(insertCalls[0].opts?.bind).toEqual([42, 0, 'Option A', 6])
-    expect(insertCalls[1].opts?.bind).toEqual([42, 1, 'Option B', 4])
+    expect(insertCalls).toHaveLength(1)
+    expect(insertCalls[0].opts?.bind).toEqual([
+      42,
+      0,
+      'Option A',
+      6,
+      42,
+      1,
+      'Option B',
+      4,
+    ])
   })
 
   it('既存の投票データを更新する', () => {

@@ -436,11 +436,15 @@ describe('syncPostMedia', () => {
     const insertCalls = calls.filter((c) =>
       c.sql.includes('INSERT INTO post_media'),
     )
-    expect(insertCalls).toHaveLength(2)
+    // multi-value INSERT で1回
+    expect(insertCalls).toHaveLength(1)
 
-    // sort_order: 0 と 1 がそれぞれ bind に含まれる
-    expect(insertCalls[0].opts?.bind).toContain(0)
-    expect(insertCalls[1].opts?.bind).toContain(1)
+    // bind に sort_order 0 と 1 が含まれる
+    const bind = insertCalls[0].opts?.bind as (string | number | null)[]
+    expect(bind).toContain(0) // sort_order for first
+    expect(bind).toContain(1) // sort_order for second
+    expect(bind).toContain('media-1')
+    expect(bind).toContain('media-2')
   })
 })
 

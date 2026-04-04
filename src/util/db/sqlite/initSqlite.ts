@@ -111,6 +111,8 @@ async function initMainThreadFallback(
   rawDb.exec('PRAGMA journal_mode=WAL;')
   rawDb.exec('PRAGMA synchronous=NORMAL;')
   rawDb.exec('PRAGMA foreign_keys = ON;')
+  rawDb.exec('PRAGMA cache_size = -8000;') // 8MB（デフォルト2MB→8MB）
+  rawDb.exec('PRAGMA temp_store = MEMORY;') // 一時テーブルをメモリに配置
 
   // スキーマ初期化
   const { ensureSchema } = await import('./schema')

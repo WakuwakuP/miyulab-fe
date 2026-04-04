@@ -101,11 +101,16 @@ export function syncPostMedia(
     bind: [postId],
   })
 
+  if (mediaAttachments.length === 0) return
+
+  // multi-value INSERT で一括挿入
+  const placeholders: string[] = []
+  const binds: (string | number | null)[] = []
+
   for (let i = 0; i < mediaAttachments.length; i++) {
     const media = mediaAttachments[i]
     const mediaTypeId = resolveMediaTypeId(db, media.type)
 
-    // meta.original から width/height を抽出
     const meta = media.meta as
       | { original?: { width?: number; height?: number } }
       | null
@@ -113,29 +118,30 @@ export function syncPostMedia(
     const width = meta?.original?.width ?? null
     const height = meta?.original?.height ?? null
 
-    db.exec(
-      `INSERT INTO post_media (
-        post_id, sort_order, media_type_id, url,
-        width, height, remote_url, preview_url,
-        description, blurhash, media_local_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
-      {
-        bind: [
-          postId,
-          i,
-          mediaTypeId,
-          media.url,
-          width,
-          height,
-          media.remote_url ?? null,
-          media.preview_url ?? null,
-          media.description ?? null,
-          media.blurhash ?? null,
-          media.id ?? null,
-        ],
-      },
+    placeholders.push('(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    binds.push(
+      postId,
+      i,
+      mediaTypeId,
+      media.url,
+      width,
+      height,
+      media.remote_url ?? null,
+      media.preview_url ?? null,
+      media.description ?? null,
+      media.blurhash ?? null,
+      media.id ?? null,
     )
   }
+
+  db.exec(
+    `INSERT INTO post_media (
+      post_id, sort_order, media_type_id, url,
+      width, height, remote_url, preview_url,
+      description, blurhash, media_local_id
+    ) VALUES ${placeholders.join(',')};`,
+    { bind: binds },
+  )
 }
 
 // ================================================================

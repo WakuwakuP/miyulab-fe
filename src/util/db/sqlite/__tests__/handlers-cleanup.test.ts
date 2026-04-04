@@ -67,7 +67,7 @@ describe('handleEnforceMaxLength', () => {
       (c) =>
         c.sql.includes('DELETE') &&
         c.sql.includes('posts') &&
-        c.sql.includes('NOT IN'),
+        c.sql.includes('NOT EXISTS'),
     )
     expect(deleteOrphan).toBeDefined()
   })
@@ -124,7 +124,7 @@ describe('handleEnforceMaxLength', () => {
       (c) =>
         c.sql.includes('DELETE') &&
         c.sql.includes('posts') &&
-        c.sql.includes('NOT IN'),
+        c.sql.includes('NOT EXISTS'),
     )
     expect(deleteOrphan).toBeDefined()
   })
@@ -147,7 +147,7 @@ describe('handleEnforceMaxLength', () => {
       (c) =>
         c.sql.includes('DELETE') &&
         c.sql.includes('posts') &&
-        c.sql.includes('NOT IN'),
+        c.sql.includes('NOT EXISTS'),
     )
     expect(deleteOrphanCalls.length).toBeGreaterThanOrEqual(1)
 

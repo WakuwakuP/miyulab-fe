@@ -308,28 +308,27 @@ describe('syncProfileFields', () => {
       },
     ])
 
-    // DELETE + INSERT × 2
-    expect(calls).toHaveLength(3)
+    // DELETE + multi-value INSERT
+    expect(calls).toHaveLength(2)
 
     // 1回目: DELETE
     expect(calls[0].sql).toContain('DELETE FROM profile_fields')
     expect(calls[0].opts?.bind).toEqual([10])
 
-    // 2回目: INSERT (sort_order = 0)
+    // 2回目: multi-value INSERT
     expect(calls[1].sql).toContain('INSERT INTO profile_fields')
-    const bind1 = calls[1].opts?.bind as (string | number | null)[]
-    expect(bind1[0]).toBe(10) // profile_id
-    expect(bind1[1]).toBe(0) // sort_order
-    expect(bind1[2]).toBe('Website') // name
-    expect(bind1[3]).toBe('<a href="https://example.com">example.com</a>') // value
-    expect(bind1[4]).toBeNull() // verified_at
-
-    // 3回目: INSERT (sort_order = 1)
-    const bind2 = calls[2].opts?.bind as (string | number | null)[]
-    expect(bind2[0]).toBe(10) // profile_id
-    expect(bind2[1]).toBe(1) // sort_order
-    expect(bind2[2]).toBe('Verified') // name
-    expect(bind2[4]).toBe('2024-06-01T00:00:00.000Z') // verified_at
+    const bind = calls[1].opts?.bind as (string | number | null)[]
+    // 1つ目のフィールド
+    expect(bind[0]).toBe(10) // profile_id
+    expect(bind[1]).toBe(0) // sort_order
+    expect(bind[2]).toBe('Website') // name
+    expect(bind[3]).toBe('<a href="https://example.com">example.com</a>') // value
+    expect(bind[4]).toBeNull() // verified_at
+    // 2つ目のフィールド
+    expect(bind[5]).toBe(10) // profile_id
+    expect(bind[6]).toBe(1) // sort_order
+    expect(bind[7]).toBe('Verified') // name
+    expect(bind[9]).toBe('2024-06-01T00:00:00.000Z') // verified_at
   })
 
   it('既存のフィールドを削除してから新規追加する', () => {
@@ -338,7 +337,7 @@ describe('syncProfileFields', () => {
     // 1回目の同期
     syncProfileFields(db, 5, [{ name: 'Old Field', value: 'old value' }])
 
-    expect(calls).toHaveLength(2) // DELETE + INSERT × 1
+    expect(calls).toHaveLength(2) // DELETE + multi-value INSERT
 
     // 2回目の同期（フィールドを変更）
     syncProfileFields(db, 5, [
@@ -346,18 +345,17 @@ describe('syncProfileFields', () => {
       { name: 'Another Field', value: 'another value' },
     ])
 
-    // 合計: (DELETE + INSERT) + (DELETE + INSERT × 2)
-    expect(calls).toHaveLength(5)
+    // 合計: (DELETE + INSERT) + (DELETE + INSERT) = 4
+    expect(calls).toHaveLength(4)
 
     // 2回目の DELETE
     expect(calls[2].sql).toContain('DELETE FROM profile_fields')
     expect(calls[2].opts?.bind).toEqual([5])
 
-    // 2回目の INSERT で新しいフィールドが追加される
-    const bind3 = calls[3].opts?.bind as (string | number | null)[]
-    expect(bind3[2]).toBe('New Field')
-    const bind4 = calls[4].opts?.bind as (string | number | null)[]
-    expect(bind4[2]).toBe('Another Field')
+    // 2回目の multi-value INSERT で新しいフィールドが追加される
+    const bind = calls[3].opts?.bind as (string | number | null)[]
+    expect(bind[2]).toBe('New Field')
+    expect(bind[7]).toBe('Another Field')
   })
 })
 

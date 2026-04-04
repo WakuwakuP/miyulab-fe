@@ -109,6 +109,8 @@ async function init(origin: string): Promise<'opfs' | 'memory'> {
   db.exec('PRAGMA journal_mode=WAL;')
   db.exec('PRAGMA synchronous=NORMAL;')
   db.exec('PRAGMA foreign_keys = ON;')
+  db.exec('PRAGMA cache_size = -8000;') // 8MB（デフォルト2MB→8MB）
+  db.exec('PRAGMA temp_store = MEMORY;') // 一時テーブルをメモリに配置
 
   // スキーマ初期化
   const { ensureSchema } = await import('../schema')

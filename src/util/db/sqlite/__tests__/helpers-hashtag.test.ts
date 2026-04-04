@@ -37,9 +37,9 @@ describe('syncPostHashtags', () => {
 
     syncPostHashtags(db, 10, [{ name: 'Vitest' }, { name: 'TypeScript' }])
 
-    // 各タグに対して UPSERT + SELECT + INSERT OR IGNORE の3回 = 6回
-    // + 末尾の DELETE で合計7回
-    expect(calls).toHaveLength(7)
+    // 各タグに対して UPSERT + SELECT の2回 = 4回
+    // + post_hashtags multi-value INSERT + 末尾の DELETE で合計6回
+    expect(calls).toHaveLength(6)
 
     // 1つ目のタグ: UPSERT
     expect(calls[0].sql).toContain('INSERT INTO hashtags')
@@ -54,25 +54,22 @@ describe('syncPostHashtags', () => {
     expect(calls[1].opts?.bind).toEqual(['vitest'])
     expect(calls[1].opts?.returnValue).toBe('resultRows')
 
-    // 1つ目のタグ: post_hashtags にリンク
-    expect(calls[2].sql).toContain('INSERT OR IGNORE INTO post_hashtags')
-    expect(calls[2].sql).toContain('post_id')
-    expect(calls[2].sql).toContain('hashtag_id')
-    expect(calls[2].opts?.bind).toEqual([10, 1])
-
     // 2つ目のタグ: UPSERT
-    expect(calls[3].opts?.bind).toEqual(['typescript', null])
+    expect(calls[2].opts?.bind).toEqual(['typescript', null])
 
     // 2つ目のタグ: SELECT id
-    expect(calls[4].opts?.bind).toEqual(['typescript'])
+    expect(calls[3].opts?.bind).toEqual(['typescript'])
 
-    // 2つ目のタグ: post_hashtags にリンク
-    expect(calls[5].opts?.bind).toEqual([10, 2])
+    // post_hashtags multi-value INSERT
+    expect(calls[4].sql).toContain('INSERT OR IGNORE INTO post_hashtags')
+    expect(calls[4].sql).toContain('post_id')
+    expect(calls[4].sql).toContain('hashtag_id')
+    expect(calls[4].opts?.bind).toEqual([10, 1, 10, 2])
 
     // 不要なリンクの削除
-    expect(calls[6].sql).toContain('DELETE FROM post_hashtags')
-    expect(calls[6].sql).toContain('hashtag_id NOT IN')
-    expect(calls[6].opts?.bind).toEqual([10, 1, 2])
+    expect(calls[5].sql).toContain('DELETE FROM post_hashtags')
+    expect(calls[5].sql).toContain('hashtag_id NOT IN')
+    expect(calls[5].opts?.bind).toEqual([10, 1, 2])
 
     // 旧スキーマのカラムが使われていないこと
     const allSql = calls.map((c) => c.sql).join('\n')
@@ -104,14 +101,13 @@ describe('syncPostHashtags', () => {
     expect(upsertCalls[0].opts?.bind?.[0]).toBe('rust')
     expect(upsertCalls[1].opts?.bind?.[0]).toBe('rust')
 
-    // post_hashtags への INSERT OR IGNORE
+    // post_hashtags への INSERT OR IGNORE (multi-value INSERT で1回)
     const linkCalls = calls.filter((c) =>
       c.sql.includes('INSERT OR IGNORE INTO post_hashtags'),
     )
-    expect(linkCalls.length).toBe(2)
+    expect(linkCalls.length).toBe(1)
     // 同じ hashtag_id が使われる
-    expect(linkCalls[0].opts?.bind).toEqual([1, 42])
-    expect(linkCalls[1].opts?.bind).toEqual([1, 42])
+    expect(linkCalls[0].opts?.bind).toEqual([1, 42, 1, 42])
   })
 
   it('不要になったハッシュタグリンクを削除する', () => {
@@ -177,7 +173,7 @@ describe('syncPostHashtags', () => {
     ])
 
     // 2つ目: URL なし → null
-    const secondUpsert = calls[3]
+    const secondUpsert = calls[2]
     expect(secondUpsert.sql).toContain('INSERT INTO hashtags')
     expect(secondUpsert.opts?.bind).toEqual(['fediverse', null])
 

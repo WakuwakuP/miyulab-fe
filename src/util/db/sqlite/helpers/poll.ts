@@ -52,14 +52,22 @@ export function syncPollData(
   if (rows.length === 0) return
   const pollId = rows[0][0]
 
-  // poll_options を再同期（DELETE + INSERT）
+  // poll_options を再同期（DELETE + multi-value INSERT）
   db.exec('DELETE FROM poll_options WHERE poll_id = ?;', { bind: [pollId] })
 
-  for (let i = 0; i < poll.options.length; i++) {
-    const opt = poll.options[i]
+  if (poll.options.length > 0) {
+    const placeholders: string[] = []
+    const binds: (string | number | null)[] = []
+
+    for (let i = 0; i < poll.options.length; i++) {
+      const opt = poll.options[i]
+      placeholders.push('(?, ?, ?, ?)')
+      binds.push(pollId, i, opt.title, opt.votes_count ?? null)
+    }
+
     db.exec(
-      'INSERT INTO poll_options (poll_id, sort_order, title, votes_count) VALUES (?, ?, ?, ?);',
-      { bind: [pollId, i, opt.title, opt.votes_count ?? null] },
+      `INSERT INTO poll_options (poll_id, sort_order, title, votes_count) VALUES ${placeholders.join(',')};`,
+      { bind: binds },
     )
   }
 }

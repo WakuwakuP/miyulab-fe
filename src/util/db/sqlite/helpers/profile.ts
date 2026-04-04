@@ -115,22 +115,22 @@ export function syncProfileFields(
     bind: [profileId],
   })
 
+  if (fields.length === 0) return
+
+  const placeholders: string[] = []
+  const binds: (string | number | null)[] = []
+
   for (let i = 0; i < fields.length; i++) {
     const field = fields[i]
-    db.exec(
-      `INSERT INTO profile_fields (profile_id, sort_order, name, value, verified_at)
-       VALUES (?, ?, ?, ?, ?);`,
-      {
-        bind: [
-          profileId,
-          i,
-          field.name,
-          field.value,
-          field.verified_at ?? null,
-        ],
-      },
-    )
+    placeholders.push('(?, ?, ?, ?, ?)')
+    binds.push(profileId, i, field.name, field.value, field.verified_at ?? null)
   }
+
+  db.exec(
+    `INSERT INTO profile_fields (profile_id, sort_order, name, value, verified_at)
+     VALUES ${placeholders.join(',')};`,
+    { bind: binds },
+  )
 }
 
 /**
@@ -147,6 +147,13 @@ export function syncProfileCustomEmojis(
     visible_in_picker?: boolean
   }[],
 ): void {
+  if (emojis.length === 0) {
+    db.exec('DELETE FROM profile_custom_emojis WHERE profile_id = ?;', {
+      bind: [profileId],
+    })
+    return
+  }
+
   const keepIds: number[] = []
 
   for (const emoji of emojis) {
@@ -159,15 +166,9 @@ export function syncProfileCustomEmojis(
     keepIds.push(emojiId)
   }
 
-  if (keepIds.length === 0) {
-    db.exec('DELETE FROM profile_custom_emojis WHERE profile_id = ?;', {
-      bind: [profileId],
-    })
-  } else {
-    const ph = keepIds.map(() => '?').join(',')
-    db.exec(
-      `DELETE FROM profile_custom_emojis WHERE profile_id = ? AND custom_emoji_id NOT IN (${ph});`,
-      { bind: [profileId, ...keepIds] },
-    )
-  }
+  const ph = keepIds.map(() => '?').join(',')
+  db.exec(
+    `DELETE FROM profile_custom_emojis WHERE profile_id = ? AND custom_emoji_id NOT IN (${ph});`,
+    { bind: [profileId, ...keepIds] },
+  )
 }

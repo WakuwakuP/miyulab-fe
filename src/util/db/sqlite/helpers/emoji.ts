@@ -76,6 +76,13 @@ export function syncPostCustomEmojis(
     visible_in_picker?: boolean
   }[],
 ): void {
+  if (emojis.length === 0) {
+    db.exec('DELETE FROM post_custom_emojis WHERE post_id = ?;', {
+      bind: [postId],
+    })
+    return
+  }
+
   const keepIds: number[] = []
 
   for (const emoji of emojis) {
@@ -89,17 +96,11 @@ export function syncPostCustomEmojis(
   }
 
   // Remove stale entries
-  if (keepIds.length === 0) {
-    db.exec('DELETE FROM post_custom_emojis WHERE post_id = ?;', {
-      bind: [postId],
-    })
-  } else {
-    const ph = keepIds.map(() => '?').join(',')
-    db.exec(
-      `DELETE FROM post_custom_emojis WHERE post_id = ? AND custom_emoji_id NOT IN (${ph});`,
-      { bind: [postId, ...keepIds] },
-    )
-  }
+  const ph = keepIds.map(() => '?').join(',')
+  db.exec(
+    `DELETE FROM post_custom_emojis WHERE post_id = ? AND custom_emoji_id NOT IN (${ph});`,
+    { bind: [postId, ...keepIds] },
+  )
 }
 
 // ================================================================
