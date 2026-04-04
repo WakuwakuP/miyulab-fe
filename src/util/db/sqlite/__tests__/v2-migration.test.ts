@@ -197,9 +197,9 @@ describe('v2.0.0 マイグレーション', () => {
       migrations.push(...savedMigrations)
     })
 
-    it('v2.0.0 DB に対して v2.0.1 マイグレーションが適用される', () => {
+    it('v2.0.0 DB に対して v2.0.1 と v2.0.2 マイグレーションが適用される', () => {
       const v2Encoded = encodeSemVer({ major: 2, minor: 0, patch: 0 })
-      // v2.0.1 validate 用に sqlite_master クエリも成功させるモック
+      // v2.0.1 validate 用に sqlite_master クエリ、v2.0.2 validate 用に notification_types クエリも成功させるモック
       const db = {
         exec: vi.fn((sql: string, opts?: Record<string, unknown>) => {
           if (typeof sql === 'string' && opts?.returnValue === 'resultRows') {
@@ -208,6 +208,9 @@ describe('v2.0.0 マイグレーション', () => {
             }
             if (sql.includes('sqlite_master')) {
               return [[1]]
+            }
+            if (sql.includes('notification_types')) {
+              return [['emoji_reaction']]
             }
           }
           return undefined
@@ -222,6 +225,13 @@ describe('v2.0.0 マイグレーション', () => {
           typeof call[0] === 'string' && call[0].includes('CREATE TABLE'),
       )
       expect(createTableCalls).toHaveLength(2)
+      // v2.0.2 の up() による UPDATE が実行される
+      const updateCalls = db.exec.mock.calls.filter(
+        (call) =>
+          typeof call[0] === 'string' &&
+          call[0].includes('UPDATE notification_types'),
+      )
+      expect(updateCalls).toHaveLength(1)
       // フォールバック (DROP → 再作成) は使用されない
       expect(mockDropAll).not.toHaveBeenCalled()
       expect(mockCreateFresh).not.toHaveBeenCalled()

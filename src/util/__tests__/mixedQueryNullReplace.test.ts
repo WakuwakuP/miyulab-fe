@@ -68,7 +68,9 @@ describe('混合クエリの通知系エイリアス NULL 置換', () => {
     const result = replaceNotifAliasesWithNull(kuuchuuQuery)
 
     // 外部の nt.name → NULL
-    expect(result).toContain("NULL IN ('favourite', 'reaction', 'reblog')")
+    expect(result).toContain(
+      "NULL IN ('favourite', 'emoji_reaction', 'reblog')",
+    )
     // サブクエリ内の ntt.name はそのまま
     expect(result).toContain('ntt.name')
     expect(result).toContain('ntt.id')

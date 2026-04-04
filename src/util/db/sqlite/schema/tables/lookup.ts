@@ -58,7 +58,7 @@ export function createLookupTables(db: DbExec): void {
       (2,  'favourite'),
       (3,  'reblog'),
       (4,  'mention'),
-      (5,  'reaction'),
+      (5,  'emoji_reaction'),
       (6,  'follow_request'),
       (7,  'status'),
       (8,  'poll_vote'),

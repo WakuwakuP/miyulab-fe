@@ -240,7 +240,7 @@ export const Notification = ({
           )}
         </div>
       )
-    case 'reaction':
+    case 'emoji_reaction':
       return (
         <div className="ml-1 mt-2 box-border border-b-2 border-l-2 border-orange-300 pl-2">
           <h3>

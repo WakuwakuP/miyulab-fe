@@ -486,7 +486,7 @@ function RawSQLBody({
 
 const NOTIFICATION_TYPES_FOR_AERIAL = [
   { key: 'favourite', label: 'ふぁぼ' },
-  { key: 'reaction', label: 'リアクション' },
+  { key: 'emoji_reaction', label: 'リアクション' },
   { key: 'reblog', label: 'ブースト' },
   { key: 'mention', label: 'メンション' },
 ]

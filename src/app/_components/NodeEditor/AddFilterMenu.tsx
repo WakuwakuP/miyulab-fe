@@ -174,7 +174,7 @@ const MENU_CATEGORIES: MenuCategory[] = [
         label: '空中リプ検出',
         node: (): AerialReplyFilter => ({
           kind: 'aerial-reply-filter',
-          notificationTypes: ['favourite', 'reaction', 'reblog'],
+          notificationTypes: ['favourite', 'emoji_reaction', 'reblog'],
           timeWindowMs: 180000,
         }),
       },
@@ -333,7 +333,7 @@ export const PRESETS: Preset[] = [
       { kind: 'timeline-scope', timelineKeys: ['home'] },
       {
         kind: 'aerial-reply-filter',
-        notificationTypes: ['favourite', 'reaction', 'reblog'],
+        notificationTypes: ['favourite', 'emoji_reaction', 'reblog'],
         timeWindowMs: 180000,
       },
     ],

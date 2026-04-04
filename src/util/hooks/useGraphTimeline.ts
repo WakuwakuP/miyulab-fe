@@ -61,10 +61,9 @@ const TYPES_WITH_STATUS = new Set([
   'mention',
   'favourite',
   'reblog',
-  'reaction',
+  'emoji_reaction',
   'poll_expired',
   'status',
-  'emoji_reaction',
   'poll',
   'update',
 ])

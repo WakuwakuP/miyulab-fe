@@ -138,7 +138,7 @@ export type NotificationType =
   | 'mention'
   | 'reblog'
   | 'favourite'
-  | 'reaction'
+  | 'emoji_reaction'
   | 'poll_expired'
   | 'status'
 

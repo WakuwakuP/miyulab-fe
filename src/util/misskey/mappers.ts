@@ -409,7 +409,7 @@ function mapNotificationType(type: string): string {
     case 'quote':
       return 'reblog'
     case 'reaction':
-      return 'reaction'
+      return 'emoji_reaction'
     case 'pollEnded':
     case 'pollVoted':
       return 'poll'

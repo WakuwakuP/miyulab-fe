@@ -367,7 +367,7 @@ const NOTIFICATION_TYPE_OPTIONS: {
   { label: '💬 Mention', value: 'mention' },
   { label: '🔁 Reblog', value: 'reblog' },
   { label: '⭐ Favourite', value: 'favourite' },
-  { label: '😀 Reaction', value: 'reaction' },
+  { label: '😀 Reaction', value: 'emoji_reaction' },
   { label: '📊 Poll Expired', value: 'poll_expired' },
   { label: '📝 Status', value: 'status' },
 ]

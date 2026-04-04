@@ -449,7 +449,7 @@ describe('assembleNotificationFromFlat', () => {
   describe('リアクション', () => {
     it('reaction_name がある場合、reaction オブジェクトが設定される', () => {
       const row = makeNotifRow(10, {
-        notificationType: 'pleroma:emoji_reaction',
+        notificationType: 'emoji_reaction',
         reactionName: '⭐',
         reactionUrl: null,
       })

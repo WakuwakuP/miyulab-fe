@@ -302,7 +302,7 @@ function aerialReplyPlan(): QueryPlanV2 {
               column: 'name',
               op: 'IN',
               table: 'notification_types',
-              value: ['favourite', 'reaction', 'reblog'],
+              value: ['favourite', 'emoji_reaction', 'reblog'],
             },
           ],
           kind: 'get-ids',

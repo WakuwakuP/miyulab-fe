@@ -90,7 +90,7 @@ export function getDefaultTimelineName(config: TimelineConfigV2): string {
   }
 
   // 通知タイプフィルタ
-  // NotificationType は 8 種類: follow, follow_request, mention, reblog, favourite, reaction, poll_expired, status
+  // NotificationType は 8 種類: follow, follow_request, mention, reblog, favourite, emoji_reaction, poll_expired, status
   if (
     config.notificationFilter != null &&
     config.notificationFilter.length > 0 &&

@@ -1447,7 +1447,7 @@ describe('Round-trip: parseWhereToNodes → nodesToWhere', () => {
       const nodes: FilterNode[] = [
         {
           kind: 'aerial-reply-filter',
-          notificationTypes: ['favourite', 'reaction', 'reblog'],
+          notificationTypes: ['favourite', 'emoji_reaction', 'reblog'],
           timeWindowMs: 180000,
         },
       ]
@@ -1455,7 +1455,7 @@ describe('Round-trip: parseWhereToNodes → nodesToWhere', () => {
       expect(result).toContain('EXISTS')
       expect(result).toContain('notification_types')
       expect(result).toContain("'favourite'")
-      expect(result).toContain("'reaction'")
+      expect(result).toContain("'emoji_reaction'")
       expect(result).toContain("'reblog'")
       expect(result).toContain('180000')
     })

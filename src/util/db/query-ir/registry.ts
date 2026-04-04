@@ -372,7 +372,6 @@ export const TABLE_REGISTRY: TableRegistry = {
           'update',
           'emoji_reaction',
           'pleroma:chat_mention',
-          'pleroma:emoji_reaction',
           'move',
         ],
         label: '通知種別名',

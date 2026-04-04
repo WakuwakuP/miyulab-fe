@@ -173,7 +173,7 @@ describe('buildQueryFromConfig: 通知タイプフィルタ', () => {
           'mention',
           'reblog',
           'favourite',
-          'reaction',
+          'emoji_reaction',
           'poll_expired',
           'status',
         ],

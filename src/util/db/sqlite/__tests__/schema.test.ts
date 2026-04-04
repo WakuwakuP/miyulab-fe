@@ -115,7 +115,7 @@ describe('スキーマ定義', () => {
         'favourite',
         'reblog',
         'mention',
-        'reaction',
+        'emoji_reaction',
         'unknown',
       ]) {
         expect(seedSql).toContain(name)

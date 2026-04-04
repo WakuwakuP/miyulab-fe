@@ -20,7 +20,7 @@ export const ALL_NOTIFICATION_TYPES: readonly NotificationType[] = [
   'mention',
   'reblog',
   'favourite',
-  'reaction',
+  'emoji_reaction',
   'poll_expired',
   'status',
 ] as const
@@ -1078,7 +1078,7 @@ export function parseQueryToConfig(
       'mention',
       'reblog',
       'favourite',
-      'reaction',
+      'emoji_reaction',
       'poll_expired',
       'status',
     ]

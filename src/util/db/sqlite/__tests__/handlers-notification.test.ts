@@ -180,6 +180,8 @@ describe('resolveNotificationTypeId', () => {
     expect(resolveNotificationTypeId(db, 'favourite')).toBe(2)
     expect(resolveNotificationTypeId(db, 'reblog')).toBe(3)
     expect(resolveNotificationTypeId(db, 'mention')).toBe(4)
+    expect(resolveNotificationTypeId(db, 'emoji_reaction')).toBe(5)
+    expect(resolveNotificationTypeId(db, 'pleroma:emoji_reaction')).toBe(5)
     expect(resolveNotificationTypeId(db, 'reaction')).toBe(5)
     expect(resolveNotificationTypeId(db, 'follow_request')).toBe(6)
     expect(resolveNotificationTypeId(db, 'status')).toBe(7)
@@ -303,7 +305,7 @@ describe('upsertNotification', () => {
         static_url: 'https://example.com/emoji/blobcat_static.png',
         url: 'https://example.com/emoji/blobcat.png',
       },
-      type: 'reaction',
+      type: 'emoji_reaction',
     })
     upsertNotification(db, notification as never, 'https://example.com')
 

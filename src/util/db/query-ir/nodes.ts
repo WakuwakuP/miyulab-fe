@@ -93,7 +93,7 @@ export type RawSQLFilter = {
 /** 空中リプライ検出フィルタ — 通知直後の投稿を検出 */
 export type AerialReplyFilter = {
   kind: 'aerial-reply-filter'
-  /** 対象通知種別 (e.g. ['favourite', 'reaction', 'reblog']) */
+  /** 対象通知種別 (e.g. ['favourite', 'emoji_reaction', 'reblog']) */
   notificationTypes: string[]
   /** 通知からの時間窓 (ms) デフォルト: 180000 (3分) */
   timeWindowMs: number

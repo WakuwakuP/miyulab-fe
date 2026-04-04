@@ -51,6 +51,8 @@ const NOTIFICATION_TYPE_MAP = new Map<string, number>([
   ['favourite', 2],
   ['reblog', 3],
   ['mention', 4],
+  ['emoji_reaction', 5],
+  ['pleroma:emoji_reaction', 5],
   ['reaction', 5],
   ['follow_request', 6],
   ['status', 7],

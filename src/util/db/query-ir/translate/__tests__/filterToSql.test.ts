@@ -458,7 +458,7 @@ describe('compileAerialReplyFilter', () => {
   it('デフォルト設定で SQL とバインドパラメータを生成する', () => {
     const node: AerialReplyFilter = {
       kind: 'aerial-reply-filter',
-      notificationTypes: ['favourite', 'reaction', 'reblog'],
+      notificationTypes: ['favourite', 'emoji_reaction', 'reblog'],
       timeWindowMs: 180000,
     }
     const result = compileFilterNode(node, 'posts', 'p')
@@ -469,7 +469,7 @@ describe('compileAerialReplyFilter', () => {
     expect(result.binds.length).toBeGreaterThan(0)
     // Notification types as individual bind params
     expect(result.binds).toContain('favourite')
-    expect(result.binds).toContain('reaction')
+    expect(result.binds).toContain('emoji_reaction')
     expect(result.binds).toContain('reblog')
     // Time window appears twice in the query (for both checks)
     const timeWindowBinds = result.binds.filter((b) => b === 180000)
