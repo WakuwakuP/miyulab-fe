@@ -31,7 +31,7 @@ import type {
   GraphExecuteResult,
   SerializedGraphPlan,
 } from '../query-ir/executor/types'
-import type { ChangeHint } from './connection'
+import { type ChangeHint, fireRecoveryNotification } from './connection'
 import type {
   ExecBatchRequest,
   ExecRequest,
@@ -112,6 +112,9 @@ export function onSlowQueryLogs(
 
 const TIMEOUT_MS = 30_000
 const INIT_TIMEOUT_MS = 15_000
+
+/** 復旧処理中フラグ — 二重復旧を防止 */
+let isRecovering = false
 
 // ================================================================
 // 初期化
@@ -199,6 +202,15 @@ function handleMessage(event: MessageEvent<WorkerMessage>): void {
           initTimer = null
         }
       }
+      // 復旧フロー完了通知
+      if (msg.recovered) {
+        console.info(
+          'SQLite: database recovered from corruption (persistence:',
+          msg.persistence,
+          ')',
+        )
+        fireRecoveryNotification()
+      }
       break
     }
 
@@ -237,6 +249,10 @@ function handleMessage(event: MessageEvent<WorkerMessage>): void {
         pending.delete(msg.id)
         req.reject(new Error(msg.error))
       }
+      // SQLITE_CORRUPT 検出 — Worker を再初期化して復旧
+      if (msg.corrupt && !isRecovering) {
+        handleCorruptionRecovery()
+      }
       break
     }
 
@@ -250,6 +266,44 @@ function handleMessage(event: MessageEvent<WorkerMessage>): void {
 // ================================================================
 // RPC ユーティリティ
 // ================================================================
+
+// ================================================================
+// 破損復旧
+// ================================================================
+
+/**
+ * SQLITE_CORRUPT 検出時の自動復旧フロー。
+ *
+ * 1. 現在の Worker を terminate（全 pending/queued を reject）
+ * 2. Worker を再生成 — Worker 側の init() が破損 DB を検出・修復
+ * 3. 復旧完了後、キュー内のリクエストを処理再開
+ */
+async function handleCorruptionRecovery(): Promise<void> {
+  console.warn('SQLite: database corruption detected, initiating recovery...')
+  isRecovering = true
+
+  // terminate 前にコールバックを退避（terminateWorker で null 化されるため）
+  const savedNotifyCallback = notifyChangeCallback
+  const savedSlowQueryCallback = slowQueryLogCallback
+
+  terminateWorker()
+
+  try {
+    if (savedNotifyCallback) {
+      await initWorker(savedNotifyCallback)
+    }
+    // コールバックを復元
+    if (savedSlowQueryCallback) {
+      slowQueryLogCallback = savedSlowQueryCallback
+    }
+    // 復旧中にキューに溜まったリクエストを処理開始
+    processQueue()
+  } catch (e) {
+    console.error('SQLite: recovery failed:', e)
+  } finally {
+    isRecovering = false
+  }
+}
 
 // ================================================================
 // タイムラインキュー重複排除ユーティリティ

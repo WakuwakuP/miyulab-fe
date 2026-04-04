@@ -140,3 +140,43 @@ export function getSqliteDb(): Promise<DbHandle> {
   ready = getDb(notifyChange)
   return ready
 }
+
+/**
+ * DB コネクションのキャッシュをリセットする。
+ * 次回 getSqliteDb() 呼び出し時に再初期化される。
+ */
+export function resetConnection(): void {
+  ready = null
+}
+
+// ================================================================
+// DB 復旧通知
+// ================================================================
+
+type RecoveryListener = () => void
+const recoveryListeners = new Set<RecoveryListener>()
+
+/**
+ * DB 破損からの復旧完了時に呼ばれるコールバックを登録する。
+ * 戻り値は登録解除関数。
+ */
+export function onDatabaseRecovered(callback: RecoveryListener): () => void {
+  recoveryListeners.add(callback)
+  return () => {
+    recoveryListeners.delete(callback)
+  }
+}
+
+/**
+ * 全復旧リスナーに通知を発火する。
+ * workerClient の復旧フローから呼び出される。
+ */
+export function fireRecoveryNotification(): void {
+  for (const fn of recoveryListeners) {
+    try {
+      fn()
+    } catch (e) {
+      console.error('Recovery listener error:', e)
+    }
+  }
+}

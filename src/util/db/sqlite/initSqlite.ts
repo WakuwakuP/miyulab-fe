@@ -31,6 +31,14 @@ export async function getDb(
   return dbPromise
 }
 
+/**
+ * DB ハンドルのキャッシュをリセットする。
+ * 破損復旧時など、Worker 再初期化に合わせて呼び出す。
+ */
+export function resetDbPromise(): void {
+  dbPromise = null
+}
+
 async function initDb(
   onNotify: (table: TableName, hint?: ChangeHint) => void,
 ): Promise<DbHandle> {
