@@ -197,8 +197,10 @@ async function handleExportDatabase(): Promise<void> {
     throw new Error('Database or sqlite3 module not initialized')
   }
 
-  // WAL をフラッシュ
-  db.exec('PRAGMA wal_checkpoint(TRUNCATE);')
+  // WAL を可能な範囲でフラッシュ（PASSIVE: ノンブロッキング）
+  // TRUNCATE は書き込みロックを取得するため、大量データ時に長時間ブロックする。
+  // PASSIVE は進行中の読み書きをブロックせず、可能なページのみチェックポイントする。
+  db.exec('PRAGMA wal_checkpoint(PASSIVE);')
 
   // DB をシリアライズ
   const bytes: Uint8Array = sqlite3Module.capi.sqlite3_js_db_export(db)

@@ -44,6 +44,28 @@ import { TimelineContext } from './TimelineProvider'
 // Context 型定義
 // ========================================
 
+/** 初期データフェッチの最大同時実行数（Worker キューの圧迫を防ぐ） */
+const INITIAL_FETCH_CONCURRENCY = 3
+
+/**
+ * タスク配列を最大 concurrency 個ずつ並行実行する。
+ * 各タスクの失敗はタスク内で catch 済みの想定。
+ */
+function runWithConcurrencyLimit(
+  tasks: (() => Promise<void>)[],
+  concurrency: number,
+): void {
+  let index = 0
+  function next(): void {
+    if (index >= tasks.length) return
+    const task = tasks[index++]
+    task().finally(next)
+  }
+  for (let i = 0; i < Math.min(concurrency, tasks.length); i++) {
+    next()
+  }
+}
+
 /**
  * StreamingManagerProvider が公開する API
  *
@@ -327,6 +349,9 @@ export const StreamingManagerProvider = ({
       fetchedInitialKeysRef.current.clear()
     }
 
+    // フェッチタスクを収集し、並行度を制限して実行する
+    const tasks: (() => Promise<void>)[] = []
+
     // local / public は全 backendUrl に対してデフォルトで初期データを取得
     for (const app of apps) {
       const { backendUrl } = app
@@ -343,12 +368,14 @@ export const StreamingManagerProvider = ({
           type,
           visible: false,
         }
-        fetchInitialData(client, config, backendUrl).catch((error) => {
-          console.error(
-            `Failed to fetch initial data for ${type} (${backendUrl}):`,
-            error,
-          )
-        })
+        tasks.push(() =>
+          fetchInitialData(client, config, backendUrl).catch((error) => {
+            console.error(
+              `Failed to fetch initial data for ${type} (${backendUrl}):`,
+              error,
+            )
+          }),
+        )
       }
     }
 
@@ -381,11 +408,19 @@ export const StreamingManagerProvider = ({
         }
 
         const client = GetClient(app)
-        fetchInitialData(client, tagFetchConfig, url).catch((error) => {
-          console.error(`Failed to fetch initial data for tag (${url}):`, error)
-        })
+        tasks.push(() =>
+          fetchInitialData(client, tagFetchConfig, url).catch((error) => {
+            console.error(
+              `Failed to fetch initial data for tag (${url}):`,
+              error,
+            )
+          }),
+        )
       }
     }
+
+    // 並行度を制限して実行（Worker キューの圧迫を防ぐ）
+    runWithConcurrencyLimit(tasks, INITIAL_FETCH_CONCURRENCY)
   })
 
   // =============================================

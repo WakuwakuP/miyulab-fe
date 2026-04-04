@@ -22,10 +22,16 @@ export async function exportDatabase(): Promise<void> {
   await handle.sendCommand({ type: 'exportDatabase' })
 }
 
+/** 初回エクスポートの遅延: 起動直後の Worker ブロッキングを回避 */
+const INITIAL_DELAY_MS = 120_000
+
 /**
  * 定期エクスポートを開始する。
  *
- * 初回は即時実行し、以降 EXPORT_INTERVAL_MS ごとに繰り返す。
+ * 初回実行は INITIAL_DELAY_MS 後に遅延する。
+ * 起動直後は bulkUpsertStatuses 等の初期ロード処理が Worker を使用するため、
+ * 重い WAL checkpoint + DB シリアライズを即時実行するとタイムアウトの原因になる。
+ * 以降 EXPORT_INTERVAL_MS ごとに繰り返す。
  * 返却されるクリーンアップ関数で停止可能。
  */
 export function startPeriodicExport(): () => void {
@@ -35,10 +41,13 @@ export function startPeriodicExport(): () => void {
     })
   }
 
-  // 初回実行
-  run()
+  // 初回実行を遅延
+  const initialTimer = setTimeout(run, INITIAL_DELAY_MS)
 
   const intervalId = setInterval(run, EXPORT_INTERVAL_MS)
 
-  return () => clearInterval(intervalId)
+  return () => {
+    clearTimeout(initialTimer)
+    clearInterval(intervalId)
+  }
 }

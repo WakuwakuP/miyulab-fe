@@ -58,13 +58,14 @@ export function handleEnforceMaxLength(
     // どのタイムラインにも属さなくなった孤立 posts を削除
     // notifications.related_post_id の FK は ON DELETE CASCADE がないため、
     // notifications から参照されている posts も除外する
+    // NOT EXISTS は NOT IN より効率的（サブクエリがインデックスを活用しやすい）
     if (postsDeleted) {
       db.exec(
-        `DELETE FROM posts WHERE id NOT IN (
-          SELECT post_id FROM timeline_entries
-        ) AND id NOT IN (
-          SELECT related_post_id FROM notifications WHERE related_post_id IS NOT NULL
-        );`,
+        `DELETE FROM posts WHERE NOT EXISTS (
+           SELECT 1 FROM timeline_entries te WHERE te.post_id = posts.id
+         ) AND NOT EXISTS (
+           SELECT 1 FROM notifications n WHERE n.related_post_id = posts.id
+         );`,
       )
       changedTables.push('posts')
     }
@@ -93,11 +94,11 @@ export function handleEnforceMaxLength(
     if (notifGroups.length > 0) {
       // 通知削除後、孤立 posts も削除する
       db.exec(
-        `DELETE FROM posts WHERE id NOT IN (
-          SELECT post_id FROM timeline_entries
-        ) AND id NOT IN (
-          SELECT related_post_id FROM notifications WHERE related_post_id IS NOT NULL
-        );`,
+        `DELETE FROM posts WHERE NOT EXISTS (
+           SELECT 1 FROM timeline_entries te WHERE te.post_id = posts.id
+         ) AND NOT EXISTS (
+           SELECT 1 FROM notifications n WHERE n.related_post_id = posts.id
+         );`,
       )
       if (!changedTables.includes('notifications')) {
         changedTables.push('notifications')
