@@ -83,6 +83,7 @@ const ModalContent = () => {
                       <div key={media.id}>
                         <Media
                           className="h-[90vh] max-h-none w-[90vw] max-w-none"
+                          fullSize
                           media={media}
                         />
                       </div>
@@ -114,6 +115,7 @@ const ModalContent = () => {
         attachment[index].type === 'image' && (
           <Media
             className="fixed inset-0 z-50 m-auto h-[90vh] max-h-none w-[90vw] max-w-none"
+            fullSize
             media={attachment[index]}
           />
         )

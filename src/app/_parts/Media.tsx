@@ -7,11 +7,13 @@ export const Media = ({
   onClick,
   scrolling = false,
   className = 'w-full',
+  fullSize = false,
 }: {
   media: Entity.Attachment
   onClick?: () => void
   scrolling?: boolean
   className?: HTMLProps<HTMLElement>['className']
+  fullSize?: boolean
 }) => {
   if (scrolling)
     return (
@@ -36,7 +38,11 @@ export const Media = ({
           onClick={() => {
             if (onClick != null) onClick()
           }}
-          src={media.preview_url ?? media.url}
+          src={
+            fullSize
+              ? (media.remote_url ?? media.url)
+              : (media.preview_url ?? media.url)
+          }
           width={1920}
         />
       )

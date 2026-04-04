@@ -136,7 +136,7 @@ export function mapDriveFileToAttachment(
         }
       : null,
     preview_url: file.thumbnailUrl ?? null,
-    remote_url: null,
+    remote_url: file.url,
     text_url: null,
     type: getAttachmentType(file.type),
     url: file.url,
