@@ -1,0 +1,314 @@
+import { describe, expect, it, vi } from 'vitest'
+import type { DbExec } from '../../sqlite/queries/executionEngine'
+import { executeLookupRelated } from '../executor/lookupRelatedExecutor'
+import type { NodeOutput } from '../executor/types'
+import type { LookupRelatedNode } from '../nodes'
+
+/** db.exec モック: 空の結果を返し、呼び出し引数を記録する */
+function mockDb(returnValue: (string | number | null)[][] = []): DbExec {
+  return { exec: vi.fn().mockReturnValue(returnValue) }
+}
+
+function makeInput(
+  rows: { id: number; createdAtMs: number }[],
+  sourceTable = 'notifications',
+): NodeOutput {
+  return {
+    hash: `test:${rows.length}`,
+    rows: rows.map((r) => ({ ...r, table: sourceTable })),
+    sourceTable,
+  }
+}
+
+describe('executeLookupRelated', () => {
+  describe('空入力', () => {
+    it('入力行が空の場合、SQL を実行せず空の結果を返す', () => {
+      const db = mockDb()
+      const node: LookupRelatedNode = {
+        joinConditions: [{ inputColumn: 'id', lookupColumn: 'id' }],
+        kind: 'lookup-related',
+        lookupTable: 'posts',
+      }
+      const input = makeInput([])
+
+      const result = executeLookupRelated(db, node, input)
+
+      expect(result.sql).toBe('')
+      expect(result.binds).toEqual([])
+      expect(result.output.rows).toEqual([])
+      expect(db.exec).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('直接 JOIN (inputColumn=id)', () => {
+    it('inputColumn が id の場合、上流 ID を直接 IN 句で使用する', () => {
+      const db = mockDb()
+      const node: LookupRelatedNode = {
+        joinConditions: [{ inputColumn: 'id', lookupColumn: 'post_id' }],
+        kind: 'lookup-related',
+        lookupTable: 'posts',
+      }
+      const input = makeInput([
+        { createdAtMs: 1000, id: 10 },
+        { createdAtMs: 2000, id: 20 },
+      ])
+
+      const result = executeLookupRelated(db, node, input)
+
+      expect(result.sql).toContain('lt.post_id IN (?, ?)')
+      expect(result.binds).toEqual([10, 20])
+    })
+
+    it('inputColumn 省略時（空文字）も直接 IN 句で使用する', () => {
+      const db = mockDb()
+      const node: LookupRelatedNode = {
+        joinConditions: [{ inputColumn: '', lookupColumn: 'post_id' }],
+        kind: 'lookup-related',
+        lookupTable: 'posts',
+      }
+      const input = makeInput([{ createdAtMs: 1000, id: 10 }])
+
+      const result = executeLookupRelated(db, node, input)
+
+      expect(result.sql).toContain('lt.post_id IN (?)')
+      expect(result.binds).toEqual([10])
+    })
+  })
+
+  describe('inputColumn 自動解決 (inputColumn≠id, resolve なし)', () => {
+    it('inputColumn が id 以外の場合、上流テーブルから subquery で取得する', () => {
+      const db = mockDb()
+      const node: LookupRelatedNode = {
+        joinConditions: [
+          {
+            inputColumn: 'actor_profile_id',
+            lookupColumn: 'author_profile_id',
+          },
+        ],
+        kind: 'lookup-related',
+        lookupTable: 'posts',
+      }
+      const input = makeInput([
+        { createdAtMs: 1000, id: 100 },
+        { createdAtMs: 2000, id: 200 },
+      ])
+
+      const result = executeLookupRelated(db, node, input)
+
+      expect(result.sql).toContain(
+        'lt.author_profile_id IN (SELECT actor_profile_id FROM notifications WHERE id IN (?, ?))',
+      )
+      expect(result.binds).toEqual([100, 200])
+    })
+
+    it('上流テーブル名が sourceTable として正しく使用される', () => {
+      const db = mockDb()
+      const node: LookupRelatedNode = {
+        joinConditions: [
+          { inputColumn: 'related_post_id', lookupColumn: 'id' },
+        ],
+        kind: 'lookup-related',
+        lookupTable: 'posts',
+      }
+      const input = makeInput([{ createdAtMs: 1000, id: 50 }], 'notifications')
+
+      const result = executeLookupRelated(db, node, input)
+
+      expect(result.sql).toContain(
+        'SELECT related_post_id FROM notifications WHERE id IN (?)',
+      )
+    })
+  })
+
+  describe('明示的 resolve (中間テーブル経由)', () => {
+    it('resolve が指定されている場合、中間テーブル経由の subquery を生成する', () => {
+      const db = mockDb()
+      const node: LookupRelatedNode = {
+        joinConditions: [
+          {
+            inputColumn: 'id',
+            lookupColumn: 'id',
+            resolve: {
+              inputKey: 'id',
+              lookupKey: 'id',
+              matchColumn: 'related_post_id',
+              via: 'notifications',
+            },
+          },
+        ],
+        kind: 'lookup-related',
+        lookupTable: 'posts',
+      }
+      const input = makeInput([
+        { createdAtMs: 1000, id: 10 },
+        { createdAtMs: 2000, id: 20 },
+      ])
+
+      const result = executeLookupRelated(db, node, input)
+
+      expect(result.sql).toContain(
+        'lt.id IN (SELECT related_post_id FROM notifications WHERE id IN (?, ?))',
+      )
+      expect(result.binds).toEqual([10, 20])
+      expect(result.dependentTables).toContain('notifications')
+    })
+
+    it('resolve は inputColumn の値に関わらず resolve パスを優先する', () => {
+      const db = mockDb()
+      const node: LookupRelatedNode = {
+        joinConditions: [
+          {
+            inputColumn: 'actor_profile_id',
+            lookupColumn: 'author_profile_id',
+            resolve: {
+              inputKey: 'id',
+              lookupKey: 'id',
+              matchColumn: 'actor_profile_id',
+              via: 'notifications',
+            },
+          },
+        ],
+        kind: 'lookup-related',
+        lookupTable: 'posts',
+      }
+      const input = makeInput([{ createdAtMs: 1000, id: 100 }])
+
+      const result = executeLookupRelated(db, node, input)
+
+      // resolve が優先されるため、resolve の SQL が生成される
+      expect(result.sql).toContain(
+        'lt.author_profile_id IN (SELECT actor_profile_id FROM notifications WHERE id IN (?))',
+      )
+    })
+  })
+
+  describe('timeCondition', () => {
+    it('afterInput=true の場合、上流時間の後の時間窓で検索する', () => {
+      const db = mockDb()
+      const node: LookupRelatedNode = {
+        joinConditions: [{ inputColumn: 'id', lookupColumn: 'id' }],
+        kind: 'lookup-related',
+        lookupTable: 'posts',
+        timeCondition: {
+          afterInput: true,
+          inputTimeColumn: 'created_at_ms',
+          lookupTimeColumn: 'created_at_ms',
+          windowMs: 180000,
+        },
+      }
+      const input = makeInput([
+        { createdAtMs: 1000, id: 1 },
+        { createdAtMs: 3000, id: 3 },
+      ])
+
+      const result = executeLookupRelated(db, node, input)
+
+      // minTime=1000, maxTime=3000, window=180000
+      expect(result.sql).toContain('lt.created_at_ms > ?')
+      expect(result.sql).toContain('lt.created_at_ms <= ?')
+      // binds: [ids..., minTime, maxTime+window]
+      expect(result.binds).toContain(1000) // minTime
+      expect(result.binds).toContain(3000 + 180000) // maxTime + windowMs
+    })
+
+    it('afterInput=false の場合、上流時間の前の時間窓で検索する', () => {
+      const db = mockDb()
+      const node: LookupRelatedNode = {
+        joinConditions: [{ inputColumn: 'id', lookupColumn: 'id' }],
+        kind: 'lookup-related',
+        lookupTable: 'posts',
+        timeCondition: {
+          afterInput: false,
+          inputTimeColumn: 'created_at_ms',
+          lookupTimeColumn: 'created_at_ms',
+          windowMs: 60000,
+        },
+      }
+      const input = makeInput([
+        { createdAtMs: 5000, id: 1 },
+        { createdAtMs: 8000, id: 2 },
+      ])
+
+      const result = executeLookupRelated(db, node, input)
+
+      // maxTime=8000, minTime=5000, window=60000
+      expect(result.sql).toContain('lt.created_at_ms < ?')
+      expect(result.sql).toContain('lt.created_at_ms >= ?')
+      expect(result.binds).toContain(8000) // maxTime
+      expect(result.binds).toContain(5000 - 60000) // minTime - windowMs
+    })
+  })
+
+  describe('dependentTables', () => {
+    it('lookupTable と sourceTable が常に含まれる', () => {
+      const db = mockDb()
+      const node: LookupRelatedNode = {
+        joinConditions: [{ inputColumn: 'id', lookupColumn: 'id' }],
+        kind: 'lookup-related',
+        lookupTable: 'posts',
+      }
+      const input = makeInput([{ createdAtMs: 1000, id: 1 }])
+
+      const result = executeLookupRelated(db, node, input)
+
+      expect(result.dependentTables).toContain('posts')
+      expect(result.dependentTables).toContain('notifications')
+    })
+
+    it('resolve の via テーブルも dependentTables に含まれる', () => {
+      const db = mockDb()
+      const node: LookupRelatedNode = {
+        joinConditions: [
+          {
+            inputColumn: 'id',
+            lookupColumn: 'id',
+            resolve: {
+              inputKey: 'id',
+              lookupKey: 'id',
+              matchColumn: 'post_id',
+              via: 'timeline_entries',
+            },
+          },
+        ],
+        kind: 'lookup-related',
+        lookupTable: 'posts',
+      }
+      const input = makeInput([{ createdAtMs: 1000, id: 1 }])
+
+      const result = executeLookupRelated(db, node, input)
+
+      expect(result.dependentTables).toContain('timeline_entries')
+    })
+  })
+
+  describe('出力テーブル解決', () => {
+    it('lookupTable=posts の場合、出力行の table は posts になる', () => {
+      const db = mockDb([[1, 5000]])
+      const node: LookupRelatedNode = {
+        joinConditions: [{ inputColumn: 'id', lookupColumn: 'id' }],
+        kind: 'lookup-related',
+        lookupTable: 'posts',
+      }
+      const input = makeInput([{ createdAtMs: 1000, id: 1 }])
+
+      const result = executeLookupRelated(db, node, input)
+
+      expect(result.output.sourceTable).toBe('posts')
+      expect(result.output.rows[0].table).toBe('posts')
+    })
+
+    it('lookupTable=notifications の場合、出力行の table は notifications になる', () => {
+      const db = mockDb([[1, 5000]])
+      const node: LookupRelatedNode = {
+        joinConditions: [{ inputColumn: 'id', lookupColumn: 'id' }],
+        kind: 'lookup-related',
+        lookupTable: 'notifications',
+      }
+      const input = makeInput([{ createdAtMs: 1000, id: 1 }], 'posts')
+
+      const result = executeLookupRelated(db, node, input)
+
+      expect(result.output.sourceTable).toBe('notifications')
+    })
+  })
+})

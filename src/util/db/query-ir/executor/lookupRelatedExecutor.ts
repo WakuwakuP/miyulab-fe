@@ -44,19 +44,24 @@ export function executeLookupRelated(
 
   // --- JOIN 条件: 上流 IDs を IN 句で注入 ---
   for (const jc of node.joinConditions) {
+    const ids = input.rows.map((r) => r.id)
+    const placeholders = ids.map(() => '?').join(', ')
+
     if (jc.resolve) {
-      // 間接 JOIN: 中間テーブル経由
-      const ids = input.rows.map((r) => r.id)
-      const placeholders = ids.map(() => '?').join(', ')
+      // 明示的 resolve: 中間テーブル経由
       conditions.push(
         `${lt}.${jc.lookupColumn} IN (SELECT ${jc.resolve.matchColumn} FROM ${jc.resolve.via} WHERE ${jc.resolve.inputKey} IN (${placeholders}))`,
       )
       binds.push(...ids)
       dependentTables.push(jc.resolve.via)
+    } else if (jc.inputColumn && jc.inputColumn !== 'id') {
+      // inputColumn 自動解決: 上流テーブルから inputColumn を subquery で取得
+      conditions.push(
+        `${lt}.${jc.lookupColumn} IN (SELECT ${jc.inputColumn} FROM ${input.sourceTable} WHERE id IN (${placeholders}))`,
+      )
+      binds.push(...ids)
     } else {
       // 直接 JOIN: 上流の ID を lookupColumn に直接マッチ
-      const ids = input.rows.map((r) => r.id)
-      const placeholders = ids.map(() => '?').join(', ')
       conditions.push(`${lt}.${jc.lookupColumn} IN (${placeholders})`)
       binds.push(...ids)
     }

@@ -389,14 +389,17 @@ describe('FLOW_PRESETS', () => {
       expect(plan.nodes.some((n) => n.node.kind === 'output-v2')).toBe(true)
     })
 
-    it('lookup が posts を参照し related_post_id 経由で解決すること', () => {
+    it('lookup が posts を参照し actor_profile_id → author_profile_id で結合すること', () => {
       const plan = getPreset('aerial-reply').plan()
       const lookup = plan.nodes.find((n) => n.node.kind === 'lookup-related')
       expect(lookup?.node.kind).toBe('lookup-related')
       if (lookup?.node.kind === 'lookup-related') {
         expect(lookup.node.lookupTable).toBe('posts')
-        expect(lookup.node.joinConditions[0]?.resolve?.matchColumn).toBe(
-          'related_post_id',
+        expect(lookup.node.joinConditions[0]?.inputColumn).toBe(
+          'actor_profile_id',
+        )
+        expect(lookup.node.joinConditions[0]?.lookupColumn).toBe(
+          'author_profile_id',
         )
       }
     })

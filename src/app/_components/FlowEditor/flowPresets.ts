@@ -297,7 +297,14 @@ function aerialReplyPlan(): QueryPlanV2 {
       {
         id: n,
         node: {
-          filters: [],
+          filters: [
+            {
+              column: 'name',
+              op: 'IN',
+              table: 'notification_types',
+              value: ['favourite', 'reaction', 'reblog'],
+            },
+          ],
           kind: 'get-ids',
           table: 'notifications',
         },
@@ -307,18 +314,18 @@ function aerialReplyPlan(): QueryPlanV2 {
         node: {
           joinConditions: [
             {
-              inputColumn: 'id',
-              lookupColumn: 'id',
-              resolve: {
-                inputKey: 'id',
-                lookupKey: 'id',
-                matchColumn: 'related_post_id',
-                via: 'notifications',
-              },
+              inputColumn: 'actor_profile_id',
+              lookupColumn: 'author_profile_id',
             },
           ],
           kind: 'lookup-related',
           lookupTable: 'posts',
+          timeCondition: {
+            afterInput: true,
+            inputTimeColumn: 'created_at_ms',
+            lookupTimeColumn: 'created_at_ms',
+            windowMs: 180000,
+          },
         },
       },
       {
