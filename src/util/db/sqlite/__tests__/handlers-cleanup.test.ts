@@ -67,7 +67,7 @@ describe('handleEnforceMaxLength', () => {
       (c) =>
         c.sql.includes('DELETE') &&
         c.sql.includes('posts') &&
-        c.sql.includes('NOT EXISTS'),
+        c.sql.includes('NOT IN'),
     )
     expect(deleteOrphan).toBeDefined()
   })
@@ -124,7 +124,7 @@ describe('handleEnforceMaxLength', () => {
       (c) =>
         c.sql.includes('DELETE') &&
         c.sql.includes('posts') &&
-        c.sql.includes('NOT EXISTS'),
+        c.sql.includes('NOT IN'),
     )
     expect(deleteOrphan).toBeDefined()
   })
@@ -147,11 +147,11 @@ describe('handleEnforceMaxLength', () => {
       (c) =>
         c.sql.includes('DELETE') &&
         c.sql.includes('posts') &&
-        c.sql.includes('NOT EXISTS'),
+        c.sql.includes('NOT IN'),
     )
     expect(deleteOrphanCalls.length).toBeGreaterThanOrEqual(1)
 
-    // timeline_entries と notifications の両方を NOT EXISTS チェック
+    // timeline_entries と notifications の両方を NOT IN チェック
     const orphanSql = deleteOrphanCalls[0].sql
     expect(orphanSql).toContain('timeline_entries')
     expect(orphanSql).toContain('notifications')

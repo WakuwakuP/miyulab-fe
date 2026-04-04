@@ -372,16 +372,12 @@ export type ErrorResponse = {
   type: 'error'
   id: number
   error: string
-  /** SQLITE_CORRUPT を検出した場合 true（メインスレッド側で復旧フローを開始する） */
-  corrupt?: boolean
 }
 
 /** Worker 初期化完了通知 */
 export type InitMessage = {
   type: 'init'
   persistence: 'opfs' | 'memory'
-  /** 破損した DB を復旧して再作成した場合 true */
-  recovered?: boolean
 }
 
 /** スロークエリログエントリ（Worker → Main Thread 通知用） */

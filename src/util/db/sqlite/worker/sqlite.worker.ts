@@ -42,9 +42,6 @@ let db: RawDb = null
 // biome-ignore lint/suspicious/noExplicitAny: sqlite-wasm module type
 let sqlite3Module: any = null
 
-/** 破損検出フラグ — true の間は全リクエストを即座に拒否する */
-let corruptLock = false
-
 // テーブルごとの書き込みバージョン — 書き込みのたびにインクリメント
 const tableVersions = new Map<string, number>()
 
@@ -65,9 +62,7 @@ function captureTableVersions(): Record<string, number> {
 // 初期化
 // ================================================================
 
-async function init(
-  origin: string,
-): Promise<{ persistence: 'opfs' | 'memory'; recovered: boolean }> {
+async function init(origin: string): Promise<'opfs' | 'memory'> {
   // Turbopack が import.meta.url を無効なスキームに書き換えるため、
   // Worker 内の相対 URL 解決が失敗する。
   // メインスレッドから渡された origin を使い絶対 URL で WASM を取得する。
@@ -115,119 +110,11 @@ async function init(
   db.exec('PRAGMA synchronous=NORMAL;')
   db.exec('PRAGMA foreign_keys = ON;')
 
-  // 破損チェック・修復（OPFS の場合のみ）
-  const repair = await checkAndRepairDatabase(persistence)
-  persistence = repair.persistence
-
-  if (repair.recovered) {
-    // 復旧時はスキーマが既に作成済み（checkAndRepairDatabase 内で createFreshSchema を実行）
-    return { persistence, recovered: true }
-  }
-
-  // スキーマ初期化（正常時のみマイグレーションを実行）
+  // スキーマ初期化
   const { ensureSchema } = await import('../schema')
   ensureSchema({ db })
 
-  return { persistence, recovered: false }
-}
-
-// ================================================================
-// 破損チェック・修復
-// ================================================================
-
-/**
- * DB の整合性を quick_check で検証し、破損している場合は段階的に復旧を試みる。
- *
- * 復旧戦略（優先順）:
- * 1. REINDEX — インデックスのみの破損 (SQLITE_CORRUPT_INDEX) を修復
- * 2. DROP ALL + CREATE FRESH — テーブル定義は読めるがデータが壊れている場合
- * 3. DB 削除 + インメモリ DB — 完全に読めない場合の最終手段
- */
-async function checkAndRepairDatabase(
-  persistence: 'opfs' | 'memory',
-): Promise<{ persistence: 'opfs' | 'memory'; recovered: boolean }> {
-  // インメモリ DB は破損しない
-  if (persistence === 'memory') {
-    return { persistence, recovered: false }
-  }
-
-  // PRAGMA quick_check — integrity_check より高速（インデックス検証をスキップ）
-  let isCorrupt = false
-  try {
-    const rows = db.exec('PRAGMA quick_check;', {
-      returnValue: 'resultRows',
-    }) as string[][]
-    if (rows.length !== 1 || rows[0][0] !== 'ok') {
-      isCorrupt = true
-    }
-  } catch {
-    isCorrupt = true
-  }
-
-  if (!isCorrupt) return { persistence, recovered: false }
-
-  console.warn(
-    'SQLite Worker: database corruption detected, attempting repair...',
-  )
-
-  // Strategy 1: REINDEX — SQLITE_CORRUPT_INDEX (rc=779) の場合に有効
-  try {
-    db.exec('REINDEX;')
-    const rows = db.exec('PRAGMA quick_check;', {
-      returnValue: 'resultRows',
-    }) as string[][]
-    if (rows.length === 1 && rows[0][0] === 'ok') {
-      console.info('SQLite Worker: REINDEX fixed database corruption')
-      return { persistence, recovered: true }
-    }
-  } catch (e) {
-    console.warn('SQLite Worker: REINDEX failed:', e)
-  }
-
-  // Strategy 2: 全テーブル削除 + 再作成
-  try {
-    const { createFreshSchema, dropAllTables } = await import('../schema')
-    dropAllTables({ db })
-    createFreshSchema({ db })
-    console.info(
-      'SQLite Worker: database reset via dropAllTables + createFreshSchema',
-    )
-    return { persistence, recovered: true }
-  } catch (e) {
-    console.warn('SQLite Worker: dropAllTables + createFreshSchema failed:', e)
-  }
-
-  // Strategy 3: DB 削除 + インメモリ DB（最終手段）
-  console.warn(
-    'SQLite Worker: database unrecoverable, deleting OPFS and using in-memory DB',
-  )
-  try {
-    db.close()
-  } catch {}
-
-  // OPFS ファイルを削除（次回起動時にクリーンな OPFS DB を作成するため）
-  try {
-    const root = await navigator.storage.getDirectory()
-    // SAH Pool VFS ディレクトリ
-    try {
-      await root.removeEntry('miyulab-fe', { recursive: true })
-    } catch {}
-    // 通常 OPFS DB ファイル
-    try {
-      await root.removeEntry('miyulab-fe.sqlite3')
-    } catch {}
-  } catch {}
-
-  // インメモリ DB で続行
-  db = new sqlite3Module.oo1.DB(':memory:', 'c')
-  db.exec('PRAGMA journal_mode=WAL;')
-  db.exec('PRAGMA synchronous=NORMAL;')
-  db.exec('PRAGMA foreign_keys = ON;')
-
-  const { createFreshSchema } = await import('../schema')
-  createFreshSchema({ db })
-
-  return { persistence: 'memory', recovered: true }
+  return persistence
 }
 
 // ================================================================
@@ -359,15 +246,8 @@ function sendResponse(
 }
 
 function sendError(id: number, error: unknown): void {
-  const errorStr = error instanceof Error ? error.message : String(error)
-  // 初回の SQLITE_CORRUPT 検出時のみ corrupt フラグを付与し、ロックを有効化
-  const isNewCorruption = !corruptLock && errorStr.includes('SQLITE_CORRUPT')
-  if (isNewCorruption) {
-    corruptLock = true
-  }
   const response: WorkerMessage = {
-    corrupt: isNewCorruption || undefined,
-    error: errorStr,
+    error: error instanceof Error ? error.message : String(error),
     id,
     type: 'error',
   }
@@ -383,8 +263,8 @@ self.onmessage = (
   if (msg.type === '__init') {
     const { origin } = msg
     init(origin)
-      .then(({ persistence, recovered }) => {
-        const initMsg: WorkerMessage = { persistence, recovered, type: 'init' }
+      .then((persistence) => {
+        const initMsg: WorkerMessage = { persistence, type: 'init' }
         self.postMessage(initMsg)
       })
       .catch((e) => {
@@ -396,12 +276,6 @@ self.onmessage = (
         }
         self.postMessage(errMsg)
       })
-    return
-  }
-
-  // 破損ロック中は全リクエストを即座に拒否（連鎖エラー防止）
-  if (corruptLock) {
-    sendError(msg.id, 'Database is corrupt — awaiting recovery')
     return
   }
 
