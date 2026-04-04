@@ -22,12 +22,8 @@ import {
   DialogTitle,
 } from 'components/ui/dialog'
 import {
-  ArrowDownToLine,
-  BarChart3,
   BookTemplate,
   Filter,
-  GitMerge,
-  Link2,
   Loader2,
   Play,
   Shield,
@@ -42,15 +38,10 @@ import {
   useRef,
   useState,
 } from 'react'
-import type { BackendFilter, TimelineConfigV2 } from 'types/types'
-import { resolveBackendUrlFromAccountId } from 'util/accountResolver'
-import type { ConfigToNodesContext } from 'util/db/query-ir/compat/configToNodes'
-import { configToQueryPlan } from 'util/db/query-ir/compat/configToNodes'
+import type { TimelineConfigV2 } from 'types/types'
 import { topoSort } from 'util/db/query-ir/executor/topoSort'
 import type { SerializedGraphPlan } from 'util/db/query-ir/executor/types'
 import type { QueryPlanV2 } from 'util/db/query-ir/nodes'
-import { isQueryPlanV2 } from 'util/db/query-ir/nodes'
-import { migrateQueryPlanV1ToV2 } from 'util/db/query-ir/v2/migrateV1ToV2'
 import { validateQueryPlanV2 } from 'util/db/query-ir/v2/validateV2'
 import { getSqliteDb } from 'util/db/sqlite'
 import { AppsContext } from 'util/provider/AppsProvider'
@@ -58,20 +49,26 @@ import {
   normalizeBackendFilter,
   resolveBackendUrls,
 } from 'util/timelineConfigValidator'
+import { ADD_MENU_ITEMS, type AddMenuItem } from './addMenuItems'
 import { DebugResultPanel } from './DebugResultPanel'
+import { buildDebugResultsByNode } from './debugResultHelpers'
 import { FlowCanvas, type ViewportCenterFn } from './FlowCanvas'
 import { FLOW_PRESETS } from './flowPresets'
 import { flowToQueryPlanV2 } from './flowToQueryPlanV2'
+import {
+  createDefaultQueryPlanV2,
+  extractBackendFilter,
+  extractModeration,
+  planFromConfig,
+  summarizeV2Plan,
+} from './planHelpers'
 import { queryPlanToFlow } from './queryPlanToFlow'
 import type {
-  DebugNodeResult,
-  DebugResultItem,
   FlowEdge,
   FlowExecStatus,
   FlowGraphState,
   FlowNode,
 } from './types'
-import { getNodeLabelV2 } from './types'
 
 // --------------- Props ---------------
 
@@ -81,308 +78,6 @@ type FlowQueryEditorModalProps = {
   /** 編集対象のタイムライン設定 */
   config: TimelineConfigV2
   onSave: (updates: Partial<TimelineConfigV2>) => void
-}
-
-// --------------- Default QueryPlanV2 ---------------
-
-function createDefaultQueryPlanV2(): QueryPlanV2 {
-  const a =
-    typeof crypto !== 'undefined' && crypto.randomUUID
-      ? crypto.randomUUID()
-      : `a-${Date.now()}`
-  const b =
-    typeof crypto !== 'undefined' && crypto.randomUUID
-      ? crypto.randomUUID()
-      : `b-${Date.now() + 1}`
-  return {
-    edges: [{ source: a, target: b }],
-    nodes: [
-      {
-        id: a,
-        node: { filters: [], kind: 'get-ids', table: 'posts' },
-      },
-      {
-        id: b,
-        node: {
-          kind: 'output-v2',
-          pagination: { limit: 50 },
-          sort: { direction: 'DESC', field: 'created_at_ms' },
-        },
-      },
-    ],
-    version: 2,
-  }
-}
-
-function planFromConfig(config: TimelineConfigV2): QueryPlanV2 {
-  if (config.queryPlan) {
-    if (isQueryPlanV2(config.queryPlan)) {
-      return config.queryPlan
-    }
-    return migrateQueryPlanV1ToV2(config.queryPlan)
-  }
-  const ctx: ConfigToNodesContext = {
-    localAccountIds: [],
-    queryLimit: 50,
-    serverIds: [],
-  }
-  return migrateQueryPlanV1ToV2(configToQueryPlan(config, ctx))
-}
-
-// --------------- Add-node menu (V2) ---------------
-
-type AddMenuItem = {
-  icon: React.ReactNode
-  label: string
-  description: string
-  createNode: (id: string, viewport: { x: number; y: number }) => FlowNode
-}
-
-const ADD_MENU_ITEMS: AddMenuItem[] = [
-  {
-    createNode: (id, vp) => ({
-      data: {
-        config: { filters: [], kind: 'get-ids', table: 'posts' },
-        nodeType: 'get-ids',
-      },
-      id,
-      position: vp,
-      type: 'get-ids',
-    }),
-    description: 'テーブルから ID を取得',
-    icon: <BarChart3 className="h-3.5 w-3.5 text-sky-400" />,
-    label: 'getIds',
-  },
-  {
-    createNode: (id, vp) => ({
-      data: {
-        config: {
-          joinConditions: [
-            {
-              inputColumn: 'actor_profile_id',
-              lookupColumn: 'author_profile_id',
-            },
-          ],
-          kind: 'lookup-related',
-          lookupTable: 'posts',
-        },
-        nodeType: 'lookup-related',
-      },
-      id,
-      position: vp,
-      type: 'lookup-related',
-    }),
-    description: '関連テーブルへ相関検索',
-    icon: <Link2 className="h-3.5 w-3.5 text-violet-400" />,
-    label: 'lookupRelated',
-  },
-  {
-    createNode: (id, vp) => ({
-      data: {
-        config: {
-          kind: 'merge-v2',
-          limit: 50,
-          strategy: 'interleave-by-time',
-        },
-        nodeType: 'merge-v2',
-      },
-      id,
-      position: vp,
-      type: 'merge-v2',
-    }),
-    description: '複数ソースを結合',
-    icon: <GitMerge className="h-3.5 w-3.5 text-cyan-400" />,
-    label: 'merge',
-  },
-  {
-    createNode: (id, vp) => ({
-      data: {
-        config: {
-          kind: 'output-v2',
-          pagination: { limit: 50 },
-          sort: { direction: 'DESC', field: 'created_at_ms' },
-        },
-        nodeType: 'output-v2',
-      },
-      id,
-      position: vp,
-      type: 'output-v2',
-    }),
-    description: 'ソート & ページネーション',
-    icon: <ArrowDownToLine className="h-3.5 w-3.5 text-green-400" />,
-    label: 'output',
-  },
-]
-
-// --------------- V2 plan analysis helpers ---------------
-
-/** V2 plan の GetIds ノードから backendFilter を抽出する */
-function extractBackendFilter(plan: QueryPlanV2): BackendFilter {
-  for (const n of plan.nodes) {
-    if (n.node.kind !== 'get-ids') continue
-    const f = n.node.filters.find(
-      (f) => 'column' in f && f.column === 'local_account_id' && f.op === 'IN',
-    )
-    if (!f || !('value' in f) || !f.value) continue
-    const urls = (f.value as number[])
-      .map((id) => resolveBackendUrlFromAccountId(id))
-      .filter((u): u is string => u != null)
-    if (urls.length === 0) return { mode: 'all' }
-    if (urls.length === 1) return { backendUrl: urls[0], mode: 'single' }
-    return { backendUrls: urls, mode: 'composite' }
-  }
-  return { mode: 'all' }
-}
-
-/** V2 plan から moderation (mute/block) 設定を検出する */
-function extractModeration(plan: QueryPlanV2): {
-  applyBlock: boolean
-  applyMute: boolean
-} {
-  let hasMute = false
-  let hasBlock = false
-  for (const n of plan.nodes) {
-    if (n.node.kind !== 'get-ids') continue
-    for (const f of n.node.filters) {
-      if ('mode' in f && f.mode === 'not-exists') {
-        if (f.table === 'muted_accounts') hasMute = true
-        if (f.table === 'blocked_instances') hasBlock = true
-      }
-    }
-  }
-  return { applyBlock: hasBlock, applyMute: hasMute }
-}
-
-/** V2 plan のノード構成をテキスト要約する */
-function summarizeV2Plan(plan: QueryPlanV2): string {
-  const lines: string[] = []
-  for (const n of plan.nodes) {
-    const { kind } = n.node
-    switch (kind) {
-      case 'get-ids': {
-        const node = n.node
-        const filterCount = node.filters.length
-        lines.push(
-          `[${n.id.slice(0, 8)}] GetIds(${node.table}) — ${filterCount} filters`,
-        )
-        break
-      }
-      case 'lookup-related': {
-        const node = n.node
-        lines.push(`[${n.id.slice(0, 8)}] LookupRelated(${node.lookupTable})`)
-        break
-      }
-      case 'merge-v2': {
-        const node = n.node
-        lines.push(
-          `[${n.id.slice(0, 8)}] Merge(${node.strategy}, limit=${node.limit})`,
-        )
-        break
-      }
-      case 'output-v2': {
-        const node = n.node
-        lines.push(
-          `[${n.id.slice(0, 8)}] Output(${node.sort.direction}, limit=${node.pagination.limit})`,
-        )
-        break
-      }
-    }
-  }
-  const edgeLines = plan.edges.map(
-    (e) => `  ${e.source.slice(0, 8)} → ${e.target.slice(0, 8)}`,
-  )
-  return `Nodes:\n${lines.join('\n')}\n\nEdges:\n${edgeLines.join('\n')}`
-}
-
-// --------------- デバッグ結果の抽出 ---------------
-
-/** HTML タグを除去してプレーンテキスト化し、指定文字数で切り詰める */
-function stripHtml(html: string, maxLen = 80): string {
-  const text = html
-    .replace(/<[^>]*>/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-  return text.length > maxLen ? `${text.slice(0, maxLen)}…` : text
-}
-
-/** ms タイムスタンプを HH:mm 形式に変換 */
-function formatTime(ms: number): string {
-  const d = new Date(ms)
-  return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-}
-
-/**
- * GraphExecuteResult の生データからノード別の DebugNodeResult[] を構築する。
- *
- * Post row layout (STATUS_BASE_SELECT):
- *   [0] post_id, [3] created_at_ms, [5] content_html,
- *   [11] is_reblog, [14] author_acct
- *
- * Notification row layout:
- *   [0] id, [2] created_at_ms, [3] notification_type,
- *   [6] actor_acct, [15] rp_content
- */
-function buildDebugResultsByNode(
-  nodeOutputIds: Record<
-    string,
-    { table: 'posts' | 'notifications'; id: number }[]
-  >,
-  postRows: (string | number | null)[][],
-  notifRows: (string | number | null)[][],
-  flowNodes: FlowNode[],
-): DebugNodeResult[] {
-  const postMap = new Map<number, (string | number | null)[]>()
-  for (const row of postRows) postMap.set(row[0] as number, row)
-
-  const notifMap = new Map<number, (string | number | null)[]>()
-  for (const row of notifRows) notifMap.set(row[0] as number, row)
-
-  // ReactFlow node ID → label のマップ
-  const flowNodeMap = new Map<string, FlowNode>()
-  for (const fn of flowNodes) flowNodeMap.set(fn.id, fn)
-
-  const results: DebugNodeResult[] = []
-
-  // output-v2 ノードは最終結果なのでスキップ
-  for (const [nodeId, entries] of Object.entries(nodeOutputIds)) {
-    const flowNode = flowNodeMap.get(nodeId)
-    if (!flowNode) continue
-    // output ノードは他のノードの集約なのでスキップ
-    if (flowNode.data.nodeType === 'output-v2') continue
-
-    const label = getNodeLabelV2(flowNode.data)
-    const items: DebugResultItem[] = []
-
-    for (const entry of entries) {
-      if (entry.table === 'posts') {
-        const row = postMap.get(entry.id)
-        if (!row) continue
-        items.push({
-          acct: (row[14] as string) ?? '',
-          contentPreview: stripHtml((row[5] as string) ?? ''),
-          createdAt: formatTime(row[3] as number),
-          id: entry.id,
-          isReblog: (row[11] as number) === 1,
-          table: 'posts',
-        })
-      } else {
-        const row = notifMap.get(entry.id)
-        if (!row) continue
-        items.push({
-          actorAcct: (row[6] as string) ?? '',
-          createdAt: formatTime(row[2] as number),
-          id: entry.id,
-          notificationType: (row[3] as string) ?? '',
-          relatedContentPreview: stripHtml((row[15] as string) ?? ''),
-          table: 'notifications',
-        })
-      }
-    }
-
-    results.push({ items, nodeId, nodeLabel: label })
-  }
-
-  return results
 }
 
 // --------------- Component ---------------
