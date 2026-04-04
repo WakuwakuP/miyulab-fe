@@ -128,8 +128,8 @@ export const MixedTimeline = ({
             increaseViewportBy={200}
             isScrolling={setIsScrolling}
             itemContent={(_, item) => {
-              // _type フィールドで Status と Notification を判別
-              if ('_type' in item && item._type === 'notification') {
+              // Entity.Notification は type フィールドを持つ (StatusAddAppIndex は持たない)
+              if ('type' in item) {
                 return (
                   <Notification
                     key={item.id}
