@@ -216,11 +216,11 @@ describe('v2.0.0 マイグレーション', () => {
             }
             if (
               sql.includes('sqlite_master') &&
-              sql.includes("name='profiles'")
+              sql.includes("name='idx_profiles_canonical_acct'")
             ) {
               return [
                 [
-                  'CREATE TABLE profiles (id INTEGER PRIMARY KEY, UNIQUE(canonical_acct))',
+                  'CREATE UNIQUE INDEX idx_profiles_canonical_acct ON profiles(canonical_acct)',
                 ],
               ]
             }
@@ -259,12 +259,12 @@ describe('v2.0.0 マイグレーション', () => {
       const handle = { db } as SchemaDbHandle
       runMigrations(handle, mockDropAll, mockCreateFresh)
 
-      // v2.0.1 の up() による CREATE TABLE (2) + v2.0.4 の _profile_merge_map + profiles 再作成 (2)
+      // v2.0.1 の up() による CREATE TABLE (2) + v2.0.4 の _profile_merge_map (1)
       const createTableCalls = db.exec.mock.calls.filter(
         (call) =>
           typeof call[0] === 'string' && call[0].includes('CREATE TABLE'),
       )
-      expect(createTableCalls).toHaveLength(4)
+      expect(createTableCalls).toHaveLength(3)
       // v2.0.2 の up() による UPDATE が実行される
       const updateCalls = db.exec.mock.calls.filter(
         (call) =>
@@ -279,14 +279,14 @@ describe('v2.0.0 マイグレーション', () => {
           call[0].includes('ALTER TABLE profiles ADD COLUMN canonical_acct'),
       )
       expect(alterCalls).toHaveLength(1)
-      // v2.0.4 の up() による profiles テーブル再作成 (RENAME) が実行される
-      const renameCalls = db.exec.mock.calls.filter(
+      // v2.0.4 の up() による UNIQUE INDEX 作成が実行される
+      const uniqueIndexCalls = db.exec.mock.calls.filter(
         (call) =>
           typeof call[0] === 'string' &&
-          call[0].includes('RENAME TO') &&
-          call[0].includes('profiles'),
+          call[0].includes('CREATE UNIQUE INDEX') &&
+          call[0].includes('canonical_acct'),
       )
-      expect(renameCalls).toHaveLength(1)
+      expect(uniqueIndexCalls).toHaveLength(1)
       // フォールバック (DROP → 再作成) は使用されない
       expect(mockDropAll).not.toHaveBeenCalled()
       expect(mockCreateFresh).not.toHaveBeenCalled()

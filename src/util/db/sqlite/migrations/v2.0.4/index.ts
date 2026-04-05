@@ -1,9 +1,8 @@
 import type { SchemaDbHandle } from '../../worker/workerSchema'
-import { recreateTable } from '../helpers'
 import type { Migration } from '../types'
 
 /**
- * v2.0.4 マイグレーション — profiles テーブルの UNIQUE 制約変更
+ * v2.0.4 マイグレーション — profiles の重複統合 + canonical_acct UNIQUE 化
  *
  * 同一 Fediverse ユーザーが異なるサーバー経由で別々の profile_id を持つ問題を修正。
  *
@@ -12,13 +11,16 @@ import type { Migration } from '../types'
  *   - loser を参照する全 FK を winner に付け替え
  *   - loser 行を削除 (CASCADE で profile_stats / profile_fields / profile_custom_emojis も削除)
  *
- * Phase 2: テーブル再作成
- *   - UNIQUE(username, server_id) → UNIQUE(canonical_acct) に変更
- *   - recreateTable ヘルパーでバックアップリネーム方式により安全に実施
+ * Phase 2: UNIQUE INDEX 追加
+ *   - 既存の非 UNIQUE インデックス idx_profiles_canonical_acct を DROP
+ *   - canonical_acct に UNIQUE INDEX を作成
+ *   - テーブル再作成は不要 (PRAGMA foreign_keys = OFF がトランザクション内で効かないため)
+ *   - 旧 UNIQUE(username, server_id) テーブル制約は残るが、
+ *     ensureProfile が ON CONFLICT(canonical_acct) を使うため実質無害
  */
 export const v2_0_4_migration: Migration = {
   description:
-    'Merge duplicate profiles and change UNIQUE constraint from (username, server_id) to (canonical_acct)',
+    'Merge duplicate profiles and add UNIQUE index on canonical_acct for cross-server identity dedup',
 
   up(handle: SchemaDbHandle) {
     const { db } = handle
@@ -113,74 +115,23 @@ export const v2_0_4_migration: Migration = {
     db.exec('DROP TABLE _profile_merge_map;')
 
     // ----------------------------------------------------------------
-    // Phase 2: テーブル再作成 (UNIQUE 制約変更)
+    // Phase 2: canonical_acct に UNIQUE INDEX を追加
     // ----------------------------------------------------------------
+    // テーブル再作成 (recreateTable) は PRAGMA foreign_keys = OFF が
+    // トランザクション内で効かないため使用しない。
+    // 代わりに既存の非 UNIQUE インデックスを UNIQUE インデックスに置き換える。
+    // ON CONFLICT(canonical_acct) は UNIQUE INDEX でも動作する。
 
-    const newCreateSql = `
-      CREATE TABLE profiles (
-        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-        actor_uri           TEXT,
-        username            TEXT    NOT NULL,
-        server_id           INTEGER NOT NULL,
-        acct                TEXT    NOT NULL,
-        canonical_acct      TEXT    NOT NULL DEFAULT '',
-        display_name        TEXT    NOT NULL DEFAULT '',
-        url                 TEXT    NOT NULL DEFAULT '',
-        avatar_url          TEXT    NOT NULL DEFAULT '',
-        avatar_static_url   TEXT    NOT NULL DEFAULT '',
-        header_url          TEXT    NOT NULL DEFAULT '',
-        header_static_url   TEXT    NOT NULL DEFAULT '',
-        bio                 TEXT    NOT NULL DEFAULT '',
-        is_locked           INTEGER NOT NULL DEFAULT 0,
-        is_bot              INTEGER,
-        created_at          TEXT    NOT NULL DEFAULT '',
-        moved_to_profile_id INTEGER,
-        last_fetched_at     INTEGER,
-        is_detail_fetched   INTEGER NOT NULL DEFAULT 0,
-        UNIQUE(canonical_acct),
-        FOREIGN KEY (server_id)           REFERENCES servers(id),
-        FOREIGN KEY (moved_to_profile_id) REFERENCES profiles(id)
-      );
-    `
-
-    const columns = [
-      'id',
-      'actor_uri',
-      'username',
-      'server_id',
-      'acct',
-      'canonical_acct',
-      'display_name',
-      'url',
-      'avatar_url',
-      'avatar_static_url',
-      'header_url',
-      'header_static_url',
-      'bio',
-      'is_locked',
-      'is_bot',
-      'created_at',
-      'moved_to_profile_id',
-      'last_fetched_at',
-      'is_detail_fetched',
-    ].join(', ')
-
-    recreateTable(db, 'profiles', newCreateSql, columns, undefined, {
-      postSql: [
-        // インデックスを再作成
-        'CREATE INDEX IF NOT EXISTS idx_profiles_acct ON profiles(acct);',
-        'CREATE INDEX IF NOT EXISTS idx_profiles_actor_uri ON profiles(actor_uri) WHERE actor_uri IS NOT NULL;',
-        'CREATE INDEX IF NOT EXISTS idx_profiles_server ON profiles(server_id);',
-        'PRAGMA foreign_keys = ON;',
-      ],
-      preSql: ['PRAGMA foreign_keys = OFF;'],
-    })
+    db.exec('DROP INDEX IF EXISTS idx_profiles_canonical_acct;')
+    db.exec(
+      'CREATE UNIQUE INDEX idx_profiles_canonical_acct ON profiles(canonical_acct);',
+    )
   },
 
   validate(handle: SchemaDbHandle): boolean {
     const { db } = handle
 
-    // UNIQUE(canonical_acct) が効いているか確認 — 重複がないこと
+    // canonical_acct の重複がないこと
     const dupRows = db.exec(
       `SELECT COUNT(*) FROM (
         SELECT canonical_acct FROM profiles
@@ -198,18 +149,22 @@ export const v2_0_4_migration: Migration = {
     }
 
     // canonical_acct の UNIQUE インデックスが存在するか確認
-    const indexInfo = db.exec(
-      "SELECT sql FROM sqlite_master WHERE type='table' AND name='profiles';",
+    const indexRows = db.exec(
+      "SELECT sql FROM sqlite_master WHERE type='index' AND name='idx_profiles_canonical_acct';",
       { returnValue: 'resultRows' },
     ) as string[][]
-    if (indexInfo.length > 0) {
-      const createSql = indexInfo[0][0]
-      if (!createSql.includes('UNIQUE(canonical_acct)')) {
-        console.error(
-          'Validation failed: profiles table does not have UNIQUE(canonical_acct) constraint',
-        )
-        return false
-      }
+    if (indexRows.length === 0) {
+      console.error(
+        'Validation failed: idx_profiles_canonical_acct index not found',
+      )
+      return false
+    }
+    const indexSql = indexRows[0][0]
+    if (!indexSql.includes('UNIQUE')) {
+      console.error(
+        'Validation failed: idx_profiles_canonical_acct is not a UNIQUE index',
+      )
+      return false
     }
 
     return true
