@@ -6,6 +6,7 @@ import {
   wrapResponse,
 } from './helpers'
 import {
+  mapDriveFileToAttachment,
   mapNoteToStatus,
   mapUserLiteToAccount,
   mapVisibilityToMisskey,
@@ -281,31 +282,63 @@ export async function unpinStatus(
 // =============================================
 
 export async function uploadMedia(
-  _file: unknown,
-  _options?: {
+  ctx: MisskeyClientContext,
+  file: unknown,
+  options?: {
     description?: string
     focus?: string
   },
 ): Promise<Response<Entity.Attachment | Entity.AsyncAttachment>> {
-  throw new NotImplementedError('uploadMedia')
+  const params: Record<string, unknown> = {
+    file: file as Blob,
+  }
+  if (options?.description) {
+    params.comment = options.description
+  }
+  // biome-ignore lint/complexity/noBannedTypes: misskey-js の drive/files/create は multipart/form-data のため型安全な呼び出しが困難
+  const driveFile = await (ctx.client.request as Function)(
+    'drive/files/create',
+    params,
+  )
+  return wrapResponse(
+    mapDriveFileToAttachment(driveFile as Misskey.entities.DriveFile),
+  )
 }
 
 export async function getMedia(
-  _id: string,
+  ctx: MisskeyClientContext,
+  id: string,
 ): Promise<Response<Entity.Attachment>> {
-  throw new NotImplementedError('getMedia')
+  const driveFile = await ctx.client.request('drive/files/show', {
+    fileId: id,
+  })
+  return wrapResponse(mapDriveFileToAttachment(driveFile))
 }
 
 export async function updateMedia(
-  _id: string,
-  _options?: {
+  ctx: MisskeyClientContext,
+  id: string,
+  options?: {
     file?: unknown
     description?: string
     focus?: string
     is_sensitive?: boolean
   },
 ): Promise<Response<Entity.Attachment>> {
-  throw new NotImplementedError('updateMedia')
+  const params: Record<string, unknown> = {
+    fileId: id,
+  }
+  if (options?.description !== undefined) {
+    params.comment = options.description
+  }
+  if (options?.is_sensitive !== undefined) {
+    params.isSensitive = options.is_sensitive
+  }
+  const driveFile = await ctx.client.request(
+    'drive/files/update',
+    params as Misskey.entities.DriveFilesUpdateRequest,
+  )
+  return wrapResponse(mapDriveFileToAttachment(driveFile))
 }
 
 // =============================================

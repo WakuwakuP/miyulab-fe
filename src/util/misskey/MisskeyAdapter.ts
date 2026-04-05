@@ -606,11 +606,11 @@ export class MisskeyAdapter implements MegalodonInterface {
       focus?: string
     },
   ): Promise<Response<Entity.Attachment | Entity.AsyncAttachment>> {
-    return statusOps.uploadMedia(file, options)
+    return statusOps.uploadMedia(this.ctx, file, options)
   }
 
   async getMedia(id: string): Promise<Response<Entity.Attachment>> {
-    return statusOps.getMedia(id)
+    return statusOps.getMedia(this.ctx, id)
   }
 
   async updateMedia(
@@ -622,7 +622,7 @@ export class MisskeyAdapter implements MegalodonInterface {
       is_sensitive?: boolean
     },
   ): Promise<Response<Entity.Attachment>> {
-    return statusOps.updateMedia(id, options)
+    return statusOps.updateMedia(this.ctx, id, options)
   }
 
   // =============================================
