@@ -136,9 +136,10 @@ describe('ensureProfile', () => {
     // UPSERT + SELECT の 2 回
     expect(calls).toHaveLength(2)
 
-    // 1回目: UPSERT
+    // 1回目: UPSERT (dual ON CONFLICT chain)
     expect(calls[0].sql).toContain('INSERT INTO profiles')
     expect(calls[0].sql).toContain('ON CONFLICT(canonical_acct)')
+    expect(calls[0].sql).toContain('ON CONFLICT(username, server_id)')
     expect(calls[0].sql).toContain('canonical_acct')
     expect(calls[0].sql).toContain('avatar_static_url')
     expect(calls[0].sql).toContain('header_static_url')

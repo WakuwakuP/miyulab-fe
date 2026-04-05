@@ -56,6 +56,19 @@ export function ensureProfile(
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(canonical_acct) DO UPDATE SET
       actor_uri         = COALESCE(excluded.actor_uri, profiles.actor_uri),
+      display_name      = excluded.display_name,
+      url               = excluded.url,
+      avatar_url        = excluded.avatar_url,
+      avatar_static_url = excluded.avatar_static_url,
+      header_url        = excluded.header_url,
+      header_static_url = excluded.header_static_url,
+      bio               = excluded.bio,
+      is_locked         = excluded.is_locked,
+      is_bot            = excluded.is_bot,
+      last_fetched_at   = excluded.last_fetched_at
+    ON CONFLICT(username, server_id) DO UPDATE SET
+      actor_uri         = COALESCE(excluded.actor_uri, profiles.actor_uri),
+      acct              = excluded.acct,
       canonical_acct    = excluded.canonical_acct,
       display_name      = excluded.display_name,
       url               = excluded.url,
