@@ -138,7 +138,7 @@ describe('ensureProfile', () => {
 
     // 1回目: UPSERT
     expect(calls[0].sql).toContain('INSERT INTO profiles')
-    expect(calls[0].sql).toContain('ON CONFLICT(username, server_id)')
+    expect(calls[0].sql).toContain('ON CONFLICT(canonical_acct)')
     expect(calls[0].sql).toContain('canonical_acct')
     expect(calls[0].sql).toContain('avatar_static_url')
     expect(calls[0].sql).toContain('header_static_url')
@@ -165,15 +165,14 @@ describe('ensureProfile', () => {
     expect(bind[12]).toBe(0) // is_locked
     expect(bind[13]).toBe(0) // is_bot
 
-    // 2回目: SELECT id (新スキーマの PK は id)
+    // 2回目: SELECT id (canonical_acct で検索)
     expect(calls[1].sql).toContain('SELECT id FROM profiles')
     expect(calls[1].sql).not.toContain('profile_id')
-    expect(calls[1].sql).toContain('username = ?')
-    expect(calls[1].sql).toContain('server_id = ?')
-    expect(calls[1].opts?.bind).toEqual(['alice', 1])
+    expect(calls[1].sql).toContain('canonical_acct = ?')
+    expect(calls[1].opts?.bind).toEqual(['alice@example.com'])
     expect(calls[1].opts?.returnValue).toBe('resultRows')
 
-    // キャッシュに acct キーで保存されている
+    // キャッシュに canonical_acct キーで保存されている
     expect(profileIdCache.get('alice@example.com')).toBe(42)
   })
 
@@ -254,11 +253,11 @@ describe('ensureProfile', () => {
     expect(bind[3]).toBe('localuser') // acct
     expect(bind[4]).toBe('localuser@myserver.com') // canonical_acct (host 付加)
 
-    // SELECT でも username + server_id で検索
-    expect(calls[1].opts?.bind).toEqual(['localuser', 3])
+    // SELECT でも canonical_acct で検索
+    expect(calls[1].opts?.bind).toEqual(['localuser@myserver.com'])
 
-    // キャッシュキーは acct
-    expect(profileIdCache.get('localuser')).toBe(5)
+    // キャッシュキーは canonical_acct
+    expect(profileIdCache.get('localuser@myserver.com')).toBe(5)
   })
 
   it('server_id パラメータを使用する', () => {
@@ -281,8 +280,8 @@ describe('ensureProfile', () => {
     const bind = calls[0].opts?.bind as (string | number | null)[]
     expect(bind[2]).toBe(42) // server_id
 
-    // SELECT bind にも server_id が含まれる
-    expect(calls[1].opts?.bind).toEqual(['user1', 42])
+    // SELECT bind にも canonical_acct が含まれる
+    expect(calls[1].opts?.bind).toEqual(['user1@remote.example.com'])
 
     // is_locked / is_bot のマッピング確認
     expect(bind[12]).toBe(1) // is_locked (locked: true → 1)

@@ -54,7 +54,7 @@ export function ensureProfile(
       url, avatar_url, avatar_static_url, header_url, header_static_url,
       bio, is_locked, is_bot, last_fetched_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(username, server_id) DO UPDATE SET
+    ON CONFLICT(canonical_acct) DO UPDATE SET
       actor_uri         = COALESCE(excluded.actor_uri, profiles.actor_uri),
       canonical_acct    = excluded.canonical_acct,
       display_name      = excluded.display_name,
@@ -88,19 +88,16 @@ export function ensureProfile(
     },
   )
 
-  const cached = profileIdCache.get(acct)
+  const cached = profileIdCache.get(canonicalAcct)
   if (cached !== undefined) return cached
 
-  const rows = db.exec(
-    'SELECT id FROM profiles WHERE username = ? AND server_id = ?;',
-    {
-      bind: [account.username, serverId],
-      returnValue: 'resultRows',
-    },
-  ) as number[][]
+  const rows = db.exec('SELECT id FROM profiles WHERE canonical_acct = ?;', {
+    bind: [canonicalAcct],
+    returnValue: 'resultRows',
+  }) as number[][]
 
   const id = rows[0][0]
-  profileIdCache.set(acct, id)
+  profileIdCache.set(canonicalAcct, id)
   return id
 }
 

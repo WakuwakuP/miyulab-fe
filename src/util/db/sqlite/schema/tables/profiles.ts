@@ -22,7 +22,7 @@ export function createProfileTables(db: DbExec): void {
       moved_to_profile_id INTEGER,
       last_fetched_at     INTEGER,
       is_detail_fetched   INTEGER NOT NULL DEFAULT 0,
-      UNIQUE(username, server_id),
+      UNIQUE(canonical_acct),
       FOREIGN KEY (server_id)           REFERENCES servers(id),
       FOREIGN KEY (moved_to_profile_id) REFERENCES profiles(id)
     );

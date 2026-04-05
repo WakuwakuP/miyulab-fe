@@ -197,7 +197,7 @@ describe('v2.0.0 マイグレーション', () => {
       migrations.push(...savedMigrations)
     })
 
-    it('v2.0.0 DB に対して v2.0.1, v2.0.2, v2.0.3 マイグレーションが適用される', () => {
+    it('v2.0.0 DB に対して v2.0.1 ~ v2.0.4 マイグレーションが適用される', () => {
       const v2Encoded = encodeSemVer({ major: 2, minor: 0, patch: 0 })
       let canonicalAcctAdded = false
       // 各マイグレーションの validate/up 用モック
@@ -213,6 +213,16 @@ describe('v2.0.0 マイグレーション', () => {
           if (typeof sql === 'string' && opts?.returnValue === 'resultRows') {
             if (sql.includes('PRAGMA user_version')) {
               return [[v2Encoded]]
+            }
+            if (
+              sql.includes('sqlite_master') &&
+              sql.includes("name='profiles'")
+            ) {
+              return [
+                [
+                  'CREATE TABLE profiles (id INTEGER PRIMARY KEY, UNIQUE(canonical_acct))',
+                ],
+              ]
             }
             if (sql.includes('sqlite_master')) {
               return [[1]]
@@ -233,6 +243,12 @@ describe('v2.0.0 マイグレーション', () => {
               }
               return base
             }
+            if (
+              sql.includes('COUNT(*)') &&
+              sql.includes('_profile_merge_map')
+            ) {
+              return [[0]]
+            }
             if (sql.includes('COUNT(*)') && sql.includes('canonical_acct')) {
               return [[0]]
             }
@@ -243,12 +259,12 @@ describe('v2.0.0 マイグレーション', () => {
       const handle = { db } as SchemaDbHandle
       runMigrations(handle, mockDropAll, mockCreateFresh)
 
-      // v2.0.1 の up() による CREATE TABLE が実行される
+      // v2.0.1 の up() による CREATE TABLE (2) + v2.0.4 の _profile_merge_map + profiles 再作成 (2)
       const createTableCalls = db.exec.mock.calls.filter(
         (call) =>
           typeof call[0] === 'string' && call[0].includes('CREATE TABLE'),
       )
-      expect(createTableCalls).toHaveLength(2)
+      expect(createTableCalls).toHaveLength(4)
       // v2.0.2 の up() による UPDATE が実行される
       const updateCalls = db.exec.mock.calls.filter(
         (call) =>
@@ -263,6 +279,14 @@ describe('v2.0.0 マイグレーション', () => {
           call[0].includes('ALTER TABLE profiles ADD COLUMN canonical_acct'),
       )
       expect(alterCalls).toHaveLength(1)
+      // v2.0.4 の up() による profiles テーブル再作成 (RENAME) が実行される
+      const renameCalls = db.exec.mock.calls.filter(
+        (call) =>
+          typeof call[0] === 'string' &&
+          call[0].includes('RENAME TO') &&
+          call[0].includes('profiles'),
+      )
+      expect(renameCalls).toHaveLength(1)
       // フォールバック (DROP → 再作成) は使用されない
       expect(mockDropAll).not.toHaveBeenCalled()
       expect(mockCreateFresh).not.toHaveBeenCalled()
