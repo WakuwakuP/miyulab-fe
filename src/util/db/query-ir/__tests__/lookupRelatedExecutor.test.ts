@@ -213,7 +213,7 @@ describe('executeLookupRelated', () => {
 
       // resolve があるため IN ベース（グローバル時間窓）
       expect(result.sql).toContain('lt.id IN (SELECT related_post_id')
-      expect(result.sql).toContain('lt.created_at_ms > ?')
+      expect(result.sql).toContain('lt.created_at_ms >= ?')
       expect(result.sql).toContain('lt.created_at_ms <= ?')
       // JOIN は使用されない
       expect(result.sql).not.toContain('JOIN')
@@ -245,7 +245,7 @@ describe('executeLookupRelated', () => {
       expect(result.sql).toContain('JOIN notifications src ON src.id = lt.id')
       expect(result.sql).toContain('src.id IN (?, ?)')
       // per-row 時間条件
-      expect(result.sql).toContain('lt.created_at_ms > src.created_at_ms')
+      expect(result.sql).toContain('lt.created_at_ms >= src.created_at_ms')
       expect(result.sql).toContain(
         'lt.created_at_ms <= src.created_at_ms + 180000',
       )
@@ -286,7 +286,7 @@ describe('executeLookupRelated', () => {
       )
       expect(result.sql).toContain('src.id IN (?, ?)')
       // per-row 時間条件
-      expect(result.sql).toContain('lt.created_at_ms > src.created_at_ms')
+      expect(result.sql).toContain('lt.created_at_ms >= src.created_at_ms')
       expect(result.sql).toContain(
         'lt.created_at_ms <= src.created_at_ms + 180000',
       )
@@ -436,7 +436,7 @@ describe('executeLookupRelated', () => {
         'src.actor_profile_id = lt.author_profile_id',
       )
       // per-row 時間条件
-      expect(result.sql).toContain('lt.created_at_ms > src.created_at_ms')
+      expect(result.sql).toContain('lt.created_at_ms >= src.created_at_ms')
       expect(result.sql).toContain(
         'lt.created_at_ms <= src.created_at_ms + 180000',
       )

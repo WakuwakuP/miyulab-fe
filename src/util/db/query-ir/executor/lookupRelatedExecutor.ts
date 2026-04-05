@@ -128,7 +128,7 @@ function executeWithJoin(
   // per-row 時間条件
   if (tc.afterInput) {
     conditions.push(
-      `${lt}.${tc.lookupTimeColumn} > ${src}.${tc.inputTimeColumn}`,
+      `${lt}.${tc.lookupTimeColumn} >= ${src}.${tc.inputTimeColumn}`,
     )
     conditions.push(
       `${lt}.${tc.lookupTimeColumn} <= ${src}.${tc.inputTimeColumn} + ${tc.windowMs}`,
@@ -296,7 +296,7 @@ function executeWithIn(
     const maxTime = Math.max(...input.rows.map((r) => r.createdAtMs))
 
     if (tc.afterInput) {
-      conditions.push(`${lt}.${tc.lookupTimeColumn} > ?`)
+      conditions.push(`${lt}.${tc.lookupTimeColumn} >= ?`)
       binds.push(minTime)
       conditions.push(`${lt}.${tc.lookupTimeColumn} <= ?`)
       binds.push(maxTime + tc.windowMs)

@@ -153,11 +153,11 @@ function aerialReplyFilterToSql(node: AerialReplyFilter): string {
     `INNER JOIN profiles pra ON pra.id = ntf.actor_profile_id`,
     `WHERE ntt.name IN (${types})`,
     `AND pra.acct = (SELECT acct FROM profiles WHERE id = p.author_profile_id)`,
-    `AND p.created_at_ms > ntf.created_at_ms`,
+    `AND p.created_at_ms >= ntf.created_at_ms`,
     `AND p.created_at_ms <= ntf.created_at_ms + ${node.timeWindowMs}`,
     `AND p.created_at_ms = (SELECT MIN(p2.created_at_ms) FROM posts p2`,
     `WHERE p2.author_profile_id = p.author_profile_id`,
-    `AND p2.created_at_ms > ntf.created_at_ms`,
+    `AND p2.created_at_ms >= ntf.created_at_ms`,
     `AND p2.created_at_ms <= ntf.created_at_ms + ${node.timeWindowMs}))`,
   ].join(' ')
 }
