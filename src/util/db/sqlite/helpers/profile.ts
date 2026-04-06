@@ -36,7 +36,7 @@ function resolveServerHost(db: DbExecCompat, serverId: number): string {
  * account に対応する profiles.id を返す。
  * 未登録の場合は INSERT、既存の場合は表示名等を更新する。
  *
- * UNIQUE 制約は (username, server_id)。
+ * UNIQUE 制約は (canonical_acct) と (username, server_id)。
  * キャッシュキーは acct (FQN)。
  */
 export function ensureProfile(
