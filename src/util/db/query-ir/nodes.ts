@@ -330,6 +330,16 @@ export type MergeNodeV2 = {
   limit: number
 }
 
+/** カーソルベースページネーション */
+export type PaginationCursor = {
+  /** カーソル比較に使用するフィールド */
+  field: 'created_at_ms' | 'id'
+  /** カーソル値 (created_at_ms のミリ秒 or 内部 ID) */
+  value: number
+  /** before: value より古い行のみ, after: value より新しい行のみ */
+  direction: 'before' | 'after'
+}
+
 /** 最終出力 */
 export type OutputNodeV2 = {
   kind: 'output-v2'
@@ -340,6 +350,7 @@ export type OutputNodeV2 = {
   pagination: {
     limit: number
     offset?: number
+    cursor?: PaginationCursor
   }
 }
 

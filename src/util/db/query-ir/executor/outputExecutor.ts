@@ -45,7 +45,7 @@ export function executeOutput(
 ): Omit<GraphExecuteResult, 'capturedVersions' | 'meta' | 'nodeOutputIds'> & {
   sourceType: 'post' | 'notification' | 'mixed'
 } {
-  // --- 1. sort + pagination ---
+  // --- 1. sort + cursor + pagination ---
   let rows = [...input.rows]
 
   // sort
@@ -55,6 +55,17 @@ export function executeOutput(
     const fieldB = node.sort.field === 'id' ? b.id : b.createdAtMs
     return direction * (fieldA - fieldB)
   })
+
+  // cursor filter (sort 後、slice 前に適用)
+  if (node.pagination.cursor) {
+    const { field, value, direction: cursorDir } = node.pagination.cursor
+    const getField = field === 'id'
+      ? (r: (typeof rows)[number]) => r.id
+      : (r: (typeof rows)[number]) => r.createdAtMs
+    rows = cursorDir === 'before'
+      ? rows.filter((r) => getField(r) < value)
+      : rows.filter((r) => getField(r) > value)
+  }
 
   // pagination
   const offset = node.pagination.offset ?? 0

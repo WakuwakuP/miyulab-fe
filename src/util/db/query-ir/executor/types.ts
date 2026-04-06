@@ -136,7 +136,15 @@ export type SerializedMergeNode = {
 export type SerializedOutputNode = {
   kind: 'output-v2'
   sort: { field: string; direction: 'ASC' | 'DESC' }
-  pagination: { limit: number; offset?: number }
+  pagination: {
+    limit: number
+    offset?: number
+    cursor?: {
+      field: 'created_at_ms' | 'id'
+      value: number
+      direction: 'before' | 'after'
+    }
+  }
 }
 
 /** 実行オプション */

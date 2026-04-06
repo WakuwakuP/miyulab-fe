@@ -1,7 +1,8 @@
 import type { MegalodonInterface } from 'megalodon'
-import type { TimelineConfigV2 } from 'types/types'
+import type { App, TimelineConfigV2 } from 'types/types'
 import { bulkAddNotifications } from 'util/db/sqlite/notificationStore'
 import { bulkUpsertStatuses } from 'util/db/sqlite/statusStore'
+import type { DbHandle as DbHandleType } from 'util/db/sqlite/types'
 
 /**
  * タイムライン種別に応じた初期データ取得
@@ -161,4 +162,164 @@ export async function fetchMoreNotifications(
   const res = await client.getNotifications({ limit, max_id: maxId })
   await bulkAddNotifications(res.data, backendUrl)
   return res.data.length
+}
+
+// --------------- 共通 API フォールバック ---------------
+
+/**
+ * 各 backendUrl ごとに DB 内の最古 ID を算出し、API から追加データを取得する。
+ *
+ * 3 つのタイムラインコンポーネント (UnifiedTimeline, MixedTimeline, NotificationTimeline)
+ * で重複していたロジックを統合。
+ *
+ * @param config — タイムライン設定
+ * @param apps — アプリ一覧 (GetClient 用 App オブジェクト)
+ * @param targetBackendUrls — 対象バックエンド URL
+ * @param exhaustedBackends — 取得済みバックエンド (これ以上データなし)
+ * @param includeNotifications — 通知も取得するか（mixed タイムラインで true）
+ */
+export async function fetchOlderFromApi(
+  config: TimelineConfigV2,
+  apps: App[],
+  targetBackendUrls: string[],
+  exhaustedBackends: Set<string>,
+  includeNotifications?: boolean,
+): Promise<void> {
+  const activeUrls = targetBackendUrls.filter(
+    (url) => !exhaustedBackends.has(url),
+  )
+  if (activeUrls.length === 0) return
+
+  const { getSqliteDb } = await import('util/db/sqlite/connection')
+  const { GetClient } = await import('util/GetClient')
+
+  const fetchStatuses = config.type !== 'notification'
+  const fetchNotifs =
+    config.type === 'notification' || includeNotifications === true
+
+  await Promise.all(
+    activeUrls.map(async (url) => {
+      const app = apps.find((a) => a.backendUrl === url)
+      if (!app) return
+
+      const handle = await getSqliteDb()
+      const client = GetClient(app)
+
+      // ステータスタイムラインの追加取得
+      if (fetchStatuses) {
+        const oldestId = await getOldestStatusId(handle, config, url)
+
+        if (!oldestId) {
+          try {
+            await fetchInitialData(client, config, url)
+          } catch (error) {
+            console.error(`Failed to fetch initial data for ${url}:`, error)
+          }
+          return
+        }
+
+        try {
+          const count = await fetchMoreData(client, config, url, oldestId)
+          if (count < FETCH_LIMIT) {
+            exhaustedBackends.add(url)
+          }
+        } catch (error) {
+          console.error(`Failed to fetch more data for ${url}:`, error)
+        }
+      }
+
+      // 通知の追加取得
+      if (fetchNotifs) {
+        const oldestNotifId = await getOldestNotificationId(handle, url)
+
+        if (oldestNotifId) {
+          try {
+            const count = await fetchMoreNotifications(
+              client,
+              url,
+              oldestNotifId,
+            )
+            if (count < FETCH_LIMIT) {
+              exhaustedBackends.add(url)
+            }
+          } catch (error) {
+            console.error(
+              `Failed to fetch more notifications for ${url}:`,
+              error,
+            )
+          }
+        }
+      }
+    }),
+  )
+}
+
+// --------------- DB 最古 ID 検索ヘルパー ---------------
+
+async function getOldestStatusId(
+  handle: DbHandleType,
+  config: TimelineConfigV2,
+  backendUrl: string,
+): Promise<string | undefined> {
+  if (config.type === 'tag') {
+    const tags = config.tagConfig?.tags ?? []
+    for (const tag of tags) {
+      const rows = (await handle.execAsync(
+        `SELECT pb2.local_id
+         FROM posts p
+         INNER JOIN post_backend_ids pb2 ON pb2.post_id = p.id
+         INNER JOIN post_hashtags pht ON pht.post_id = p.id
+         INNER JOIN hashtags ht ON pht.hashtag_id = ht.id
+         INNER JOIN local_accounts la ON la.id = pb2.local_account_id
+         WHERE LOWER(ht.name) = LOWER(?) AND la.backend_url = ?
+         ORDER BY p.created_at_ms ASC
+         LIMIT 1;`,
+        {
+          bind: [tag, backendUrl],
+          kind: 'other',
+          returnValue: 'resultRows',
+        },
+      )) as string[][]
+      if (rows.length > 0) return rows[0][0]
+    }
+    return undefined
+  }
+
+  const timelineType = config.type as 'home' | 'local' | 'public'
+  const rows = (await handle.execAsync(
+    `SELECT pb2.local_id
+     FROM posts p
+     INNER JOIN post_backend_ids pb2 ON pb2.post_id = p.id
+     INNER JOIN local_accounts la ON la.id = pb2.local_account_id
+     INNER JOIN timeline_entries te ON te.post_id = p.id AND te.local_account_id = la.id
+     WHERE la.backend_url = ? AND te.timeline_key = ?
+     ORDER BY p.created_at_ms ASC
+     LIMIT 1;`,
+    {
+      bind: [backendUrl, timelineType],
+      kind: 'other',
+      returnValue: 'resultRows',
+    },
+  )) as string[][]
+  return rows.length > 0 ? rows[0][0] : undefined
+}
+
+async function getOldestNotificationId(
+  handle: DbHandleType,
+  backendUrl: string,
+): Promise<string | undefined> {
+  const rows = (await handle.execAsync(
+    `SELECT n.local_id
+     FROM notifications n
+     INNER JOIN local_accounts la ON la.id = n.local_account_id
+     WHERE la.backend_url = ?
+     ORDER BY n.created_at_ms ASC
+     LIMIT 1;`,
+    {
+      bind: [backendUrl],
+      kind: 'other',
+      returnValue: 'resultRows',
+    },
+  )) as string[][]
+  return rows.length > 0 ? rows[0][0] : undefined
 }
