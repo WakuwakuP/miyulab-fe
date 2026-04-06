@@ -14,6 +14,7 @@ import { PostAccountProvider } from 'util/provider/PostAccountProvider'
 import { ReplyToProvider } from 'util/provider/ReplyToProvider'
 import { ResourceProvider } from 'util/provider/ResourceProvider'
 import { SettingProvider } from 'util/provider/SettingProvider'
+import { StartupCoordinator } from 'util/provider/StartupCoordinator'
 import { StatusStoreProvider } from 'util/provider/StatusStoreProvider'
 import { StreamingManagerProvider } from 'util/provider/StreamingManagerProvider'
 import { SuspenseProvider } from 'util/provider/SuspenseProvider'
@@ -49,17 +50,19 @@ export default function RootLayout({
                         <DetailProvider>
                           <MediaModalProvider>
                             <PlayerProvider>
-                              <StatusStoreProvider>
-                                <StreamingManagerProvider>
-                                  <HomeTimelineProvider>
-                                    <Toaster
-                                      position="bottom-left"
-                                      reverseOrder={false}
-                                    />
-                                    {children}
-                                  </HomeTimelineProvider>
-                                </StreamingManagerProvider>
-                              </StatusStoreProvider>
+                              <StartupCoordinator>
+                                <StatusStoreProvider>
+                                  <StreamingManagerProvider>
+                                    <HomeTimelineProvider>
+                                      <Toaster
+                                        position="bottom-left"
+                                        reverseOrder={false}
+                                      />
+                                      {children}
+                                    </HomeTimelineProvider>
+                                  </StreamingManagerProvider>
+                                </StatusStoreProvider>
+                              </StartupCoordinator>
                             </PlayerProvider>
                           </MediaModalProvider>
                         </DetailProvider>

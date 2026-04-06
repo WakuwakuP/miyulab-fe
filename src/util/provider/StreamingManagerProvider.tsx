@@ -29,6 +29,7 @@ import { restartStream, stopStream } from 'util/streaming/stopStream'
 import { parseStreamKey, type StreamType } from 'util/streaming/streamKey'
 import type { StreamEntry, StreamRegistry } from 'util/streaming/streamRegistry'
 import { AppsContext } from './AppsProvider'
+import { StartupCoordinatorContext } from './StartupCoordinator'
 import { TimelineContext } from './TimelineProvider'
 
 // ========================================
@@ -64,6 +65,7 @@ export const StreamingManagerProvider = ({
 }: Readonly<{ children: ReactNode }>) => {
   const apps = useContext(AppsContext)
   const timelineSettings = useContext(TimelineContext)
+  const { isPhaseReached, advanceTo } = useContext(StartupCoordinatorContext)
   const registryRef = useRef<StreamRegistry>(new Map())
   const initIdCounterRef = useRef(0)
   const refFirstRef = useRef(true)
@@ -284,8 +286,11 @@ export const StreamingManagerProvider = ({
 
   // =============================================
   // Effect: apps / timelineSettings 変更時に同期
+  // rest-fetched フェーズ以降でのみ実行する
   // =============================================
-  // biome-ignore lint/correctness/useExhaustiveDependencies: timelineSettings is intentionally included to trigger re-sync when settings change. syncStreamsEvent/fetchInitialDataForTimelines are useEffectEvent and capture the latest values.
+  const restFetched = isPhaseReached('rest-fetched')
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: timelineSettings is intentionally included to trigger re-sync when settings change. syncStreamsEvent/fetchInitialDataForTimelines are useEffectEvent and capture the latest values. restFetched gates the startup sequence.
   useEffect(() => {
     // StrictMode ガードを apps.length チェックより先に消費する。
     // apps.length を先にチェックすると、初回レンダで apps=[] の時に
@@ -294,11 +299,14 @@ export const StreamingManagerProvider = ({
       refFirstRef.current = false
       return
     }
+    if (!restFetched) return
     if (apps.length <= 0) return
 
     syncStreamsEvent()
     fetchInitialDataForTimelines()
-  }, [apps, timelineSettings])
+
+    advanceTo('streaming')
+  }, [apps, timelineSettings, restFetched])
 
   const streamingManagerValue = useMemo(() => ({ getStatus }), [getStatus])
 

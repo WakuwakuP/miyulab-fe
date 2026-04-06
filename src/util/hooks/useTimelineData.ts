@@ -5,7 +5,10 @@ import type {
   StatusAddAppIndex,
   TimelineConfigV2,
 } from 'types/types'
-import { useGraphTimeline } from 'util/hooks/useGraphTimeline'
+import {
+  type UseGraphTimelineOptions,
+  useGraphTimeline,
+} from 'util/hooks/useGraphTimeline'
 
 /**
  * `TimelineConfigV2` に基づき、グラフ実行エンジンでデータを取得するファサード。
@@ -14,13 +17,17 @@ import { useGraphTimeline } from 'util/hooks/useGraphTimeline'
  * `config.queryPlan` があればそのまま使用、なければ `configToQueryPlanV2` で自動生成。
  *
  * @param config — タイムライン種別・フィルタ・カスタム SQL 等の設定
+ * @param options — オプション設定 (disabled, onFirstFetch)
  * @returns `{ data, queryDuration, loadMore }`
  * @see {@link useGraphTimeline}
  */
-export function useTimelineData(config: TimelineConfigV2): {
+export function useTimelineData(
+  config: TimelineConfigV2,
+  options?: UseGraphTimelineOptions,
+): {
   data: (NotificationAddAppIndex | StatusAddAppIndex)[]
   queryDuration: number | null
   loadMore: () => void
 } {
-  return useGraphTimeline(config)
+  return useGraphTimeline(config, options)
 }

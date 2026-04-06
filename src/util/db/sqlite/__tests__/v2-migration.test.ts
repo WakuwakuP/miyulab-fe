@@ -197,9 +197,10 @@ describe('v2.0.0 マイグレーション', () => {
       migrations.push(...savedMigrations)
     })
 
-    it('v2.0.0 DB に対して v2.0.1 ~ v2.0.4 マイグレーションが適用される', () => {
+    it('v2.0.0 DB に対して v2.0.1 ~ v2.0.5 マイグレーションが適用される', () => {
       const v2Encoded = encodeSemVer({ major: 2, minor: 0, patch: 0 })
       let canonicalAcctAdded = false
+      let usernameServerIndexCreated = false
       // 各マイグレーションの validate/up 用モック
       const db = {
         exec: vi.fn((sql: string, opts?: Record<string, unknown>) => {
@@ -208,6 +209,13 @@ describe('v2.0.0 マイグレーション', () => {
             sql.includes('ALTER TABLE profiles ADD COLUMN canonical_acct')
           ) {
             canonicalAcctAdded = true
+            return undefined
+          }
+          if (
+            typeof sql === 'string' &&
+            sql.includes('CREATE UNIQUE INDEX idx_profiles_username_server')
+          ) {
+            usernameServerIndexCreated = true
             return undefined
           }
           if (typeof sql === 'string' && opts?.returnValue === 'resultRows') {
@@ -223,6 +231,20 @@ describe('v2.0.0 マイグレーション', () => {
                   'CREATE UNIQUE INDEX idx_profiles_canonical_acct ON profiles(canonical_acct)',
                 ],
               ]
+            }
+            if (
+              sql.includes('sqlite_master') &&
+              sql.includes("name='idx_profiles_username_server'")
+            ) {
+              // up() 実行前は存在しない、実行後は存在する
+              if (usernameServerIndexCreated) {
+                return [
+                  [
+                    'CREATE UNIQUE INDEX idx_profiles_username_server ON profiles(username, server_id)',
+                  ],
+                ]
+              }
+              return []
             }
             if (sql.includes('sqlite_master')) {
               return [[1]]
@@ -252,6 +274,14 @@ describe('v2.0.0 マイグレーション', () => {
             if (sql.includes('COUNT(*)') && sql.includes('canonical_acct')) {
               return [[0]]
             }
+            if (
+              sql.includes('COUNT(*)') &&
+              sql.includes('username') &&
+              sql.includes('server_id')
+            ) {
+              // v2.0.5 validate: 重複なし
+              return [[0]]
+            }
           }
           return undefined
         }),
@@ -259,12 +289,12 @@ describe('v2.0.0 マイグレーション', () => {
       const handle = { db } as SchemaDbHandle
       runMigrations(handle, mockDropAll, mockCreateFresh)
 
-      // v2.0.1 の up() による CREATE TABLE (2) + v2.0.4 の _profile_merge_map (1)
+      // v2.0.1 の up() による CREATE TABLE (2) + v2.0.4 の _profile_merge_map (1) + v2.0.5 の _profile_merge_map_v205 (1)
       const createTableCalls = db.exec.mock.calls.filter(
         (call) =>
           typeof call[0] === 'string' && call[0].includes('CREATE TABLE'),
       )
-      expect(createTableCalls).toHaveLength(3)
+      expect(createTableCalls).toHaveLength(4)
       // v2.0.2 の up() による UPDATE が実行される
       const updateCalls = db.exec.mock.calls.filter(
         (call) =>
@@ -287,6 +317,15 @@ describe('v2.0.0 マイグレーション', () => {
           call[0].includes('canonical_acct'),
       )
       expect(uniqueIndexCalls).toHaveLength(1)
+      // v2.0.5 の up() による UNIQUE INDEX 作成が実行される
+      const usernameServerIndexCalls = db.exec.mock.calls.filter(
+        (call) =>
+          typeof call[0] === 'string' &&
+          call[0].includes('CREATE UNIQUE INDEX') &&
+          call[0].includes('username') &&
+          call[0].includes('server_id'),
+      )
+      expect(usernameServerIndexCalls).toHaveLength(1)
       // フォールバック (DROP → 再作成) は使用されない
       expect(mockDropAll).not.toHaveBeenCalled()
       expect(mockCreateFresh).not.toHaveBeenCalled()

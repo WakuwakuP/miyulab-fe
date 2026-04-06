@@ -172,10 +172,10 @@ describe('normalizeLegacyVersion', () => {
 })
 
 describe('LATEST_VERSION', () => {
-  it('2.0.4 である', () => {
-    expect(LATEST_VERSION).toEqual({ major: 2, minor: 0, patch: 4 })
+  it('2.0.5 である', () => {
+    expect(LATEST_VERSION).toEqual({ major: 2, minor: 0, patch: 5 })
   })
-  it('20004 にエンコードされる', () => {
-    expect(encodeSemVer(LATEST_VERSION)).toBe(20004)
+  it('20005 にエンコードされる', () => {
+    expect(encodeSemVer(LATEST_VERSION)).toBe(20005)
   })
 })
