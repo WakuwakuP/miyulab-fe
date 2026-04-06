@@ -75,12 +75,19 @@ export const StartupCoordinator = ({ children }: { children: ReactNode }) => {
   const apps = useContext(AppsContext)
   const [phase, setPhase] = useState<StartupPhase>('init')
   const refFirstRef = useRef(true)
+  const startTimeRef = useRef(0)
 
   const advanceTo = useCallback((target: StartupPhase) => {
     setPhase((prev) => {
       const prevIdx = phaseIndex(prev)
       const targetIdx = phaseIndex(target)
-      return targetIdx > prevIdx ? target : prev
+      if (targetIdx > prevIdx) {
+        const elapsed = (performance.now() - startTimeRef.current).toFixed(1)
+        console.info(`[Startup] phase: ${prev} → ${target} (+${elapsed}ms)`)
+        startTimeRef.current = performance.now()
+        return target
+      }
+      return prev
     })
   }, [])
 
@@ -100,15 +107,21 @@ export const StartupCoordinator = ({ children }: { children: ReactNode }) => {
     if (apps.length <= 0) return
 
     let cancelled = false
+    startTimeRef.current = performance.now()
+    console.info(
+      '[Startup] Phase 1 開始: DB マイグレーション + accountResolver',
+    )
 
     const init = async () => {
       try {
         // DB 接続（Worker spawn + マイグレーション）を待つ
         await getSqliteDb()
+        console.info('[Startup] DB 接続完了')
 
         // local_accounts キャッシュを構築
         // useGraphTimeline の useLocalAccountIds が依存する
         await initAccountResolver()
+        console.info('[Startup] accountResolver 初期化完了')
 
         if (!cancelled) {
           advanceTo('db-ready')

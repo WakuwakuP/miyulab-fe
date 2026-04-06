@@ -60,6 +60,12 @@ export const HomeTimelineProvider = ({ children }: { children: ReactNode }) => {
   const { isPhaseReached, advanceTo } = useContext(StartupCoordinatorContext)
 
   const dbReady = isPhaseReached('db-ready')
+  const loggedPhase2Ref = useRef(false)
+
+  if (dbReady && !loggedPhase2Ref.current) {
+    loggedPhase2Ref.current = true
+    console.info('[Startup] Phase 2 開始: DB キャッシュからタイムライン表示')
+  }
 
   // home と notification の両方の初回フェッチ完了を追跡
   const homeReadyRef = useRef(false)
@@ -69,16 +75,19 @@ export const HomeTimelineProvider = ({ children }: { children: ReactNode }) => {
   const maybeAdvance = useCallback(() => {
     if (!advancedRef.current && homeReadyRef.current && notifReadyRef.current) {
       advancedRef.current = true
+      console.info('[Startup] Phase 2 完了: タイムライン表示')
       advanceTo('timeline-displayed')
     }
   }, [advanceTo])
 
   const onHomeFirstFetch = useCallback(() => {
+    console.info('[Startup] Phase 2: ホームタイムライン取得完了')
     homeReadyRef.current = true
     maybeAdvance()
   }, [maybeAdvance])
 
   const onNotifFirstFetch = useCallback(() => {
+    console.info('[Startup] Phase 2: 通知タイムライン取得完了')
     notifReadyRef.current = true
     maybeAdvance()
   }, [maybeAdvance])
