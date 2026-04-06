@@ -70,7 +70,6 @@ export const MixedTimeline = ({
   const [enableScrollToTop, setEnableScrollToTop] = useState(true)
   const [isScrolling, setIsScrolling] = useState(false)
   const [isFetchingMore, setIsFetchingMore] = useState(false)
-  const needsApiFetchRef = useRef(false)
 
   // loadMore() やAPIフェッチで末尾に追加されたアイテム数を同期的に追跡し、
   // firstItemIndex を安定させる（Virtuoso が誤ってプリペンドと解釈しないようにする）
@@ -84,7 +83,6 @@ export const MixedTimeline = ({
     void configId
     bottomExpansionRef.current = 0
     exhaustedBackendsRef.current = new Set()
-    needsApiFetchRef.current = false
   }, [configId])
 
   const currentLength = timeline.length
@@ -254,29 +252,24 @@ export const MixedTimeline = ({
       // SQLite クエリの表示件数を拡張（常に実行）
       loadMore()
 
-      // DB にまだデータがある場合は API フェッチを保留
-      if (dbHasMore) {
-        needsApiFetchRef.current = true
-        return
-      }
-
-      // --- ここから下は !dbHasMore の場合のみ実行 ---
-      needsApiFetchRef.current = false
-      setIsFetchingMore(true)
-      try {
-        await fetchFromApi()
-      } finally {
-        setIsFetchingMore(false)
+      if (!dbHasMore) {
+        // DB 枯渇: API フェッチ実行
+        setIsFetchingMore(true)
+        try {
+          await fetchFromApi()
+        } finally {
+          setIsFetchingMore(false)
+        }
       }
     } finally {
       isFetchingMoreRef.current = false
     }
   }, [apps, dbHasMore, loadMore, fetchFromApi])
 
-  // dbHasMore が false に変わった際、保留中の API フェッチを自動発火
+  // loadMore() 後に DB が枯渇した場合の自動 API フェッチ
+  // enableScrollToTop が false（ユーザーが下方向にスクロール済み）の場合のみ発火
   useEffect(() => {
-    if (!dbHasMore && needsApiFetchRef.current && !isFetchingMoreRef.current) {
-      needsApiFetchRef.current = false
+    if (!dbHasMore && !enableScrollToTop && !isFetchingMoreRef.current) {
       isFetchingMoreRef.current = true
       setIsFetchingMore(true)
       fetchFromApi().finally(() => {
@@ -284,7 +277,7 @@ export const MixedTimeline = ({
         setIsFetchingMore(false)
       })
     }
-  }, [dbHasMore, fetchFromApi])
+  }, [dbHasMore, enableScrollToTop, fetchFromApi])
 
   const onWheel = useCallback<WheelEventHandler<HTMLDivElement>>((e) => {
     if (e.deltaY > 0) {

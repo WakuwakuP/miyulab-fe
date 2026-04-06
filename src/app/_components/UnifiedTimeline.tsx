@@ -91,9 +91,6 @@ export const UnifiedTimeline = ({
   const [isScrolling, setIsScrolling] = useState(false)
   const [isFetchingMore, setIsFetchingMore] = useState(false)
 
-  // dbHasMore→false 遷移時に API フェッチを自動発火するためのフラグ
-  const needsApiFetchRef = useRef(false)
-
   // loadMore() やAPIフェッチで末尾に追加されたアイテム数を同期的に追跡し、
   // firstItemIndex を安定させる（Virtuoso が誤ってプリペンドと解釈しないようにする）
   // useEffect ではなく ref でレンダー中に同期計算することで、1フレームのズレを防ぐ
@@ -106,7 +103,6 @@ export const UnifiedTimeline = ({
     void configId
     bottomExpansionRef.current = 0
     exhaustedBackendsRef.current = new Set()
-    needsApiFetchRef.current = false
   }, [configId])
 
   const currentLength = timeline.length
@@ -235,7 +231,7 @@ export const UnifiedTimeline = ({
   //
   // dbHasMore が true の場合は loadMore() だけで表示が増える。
   // dbHasMore が false（DB 枯渇）の場合のみ API フェッチも実行される。
-  // dbHasMore が後から false に変わった場合は useEffect が API フェッチを自動発火する。
+  // loadMore() 後に dbHasMore が false に変わった場合は useEffect が API フェッチを自動発火する。
   const moreLoad = useCallback(async () => {
     if (isFetchingMoreRef.current) return
     isFetchingMoreRef.current = true
@@ -246,31 +242,25 @@ export const UnifiedTimeline = ({
       // SQLite クエリの表示件数を拡張（常に実行）
       loadMore()
 
-      if (dbHasMore) {
-        // DB にまだデータがある可能性 — DB クエリ結果を待つ
-        // dbHasMore が false に変わったら useEffect が API フェッチを自動発火する
-        needsApiFetchRef.current = true
-        return
-      }
-
-      // DB 枯渇: API フェッチ実行
-      needsApiFetchRef.current = false
-      setIsFetchingMore(true)
-      try {
-        await fetchFromApi()
-      } finally {
-        setIsFetchingMore(false)
+      if (!dbHasMore) {
+        // DB 枯渇: API フェッチ実行
+        setIsFetchingMore(true)
+        try {
+          await fetchFromApi()
+        } finally {
+          setIsFetchingMore(false)
+        }
       }
     } finally {
       isFetchingMoreRef.current = false
     }
   }, [apps, dbHasMore, loadMore, fetchFromApi])
 
-  // dbHasMore が false に変わった際、保留中の API フェッチを自動発火
-  // (endReached は末尾到達後に再発火しないため、useEffect で補完する)
+  // loadMore() 後に DB が枯渇した場合の自動 API フェッチ
+  // enableScrollToTop が false（ユーザーが下方向にスクロール済み）の場合のみ発火
+  // これにより初回マウント時の不要な API フェッチを防止する
   useEffect(() => {
-    if (!dbHasMore && needsApiFetchRef.current && !isFetchingMoreRef.current) {
-      needsApiFetchRef.current = false
+    if (!dbHasMore && !enableScrollToTop && !isFetchingMoreRef.current) {
       isFetchingMoreRef.current = true
       setIsFetchingMore(true)
       fetchFromApi().finally(() => {
@@ -278,7 +268,7 @@ export const UnifiedTimeline = ({
         setIsFetchingMore(false)
       })
     }
-  }, [dbHasMore, fetchFromApi])
+  }, [dbHasMore, enableScrollToTop, fetchFromApi])
 
   // UIロジック
   const onWheel = useCallback<WheelEventHandler<HTMLDivElement>>((e) => {
