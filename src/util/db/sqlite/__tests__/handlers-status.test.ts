@@ -289,11 +289,15 @@ describe('handleUpsertStatus', () => {
     )
 
     // ensureServer が host で呼ばれること（backendUrl ではない）
-    expect(helpersModule.ensureServer).toHaveBeenCalledWith(db, 'example.com')
+    expect(helpersModule.ensureServer).toHaveBeenCalledWith(
+      db,
+      'example.com',
+      expect.anything(),
+    )
 
     // ensureProfile が新シグネチャ (db, account, serverId) で呼ばれること
     const callArgs = vi.mocked(helpersModule.ensureProfile).mock.calls[0]
-    expect(callArgs).toHaveLength(3)
+    expect(callArgs).toHaveLength(4)
     expect(callArgs[0]).toBe(db)
     expect(callArgs[1]).toEqual(
       expect.objectContaining({ acct: 'alice@example.com' }),
@@ -323,6 +327,7 @@ describe('handleUpsertStatus', () => {
       100,
       'favourite',
       true,
+      expect.anything(),
     )
     expect(helpersModule.updateInteraction).toHaveBeenCalledWith(
       db,
@@ -330,6 +335,7 @@ describe('handleUpsertStatus', () => {
       100,
       'reblog',
       true,
+      expect.anything(),
     )
     expect(helpersModule.updateInteraction).toHaveBeenCalledWith(
       db,
@@ -337,6 +343,7 @@ describe('handleUpsertStatus', () => {
       100,
       'bookmark',
       true,
+      expect.anything(),
     )
   })
 
@@ -361,6 +368,7 @@ describe('handleUpsertStatus', () => {
       100,
       'favourite',
       false,
+      expect.anything(),
     )
     expect(helpersModule.updateInteraction).toHaveBeenCalledWith(
       db,
@@ -368,6 +376,7 @@ describe('handleUpsertStatus', () => {
       100,
       'reblog',
       false,
+      expect.anything(),
     )
     expect(helpersModule.updateInteraction).toHaveBeenCalledWith(
       db,
@@ -375,6 +384,7 @@ describe('handleUpsertStatus', () => {
       100,
       'bookmark',
       false,
+      expect.anything(),
     )
   })
 
@@ -618,7 +628,7 @@ describe('handleUpsertStatus', () => {
     const mentionCalls = vi.mocked(postSyncModule.upsertMentionsInternal).mock
       .calls
     expect(mentionCalls.length).toBe(1)
-    expect(mentionCalls[0]).toHaveLength(3)
+    expect(mentionCalls[0]).toHaveLength(4)
     expect(mentionCalls[0][0]).toBe(db)
     expect(mentionCalls[0][1]).toBe(999) // postId
   })
@@ -637,7 +647,7 @@ describe('handleUpsertStatus', () => {
     // syncPostMedia が (db, postId, mediaAttachments) の 3 引数で呼ばれること
     const mediaCalls = vi.mocked(postSyncModule.syncPostMedia).mock.calls
     expect(mediaCalls.length).toBe(1)
-    expect(mediaCalls[0]).toHaveLength(3)
+    expect(mediaCalls[0]).toHaveLength(4)
   })
 
   it('トランザクション内で処理する', () => {
@@ -835,6 +845,7 @@ describe('handleBulkUpsertStatuses', () => {
       100,
       'favourite',
       true,
+      expect.anything(),
     )
   })
 

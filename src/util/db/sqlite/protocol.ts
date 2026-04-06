@@ -17,24 +17,47 @@ export type { ExecuteFlatFetchRequest, ExecuteGraphPlanRequest }
 export type BindValue = string | number | null
 
 export type TableName =
-  | 'posts'
-  | 'notifications'
-  | 'timeline_entries'
-  | 'post_interactions'
-  | 'post_backend_ids'
-  | 'post_mentions'
-  | 'profiles'
+  | 'cards'
+  | 'hashtags'
   | 'local_accounts'
+  | 'notifications'
+  | 'poll_options'
+  | 'polls'
+  | 'post_backend_ids'
+  | 'post_custom_emojis'
+  | 'post_hashtags'
+  | 'post_interactions'
+  | 'post_media'
+  | 'post_mentions'
+  | 'post_stats'
+  | 'posts'
+  | 'profile_custom_emojis'
+  | 'profiles'
+  | 'servers'
+  | 'timeline_entries'
+
+/** 書き込みが発生したテーブル名を収集するコレクタ */
+export type WrittenTableCollector = Set<TableName>
 
 const TABLE_NAME_SET: ReadonlySet<string> = new Set<string>([
-  'posts',
-  'notifications',
-  'timeline_entries',
-  'post_interactions',
-  'post_backend_ids',
-  'post_mentions',
-  'profiles',
+  'cards',
+  'hashtags',
   'local_accounts',
+  'notifications',
+  'poll_options',
+  'polls',
+  'post_backend_ids',
+  'post_custom_emojis',
+  'post_hashtags',
+  'post_interactions',
+  'post_media',
+  'post_mentions',
+  'post_stats',
+  'posts',
+  'profile_custom_emojis',
+  'profiles',
+  'servers',
+  'timeline_entries',
 ])
 
 /** 文字列が有効な TableName かどうかを判定する型ガード */

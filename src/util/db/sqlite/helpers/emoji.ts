@@ -1,3 +1,4 @@
+import type { WrittenTableCollector } from '../protocol'
 import { emojiIdCache } from './cache'
 
 /**
@@ -75,11 +76,13 @@ export function syncPostCustomEmojis(
     static_url?: string | null
     visible_in_picker?: boolean
   }[],
+  collector?: WrittenTableCollector,
 ): void {
   if (emojis.length === 0) {
     db.exec('DELETE FROM post_custom_emojis WHERE post_id = ?;', {
       bind: [postId],
     })
+    collector?.add('post_custom_emojis')
     return
   }
 
@@ -101,6 +104,7 @@ export function syncPostCustomEmojis(
     `DELETE FROM post_custom_emojis WHERE post_id = ? AND custom_emoji_id NOT IN (${ph});`,
     { bind: [postId, ...keepIds] },
   )
+  collector?.add('post_custom_emojis')
 }
 
 // ================================================================

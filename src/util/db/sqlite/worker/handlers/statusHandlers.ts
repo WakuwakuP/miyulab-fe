@@ -45,7 +45,7 @@ import {
   resolveRepostOfPostId,
   resolveVisibilityId,
 } from './statusHelpers'
-import type { DbExec, HandlerResult } from './types'
+import type { DbExec, HandlerResult, WrittenTableCollector } from './types'
 
 // ================================================================
 // 内部ヘルパー: エンゲージメント同期
@@ -60,21 +60,22 @@ function syncInteractions(
   postId: number,
   localAccountId: number,
   status: Entity.Status,
+  collector?: WrittenTableCollector,
 ): void {
   if (status.favourited === true) {
-    updateInteraction(db, postId, localAccountId, 'favourite', true)
+    updateInteraction(db, postId, localAccountId, 'favourite', true, collector)
   } else if (status.favourited === false) {
-    updateInteraction(db, postId, localAccountId, 'favourite', false)
+    updateInteraction(db, postId, localAccountId, 'favourite', false, collector)
   }
   if (status.reblogged === true) {
-    updateInteraction(db, postId, localAccountId, 'reblog', true)
+    updateInteraction(db, postId, localAccountId, 'reblog', true, collector)
   } else if (status.reblogged === false) {
-    updateInteraction(db, postId, localAccountId, 'reblog', false)
+    updateInteraction(db, postId, localAccountId, 'reblog', false, collector)
   }
   if (status.bookmarked === true) {
-    updateInteraction(db, postId, localAccountId, 'bookmark', true)
+    updateInteraction(db, postId, localAccountId, 'bookmark', true, collector)
   } else if (status.bookmarked === false) {
-    updateInteraction(db, postId, localAccountId, 'bookmark', false)
+    updateInteraction(db, postId, localAccountId, 'bookmark', false, collector)
   }
 }
 
@@ -96,11 +97,12 @@ function upsertSingleStatus(
   now: number,
   timelineKey: string,
   uriCache?: Map<string, number>,
+  collector?: WrittenTableCollector,
 ): number {
   const normalizedUri = status.uri?.trim() || ''
   const cols = extractPostColumns(status)
   const visibilityId = resolveVisibilityId(db, cols.visibility_id.toString())
-  const profileId = ensureProfile(db, status.account, serverId)
+  const profileId = ensureProfile(db, status.account, serverId, collector)
 
   const accountDomain = deriveAccountDomain(status.account)
   const acctEmojis =
@@ -113,7 +115,7 @@ function upsertSingleStatus(
           accountDomain,
         )
   if (acctEmojis.length > 0) {
-    syncProfileCustomEmojis(db, profileId, serverId, acctEmojis)
+    syncProfileCustomEmojis(db, profileId, serverId, acctEmojis, collector)
   }
 
   const isReblog = status.reblog != null ? 1 : 0
@@ -128,6 +130,7 @@ function upsertSingleStatus(
       serverId,
       now,
       localAccountId,
+      collector,
     )
   }
 
@@ -306,6 +309,7 @@ function upsertSingleStatus(
     )
     postId = getLastInsertRowId(db)
   }
+  collector?.add('posts')
 
   // リブログマージ時: 既存行の object_uri が空で、新しい URI が
   // 有効な Announce URI の場合は補完する
@@ -335,6 +339,7 @@ function upsertSingleStatus(
        VALUES (?, ?, ?, ?);`,
       { bind: [postId, localAccountId, status.id, serverId] },
     )
+    collector?.add('post_backend_ids')
   }
 
   // ================================================================
@@ -355,18 +360,19 @@ function upsertSingleStatus(
         ],
       },
     )
+    collector?.add('timeline_entries')
   }
 
   // ================================================================
   // 関連データの同期
   // ================================================================
-  upsertMentionsInternal(db, postId, status.mentions)
-  syncPostMedia(db, postId, status.media_attachments)
-  syncPostStats(db, postId, status)
+  upsertMentionsInternal(db, postId, status.mentions, collector)
+  syncPostMedia(db, postId, status.media_attachments, collector)
+  syncPostStats(db, postId, status, collector)
 
   // エンゲージメント同期
   if (localAccountId !== null) {
-    syncInteractions(db, postId, localAccountId, status)
+    syncInteractions(db, postId, localAccountId, status, collector)
   }
 
   // カスタム絵文字
@@ -388,13 +394,16 @@ function upsertSingleStatus(
           status.account?.display_name ?? null,
           accountDomain,
         )
-  syncPostCustomEmojis(db, postId, serverId, [
-    ...statusEmojisResolved,
-    ...accountEmojisResolved,
-  ])
-  syncPostHashtags(db, postId, status.tags)
-  syncPollData(db, postId, status.poll)
-  syncLinkCard(db, postId, status.card)
+  syncPostCustomEmojis(
+    db,
+    postId,
+    serverId,
+    [...statusEmojisResolved, ...accountEmojisResolved],
+    collector,
+  )
+  syncPostHashtags(db, postId, status.tags, collector)
+  syncPollData(db, postId, status.poll, collector)
+  syncLinkCard(db, postId, status.card, collector)
 
   return postId
 }
@@ -412,11 +421,12 @@ export function handleUpsertStatus(
 ): HandlerResult {
   const status = JSON.parse(statusJson) as Entity.Status
   const now = Date.now()
+  const collector: WrittenTableCollector = new Set()
 
   db.exec('BEGIN;')
   try {
     const host = new URL(backendUrl).host
-    const serverId = ensureServer(db, host)
+    const serverId = ensureServer(db, host, collector)
     const localAccountId = resolveLocalAccountId(db, backendUrl)
     const timelineKey = buildTimelineKey(timelineType, { tag })
 
@@ -427,11 +437,13 @@ export function handleUpsertStatus(
       localAccountId,
       now,
       timelineKey,
+      undefined,
+      collector,
     )
 
     // tag timeline から来た場合、ハッシュタグを確保する
     if (tag) {
-      ensureTagForPost(db, postId, tag)
+      ensureTagForPost(db, postId, tag, collector)
     }
 
     db.exec('COMMIT;')
@@ -440,7 +452,7 @@ export function handleUpsertStatus(
     throw e
   }
 
-  return { changedTables: ['posts', 'timeline_entries'] }
+  return { changedTables: [...collector] }
 }
 
 export function handleBulkUpsertStatuses(
@@ -454,11 +466,12 @@ export function handleBulkUpsertStatuses(
 
   const now = Date.now()
   const uriCache = new Map<string, number>()
+  const collector: WrittenTableCollector = new Set()
 
   db.exec('BEGIN;')
   try {
     const host = new URL(backendUrl).host
-    const serverId = ensureServer(db, host)
+    const serverId = ensureServer(db, host, collector)
     const localAccountId = resolveLocalAccountId(db, backendUrl)
     const timelineKey = buildTimelineKey(timelineType, { tag })
 
@@ -473,11 +486,12 @@ export function handleBulkUpsertStatuses(
         now,
         timelineKey,
         uriCache,
+        collector,
       )
 
       // tag timeline から来た場合、ハッシュタグを確保する
       if (tag) {
-        ensureTagForPost(db, postId, tag)
+        ensureTagForPost(db, postId, tag, collector)
       }
     }
 
@@ -487,7 +501,7 @@ export function handleBulkUpsertStatuses(
     throw e
   }
 
-  return { changedTables: ['posts', 'timeline_entries'] }
+  return { changedTables: [...collector] }
 }
 
 // ================================================================
@@ -497,11 +511,17 @@ export function handleBulkUpsertStatuses(
 /**
  * tag timeline 経由の投稿に対して、指定タグを post_hashtags に確保する。
  */
-function ensureTagForPost(db: DbExec, postId: number, tag: string): void {
+function ensureTagForPost(
+  db: DbExec,
+  postId: number,
+  tag: string,
+  collector?: WrittenTableCollector,
+): void {
   const normalizedTag = tag.toLowerCase()
   db.exec(`INSERT OR IGNORE INTO hashtags (name) VALUES (?);`, {
     bind: [normalizedTag],
   })
+  collector?.add('hashtags')
   const tagRows = db.exec('SELECT id FROM hashtags WHERE name = ?;', {
     bind: [normalizedTag],
     returnValue: 'resultRows',
@@ -511,5 +531,6 @@ function ensureTagForPost(db: DbExec, postId: number, tag: string): void {
       'INSERT OR IGNORE INTO post_hashtags (post_id, hashtag_id) VALUES (?, ?);',
       { bind: [postId, tagRows[0][0]] },
     )
+    collector?.add('post_hashtags')
   }
 }

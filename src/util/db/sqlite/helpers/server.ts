@@ -1,3 +1,4 @@
+import type { WrittenTableCollector } from '../protocol'
 import { serverHostCache, serverIdCache } from './cache'
 import type { DbExecCompat } from './types'
 
@@ -5,7 +6,11 @@ import type { DbExecCompat } from './types'
  * host に対応する servers.id を返す。
  * 未登録の場合は servers テーブルに INSERT してから返す。
  */
-export function ensureServer(db: DbExecCompat, host: string): number {
+export function ensureServer(
+  db: DbExecCompat,
+  host: string,
+  collector?: WrittenTableCollector,
+): number {
   // 常に INSERT OR IGNORE を実行して行の存在を保証する。
   // キャッシュだけに頼ると、前回のトランザクションが ROLLBACK された場合に
   // 行が存在しないのにキャッシュにIDが残る（キャッシュ不整合）ため、
@@ -13,6 +18,7 @@ export function ensureServer(db: DbExecCompat, host: string): number {
   db.exec('INSERT OR IGNORE INTO servers (host) VALUES (?);', {
     bind: [host],
   })
+  collector?.add('servers')
 
   const cached = serverIdCache.get(host)
   if (cached !== undefined) return cached

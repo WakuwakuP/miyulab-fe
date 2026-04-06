@@ -37,7 +37,7 @@ import {
   resolveRepostOfPostId,
   resolveVisibilityId,
 } from './statusHelpers'
-import type { DbExec, HandlerResult } from './types'
+import type { DbExec, HandlerResult, WrittenTableCollector } from './types'
 
 export function handleUpdateStatus(
   db: DbExec,
@@ -76,14 +76,22 @@ export function handleUpdateStatus(
 
   if (existing.length === 0) return { changedTables: [] }
 
+  const collector: WrittenTableCollector = new Set()
+
   db.exec('BEGIN;')
   try {
     const host = new URL(backendUrl).host
-    const serverId = ensureServer(db, host)
+    const serverId = ensureServer(db, host, collector)
     const visibilityId = resolveVisibilityId(db, cols.visibility_id.toString())
-    const profileId = ensureProfile(db, status.account, serverId)
+    const profileId = ensureProfile(db, status.account, serverId, collector)
     if (status.account.emojis.length > 0) {
-      syncProfileCustomEmojis(db, profileId, serverId, status.account.emojis)
+      syncProfileCustomEmojis(
+        db,
+        profileId,
+        serverId,
+        status.account.emojis,
+        collector,
+      )
     }
 
     const isReblog = status.reblog != null ? 1 : 0
@@ -137,38 +145,77 @@ export function handleUpdateStatus(
         ],
       },
     )
+    collector.add('posts')
 
-    upsertMentionsInternal(db, postId, status.mentions)
-    syncPostMedia(db, postId, status.media_attachments)
-    syncPostStats(db, postId, status)
+    upsertMentionsInternal(db, postId, status.mentions, collector)
+    syncPostMedia(db, postId, status.media_attachments, collector)
+    syncPostStats(db, postId, status, collector)
 
     // エンゲージメント同期（サーバーから返されたフラグをDBに反映）
     const localAccountId = resolveLocalAccountId(db, backendUrl)
     if (localAccountId !== null) {
       if (status.favourited === true) {
-        updateInteraction(db, postId, localAccountId, 'favourite', true)
+        updateInteraction(
+          db,
+          postId,
+          localAccountId,
+          'favourite',
+          true,
+          collector,
+        )
       } else if (status.favourited === false) {
-        updateInteraction(db, postId, localAccountId, 'favourite', false)
+        updateInteraction(
+          db,
+          postId,
+          localAccountId,
+          'favourite',
+          false,
+          collector,
+        )
       }
       if (status.reblogged === true) {
-        updateInteraction(db, postId, localAccountId, 'reblog', true)
+        updateInteraction(db, postId, localAccountId, 'reblog', true, collector)
       } else if (status.reblogged === false) {
-        updateInteraction(db, postId, localAccountId, 'reblog', false)
+        updateInteraction(
+          db,
+          postId,
+          localAccountId,
+          'reblog',
+          false,
+          collector,
+        )
       }
       if (status.bookmarked === true) {
-        updateInteraction(db, postId, localAccountId, 'bookmark', true)
+        updateInteraction(
+          db,
+          postId,
+          localAccountId,
+          'bookmark',
+          true,
+          collector,
+        )
       } else if (status.bookmarked === false) {
-        updateInteraction(db, postId, localAccountId, 'bookmark', false)
+        updateInteraction(
+          db,
+          postId,
+          localAccountId,
+          'bookmark',
+          false,
+          collector,
+        )
       }
     }
 
-    syncPostCustomEmojis(db, postId, serverId, [
-      ...(status.emojis ?? []),
-      ...(status.account?.emojis ?? []),
-    ])
-    syncPostHashtags(db, postId, status.tags)
-    syncPollData(db, postId, status.poll)
-    syncLinkCard(db, postId, status.card)
+    syncPostCustomEmojis(
+      db,
+      postId,
+      serverId,
+      [...(status.emojis ?? []), ...(status.account?.emojis ?? [])],
+      collector,
+    )
+    syncPostHashtags(db, postId, status.tags, collector)
+    syncPollData(db, postId, status.poll, collector)
+    syncLinkCard(db, postId, status.card, collector)
 
     // リブログの場合、元投稿も更新する
     if (isReblog === 1 && status.reblog) {
@@ -179,6 +226,7 @@ export function handleUpdateStatus(
         serverId,
         now,
         localAccountId,
+        collector,
       )
     }
 
@@ -188,5 +236,5 @@ export function handleUpdateStatus(
     throw e
   }
 
-  return { changedTables: ['posts'] }
+  return { changedTables: [...collector] }
 }

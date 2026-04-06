@@ -1,3 +1,4 @@
+import type { WrittenTableCollector } from '../protocol'
 import type { DbExecCompat } from './types'
 
 const CARD_TYPE_MAP: Record<string, number> = {
@@ -33,9 +34,11 @@ export function syncLinkCard(
       }
     | null
     | undefined,
+  collector?: WrittenTableCollector,
 ): void {
   if (!card) {
     db.exec('DELETE FROM link_cards WHERE post_id = ?;', { bind: [postId] })
+    collector?.add('cards')
     return
   }
 
@@ -82,4 +85,5 @@ export function syncLinkCard(
       ],
     },
   )
+  collector?.add('cards')
 }

@@ -1,4 +1,5 @@
 import type { Entity } from 'megalodon'
+import type { WrittenTableCollector } from '../protocol'
 import { profileIdCache, serverHostCache } from './cache'
 import { ensureCustomEmoji } from './emoji'
 import type { DbExecCompat } from './types'
@@ -43,6 +44,7 @@ export function ensureProfile(
   db: DbExecCompat,
   account: Entity.Account,
   serverId: number,
+  collector?: WrittenTableCollector,
 ): number {
   const acct = account.acct
   const host = resolveServerHost(db, serverId)
@@ -100,6 +102,7 @@ export function ensureProfile(
       ],
     },
   )
+  collector?.add('profiles')
 
   const cached = profileIdCache.get(canonicalAcct)
   if (cached !== undefined) return cached
@@ -189,11 +192,13 @@ export function syncProfileCustomEmojis(
     static_url?: string | null
     visible_in_picker?: boolean
   }[],
+  collector?: WrittenTableCollector,
 ): void {
   if (emojis.length === 0) {
     db.exec('DELETE FROM profile_custom_emojis WHERE profile_id = ?;', {
       bind: [profileId],
     })
+    collector?.add('profile_custom_emojis')
     return
   }
 
@@ -214,4 +219,5 @@ export function syncProfileCustomEmojis(
     `DELETE FROM profile_custom_emojis WHERE profile_id = ? AND custom_emoji_id NOT IN (${ph});`,
     { bind: [profileId, ...keepIds] },
   )
+  collector?.add('profile_custom_emojis')
 }

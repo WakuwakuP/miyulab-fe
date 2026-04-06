@@ -295,6 +295,7 @@ describe('handleUpdateStatus', () => {
       100,
       'favourite',
       true,
+      expect.anything(),
     )
     expect(helpersModule.updateInteraction).toHaveBeenCalledWith(
       db,
@@ -302,6 +303,7 @@ describe('handleUpdateStatus', () => {
       100,
       'reblog',
       true,
+      expect.anything(),
     )
     expect(helpersModule.updateInteraction).toHaveBeenCalledWith(
       db,
@@ -309,6 +311,7 @@ describe('handleUpdateStatus', () => {
       100,
       'bookmark',
       true,
+      expect.anything(),
     )
   })
 
@@ -328,6 +331,7 @@ describe('handleUpdateStatus', () => {
       100,
       'favourite',
       false,
+      expect.anything(),
     )
     expect(helpersModule.updateInteraction).toHaveBeenCalledWith(
       db,
@@ -335,6 +339,7 @@ describe('handleUpdateStatus', () => {
       100,
       'reblog',
       false,
+      expect.anything(),
     )
     expect(helpersModule.updateInteraction).toHaveBeenCalledWith(
       db,
@@ -342,6 +347,7 @@ describe('handleUpdateStatus', () => {
       100,
       'bookmark',
       false,
+      expect.anything(),
     )
   })
 
@@ -363,7 +369,11 @@ describe('handleUpdateStatus', () => {
     handleUpdateStatus(db, JSON.stringify(status), 'https://example.com')
 
     // ensureServer が host ('example.com') で呼ばれること
-    expect(helpersModule.ensureServer).toHaveBeenCalledWith(db, 'example.com')
+    expect(helpersModule.ensureServer).toHaveBeenCalledWith(
+      db,
+      'example.com',
+      expect.anything(),
+    )
   })
 
   it('ensureProfile を新シグネチャ (db, account, serverId) で呼び出す', () => {
@@ -373,7 +383,7 @@ describe('handleUpdateStatus', () => {
     handleUpdateStatus(db, JSON.stringify(status), 'https://example.com')
 
     const callArgs = vi.mocked(helpersModule.ensureProfile).mock.calls[0]
-    expect(callArgs).toHaveLength(3)
+    expect(callArgs).toHaveLength(4)
     expect(callArgs[0]).toBe(db)
     expect(callArgs[1]).toEqual(
       expect.objectContaining({ acct: 'alice@example.com' }),
@@ -487,7 +497,7 @@ describe('handleUpdateStatus', () => {
     const mentionCalls = vi.mocked(postSyncModule.upsertMentionsInternal).mock
       .calls
     expect(mentionCalls.length).toBe(1)
-    expect(mentionCalls[0]).toHaveLength(3) // (db, postId, mentions)
+    expect(mentionCalls[0]).toHaveLength(4) // (db, postId, mentions, collector)
   })
 
   it('syncPostMedia を sensitive 引数なしで呼び出す', () => {
@@ -498,7 +508,7 @@ describe('handleUpdateStatus', () => {
 
     const mediaCalls = vi.mocked(postSyncModule.syncPostMedia).mock.calls
     expect(mediaCalls.length).toBe(1)
-    expect(mediaCalls[0]).toHaveLength(3) // (db, postId, mediaAttachments)
+    expect(mediaCalls[0]).toHaveLength(4) // (db, postId, mediaAttachments, collector)
   })
 
   it('リブログの場合、元投稿も更新する', () => {

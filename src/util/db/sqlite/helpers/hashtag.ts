@@ -1,3 +1,4 @@
+import type { WrittenTableCollector } from '../protocol'
 import type { DbExecCompat } from './types'
 
 /**
@@ -8,11 +9,13 @@ export function syncPostHashtags(
   db: DbExecCompat,
   postId: number,
   tags: { name: string; url?: string }[],
+  collector?: WrittenTableCollector,
 ): void {
   if (tags.length === 0) {
     db.exec('DELETE FROM post_hashtags WHERE post_id = ?;', {
       bind: [postId],
     })
+    collector?.add('post_hashtags')
     return
   }
 
@@ -38,6 +41,8 @@ export function syncPostHashtags(
     keepIds.push(hashtagId)
   }
 
+  collector?.add('hashtags')
+
   // post_hashtags にリンク（multi-value INSERT）
   const linkPlaceholders = keepIds.map(() => '(?, ?)').join(',')
   const linkBinds: number[] = []
@@ -55,4 +60,5 @@ export function syncPostHashtags(
     `DELETE FROM post_hashtags WHERE post_id = ? AND hashtag_id NOT IN (${ph});`,
     { bind: [postId, ...keepIds] },
   )
+  collector?.add('post_hashtags')
 }

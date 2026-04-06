@@ -33,7 +33,7 @@ import {
   resolveRepostOfPostId,
   resolveVisibilityId,
 } from './statusHelpers'
-import type { DbExec } from './types'
+import type { DbExec, WrittenTableCollector } from './types'
 
 // ================================================================
 // メンション同期
@@ -43,6 +43,7 @@ export function upsertMentionsInternal(
   db: DbExec,
   postId: number,
   mentions: Entity.Mention[],
+  collector?: WrittenTableCollector,
 ): void {
   const keepAccts: string[] = []
 
@@ -85,21 +86,20 @@ export function upsertMentionsInternal(
       { bind: [postId, ...keepAccts] },
     )
   }
+  collector?.add('post_mentions')
 }
-
-// ================================================================
-// メディア同期
-// ================================================================
 
 export function syncPostMedia(
   db: DbExec,
   postId: number,
   mediaAttachments: Entity.Attachment[],
+  collector?: WrittenTableCollector,
 ): void {
   // DELETE + INSERT 方式
   db.exec('DELETE FROM post_media WHERE post_id = ?;', {
     bind: [postId],
   })
+  collector?.add('post_media')
 
   if (mediaAttachments.length === 0) return
 
@@ -152,6 +152,7 @@ export function syncPostStats(
   db: DbExec,
   postId: number,
   status: Entity.Status,
+  collector?: WrittenTableCollector,
 ): void {
   // emoji_reactions を JSON 文字列に変換（account_ids のみ保持、accounts は省略）
   const emojiReactionsJson =
@@ -191,6 +192,7 @@ export function syncPostStats(
       ],
     },
   )
+  collector?.add('post_stats')
 }
 
 // ================================================================
@@ -208,13 +210,19 @@ export function ensureReblogOriginalPost(
   serverId: number,
   now: number,
   localAccountId: number | null,
+  collector?: WrittenTableCollector,
 ): void {
   const normalizedUri = originalStatus.uri?.trim() || ''
   if (!normalizedUri) return
 
   const cols = extractPostColumns(originalStatus)
   const accountDomain = deriveAccountDomain(originalStatus.account)
-  const profileId = ensureProfile(db, originalStatus.account, serverId)
+  const profileId = ensureProfile(
+    db,
+    originalStatus.account,
+    serverId,
+    collector,
+  )
   const accountEmojis =
     originalStatus.account.emojis.length > 0
       ? originalStatus.account.emojis
@@ -225,7 +233,7 @@ export function ensureReblogOriginalPost(
           accountDomain,
         )
   if (accountEmojis.length > 0) {
-    syncProfileCustomEmojis(db, profileId, serverId, accountEmojis)
+    syncProfileCustomEmojis(db, profileId, serverId, accountEmojis, collector)
   }
 
   let postId: number | undefined
@@ -336,6 +344,7 @@ export function ensureReblogOriginalPost(
     )
     postId = getLastInsertRowId(db)
   }
+  collector?.add('posts')
 
   // post_backend_ids に登録
   if (localAccountId !== null) {
@@ -344,11 +353,12 @@ export function ensureReblogOriginalPost(
        VALUES (?, ?, ?, ?);`,
       { bind: [postId, localAccountId, originalStatus.id, serverId] },
     )
+    collector?.add('post_backend_ids')
   }
 
-  upsertMentionsInternal(db, postId, originalStatus.mentions)
-  syncPostMedia(db, postId, originalStatus.media_attachments)
-  syncPostStats(db, postId, originalStatus)
+  upsertMentionsInternal(db, postId, originalStatus.mentions, collector)
+  syncPostMedia(db, postId, originalStatus.media_attachments, collector)
+  syncPostStats(db, postId, originalStatus, collector)
   const resolvedStatusEmojis =
     originalStatus.emojis?.length > 0
       ? originalStatus.emojis
@@ -367,35 +377,60 @@ export function ensureReblogOriginalPost(
           originalStatus.account?.display_name ?? null,
           accountDomain,
         )
-  syncPostCustomEmojis(db, postId, serverId, [
-    ...resolvedStatusEmojis,
-    ...resolvedAccountEmojis,
-  ])
-  syncPostHashtags(db, postId, originalStatus.tags)
-  syncPollData(db, postId, originalStatus.poll)
+  syncPostCustomEmojis(
+    db,
+    postId,
+    serverId,
+    [...resolvedStatusEmojis, ...resolvedAccountEmojis],
+    collector,
+  )
+  syncPostHashtags(db, postId, originalStatus.tags, collector)
+  syncPollData(db, postId, originalStatus.poll, collector)
   syncLinkCard(
     db,
     postId,
     originalStatus.card as Parameters<typeof syncLinkCard>[2],
+    collector,
   )
 
   // エンゲージメント同期（サーバーから返されたフラグをDBに反映）
   // === true で設定、=== false で解除、null/undefined はスキップ（データなし）
   if (localAccountId !== null) {
     if (originalStatus.favourited === true) {
-      updateInteraction(db, postId, localAccountId, 'favourite', true)
+      updateInteraction(
+        db,
+        postId,
+        localAccountId,
+        'favourite',
+        true,
+        collector,
+      )
     } else if (originalStatus.favourited === false) {
-      updateInteraction(db, postId, localAccountId, 'favourite', false)
+      updateInteraction(
+        db,
+        postId,
+        localAccountId,
+        'favourite',
+        false,
+        collector,
+      )
     }
     if (originalStatus.reblogged === true) {
-      updateInteraction(db, postId, localAccountId, 'reblog', true)
+      updateInteraction(db, postId, localAccountId, 'reblog', true, collector)
     } else if (originalStatus.reblogged === false) {
-      updateInteraction(db, postId, localAccountId, 'reblog', false)
+      updateInteraction(db, postId, localAccountId, 'reblog', false, collector)
     }
     if (originalStatus.bookmarked === true) {
-      updateInteraction(db, postId, localAccountId, 'bookmark', true)
+      updateInteraction(db, postId, localAccountId, 'bookmark', true, collector)
     } else if (originalStatus.bookmarked === false) {
-      updateInteraction(db, postId, localAccountId, 'bookmark', false)
+      updateInteraction(
+        db,
+        postId,
+        localAccountId,
+        'bookmark',
+        false,
+        collector,
+      )
     }
   }
 }

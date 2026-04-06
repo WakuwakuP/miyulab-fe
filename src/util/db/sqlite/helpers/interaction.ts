@@ -1,3 +1,4 @@
+import type { WrittenTableCollector } from '../protocol'
 import type { DbExecCompat } from './types'
 
 // ================================================================
@@ -23,6 +24,7 @@ export function updateInteraction(
   localAccountId: number,
   action: string,
   value: boolean,
+  collector?: WrittenTableCollector,
 ): void {
   const column = ACTION_COLUMN_MAP[action]
   if (!column) return
@@ -36,6 +38,7 @@ export function updateInteraction(
        updated_at = excluded.updated_at;`,
     { bind: [postId, localAccountId, value ? 1 : 0, now] },
   )
+  collector?.add('post_interactions')
 }
 
 /**

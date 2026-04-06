@@ -1,3 +1,4 @@
+import type { WrittenTableCollector } from '../protocol'
 import type { DbExecCompat } from './types'
 
 /**
@@ -18,6 +19,7 @@ export function syncPollData(
       }
     | null
     | undefined,
+  collector?: WrittenTableCollector,
 ): void {
   if (!poll) return
 
@@ -42,6 +44,7 @@ export function syncPollData(
       ],
     },
   )
+  collector?.add('polls')
 
   // poll ID を取得
   const rows = db.exec('SELECT id FROM polls WHERE post_id = ?;', {
@@ -70,6 +73,7 @@ export function syncPollData(
       { bind: binds },
     )
   }
+  collector?.add('poll_options')
 }
 
 /**
