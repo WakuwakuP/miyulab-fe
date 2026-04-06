@@ -22,6 +22,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
+    "domelementtype": "^3.0.0",
     "embla-carousel-react": "^8.6.0",
     "emoji-picker-react": "^4.18.0",
     "html-react-parser": "^6.0.0",
