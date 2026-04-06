@@ -1,14 +1,18 @@
 /**
  * useTimelineStreamingController — ストリーミング差分取得の制御
  *
- * DB 変更通知を受けて、newest カーソル以降の差分を取得する。
+ * DB 変更通知を受けて、最新ページを再取得する。
  * scrollback 中は取得を保留し、完了後に flush される。
  *
  * 責務:
  * - subscribeToChanges による DB 変更監視
- * - after newestMs カーソルで差分取得
+ * - 変更検知時に最新ページを再取得 (reducer の mergeItems で重複排除)
  * - scrollback 中の STREAMING_DEFERRED dispatch
  * - hintless 変更時の再初期化
+ *
+ * NOTE: カーソルベースの差分取得ではなく、ページ全体を再取得する。
+ * timeline_entries 経由の複雑なプランでもカーソル不整合を起こさず、
+ * mergeItems の Map ベース重複排除により安全にマージされる。
  */
 
 import type { Dispatch, RefObject } from 'react'
@@ -21,7 +25,6 @@ import type {
   FetchPageResult,
 } from 'util/hooks/useTimelineDataSource'
 
-import { CURSOR_MARGIN_MS } from './itemHelpers'
 import type { TimelineListEvent, TimelineListState } from './reducer'
 
 const PAGE_SIZE = TIMELINE_QUERY_LIMIT
@@ -53,22 +56,15 @@ export function useTimelineStreamingController({
         dispatch({ type: 'STREAMING_DEFERRED' })
         return
       }
-      if (s.newestMs <= 0) {
-        tlDebug('[TL] onMatched: skipped (newestMs=0, initial load pending)')
+      // 初期ロード完了前はスキップ
+      if (!s.initialized) {
+        tlDebug('[TL] onMatched: skipped (initial load pending)')
         return
       }
 
-      const cursorValue = s.newestMs - CURSOR_MARGIN_MS
-      tlDebug('[TL] onMatched: fetching after', cursorValue)
+      tlDebug('[TL] onMatched: fetching latest page')
 
-      fetchPage({
-        cursor: {
-          direction: 'after',
-          field: 'created_at_ms',
-          value: cursorValue,
-        },
-        limit: PAGE_SIZE,
-      }).then((result) => {
+      fetchPage({ limit: PAGE_SIZE }).then((result) => {
         tlDebug(
           '[TL] onMatched: fetch result',
           result ? result.items.length : 'null',

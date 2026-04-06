@@ -27,7 +27,6 @@ import {
   fetchOlderFromApi,
 } from 'util/timelineFetcher'
 
-import { CURSOR_MARGIN_MS } from './itemHelpers'
 import type { TimelineListEvent, TimelineListState } from './reducer'
 
 const PAGE_SIZE = TIMELINE_QUERY_LIMIT
@@ -138,16 +137,9 @@ export function useTimelineScrollbackController({
           type: 'SCROLLBACK_COMPLETED',
         })
 
-        // 保留されたストリーミング更新を回収
-        if (hasDeferredStreaming && stateRef.current.newestMs > 0) {
-          fetchPage({
-            cursor: {
-              direction: 'after',
-              field: 'created_at_ms',
-              value: stateRef.current.newestMs - CURSOR_MARGIN_MS,
-            },
-            limit: PAGE_SIZE,
-          }).then((result) => {
+        // 保留されたストリーミング更新を回収（カーソルなし全ページ再取得）
+        if (hasDeferredStreaming) {
+          fetchPage({ limit: PAGE_SIZE }).then((result) => {
             if (!result) return
             recordDuration(result.durationMs)
             dispatch({
