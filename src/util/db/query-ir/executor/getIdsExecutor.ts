@@ -139,6 +139,12 @@ export function compileGetIds(
     }
   }
 
+  // --- カーソル条件 ---
+  if (node.cursor) {
+    whereConditions.push(`${alias}.${node.cursor.column} ${node.cursor.op} ?`)
+    allBinds.push(node.cursor.value)
+  }
+
   // --- JOIN 重複排除 ---
   const seenAliases = new Set<string>()
   const uniqueJoins = allJoins.filter((j) => {

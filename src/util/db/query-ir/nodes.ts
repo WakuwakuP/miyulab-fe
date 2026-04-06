@@ -261,6 +261,11 @@ export type GetIdsNode = {
    * createdAtMs には 0 が設定され ROWID 降順でソートされる。
    */
   outputTimeColumn?: string | null
+  /**
+   * カーソル条件。patchPlanForFetch から注入される。
+   * get-ids SQL の WHERE 句に `{column} {op} ?` として追加される。
+   */
+  cursor?: { column: string; op: '<' | '>'; value: number }
   /** @deprecated FilterCondition.upstreamSourceNodeId を使用してください */
   inputBindings?: GetIdsInputBinding[]
   /** @deprecated FilterCondition.upstreamSourceNodeId を使用してください */

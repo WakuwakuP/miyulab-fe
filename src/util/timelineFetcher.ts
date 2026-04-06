@@ -164,7 +164,126 @@ export async function fetchMoreNotifications(
   return res.data.length
 }
 
+// --------------- 枯渇状態ヘルパー ---------------
+
+export type ExhaustedResources = Map<
+  string,
+  { notifications: boolean; statuses: boolean }
+>
+
+function getExhausted(
+  map: ExhaustedResources,
+  url: string,
+): { notifications: boolean; statuses: boolean } {
+  return map.get(url) ?? { notifications: false, statuses: false }
+}
+
+function markExhausted(
+  map: ExhaustedResources,
+  url: string,
+  resource: 'notifications' | 'statuses',
+): void {
+  const current = getExhausted(map, url)
+  map.set(url, { ...current, [resource]: true })
+}
+
+export function allExhaustedFor(
+  map: ExhaustedResources,
+  targetBackendUrls: string[],
+  resource: 'notifications' | 'statuses',
+): boolean {
+  return targetBackendUrls.every((url) => getExhausted(map, url)[resource])
+}
+
 // --------------- 共通 API フォールバック ---------------
+
+/**
+ * 各 backendUrl ごとに DB 内の最古 ID を算出し、API からステータスの追加データを取得する。
+ */
+async function fetchOlderStatusesFromApi(
+  config: TimelineConfigV2,
+  apps: App[],
+  targetBackendUrls: string[],
+  exhaustedResources: ExhaustedResources,
+): Promise<void> {
+  if (config.type === 'notification') return
+
+  const activeUrls = targetBackendUrls.filter(
+    (url) => !getExhausted(exhaustedResources, url).statuses,
+  )
+  if (activeUrls.length === 0) return
+
+  const { getSqliteDb } = await import('util/db/sqlite/connection')
+  const { GetClient } = await import('util/GetClient')
+
+  await Promise.all(
+    activeUrls.map(async (url) => {
+      const app = apps.find((a) => a.backendUrl === url)
+      if (!app) return
+
+      const handle = await getSqliteDb()
+      const client = GetClient(app)
+      const oldestId = await getOldestStatusId(handle, config, url)
+
+      if (!oldestId) {
+        try {
+          await fetchInitialData(client, config, url)
+        } catch (error) {
+          console.error(`Failed to fetch initial data for ${url}:`, error)
+        }
+        return
+      }
+
+      try {
+        const count = await fetchMoreData(client, config, url, oldestId)
+        if (count < FETCH_LIMIT) {
+          markExhausted(exhaustedResources, url, 'statuses')
+        }
+      } catch (error) {
+        console.error(`Failed to fetch more data for ${url}:`, error)
+      }
+    }),
+  )
+}
+
+/**
+ * 各 backendUrl ごとに DB 内の最古通知 ID を算出し、API から通知の追加データを取得する。
+ */
+async function fetchOlderNotificationsFromApi(
+  apps: App[],
+  targetBackendUrls: string[],
+  exhaustedResources: ExhaustedResources,
+): Promise<void> {
+  const activeUrls = targetBackendUrls.filter(
+    (url) => !getExhausted(exhaustedResources, url).notifications,
+  )
+  if (activeUrls.length === 0) return
+
+  const { getSqliteDb } = await import('util/db/sqlite/connection')
+  const { GetClient } = await import('util/GetClient')
+
+  await Promise.all(
+    activeUrls.map(async (url) => {
+      const app = apps.find((a) => a.backendUrl === url)
+      if (!app) return
+
+      const handle = await getSqliteDb()
+      const client = GetClient(app)
+      const oldestNotifId = await getOldestNotificationId(handle, url)
+
+      if (oldestNotifId) {
+        try {
+          const count = await fetchMoreNotifications(client, url, oldestNotifId)
+          if (count < FETCH_LIMIT) {
+            markExhausted(exhaustedResources, url, 'notifications')
+          }
+        } catch (error) {
+          console.error(`Failed to fetch more notifications for ${url}:`, error)
+        }
+      }
+    }),
+  )
+}
 
 /**
  * 各 backendUrl ごとに DB 内の最古 ID を算出し、API から追加データを取得する。
@@ -175,83 +294,41 @@ export async function fetchMoreNotifications(
  * @param config — タイムライン設定
  * @param apps — アプリ一覧 (GetClient 用 App オブジェクト)
  * @param targetBackendUrls — 対象バックエンド URL
- * @param exhaustedBackends — 取得済みバックエンド (これ以上データなし)
+ * @param exhaustedResources — 枯渇状態 (バックエンドURL → リソース種別)
  * @param includeNotifications — 通知も取得するか（mixed タイムラインで true）
  */
 export async function fetchOlderFromApi(
   config: TimelineConfigV2,
   apps: App[],
   targetBackendUrls: string[],
-  exhaustedBackends: Set<string>,
+  exhaustedResources: ExhaustedResources,
   includeNotifications?: boolean,
 ): Promise<void> {
-  const activeUrls = targetBackendUrls.filter(
-    (url) => !exhaustedBackends.has(url),
-  )
-  if (activeUrls.length === 0) return
-
-  const { getSqliteDb } = await import('util/db/sqlite/connection')
-  const { GetClient } = await import('util/GetClient')
-
   const fetchStatuses = config.type !== 'notification'
   const fetchNotifs =
     config.type === 'notification' || includeNotifications === true
 
-  await Promise.all(
-    activeUrls.map(async (url) => {
-      const app = apps.find((a) => a.backendUrl === url)
-      if (!app) return
-
-      const handle = await getSqliteDb()
-      const client = GetClient(app)
-
-      // ステータスタイムラインの追加取得
-      if (fetchStatuses) {
-        const oldestId = await getOldestStatusId(handle, config, url)
-
-        if (!oldestId) {
-          try {
-            await fetchInitialData(client, config, url)
-          } catch (error) {
-            console.error(`Failed to fetch initial data for ${url}:`, error)
-          }
-          return
-        }
-
-        try {
-          const count = await fetchMoreData(client, config, url, oldestId)
-          if (count < FETCH_LIMIT) {
-            exhaustedBackends.add(url)
-          }
-        } catch (error) {
-          console.error(`Failed to fetch more data for ${url}:`, error)
-        }
-      }
-
-      // 通知の追加取得
-      if (fetchNotifs) {
-        const oldestNotifId = await getOldestNotificationId(handle, url)
-
-        if (oldestNotifId) {
-          try {
-            const count = await fetchMoreNotifications(
-              client,
-              url,
-              oldestNotifId,
-            )
-            if (count < FETCH_LIMIT) {
-              exhaustedBackends.add(url)
-            }
-          } catch (error) {
-            console.error(
-              `Failed to fetch more notifications for ${url}:`,
-              error,
-            )
-          }
-        }
-      }
-    }),
-  )
+  const tasks: Promise<void>[] = []
+  if (fetchStatuses) {
+    tasks.push(
+      fetchOlderStatusesFromApi(
+        config,
+        apps,
+        targetBackendUrls,
+        exhaustedResources,
+      ),
+    )
+  }
+  if (fetchNotifs) {
+    tasks.push(
+      fetchOlderNotificationsFromApi(
+        apps,
+        targetBackendUrls,
+        exhaustedResources,
+      ),
+    )
+  }
+  await Promise.all(tasks)
 }
 
 // --------------- DB 最古 ID 検索ヘルパー ---------------

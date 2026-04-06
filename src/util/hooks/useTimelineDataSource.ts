@@ -22,10 +22,10 @@ import {
   isQueryPlanV2,
   type PaginationCursor,
   type QueryPlanV2,
-  type QueryPlanV2Node,
   queryPlanV2LookupTables,
   queryPlanV2ReferencedTables,
 } from 'util/db/query-ir/nodes'
+import { patchPlanForFetch } from 'util/db/query-ir/patchPlanForFetch'
 import {
   type ChangeHint,
   getSqliteDb,
@@ -33,12 +33,9 @@ import {
   subscribe,
   type TableName,
 } from 'util/db/sqlite/connection'
-import { rowToStoredNotification } from 'util/db/sqlite/notificationStore'
-import {
-  assembleStatusFromBatch,
-  buildBatchMapsFromResults,
-} from 'util/db/sqlite/statusStore'
 import { TIMELINE_QUERY_LIMIT } from 'util/environment'
+import { buildTimelineItemsFromGraphResult } from 'util/hooks/buildTimelineItems'
+import { hintsMatchTimeline } from 'util/hooks/timelineList'
 import {
   useLocalAccountIds,
   useServerIds,
@@ -57,8 +54,6 @@ export type TimelineItem = StatusAddAppIndex | NotificationAddAppIndex
 export type FetchPageOptions = {
   cursor?: PaginationCursor
   limit?: number
-  /** before カーソル使用時、上流ノードの LIMIT を拡張するための既存アイテム数 */
-  existingItemCount?: number
 }
 
 export type FetchPageResult = {
@@ -71,53 +66,6 @@ export type UseTimelineDataSourceOptions = {
   onFirstFetch?: () => void
   /** true の間、データ取得を無効化する */
   disabled?: boolean
-}
-
-// --------------- ヘルパー ---------------
-
-/** appIndex を解決する */
-function resolveAppIndex(
-  backendUrl: string,
-  apps: { backendUrl: string }[],
-): number {
-  return apps.findIndex((app) => app.backendUrl === backendUrl)
-}
-
-/** plan の output-v2 ノードにカーソルと limit をパッチする。
- * before カーソル使用時は、上流 merge/filter ノードの LIMIT を拡張して
- * 古いアイテムも SQL 結果に含まれるようにする。 */
-function patchPlanForFetch(
-  plan: QueryPlanV2,
-  limit: number,
-  cursor?: PaginationCursor,
-  existingItemCount = 0,
-): QueryPlanV2 {
-  // before カーソル: 上流は「既存分 + 新規ページ分」を返す必要がある
-  const upstreamLimit =
-    cursor?.direction === 'before' ? existingItemCount + limit : limit
-
-  return {
-    ...plan,
-    nodes: plan.nodes.map((entry): QueryPlanV2Node => {
-      if (entry.node.kind === 'output-v2') {
-        return {
-          ...entry,
-          node: {
-            ...entry.node,
-            pagination: { ...entry.node.pagination, cursor, limit },
-          },
-        }
-      }
-      if (entry.node.kind === 'merge-v2') {
-        const mergeLimit = Math.max(entry.node.limit, upstreamLimit)
-        return {
-          ...entry,
-          node: { ...entry.node, limit: mergeLimit },
-        }
-      }
-      return entry
-    }),
-  }
 }
 
 // --------------- メインフック ---------------
@@ -215,12 +163,7 @@ export function useTimelineDataSource(
       }
 
       const limit = fetchOptions?.limit ?? TIMELINE_QUERY_LIMIT
-      const plan = patchPlanForFetch(
-        basePlan,
-        limit,
-        fetchOptions?.cursor,
-        fetchOptions?.existingItemCount,
-      )
+      const plan = patchPlanForFetch(basePlan, limit, fetchOptions?.cursor)
 
       const version = ++fetchVersionRef.current
 
@@ -233,59 +176,11 @@ export function useTimelineDataSource(
 
         if (fetchVersionRef.current !== version) return null
 
-        // --- posts の変換 ---
-        let postMap: Map<number, StatusAddAppIndex> | undefined
-        if (result.posts.detailRows.length > 0) {
-          const maps = buildBatchMapsFromResults(
-            result.posts.batchResults as Parameters<
-              typeof buildBatchMapsFromResults
-            >[0],
-          )
-          const fallbackAppIndex =
-            targetBackendUrls.length > 0
-              ? resolveAppIndex(targetBackendUrls[0], apps)
-              : -1
-          postMap = new Map()
-          for (const row of result.posts.detailRows) {
-            const status = assembleStatusFromBatch(row, maps)
-            let appIndex = resolveAppIndex(status.backendUrl, apps)
-            if (
-              appIndex < 0 &&
-              status.backendUrl === '' &&
-              fallbackAppIndex >= 0
-            ) {
-              appIndex = fallbackAppIndex
-              status.backendUrl = targetBackendUrls[0]
-            }
-            if (appIndex < 0) continue
-            postMap.set(status.post_id, { ...status, appIndex })
-          }
-        }
-
-        // --- notifications の変換 ---
-        let notifMap: Map<number, NotificationAddAppIndex> | undefined
-        if (result.notifications.detailRows.length > 0) {
-          notifMap = new Map()
-          for (const row of result.notifications.detailRows) {
-            const backendUrl = (row[1] as string) || ''
-            const appIndex = resolveAppIndex(backendUrl, apps)
-            if (appIndex < 0) continue
-            const stored = rowToStoredNotification(row)
-            notifMap.set(stored.notification_id, { ...stored, appIndex })
-          }
-        }
-
-        // --- displayOrder に基づいて結果を組み立て ---
-        const items: TimelineItem[] = []
-        for (const entry of result.displayOrder) {
-          if (entry.table === 'posts' && postMap) {
-            const status = postMap.get(entry.id)
-            if (status) items.push(status)
-          } else if (entry.table === 'notifications' && notifMap) {
-            const notif = notifMap.get(entry.id)
-            if (notif) items.push(notif)
-          }
-        }
+        const items = buildTimelineItemsFromGraphResult(
+          result,
+          apps,
+          targetBackendUrls,
+        )
 
         // 初回データ取得成功を通知
         if (!hasFiredFirstFetchRef.current && options?.onFirstFetch) {
@@ -322,25 +217,12 @@ export function useTimelineDataSource(
             return
           }
 
-          const matched = hints.some((hint) => {
-            // lookup テーブルの場合は timelineType チェックをスキップ
-            // (lookup 対象データはどの stream から到着するか分からないため)
-            if (!isLookup && hint.timelineType) {
-              if (
-                !configTimelineTypes.includes(
-                  hint.timelineType as (typeof configTimelineTypes)[number],
-                )
-              ) {
-                return false
-              }
-            }
-            if (hint.backendUrl) {
-              if (!targetBackendUrls.includes(hint.backendUrl)) {
-                return false
-              }
-            }
-            return true
-          })
+          const matched = hintsMatchTimeline(
+            hints,
+            configTimelineTypes,
+            targetBackendUrls,
+            isLookup,
+          )
 
           if (matched) {
             onMatched()

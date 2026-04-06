@@ -44,14 +44,14 @@ export const UnifiedTimeline = ({
   // データ取得
   const {
     data: timeline,
-    hasMore,
-    isLoadingMore,
+    hasMoreOlder,
+    isLoadingOlder,
     loadOlder,
     queryDuration,
   } = useTimelineData(config) as {
     data: StatusAddAppIndex[]
-    hasMore: boolean
-    isLoadingMore: boolean
+    hasMoreOlder: boolean
+    isLoadingOlder: boolean
     loadOlder: () => Promise<void>
     queryDuration: number | null
   }
@@ -125,13 +125,13 @@ export const UnifiedTimeline = ({
   const virtuosoComponents = useMemo(
     () => ({
       Footer: () =>
-        isLoadingMore ? (
+        isLoadingOlder ? (
           <div className="flex items-center justify-center py-4">
             <CgSpinner className="animate-spin text-gray-400" size={24} />
           </div>
         ) : null,
     }),
-    [isLoadingMore],
+    [isLoadingOlder],
   )
 
   return (
@@ -152,7 +152,7 @@ export const UnifiedTimeline = ({
             atTopThreshold={20}
             components={virtuosoComponents}
             data={timeline}
-            endReached={hasMore ? loadOlder : undefined}
+            endReached={hasMoreOlder ? loadOlder : undefined}
             firstItemIndex={internalIndex}
             increaseViewportBy={200}
             isScrolling={setIsScrolling}

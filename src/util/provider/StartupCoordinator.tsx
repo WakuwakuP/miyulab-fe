@@ -119,7 +119,7 @@ export const StartupCoordinator = ({ children }: { children: ReactNode }) => {
         console.info('[Startup] DB 接続完了')
 
         // local_accounts キャッシュを構築
-        // useGraphTimeline の useLocalAccountIds が依存する
+        // useTimelineDataSource の useLocalAccountIds が依存する
         await initAccountResolver()
         console.info('[Startup] accountResolver 初期化完了')
 

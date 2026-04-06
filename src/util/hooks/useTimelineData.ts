@@ -22,18 +22,18 @@ export function useTimelineData(
   options?: UseTimelineDataSourceOptions,
 ): {
   data: (NotificationAddAppIndex | StatusAddAppIndex)[]
-  hasMore: boolean
-  isLoadingMore: boolean
+  hasMoreOlder: boolean
+  isLoadingOlder: boolean
   loadOlder: () => Promise<void>
   queryDuration: number | null
 } {
-  const { hasMore, isLoadingMore, items, loadOlder, queryDuration } =
+  const { hasMoreOlder, isLoadingOlder, items, loadOlder, queryDuration } =
     useTimelineList(config, options)
 
   return {
     data: items,
-    hasMore,
-    isLoadingMore,
+    hasMoreOlder,
+    isLoadingOlder,
     loadOlder,
     queryDuration,
   }

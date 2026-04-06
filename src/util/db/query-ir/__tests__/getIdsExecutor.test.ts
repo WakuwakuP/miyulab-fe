@@ -337,6 +337,63 @@ describe('compileGetIds', () => {
     })
   })
 
+  describe('cursor 条件', () => {
+    it('before カーソルで created_at_ms < ? が WHERE に追加される', () => {
+      const node = makeNode({
+        cursor: { column: 'created_at_ms', op: '<', value: 1000 },
+      })
+      const { sql, binds } = compileGetIds(node, new Map())
+
+      expect(sql).toContain('WHERE p.created_at_ms < ?')
+      expect(binds).toContain(1000)
+    })
+
+    it('after カーソルで created_at_ms > ? が WHERE に追加される', () => {
+      const node = makeNode({
+        cursor: { column: 'created_at_ms', op: '>', value: 2000 },
+      })
+      const { sql, binds } = compileGetIds(node, new Map())
+
+      expect(sql).toContain('WHERE p.created_at_ms > ?')
+      expect(binds).toContain(2000)
+    })
+
+    it('他のフィルタと AND で結合される', () => {
+      const node = makeNode({
+        cursor: { column: 'created_at_ms', op: '<', value: 5000 },
+        filters: [
+          { column: 'is_sensitive', op: '=', table: 'posts', value: 0 },
+        ],
+      })
+      const { sql, binds } = compileGetIds(node, new Map())
+
+      expect(sql).toContain('p.is_sensitive = ?')
+      expect(sql).toContain('p.created_at_ms < ?')
+      const whereMatch = sql.match(/WHERE\s+(.+?)\s+ORDER/)
+      expect(whereMatch?.[1]).toContain(' AND ')
+      expect(binds).toEqual([0, 5000])
+    })
+
+    it('カーソルなしの場合はカーソル条件が追加されない', () => {
+      const node = makeNode()
+      const { sql, binds } = compileGetIds(node, new Map())
+
+      expect(sql).not.toContain('WHERE')
+      expect(binds).toEqual([])
+    })
+
+    it('LIMIT と組み合わせて正しく動作する', () => {
+      const node = makeNode({
+        cursor: { column: 'created_at_ms', op: '<', value: 3000 },
+      })
+      const { sql } = compileGetIds(node, new Map(), 50)
+
+      expect(sql).toContain('WHERE p.created_at_ms < ?')
+      expect(sql).toContain('ORDER BY p.created_at_ms DESC')
+      expect(sql).toContain('LIMIT 50')
+    })
+  })
+
   describe('outputTimeColumn: null（時刻カラムなし）', () => {
     it('時刻カラムの代わりに 0 を SELECT する', () => {
       const node = makeNode({ outputTimeColumn: null })

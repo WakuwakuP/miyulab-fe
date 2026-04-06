@@ -28,8 +28,8 @@ export const NotificationTimeline = ({
 }) => {
   const {
     data: rawData,
-    hasMore,
-    isLoadingMore,
+    hasMoreOlder,
+    isLoadingOlder,
     loadOlder,
     queryDuration,
   } = useTimelineData(config)
@@ -107,13 +107,13 @@ export const NotificationTimeline = ({
   const virtuosoComponents = useMemo(
     () => ({
       Footer: () =>
-        isLoadingMore ? (
+        isLoadingOlder ? (
           <div className="flex items-center justify-center py-4">
             <CgSpinner className="animate-spin text-gray-400" size={24} />
           </div>
         ) : null,
     }),
-    [isLoadingMore],
+    [isLoadingOlder],
   )
 
   return (
@@ -136,7 +136,7 @@ export const NotificationTimeline = ({
             atTopThreshold={20}
             components={virtuosoComponents}
             data={notifications}
-            endReached={hasMore ? loadOlder : undefined}
+            endReached={hasMoreOlder ? loadOlder : undefined}
             firstItemIndex={internalIndex}
             increaseViewportBy={200}
             isScrolling={setIsScrolling}
