@@ -15,6 +15,7 @@ import {
   ensureServer,
   syncProfileCustomEmojis,
 } from '../../helpers'
+import { localAccountIdCache } from '../../helpers/cache'
 import type { DbExec, HandlerResult } from './types'
 
 /**
@@ -70,7 +71,9 @@ export function handleEnsureLocalAccount(
       ],
     },
   )
-  return { changedTables: [] }
+  // local_accounts が変わったのでキャッシュを破棄する
+  localAccountIdCache.delete(backendUrl)
+  return { changedTables: ['local_accounts'] }
 }
 
 // ================================================================

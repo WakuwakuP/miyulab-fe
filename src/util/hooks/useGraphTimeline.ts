@@ -179,8 +179,15 @@ export function useGraphTimeline(
   // biome-ignore lint/correctness/useExhaustiveDependencies: refreshToken forces re-fetch on config save
   const fetchData = useCallback(async () => {
     if (options?.disabled) return
-    if (!plan) return
-    if (targetBackendUrls.length === 0) return
+    if (!plan || targetBackendUrls.length === 0) {
+      // plan が生成できない場合（DB 空など）でも初回コールバックを発火し
+      // 後続フェーズをブロックしない
+      if (!hasFiredFirstFetchRef.current && options?.onFirstFetch) {
+        hasFiredFirstFetchRef.current = true
+        options.onFirstFetch()
+      }
+      return
+    }
 
     const version = ++fetchVersionRef.current
 

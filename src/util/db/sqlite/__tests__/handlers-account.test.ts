@@ -74,7 +74,7 @@ describe('handleEnsureLocalAccount', () => {
 
     const result = handleEnsureLocalAccount(db, backendUrl, accountJson)
 
-    expect(result).toEqual({ changedTables: [] })
+    expect(result).toEqual({ changedTables: ['local_accounts'] })
 
     // ensureServer: INSERT OR IGNORE + SELECT
     const serverInsert = calls.find(

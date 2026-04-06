@@ -302,8 +302,10 @@ export const StreamingManagerProvider = ({
     if (!restFetched) return
     if (apps.length <= 0) return
 
+    console.info('[Startup] Phase 4 開始: ストリーム同期 + 初期データ取得')
     syncStreamsEvent()
     fetchInitialDataForTimelines()
+    console.info('[Startup] Phase 4 完了: ストリーム同期 + 初期データ取得')
 
     advanceTo('streaming')
   }, [apps, timelineSettings, restFetched])

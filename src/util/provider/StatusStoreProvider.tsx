@@ -312,11 +312,25 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
     let cancelled = false
 
     const fetchAll = async () => {
+      console.info('[Startup] Phase 3 開始: REST API 取得 + DB 書き込み')
       const promises = apps.map(async (app) => {
         const client = GetClient(app)
         const { backendUrl } = app
 
         try {
+          // ローカルアカウント情報を先に同期する。
+          // DB が空の場合、local_accounts レコードが存在しないと
+          // bulkUpsertStatuses が timeline_entries を作成できない。
+          try {
+            const credRes = await client.verifyAccountCredentials()
+            await ensureLocalAccount(credRes.data, backendUrl)
+          } catch (error) {
+            console.warn(
+              `Failed to verify credentials for ${backendUrl}:`,
+              error,
+            )
+          }
+
           // ホームタイムラインと通知を並行して取得
           const [homeRes, notifRes] = await Promise.all([
             client.getHomeTimeline({ limit: 40 }),
@@ -386,19 +400,6 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
                 self.findIndex((e) => e.acct === element.acct) === idx,
             ),
           )
-
-          // ローカルアカウント情報を同期
-          client
-            .verifyAccountCredentials()
-            .then(async (res) => {
-              await ensureLocalAccount(res.data, backendUrl)
-            })
-            .catch((error) => {
-              console.warn(
-                `Failed to verify credentials for ${backendUrl}:`,
-                error,
-              )
-            })
         } catch (error) {
           console.error(`Failed to initialize for ${backendUrl}:`, error)
         }
@@ -407,6 +408,7 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
       await Promise.all(promises)
 
       if (!cancelled) {
+        console.info('[Startup] Phase 3 完了: REST API 取得 + DB 書き込み')
         advanceTo('rest-fetched')
       }
     }
@@ -431,6 +433,8 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
     }
     if (!restFetched) return
     if (apps.length <= 0) return
+
+    console.info('[Startup] Phase 4 開始: userStreaming 接続')
 
     apps.forEach(async (app, index) => {
       const client = GetClient(app)
