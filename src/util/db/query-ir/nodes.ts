@@ -414,3 +414,20 @@ export function queryPlanV2ReferencedTables(plan: QueryPlanV2): Set<string> {
   }
   return tables
 }
+
+/**
+ * QueryPlanV2 の lookup-related ノードが参照するテーブル名を収集する。
+ *
+ * lookupRelated の lookupTable のみを返す。
+ * subscribe 時の ChangeHint マッチングで timelineType チェックをスキップ
+ * すべきテーブルの判定に使用する。
+ */
+export function queryPlanV2LookupTables(plan: QueryPlanV2): Set<string> {
+  const tables = new Set<string>()
+  for (const entry of plan.nodes) {
+    if (entry.node.kind === 'lookup-related') {
+      tables.add((entry.node as LookupRelatedNode).lookupTable)
+    }
+  }
+  return tables
+}

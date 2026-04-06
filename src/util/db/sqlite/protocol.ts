@@ -26,6 +26,22 @@ export type TableName =
   | 'profiles'
   | 'local_accounts'
 
+const TABLE_NAME_SET: ReadonlySet<string> = new Set<string>([
+  'posts',
+  'notifications',
+  'timeline_entries',
+  'post_interactions',
+  'post_backend_ids',
+  'post_mentions',
+  'profiles',
+  'local_accounts',
+])
+
+/** 文字列が有効な TableName かどうかを判定する型ガード */
+export function isTableName(s: string): s is TableName {
+  return TABLE_NAME_SET.has(s)
+}
+
 // ================================================================
 // Main Thread → Worker (リクエスト)
 // ================================================================

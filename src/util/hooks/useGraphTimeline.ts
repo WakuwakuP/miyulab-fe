@@ -29,11 +29,13 @@ import {
   isQueryPlanV2,
   type QueryPlanV2,
   type QueryPlanV2Node,
+  queryPlanV2LookupTables,
   queryPlanV2ReferencedTables,
 } from 'util/db/query-ir/nodes'
 import {
   type ChangeHint,
   getSqliteDb,
+  isTableName,
   subscribe,
   type TableName,
 } from 'util/db/sqlite/connection'
@@ -200,12 +202,18 @@ export function useGraphTimeline(
     }
     // queryPlan が参照するテーブルを追加
     if (plan && isQueryPlanV2(plan)) {
-      const referenced = queryPlanV2ReferencedTables(plan)
-      if (referenced.has('posts')) tables.add('posts')
-      if (referenced.has('notifications')) tables.add('notifications')
+      for (const t of queryPlanV2ReferencedTables(plan)) {
+        if (isTableName(t)) tables.add(t)
+      }
     }
     return [...tables]
   }, [config.type, plan])
+
+  /** lookupRelated ノードが参照するテーブル（timelineType チェックをスキップする対象） */
+  const lookupTables = useMemo((): Set<string> => {
+    if (!plan || !isQueryPlanV2(plan)) return new Set()
+    return queryPlanV2LookupTables(plan)
+  }, [plan])
 
   // ChangeHint マッチング用のタイムラインタイプ配列
   const configTimelineTypes = useMemo(() => {
@@ -324,42 +332,51 @@ export function useGraphTimeline(
   // ---- subscribe: 変更通知で再取得 ----
 
   useEffect(() => {
-    const onHints = (hints: ChangeHint[]) => {
-      // hint なしの場合は常に再取得
-      if (hints.length === 0) {
-        fetchData()
-        return
-      }
+    const unsubs = subscribeTables.map((table) => {
+      const isLookup = lookupTables.has(table)
+      return subscribe(table, (hints: ChangeHint[]) => {
+        // hint なしの場合は常に再取得
+        if (hints.length === 0) {
+          fetchData()
+          return
+        }
 
-      // hint マッチング: 1つでもマッチしたら再取得
-      const matched = hints.some((hint) => {
-        if (hint.timelineType) {
-          if (
-            !configTimelineTypes.includes(
-              hint.timelineType as (typeof configTimelineTypes)[number],
-            )
-          ) {
-            return false
+        // hint マッチング: 1つでもマッチしたら再取得
+        const matched = hints.some((hint) => {
+          // lookup テーブルの場合は timelineType チェックをスキップ
+          // (lookup 対象データはどの stream から到着するか分からないため)
+          if (!isLookup && hint.timelineType) {
+            if (
+              !configTimelineTypes.includes(
+                hint.timelineType as (typeof configTimelineTypes)[number],
+              )
+            ) {
+              return false
+            }
           }
-        }
-        if (hint.backendUrl) {
-          if (!targetBackendUrls.includes(hint.backendUrl)) {
-            return false
+          if (hint.backendUrl) {
+            if (!targetBackendUrls.includes(hint.backendUrl)) {
+              return false
+            }
           }
+          return true
+        })
+
+        if (matched) {
+          fetchData()
         }
-        return true
       })
-
-      if (matched) {
-        fetchData()
-      }
-    }
-
-    const unsubs = subscribeTables.map((table) => subscribe(table, onHints))
+    })
     return () => {
       for (const u of unsubs) u()
     }
-  }, [fetchData, subscribeTables, configTimelineTypes, targetBackendUrls])
+  }, [
+    fetchData,
+    subscribeTables,
+    lookupTables,
+    configTimelineTypes,
+    targetBackendUrls,
+  ])
 
   // ---- 通知の missing status 取得 ----
   // data に含まれる通知は rowToStoredNotification で構築されるため

@@ -22,9 +22,11 @@
 
 import { getDb } from './initSqlite'
 import type { TableName } from './protocol'
+import { isTableName } from './protocol'
 import type { DbHandle } from './types'
 
 export type { DbHandle, TableName }
+export { isTableName }
 
 /** 変更通知に付与するヒント情報 */
 export type ChangeHint = {

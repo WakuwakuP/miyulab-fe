@@ -23,11 +23,13 @@ import {
   type PaginationCursor,
   type QueryPlanV2,
   type QueryPlanV2Node,
+  queryPlanV2LookupTables,
   queryPlanV2ReferencedTables,
 } from 'util/db/query-ir/nodes'
 import {
   type ChangeHint,
   getSqliteDb,
+  isTableName,
   subscribe,
   type TableName,
 } from 'util/db/sqlite/connection'
@@ -173,12 +175,18 @@ export function useTimelineDataSource(
       tables.add('timeline_entries')
     }
     if (basePlan && isQueryPlanV2(basePlan)) {
-      const referenced = queryPlanV2ReferencedTables(basePlan)
-      if (referenced.has('posts')) tables.add('posts')
-      if (referenced.has('notifications')) tables.add('notifications')
+      for (const t of queryPlanV2ReferencedTables(basePlan)) {
+        if (isTableName(t)) tables.add(t)
+      }
     }
     return [...tables]
   }, [config.type, basePlan])
+
+  /** lookupRelated ノードが参照するテーブル（timelineType チェックをスキップする対象） */
+  const lookupTables = useMemo((): Set<string> => {
+    if (!basePlan || !isQueryPlanV2(basePlan)) return new Set()
+    return queryPlanV2LookupTables(basePlan)
+  }, [basePlan])
 
   // ChangeHint マッチング用タイムラインタイプ
   const configTimelineTypes = useMemo(() => {
@@ -306,41 +314,44 @@ export function useTimelineDataSource(
    */
   const subscribeToChanges = useCallback(
     (onMatched: () => void, onHintless: () => void) => {
-      const onHints = (hints: ChangeHint[]) => {
-        if (hints.length === 0) {
-          onHintless()
-          return
-        }
+      const unsubs = subscribeTables.map((table) => {
+        const isLookup = lookupTables.has(table)
+        return subscribe(table, (hints: ChangeHint[]) => {
+          if (hints.length === 0) {
+            onHintless()
+            return
+          }
 
-        const matched = hints.some((hint) => {
-          if (hint.timelineType) {
-            if (
-              !configTimelineTypes.includes(
-                hint.timelineType as (typeof configTimelineTypes)[number],
-              )
-            ) {
-              return false
+          const matched = hints.some((hint) => {
+            // lookup テーブルの場合は timelineType チェックをスキップ
+            // (lookup 対象データはどの stream から到着するか分からないため)
+            if (!isLookup && hint.timelineType) {
+              if (
+                !configTimelineTypes.includes(
+                  hint.timelineType as (typeof configTimelineTypes)[number],
+                )
+              ) {
+                return false
+              }
             }
-          }
-          if (hint.backendUrl) {
-            if (!targetBackendUrls.includes(hint.backendUrl)) {
-              return false
+            if (hint.backendUrl) {
+              if (!targetBackendUrls.includes(hint.backendUrl)) {
+                return false
+              }
             }
+            return true
+          })
+
+          if (matched) {
+            onMatched()
           }
-          return true
         })
-
-        if (matched) {
-          onMatched()
-        }
-      }
-
-      const unsubs = subscribeTables.map((table) => subscribe(table, onHints))
+      })
       return () => {
         for (const u of unsubs) u()
       }
     },
-    [subscribeTables, configTimelineTypes, targetBackendUrls],
+    [subscribeTables, lookupTables, configTimelineTypes, targetBackendUrls],
   )
 
   return {
