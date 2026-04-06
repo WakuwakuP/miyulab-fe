@@ -13,6 +13,7 @@ import {
   useState,
   type WheelEventHandler,
 } from 'react'
+import { CgSpinner } from 'react-icons/cg'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import type { NotificationAddAppIndex, TimelineConfigV2 } from 'types/types'
 import { CENTER_INDEX } from 'util/environment'
@@ -54,6 +55,8 @@ export const NotificationTimeline = ({
 
   const [enableScrollToTop, setEnableScrollToTop] = useState(true)
   const [isScrolling, setIsScrolling] = useState(false)
+  const [isFetchingMore, setIsFetchingMore] = useState(false)
+  const needsApiFetchRef = useRef(false)
 
   // loadMore() で末尾に追加されたアイテム数を同期的に追跡し、
   // firstItemIndex を安定させる（Virtuoso が誤ってプリペンドと解釈しないようにする）
@@ -67,6 +70,7 @@ export const NotificationTimeline = ({
     void configId
     bottomExpansionRef.current = 0
     exhaustedBackendsRef.current = new Set()
+    needsApiFetchRef.current = false
   }, [configId])
 
   const currentLength = notifications.length
@@ -81,6 +85,60 @@ export const NotificationTimeline = ({
   const internalIndex =
     CENTER_INDEX - currentLength + bottomExpansionRef.current
 
+  // API からの通知フェッチ処理
+  const fetchFromApi = useCallback(async () => {
+    const targetUrls = resolveBackendUrls(
+      normalizeBackendFilter(config.backendFilter, apps),
+      apps,
+    )
+
+    const activeUrls = targetUrls.filter(
+      (url) => !exhaustedBackendsRef.current.has(url),
+    )
+    if (activeUrls.length === 0) return
+
+    await Promise.all(
+      activeUrls.map(async (url) => {
+        const app = apps.find((a) => a.backendUrl === url)
+        if (!app) return 0
+
+        const { getSqliteDb } = await import('util/db/sqlite/connection')
+        const handle = await getSqliteDb()
+
+        // DB から最古の通知 ID を取得
+        const rows = (await handle.execAsync(
+          `SELECT n.local_id
+           FROM notifications n
+           INNER JOIN local_accounts la ON la.id = n.local_account_id
+           WHERE la.backend_url = ?
+           ORDER BY n.created_at_ms ASC
+           LIMIT 1;`,
+          {
+            bind: [url],
+            kind: 'other',
+            returnValue: 'resultRows',
+          },
+        )) as string[][]
+
+        if (rows.length === 0) return 0
+
+        const oldestId = rows[0][0]
+        const client = GetClient(app)
+
+        try {
+          const count = await fetchMoreNotifications(client, url, oldestId)
+          if (count < FETCH_LIMIT) {
+            exhaustedBackendsRef.current.add(url)
+          }
+          return count
+        } catch (error) {
+          console.error(`Failed to fetch more notifications for ${url}:`, error)
+          return 0
+        }
+      }),
+    )
+  }, [apps, config])
+
   // 追加読み込み（DB ファースト・API フォールバック）
   const moreLoad = useCallback(async () => {
     if (isFetchingMoreRef.current) return
@@ -92,66 +150,36 @@ export const NotificationTimeline = ({
       // SQLite クエリの表示件数を拡張（常に実行）
       loadMore()
 
-      // DB にまだデータがある場合は API フェッチをスキップ
-      if (dbHasMore) return
+      // DB にまだデータがある場合は API フェッチを保留
+      if (dbHasMore) {
+        needsApiFetchRef.current = true
+        return
+      }
 
-      const targetUrls = resolveBackendUrls(
-        normalizeBackendFilter(config.backendFilter, apps),
-        apps,
-      )
-
-      const activeUrls = targetUrls.filter(
-        (url) => !exhaustedBackendsRef.current.has(url),
-      )
-      if (activeUrls.length === 0) return
-
-      await Promise.all(
-        activeUrls.map(async (url) => {
-          const app = apps.find((a) => a.backendUrl === url)
-          if (!app) return 0
-
-          const { getSqliteDb } = await import('util/db/sqlite/connection')
-          const handle = await getSqliteDb()
-
-          // DB から最古の通知 ID を取得
-          const rows = (await handle.execAsync(
-            `SELECT n.local_id
-             FROM notifications n
-             INNER JOIN local_accounts la ON la.id = n.local_account_id
-             WHERE la.backend_url = ?
-             ORDER BY n.created_at_ms ASC
-             LIMIT 1;`,
-            {
-              bind: [url],
-              kind: 'other',
-              returnValue: 'resultRows',
-            },
-          )) as string[][]
-
-          if (rows.length === 0) return 0
-
-          const oldestId = rows[0][0]
-          const client = GetClient(app)
-
-          try {
-            const count = await fetchMoreNotifications(client, url, oldestId)
-            if (count < FETCH_LIMIT) {
-              exhaustedBackendsRef.current.add(url)
-            }
-            return count
-          } catch (error) {
-            console.error(
-              `Failed to fetch more notifications for ${url}:`,
-              error,
-            )
-            return 0
-          }
-        }),
-      )
+      needsApiFetchRef.current = false
+      setIsFetchingMore(true)
+      try {
+        await fetchFromApi()
+      } finally {
+        setIsFetchingMore(false)
+      }
     } finally {
       isFetchingMoreRef.current = false
     }
-  }, [apps, config, dbHasMore, loadMore])
+  }, [apps, dbHasMore, loadMore, fetchFromApi])
+
+  // dbHasMore が false に変わった際、保留中の API フェッチを自動発火
+  useEffect(() => {
+    if (!dbHasMore && needsApiFetchRef.current && !isFetchingMoreRef.current) {
+      needsApiFetchRef.current = false
+      isFetchingMoreRef.current = true
+      setIsFetchingMore(true)
+      fetchFromApi().finally(() => {
+        isFetchingMoreRef.current = false
+        setIsFetchingMore(false)
+      })
+    }
+  }, [dbHasMore, fetchFromApi])
 
   const onWheel = useCallback<WheelEventHandler<HTMLDivElement>>((e) => {
     if (e.deltaY > 0) {
@@ -187,6 +215,18 @@ export const NotificationTimeline = ({
     }
   }, [enableScrollToTop, scrollToTop, notifications.length])
 
+  const virtuosoComponents = useMemo(
+    () => ({
+      Footer: () =>
+        isFetchingMore ? (
+          <div className="flex items-center justify-center py-4">
+            <CgSpinner className="animate-spin text-gray-400" size={24} />
+          </div>
+        ) : null,
+    }),
+    [isFetchingMore],
+  )
+
   return (
     <Panel
       className="relative"
@@ -205,6 +245,7 @@ export const NotificationTimeline = ({
           <Virtuoso
             atTopStateChange={atTopStateChange}
             atTopThreshold={20}
+            components={virtuosoComponents}
             data={notifications}
             endReached={moreLoad}
             firstItemIndex={internalIndex}

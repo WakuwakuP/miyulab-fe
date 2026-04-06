@@ -14,6 +14,7 @@ import {
   useState,
   type WheelEventHandler,
 } from 'react'
+import { CgSpinner } from 'react-icons/cg'
 import { Virtuoso, type VirtuosoHandle } from 'react-virtuoso'
 import type {
   NotificationAddAppIndex,
@@ -68,6 +69,8 @@ export const MixedTimeline = ({
 
   const [enableScrollToTop, setEnableScrollToTop] = useState(true)
   const [isScrolling, setIsScrolling] = useState(false)
+  const [isFetchingMore, setIsFetchingMore] = useState(false)
+  const needsApiFetchRef = useRef(false)
 
   // loadMore() やAPIフェッチで末尾に追加されたアイテム数を同期的に追跡し、
   // firstItemIndex を安定させる（Virtuoso が誤ってプリペンドと解釈しないようにする）
@@ -81,6 +84,7 @@ export const MixedTimeline = ({
     void configId
     bottomExpansionRef.current = 0
     exhaustedBackendsRef.current = new Set()
+    needsApiFetchRef.current = false
   }, [configId])
 
   const currentLength = timeline.length
@@ -99,6 +103,137 @@ export const MixedTimeline = ({
 
   const internalIndex =
     CENTER_INDEX - currentLength + bottomExpansionRef.current
+
+  // API フェッチロジック（moreLoad および自動トリガーから呼び出し）
+  const fetchFromApi = useCallback(async () => {
+    const targetUrls = resolveBackendUrls(
+      normalizeBackendFilter(config.backendFilter, apps),
+      apps,
+    )
+
+    // 全バックエンドが exhausted なら何もしない
+    const activeUrls = targetUrls.filter(
+      (url) => !exhaustedBackendsRef.current.has(url),
+    )
+    if (activeUrls.length === 0) return
+
+    // 各 backendUrl ごとに DB 内の最古 ID を算出して追加データをフェッチ
+    await Promise.all(
+      activeUrls.map(async (url) => {
+        const app = apps.find((a) => a.backendUrl === url)
+        if (!app) return 0
+
+        const { getSqliteDb } = await import('util/db/sqlite/connection')
+        const handle = await getSqliteDb()
+        const client = GetClient(app)
+
+        // ステータスタイムラインの追加取得
+        if (config.type !== 'notification') {
+          const timelineType = config.type as
+            | 'home'
+            | 'local'
+            | 'public'
+            | 'tag'
+
+          let oldestId: string | undefined
+
+          if (config.type === 'tag') {
+            const tags = config.tagConfig?.tags ?? []
+            for (const tag of tags) {
+              const rows = (await handle.execAsync(
+                `SELECT pb2.local_id
+                   FROM posts p
+                   INNER JOIN post_backend_ids pb2 ON pb2.post_id = p.id
+                   INNER JOIN post_hashtags pht ON pht.post_id = p.id
+                   INNER JOIN hashtags ht ON pht.hashtag_id = ht.id
+                   INNER JOIN local_accounts la ON la.id = pb2.local_account_id
+                   WHERE LOWER(ht.name) = LOWER(?) AND la.backend_url = ?
+                   ORDER BY p.created_at_ms ASC
+                   LIMIT 1;`,
+                {
+                  bind: [tag, url],
+                  kind: 'other',
+                  returnValue: 'resultRows',
+                },
+              )) as string[][]
+              if (rows.length > 0) {
+                oldestId = rows[0][0]
+                break
+              }
+            }
+          } else {
+            const rows = (await handle.execAsync(
+              `SELECT pb2.local_id
+                 FROM posts p
+                 INNER JOIN post_backend_ids pb2 ON pb2.post_id = p.id
+                 INNER JOIN local_accounts la ON la.id = pb2.local_account_id
+                 INNER JOIN timeline_entries te ON te.post_id = p.id AND te.local_account_id = la.id
+                 WHERE la.backend_url = ? AND te.timeline_key = ?
+                 ORDER BY p.created_at_ms ASC
+                 LIMIT 1;`,
+              {
+                bind: [url, timelineType],
+                kind: 'other',
+                returnValue: 'resultRows',
+              },
+            )) as string[][]
+            if (rows.length > 0) {
+              oldestId = rows[0][0]
+            }
+          }
+
+          if (oldestId) {
+            try {
+              const count = await fetchMoreData(client, config, url, oldestId)
+              if (count < FETCH_LIMIT) {
+                exhaustedBackendsRef.current.add(url)
+              }
+            } catch (error) {
+              console.error(`Failed to fetch more data for ${url}:`, error)
+            }
+          }
+        }
+
+        // 通知の追加取得
+        {
+          const rows = (await handle.execAsync(
+            `SELECT n.local_id
+               FROM notifications n
+               INNER JOIN local_accounts la ON la.id = n.local_account_id
+               WHERE la.backend_url = ?
+               ORDER BY n.created_at_ms ASC
+               LIMIT 1;`,
+            {
+              bind: [url],
+              kind: 'other',
+              returnValue: 'resultRows',
+            },
+          )) as string[][]
+
+          if (rows.length > 0) {
+            const oldestNotifId = rows[0][0]
+            try {
+              const count = await fetchMoreNotifications(
+                client,
+                url,
+                oldestNotifId,
+              )
+              if (count < FETCH_LIMIT) {
+                exhaustedBackendsRef.current.add(url)
+              }
+            } catch (error) {
+              console.error(
+                `Failed to fetch more notifications for ${url}:`,
+                error,
+              )
+            }
+          }
+        }
+
+        return 0
+      }),
+    )
+  }, [apps, config])
 
   // 追加読み込み（マルチバックエンド対応）
   //
@@ -119,141 +254,37 @@ export const MixedTimeline = ({
       // SQLite クエリの表示件数を拡張（常に実行）
       loadMore()
 
-      // DB にまだデータがある場合は API フェッチをスキップ
-      if (dbHasMore) return
+      // DB にまだデータがある場合は API フェッチを保留
+      if (dbHasMore) {
+        needsApiFetchRef.current = true
+        return
+      }
 
       // --- ここから下は !dbHasMore の場合のみ実行 ---
-      const targetUrls = resolveBackendUrls(
-        normalizeBackendFilter(config.backendFilter, apps),
-        apps,
-      )
-
-      // 全バックエンドが exhausted なら何もしない
-      const activeUrls = targetUrls.filter(
-        (url) => !exhaustedBackendsRef.current.has(url),
-      )
-      if (activeUrls.length === 0) return
-
-      // 各 backendUrl ごとに DB 内の最古 ID を算出して追加データをフェッチ
-      await Promise.all(
-        activeUrls.map(async (url) => {
-          const app = apps.find((a) => a.backendUrl === url)
-          if (!app) return 0
-
-          const { getSqliteDb } = await import('util/db/sqlite/connection')
-          const handle = await getSqliteDb()
-          const client = GetClient(app)
-
-          // ステータスタイムラインの追加取得
-          if (config.type !== 'notification') {
-            const timelineType = config.type as
-              | 'home'
-              | 'local'
-              | 'public'
-              | 'tag'
-
-            let oldestId: string | undefined
-
-            if (config.type === 'tag') {
-              const tags = config.tagConfig?.tags ?? []
-              for (const tag of tags) {
-                const rows = (await handle.execAsync(
-                  `SELECT pb2.local_id
-                   FROM posts p
-                   INNER JOIN post_backend_ids pb2 ON pb2.post_id = p.id
-                   INNER JOIN post_hashtags pht ON pht.post_id = p.id
-                   INNER JOIN hashtags ht ON pht.hashtag_id = ht.id
-                   INNER JOIN local_accounts la ON la.id = pb2.local_account_id
-                   WHERE LOWER(ht.name) = LOWER(?) AND la.backend_url = ?
-                   ORDER BY p.created_at_ms ASC
-                   LIMIT 1;`,
-                  {
-                    bind: [tag, url],
-                    kind: 'other',
-                    returnValue: 'resultRows',
-                  },
-                )) as string[][]
-                if (rows.length > 0) {
-                  oldestId = rows[0][0]
-                  break
-                }
-              }
-            } else {
-              const rows = (await handle.execAsync(
-                `SELECT pb2.local_id
-                 FROM posts p
-                 INNER JOIN post_backend_ids pb2 ON pb2.post_id = p.id
-                 INNER JOIN local_accounts la ON la.id = pb2.local_account_id
-                 INNER JOIN timeline_entries te ON te.post_id = p.id AND te.local_account_id = la.id
-                 WHERE la.backend_url = ? AND te.timeline_key = ?
-                 ORDER BY p.created_at_ms ASC
-                 LIMIT 1;`,
-                {
-                  bind: [url, timelineType],
-                  kind: 'other',
-                  returnValue: 'resultRows',
-                },
-              )) as string[][]
-              if (rows.length > 0) {
-                oldestId = rows[0][0]
-              }
-            }
-
-            if (oldestId) {
-              try {
-                const count = await fetchMoreData(client, config, url, oldestId)
-                if (count < FETCH_LIMIT) {
-                  exhaustedBackendsRef.current.add(url)
-                }
-              } catch (error) {
-                console.error(`Failed to fetch more data for ${url}:`, error)
-              }
-            }
-          }
-
-          // 通知の追加取得
-          {
-            const rows = (await handle.execAsync(
-              `SELECT n.local_id
-               FROM notifications n
-               INNER JOIN local_accounts la ON la.id = n.local_account_id
-               WHERE la.backend_url = ?
-               ORDER BY n.created_at_ms ASC
-               LIMIT 1;`,
-              {
-                bind: [url],
-                kind: 'other',
-                returnValue: 'resultRows',
-              },
-            )) as string[][]
-
-            if (rows.length > 0) {
-              const oldestNotifId = rows[0][0]
-              try {
-                const count = await fetchMoreNotifications(
-                  client,
-                  url,
-                  oldestNotifId,
-                )
-                if (count < FETCH_LIMIT) {
-                  exhaustedBackendsRef.current.add(url)
-                }
-              } catch (error) {
-                console.error(
-                  `Failed to fetch more notifications for ${url}:`,
-                  error,
-                )
-              }
-            }
-          }
-
-          return 0
-        }),
-      )
+      needsApiFetchRef.current = false
+      setIsFetchingMore(true)
+      try {
+        await fetchFromApi()
+      } finally {
+        setIsFetchingMore(false)
+      }
     } finally {
       isFetchingMoreRef.current = false
     }
-  }, [apps, config, dbHasMore, loadMore])
+  }, [apps, dbHasMore, loadMore, fetchFromApi])
+
+  // dbHasMore が false に変わった際、保留中の API フェッチを自動発火
+  useEffect(() => {
+    if (!dbHasMore && needsApiFetchRef.current && !isFetchingMoreRef.current) {
+      needsApiFetchRef.current = false
+      isFetchingMoreRef.current = true
+      setIsFetchingMore(true)
+      fetchFromApi().finally(() => {
+        isFetchingMoreRef.current = false
+        setIsFetchingMore(false)
+      })
+    }
+  }, [dbHasMore, fetchFromApi])
 
   const onWheel = useCallback<WheelEventHandler<HTMLDivElement>>((e) => {
     if (e.deltaY > 0) {
@@ -286,6 +317,18 @@ export const MixedTimeline = ({
     }
   }, [enableScrollToTop, timeline.length, scrollToTop])
 
+  const virtuosoComponents = useMemo(
+    () => ({
+      Footer: () =>
+        isFetchingMore ? (
+          <div className="flex items-center justify-center py-4">
+            <CgSpinner className="animate-spin text-gray-400" size={24} />
+          </div>
+        ) : null,
+    }),
+    [isFetchingMore],
+  )
+
   return (
     <Panel
       className="relative"
@@ -302,6 +345,7 @@ export const MixedTimeline = ({
           <Virtuoso
             atTopStateChange={atTopStateChange}
             atTopThreshold={20}
+            components={virtuosoComponents}
             data={timeline}
             endReached={moreLoad}
             firstItemIndex={internalIndex}
