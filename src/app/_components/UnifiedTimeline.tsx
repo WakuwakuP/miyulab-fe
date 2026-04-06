@@ -69,10 +69,12 @@ export const UnifiedTimeline = ({
   // データ取得
   const {
     data: timeline,
+    dbHasMore,
     queryDuration,
     loadMore,
   } = useTimelineData(config) as {
     data: StatusAddAppIndex[]
+    dbHasMore: boolean
     queryDuration: number | null
     loadMore: () => void
   }
@@ -121,13 +123,12 @@ export const UnifiedTimeline = ({
 
   // 追加読み込み（マルチバックエンド対応）
   //
-  // 2つのページネーション機構を並行して実行する:
+  // DB ファースト・API フォールバック:
   // 1. loadMore(): SQLite クエリの LIMIT を拡張し、DB に既にある古い投稿を表示に含める
-  // 2. fetchMoreData(): API から max_id ベースで追加データを取得し、DB に保存する
+  // 2. fetchMoreData(): DB が枯渇した場合のみ、API から max_id ベースで追加データを取得
   //
-  // SQLite に十分なデータがある場合は loadMore() だけで表示が増える。
-  // API フェッチは DB にない古い投稿を補充するために常に実行される。
-  // 両者は独立して動作し、DB への upsert は subscribe 経由で自動的に反映される。
+  // dbHasMore が true の場合は loadMore() だけで表示が増える。
+  // dbHasMore が false（DB 枯渇）の場合のみ API フェッチも実行される。
   const moreLoad = useCallback(async () => {
     // 同時実行防止: 前回のフェッチが完了するまで新しいリクエストを抑制
     if (isFetchingMoreRef.current) return
@@ -136,9 +137,13 @@ export const UnifiedTimeline = ({
     try {
       if (apps.length <= 0) return
 
-      // SQLite クエリの表示件数を拡張
+      // SQLite クエリの表示件数を拡張（常に実行）
       loadMore()
 
+      // DB にまだデータがある場合は API フェッチをスキップ
+      if (dbHasMore) return
+
+      // --- ここから下は !dbHasMore の場合のみ実行 ---
       const targetUrls = resolveBackendUrls(
         normalizeBackendFilter(config.backendFilter, apps),
         apps,
@@ -243,7 +248,7 @@ export const UnifiedTimeline = ({
     } finally {
       isFetchingMoreRef.current = false
     }
-  }, [apps, config, loadMore])
+  }, [apps, config, dbHasMore, loadMore])
 
   // UIロジック
   const onWheel = useCallback<WheelEventHandler<HTMLDivElement>>((e) => {

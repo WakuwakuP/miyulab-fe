@@ -18,7 +18,7 @@ import {
  *
  * @param config — タイムライン種別・フィルタ・カスタム SQL 等の設定
  * @param options — オプション設定 (disabled, onFirstFetch)
- * @returns `{ data, queryDuration, loadMore }`
+ * @returns `{ data, queryDuration, loadMore, dbHasMore }`
  * @see {@link useGraphTimeline}
  */
 export function useTimelineData(
@@ -28,6 +28,7 @@ export function useTimelineData(
   data: (NotificationAddAppIndex | StatusAddAppIndex)[]
   queryDuration: number | null
   loadMore: () => void
+  dbHasMore: boolean
 } {
   return useGraphTimeline(config, options)
 }

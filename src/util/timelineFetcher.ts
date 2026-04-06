@@ -1,5 +1,6 @@
 import type { MegalodonInterface } from 'megalodon'
 import type { TimelineConfigV2 } from 'types/types'
+import { bulkAddNotifications } from 'util/db/sqlite/notificationStore'
 import { bulkUpsertStatuses } from 'util/db/sqlite/statusStore'
 
 /**
@@ -143,4 +144,21 @@ export async function fetchMoreData(
     default:
       return 0
   }
+}
+
+/**
+ * 通知の追加データ取得（スクロール末尾到達時）
+ *
+ * max_id で oldest の id を指定してページネーションする。
+ */
+export async function fetchMoreNotifications(
+  client: MegalodonInterface,
+  backendUrl: string,
+  maxId: string,
+): Promise<number> {
+  const limit = FETCH_LIMIT
+
+  const res = await client.getNotifications({ limit, max_id: maxId })
+  await bulkAddNotifications(res.data, backendUrl)
+  return res.data.length
 }

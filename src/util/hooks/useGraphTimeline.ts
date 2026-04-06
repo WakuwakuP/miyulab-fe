@@ -96,6 +96,7 @@ export function useGraphTimeline(
   data: (NotificationAddAppIndex | StatusAddAppIndex)[]
   queryDuration: number | null
   loadMore: () => void
+  dbHasMore: boolean
 } {
   const apps = useContext(AppsContext)
 
@@ -129,6 +130,9 @@ export function useGraphTimeline(
   const [data, setData] = useState<
     (NotificationAddAppIndex | StatusAddAppIndex)[]
   >([])
+
+  // DB にまだデータが残っているかどうか
+  const [dbHasMore, setDbHasMore] = useState(true)
 
   // race condition 防止
   const fetchVersionRef = useRef(0)
@@ -178,8 +182,12 @@ export function useGraphTimeline(
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: refreshToken forces re-fetch on config save
   const fetchData = useCallback(async () => {
-    if (options?.disabled) return
+    if (options?.disabled) {
+      setDbHasMore(true)
+      return
+    }
     if (!plan || targetBackendUrls.length === 0) {
+      setDbHasMore(true)
       // plan が生成できない場合（DB 空など）でも初回コールバックを発火し
       // 後続フェーズをブロックしない
       if (!hasFiredFirstFetchRef.current && options?.onFirstFetch) {
@@ -258,6 +266,7 @@ export function useGraphTimeline(
         }
       }
       setData(items)
+      setDbHasMore(items.length >= queryLimit)
 
       // 初回データ取得成功を通知
       if (!hasFiredFirstFetchRef.current && options?.onFirstFetch) {
@@ -352,5 +361,5 @@ export function useGraphTimeline(
     }
   }, [data, apps, config.type])
 
-  return { data, loadMore, queryDuration }
+  return { data, dbHasMore, loadMore, queryDuration }
 }
