@@ -55,6 +55,8 @@ export type TimelineItem = StatusAddAppIndex | NotificationAddAppIndex
 export type FetchPageOptions = {
   cursor?: PaginationCursor
   limit?: number
+  /** before カーソル使用時、上流ノードの LIMIT を拡張するための既存アイテム数 */
+  existingItemCount?: number
 }
 
 export type FetchPageResult = {
@@ -79,12 +81,19 @@ function resolveAppIndex(
   return apps.findIndex((app) => app.backendUrl === backendUrl)
 }
 
-/** plan の output-v2 ノードにカーソルと limit をパッチする */
+/** plan の output-v2 ノードにカーソルと limit をパッチする。
+ * before カーソル使用時は、上流 merge/filter ノードの LIMIT を拡張して
+ * 古いアイテムも SQL 結果に含まれるようにする。 */
 function patchPlanForFetch(
   plan: QueryPlanV2,
   limit: number,
   cursor?: PaginationCursor,
+  existingItemCount = 0,
 ): QueryPlanV2 {
+  // before カーソル: 上流は「既存分 + 新規ページ分」を返す必要がある
+  const upstreamLimit =
+    cursor?.direction === 'before' ? existingItemCount + limit : limit
+
   return {
     ...plan,
     nodes: plan.nodes.map((entry): QueryPlanV2Node => {
@@ -98,7 +107,7 @@ function patchPlanForFetch(
         }
       }
       if (entry.node.kind === 'merge-v2') {
-        const mergeLimit = Math.max(entry.node.limit, limit)
+        const mergeLimit = Math.max(entry.node.limit, upstreamLimit)
         return {
           ...entry,
           node: { ...entry.node, limit: mergeLimit },
@@ -198,7 +207,12 @@ export function useTimelineDataSource(
       }
 
       const limit = fetchOptions?.limit ?? TIMELINE_QUERY_LIMIT
-      const plan = patchPlanForFetch(basePlan, limit, fetchOptions?.cursor)
+      const plan = patchPlanForFetch(
+        basePlan,
+        limit,
+        fetchOptions?.cursor,
+        fetchOptions?.existingItemCount,
+      )
 
       const version = ++fetchVersionRef.current
 

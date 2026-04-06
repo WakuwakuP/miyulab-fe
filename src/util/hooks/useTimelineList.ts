@@ -184,10 +184,9 @@ export function useTimelineList(
     if (initializedRef.current) return
     if (options?.disabled) return
 
-    initializedRef.current = true
-
     fetchPage({ limit: PAGE_SIZE }).then((result) => {
-      if (!result) return
+      if (!result) return // basePlan がまだ null → 次の fetchPage 変更で再試行
+      initializedRef.current = true
       recordDuration(result.durationMs)
       addItems(result.items)
       if (result.items.length < PAGE_SIZE) {
@@ -241,6 +240,8 @@ export function useTimelineList(
     try {
       if (oldestMsRef.current >= Number.MAX_SAFE_INTEGER) return
 
+      const currentCount = itemMapRef.current.size
+
       // DB からカーソル以前のアイテムを取得
       const result = await fetchPage({
         cursor: {
@@ -248,6 +249,7 @@ export function useTimelineList(
           field: 'created_at_ms',
           value: oldestMsRef.current,
         },
+        existingItemCount: currentCount,
         limit: PAGE_SIZE,
       })
 
@@ -263,14 +265,15 @@ export function useTimelineList(
             exhaustedBackendsRef.current,
             includeNotifications,
           )
-          // API フェッチ後、DB change で自動的に差分取得される
-          // ここでは追加で before cursor クエリを実行
+          // API フェッチ後、DB に保存されたデータを再取得
+          const retryCount = itemMapRef.current.size
           const retry = await fetchPage({
             cursor: {
               direction: 'before',
               field: 'created_at_ms',
               value: oldestMsRef.current,
             },
+            existingItemCount: retryCount,
             limit: PAGE_SIZE,
           })
           if (retry && retry.items.length > 0) {
@@ -289,12 +292,14 @@ export function useTimelineList(
           exhaustedBackendsRef.current,
           includeNotifications,
         )
+        const retryCount = itemMapRef.current.size
         const retry = await fetchPage({
           cursor: {
             direction: 'before',
             field: 'created_at_ms',
             value: oldestMsRef.current,
           },
+          existingItemCount: retryCount,
           limit: PAGE_SIZE,
         })
         if (retry && retry.items.length > 0) {
