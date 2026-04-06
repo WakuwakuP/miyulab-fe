@@ -28,6 +28,7 @@ import {
 } from 'util/timelineFetcher'
 
 import type { TimelineListEvent, TimelineListState } from './reducer'
+import { buildStreamingCursor } from './streamingHelpers'
 
 const PAGE_SIZE = TIMELINE_QUERY_LIMIT
 
@@ -137,9 +138,10 @@ export function useTimelineScrollbackController({
           type: 'SCROLLBACK_COMPLETED',
         })
 
-        // 保留されたストリーミング更新を回収（カーソルなし全ページ再取得）
+        // 保留されたストリーミング更新を回収（カーソル付き差分取得）
         if (hasDeferredStreaming) {
-          fetchPage({ limit: PAGE_SIZE }).then((result) => {
+          const cursor = buildStreamingCursor(stateRef.current)
+          fetchPage({ cursor, limit: PAGE_SIZE }).then((result) => {
             if (!result) return
             recordDuration(result.durationMs)
             dispatch({

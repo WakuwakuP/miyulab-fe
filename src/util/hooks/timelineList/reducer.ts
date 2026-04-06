@@ -10,7 +10,12 @@
 
 import type { TimelineItem } from 'util/hooks/useTimelineDataSource'
 
-import { itemKey, itemTimestamp, sortItemsDesc } from './itemHelpers'
+import {
+  itemKey,
+  itemNumericId,
+  itemTimestamp,
+  sortItemsDesc,
+} from './itemHelpers'
 
 // --------------- 状態 ---------------
 
@@ -22,6 +27,8 @@ export type TimelineListState = {
 
   /** ストリーミング差分取得用カーソル (最新アイテムの created_at_ms) */
   newestMs: number
+  /** ID ベースカーソルフォールバック用 (最新アイテムの数値 ID) */
+  newestId: number
   /** スクロールバック用カーソル (最古アイテムの created_at_ms) */
   oldestMs: number
 
@@ -47,6 +54,7 @@ export function createInitialState(): TimelineListState {
     initialized: false,
     isScrollbackRunning: false,
     itemMap: new Map(),
+    newestId: 0,
     newestMs: 0,
     oldestMs: Number.MAX_SAFE_INTEGER,
     sortedItems: [],
@@ -136,6 +144,7 @@ function mergeItems(
   // Map を shallow clone して更新
   const nextMap = new Map(state.itemMap)
   let newestMs = state.newestMs
+  let newestId = state.newestId
   let oldestMs = state.oldestMs
 
   for (const item of newItems) {
@@ -143,11 +152,14 @@ function mergeItems(
     const ts = itemTimestamp(item)
     if (ts > newestMs) newestMs = ts
     if (ts < oldestMs) oldestMs = ts
+    const id = itemNumericId(item)
+    if (id > newestId) newestId = id
   }
 
   return {
     ...state,
     itemMap: nextMap,
+    newestId,
     newestMs,
     oldestMs,
     sortedItems: sortItemsDesc([...nextMap.values()]),

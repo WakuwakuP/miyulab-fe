@@ -13,5 +13,9 @@ export {
   type TimelineListState,
   timelineListReducer,
 } from './reducer'
+export {
+  aggregateChangedTables,
+  buildStreamingCursor,
+} from './streamingHelpers'
 export { useTimelineScrollbackController } from './useTimelineScrollbackController'
 export { useTimelineStreamingController } from './useTimelineStreamingController'

@@ -43,6 +43,17 @@ export function itemTimestamp(item: TimelineItem): number {
   return 0
 }
 
+/** アイテムの数値 ID を取得 (post_id or notification_id → parseInt(id) フォールバック) */
+export function itemNumericId(item: TimelineItem): number {
+  if ('post_id' in item)
+    return (item as StatusAddAppIndex & { post_id: number }).post_id
+  if ('notification_id' in item)
+    return (item as NotificationAddAppIndex & { notification_id: number })
+      .notification_id
+  const parsed = Number.parseInt(item.id, 10)
+  return Number.isNaN(parsed) ? 0 : parsed
+}
+
 /**
  * アイテム群を Map にマージし、カーソル (newest/oldest) を更新する。
  *

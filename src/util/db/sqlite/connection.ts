@@ -36,6 +36,8 @@ export type ChangeHint = {
   backendUrl?: string
   /** 変更に関連するタグ名 */
   tag?: string
+  /** この書き込みバッチで変更された全テーブル名 */
+  changedTables?: readonly string[]
 }
 
 /** 変更リスナー */

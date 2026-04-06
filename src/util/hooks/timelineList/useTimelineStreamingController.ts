@@ -10,8 +10,8 @@
  * - scrollback 中の STREAMING_DEFERRED dispatch
  * - hintless 変更時の再初期化
  *
- * NOTE: カーソルベースの差分取得ではなく、ページ全体を再取得する。
- * timeline_entries 経由の複雑なプランでもカーソル不整合を起こさず、
+ * NOTE: カーソルベースの差分取得により、newestMs / newestId 以降のアイテムのみを取得する。
+ * changedTables を渡すことで patchPlanForStreamingFetch による選択的テーブルスキャンを活用。
  * mergeItems の Map ベース重複排除により安全にマージされる。
  */
 
@@ -26,6 +26,7 @@ import type {
 } from 'util/hooks/useTimelineDataSource'
 
 import type { TimelineListEvent, TimelineListState } from './reducer'
+import { buildStreamingCursor } from './streamingHelpers'
 
 const PAGE_SIZE = TIMELINE_QUERY_LIMIT
 
@@ -35,7 +36,7 @@ type UseTimelineStreamingControllerArgs = {
   recordDuration: (ms: number) => void
   stateRef: RefObject<TimelineListState>
   subscribeToChanges: (
-    onMatched: () => void,
+    onMatched: (changedTables: ReadonlySet<string>) => void,
     onHintless: () => void,
   ) => () => void
 }
@@ -48,7 +49,7 @@ export function useTimelineStreamingController({
   subscribeToChanges,
 }: UseTimelineStreamingControllerArgs): void {
   useEffect(() => {
-    const onMatched = () => {
+    const onMatched = (changedTables: ReadonlySet<string>) => {
       const s = stateRef.current
       // scrollback 中は保留
       if (s.isScrollbackRunning) {
@@ -62,9 +63,13 @@ export function useTimelineStreamingController({
         return
       }
 
-      tlDebug('[TL] onMatched: fetching latest page')
+      const cursor = buildStreamingCursor(s)
+      tlDebug(
+        '[TL] onMatched: fetching latest page',
+        cursor ? 'with cursor' : 'full',
+      )
 
-      fetchPage({ limit: PAGE_SIZE }).then((result) => {
+      fetchPage({ changedTables, cursor, limit: PAGE_SIZE }).then((result) => {
         tlDebug(
           '[TL] onMatched: fetch result',
           result ? result.items.length : 'null',

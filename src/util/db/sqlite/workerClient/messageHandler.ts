@@ -5,6 +5,7 @@
  */
 
 import { startSnapshotRecording } from '../../dbQueue'
+import type { ChangeHint } from '../connection'
 import type { SlowQueryLogEntry, WorkerMessage } from '../protocol'
 import {
   durationForId,
@@ -45,8 +46,12 @@ export function handleMessage(event: MessageEvent<WorkerMessage>): void {
         pending.delete(msg.id)
         // changedTables があれば notifyChange を発火
         if (msg.changedTables) {
+          const enrichedHint: ChangeHint = {
+            ...msg.changeHint,
+            changedTables: msg.changedTables,
+          }
           for (const table of msg.changedTables) {
-            notifyChangeCallback?.(table, msg.changeHint)
+            notifyChangeCallback?.(table, enrichedHint)
           }
         }
         if (msg.durationMs != null) {

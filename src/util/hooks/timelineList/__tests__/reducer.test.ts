@@ -34,6 +34,7 @@ describe('createInitialState', () => {
     expect(s.sortedItems).toEqual([])
     expect(s.itemMap.size).toBe(0)
     expect(s.newestMs).toBe(0)
+    expect(s.newestId).toBe(0)
     expect(s.oldestMs).toBe(Number.MAX_SAFE_INTEGER)
     expect(s.initialized).toBe(false)
     expect(s.isScrollbackRunning).toBe(false)
@@ -270,6 +271,67 @@ describe('RESET', () => {
     expect(s1.newestMs).toBe(0)
     expect(s1.oldestMs).toBe(Number.MAX_SAFE_INTEGER)
     expect(s1.hasMoreOlder).toBe(true)
+  })
+})
+
+describe('newestId tracking', () => {
+  it('mergeItems で newestId が新しいアイテムの最大 ID に更新される', () => {
+    const s0 = createInitialState()
+    const items = [makeStatus('10', 100), makeStatus('20', 200)]
+    const s1 = dispatch(s0, { items, type: 'INITIAL_FETCH_SUCCEEDED' })
+
+    expect(s1.newestId).toBe(20)
+  })
+
+  it('createInitialState の newestId が 0 である', () => {
+    const s = createInitialState()
+    expect(s.newestId).toBe(0)
+  })
+
+  it('HINTLESS_INVALIDATED で newestId が 0 にリセットされる', () => {
+    const s0 = createInitialState()
+    const items = [makeStatus('10', 100)]
+    const s1 = dispatch(
+      s0,
+      { items, type: 'INITIAL_FETCH_SUCCEEDED' },
+      { type: 'HINTLESS_INVALIDATED' },
+    )
+
+    expect(s1.newestId).toBe(0)
+  })
+
+  it('RESET で newestId が 0 にリセットされる', () => {
+    const s0 = createInitialState()
+    const items = [makeStatus('10', 100)]
+    const s1 = dispatch(
+      s0,
+      { items, type: 'INITIAL_FETCH_SUCCEEDED' },
+      { type: 'RESET' },
+    )
+
+    expect(s1.newestId).toBe(0)
+  })
+
+  it('streaming で newestId が更新される', () => {
+    const s0 = createInitialState()
+    const s1 = dispatch(
+      s0,
+      { items: [makeStatus('10', 100)], type: 'INITIAL_FETCH_SUCCEEDED' },
+      { items: [makeStatus('30', 300)], type: 'STREAMING_FETCH_SUCCEEDED' },
+    )
+
+    expect(s1.newestId).toBe(30)
+  })
+
+  it('小さい ID のアイテムでは newestId が下がらない', () => {
+    const s0 = createInitialState()
+    const s1 = dispatch(
+      s0,
+      { items: [makeStatus('50', 500)], type: 'INITIAL_FETCH_SUCCEEDED' },
+      { items: [makeStatus('5', 50)], type: 'SCROLLBACK_DB_SUCCEEDED' },
+    )
+
+    expect(s1.newestId).toBe(50)
   })
 })
 

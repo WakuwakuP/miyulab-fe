@@ -25,7 +25,10 @@ import {
   queryPlanV2LookupTables,
   queryPlanV2ReferencedTables,
 } from 'util/db/query-ir/nodes'
-import { patchPlanForFetch } from 'util/db/query-ir/patchPlanForFetch'
+import {
+  patchPlanForFetch,
+  patchPlanForStreamingFetch,
+} from 'util/db/query-ir/patchPlanForFetch'
 import {
   type ChangeHint,
   getSqliteDb,
@@ -36,6 +39,7 @@ import {
 import { TIMELINE_QUERY_LIMIT } from 'util/environment'
 import { buildTimelineItemsFromGraphResult } from 'util/hooks/buildTimelineItems'
 import { hintsMatchTimeline } from 'util/hooks/timelineList'
+import { aggregateChangedTables } from 'util/hooks/timelineList/streamingHelpers'
 import {
   useLocalAccountIds,
   useServerIds,
@@ -54,6 +58,7 @@ export type TimelineItem = StatusAddAppIndex | NotificationAddAppIndex
 export type FetchPageOptions = {
   cursor?: PaginationCursor
   limit?: number
+  changedTables?: ReadonlySet<string>
 }
 
 export type FetchPageResult = {
@@ -169,7 +174,15 @@ export function useTimelineDataSource(
       }
 
       const limit = fetchOptions?.limit ?? TIMELINE_QUERY_LIMIT
-      const plan = patchPlanForFetch(basePlan, limit, fetchOptions?.cursor)
+      const plan =
+        fetchOptions?.changedTables && fetchOptions?.cursor
+          ? patchPlanForStreamingFetch(
+              basePlan,
+              limit,
+              fetchOptions.cursor,
+              fetchOptions.changedTables,
+            )
+          : patchPlanForFetch(basePlan, limit, fetchOptions?.cursor)
 
       const version = ++fetchVersionRef.current
 
@@ -214,7 +227,10 @@ export function useTimelineDataSource(
    * @returns cleanup 関数
    */
   const subscribeToChanges = useCallback(
-    (onMatched: () => void, onHintless: () => void) => {
+    (
+      onMatched: (changedTables: ReadonlySet<string>) => void,
+      onHintless: () => void,
+    ) => {
       const unsubs = subscribeTables.map((table) => {
         const isLookup = lookupTables.has(table)
         return subscribe(table, (hints: ChangeHint[]) => {
@@ -231,7 +247,7 @@ export function useTimelineDataSource(
           )
 
           if (matched) {
-            onMatched()
+            onMatched(aggregateChangedTables(hints))
           }
         })
       })
