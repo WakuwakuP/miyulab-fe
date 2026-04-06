@@ -51,6 +51,7 @@ export const NotificationTimeline = ({
   const scrollerRef = useRef<VirtuosoHandle>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const isFetchingMoreRef = useRef(false)
+  const hasReachedEndRef = useRef(false)
   const exhaustedBackendsRef = useRef(new Set<string>())
 
   const [enableScrollToTop, setEnableScrollToTop] = useState(true)
@@ -69,6 +70,7 @@ export const NotificationTimeline = ({
     void configId
     bottomExpansionRef.current = 0
     exhaustedBackendsRef.current = new Set()
+    hasReachedEndRef.current = false
   }, [configId])
 
   const currentLength = notifications.length
@@ -141,6 +143,7 @@ export const NotificationTimeline = ({
   const moreLoad = useCallback(async () => {
     if (isFetchingMoreRef.current) return
     isFetchingMoreRef.current = true
+    hasReachedEndRef.current = true
 
     try {
       if (apps.length <= 0) return
@@ -163,9 +166,8 @@ export const NotificationTimeline = ({
   }, [apps, dbHasMore, loadMore, fetchFromApi])
 
   // loadMore() 後に DB が枯渇した場合の自動 API フェッチ
-  // enableScrollToTop が false（ユーザーが下方向にスクロール済み）の場合のみ発火
   useEffect(() => {
-    if (!dbHasMore && !enableScrollToTop && !isFetchingMoreRef.current) {
+    if (!dbHasMore && hasReachedEndRef.current && !isFetchingMoreRef.current) {
       isFetchingMoreRef.current = true
       setIsFetchingMore(true)
       fetchFromApi().finally(() => {
@@ -173,7 +175,7 @@ export const NotificationTimeline = ({
         setIsFetchingMore(false)
       })
     }
-  }, [dbHasMore, enableScrollToTop, fetchFromApi])
+  }, [dbHasMore, fetchFromApi])
 
   const onWheel = useCallback<WheelEventHandler<HTMLDivElement>>((e) => {
     if (e.deltaY > 0) {

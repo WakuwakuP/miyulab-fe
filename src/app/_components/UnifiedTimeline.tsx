@@ -83,6 +83,9 @@ export const UnifiedTimeline = ({
   // moreLoad の同時実行防止フラグ
   const isFetchingMoreRef = useRef(false)
 
+  // endReached が呼ばれたことを追跡（auto-trigger の発火条件に使用）
+  const hasReachedEndRef = useRef(false)
+
   // 各 backendUrl ごとに「これ以上古いデータがない」状態を追跡
   // fetchMoreData が FETCH_LIMIT 未満を返したら exhausted とみなす
   const exhaustedBackendsRef = useRef(new Set<string>())
@@ -103,6 +106,7 @@ export const UnifiedTimeline = ({
     void configId
     bottomExpansionRef.current = 0
     exhaustedBackendsRef.current = new Set()
+    hasReachedEndRef.current = false
   }, [configId])
 
   const currentLength = timeline.length
@@ -235,6 +239,7 @@ export const UnifiedTimeline = ({
   const moreLoad = useCallback(async () => {
     if (isFetchingMoreRef.current) return
     isFetchingMoreRef.current = true
+    hasReachedEndRef.current = true
 
     try {
       if (apps.length <= 0) return
@@ -257,10 +262,9 @@ export const UnifiedTimeline = ({
   }, [apps, dbHasMore, loadMore, fetchFromApi])
 
   // loadMore() 後に DB が枯渇した場合の自動 API フェッチ
-  // enableScrollToTop が false（ユーザーが下方向にスクロール済み）の場合のみ発火
-  // これにより初回マウント時の不要な API フェッチを防止する
+  // hasReachedEndRef（endReached が呼ばれた）で初回マウント時の不要フェッチを防止
   useEffect(() => {
-    if (!dbHasMore && !enableScrollToTop && !isFetchingMoreRef.current) {
+    if (!dbHasMore && hasReachedEndRef.current && !isFetchingMoreRef.current) {
       isFetchingMoreRef.current = true
       setIsFetchingMore(true)
       fetchFromApi().finally(() => {
@@ -268,7 +272,7 @@ export const UnifiedTimeline = ({
         setIsFetchingMore(false)
       })
     }
-  }, [dbHasMore, enableScrollToTop, fetchFromApi])
+  }, [dbHasMore, fetchFromApi])
 
   // UIロジック
   const onWheel = useCallback<WheelEventHandler<HTMLDivElement>>((e) => {

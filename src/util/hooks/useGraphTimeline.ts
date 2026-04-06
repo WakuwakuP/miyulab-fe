@@ -28,6 +28,7 @@ import type { SerializedGraphPlan } from 'util/db/query-ir/executor/types'
 import {
   isQueryPlanV2,
   type QueryPlanV2,
+  type QueryPlanV2Node,
   queryPlanV2ReferencedTables,
 } from 'util/db/query-ir/nodes'
 import {
@@ -78,6 +79,39 @@ function resolveAppIndex(
   apps: { backendUrl: string }[],
 ): number {
   return apps.findIndex((app) => app.backendUrl === backendUrl)
+}
+
+/**
+ * カスタム queryPlan 内の output-v2 / merge-v2 ノードの limit を
+ * 現在の queryLimit で上書きする。
+ * これにより loadMore() で queryLimit が増えたとき、
+ * plan が変化して fetchData が再実行される。
+ */
+function patchQueryPlanLimit(plan: QueryPlanV2, limit: number): QueryPlanV2 {
+  return {
+    ...plan,
+    nodes: plan.nodes.map((entry): QueryPlanV2Node => {
+      if (entry.node.kind === 'output-v2') {
+        return {
+          ...entry,
+          node: {
+            ...entry.node,
+            pagination: { ...entry.node.pagination, limit },
+          },
+        }
+      }
+      if (entry.node.kind === 'merge-v2') {
+        // merge-v2 の元の limit を下回らないようにする
+        // (例: merge:200 / output:50 のプランで queryLimit=100 のとき merge を 200 に維持)
+        const mergeLimit = Math.max(entry.node.limit, limit)
+        return {
+          ...entry,
+          node: { ...entry.node, limit: mergeLimit },
+        }
+      }
+      return entry
+    }),
+  }
 }
 
 // --------------- メインフック ---------------
@@ -141,8 +175,11 @@ export function useGraphTimeline(
   const hasFiredFirstFetchRef = useRef(false)
 
   // QueryPlanV2 生成 (config.queryPlan 優先、なければ自動生成)
+  // カスタム queryPlan の場合も queryLimit を反映させる
   const plan: QueryPlanV2 | null = useMemo(() => {
-    if (config.queryPlan) return config.queryPlan as QueryPlanV2
+    if (config.queryPlan) {
+      return patchQueryPlanLimit(config.queryPlan as QueryPlanV2, queryLimit)
+    }
     if (localAccountIds.length === 0) return null
     return configToQueryPlanV2(config, {
       localAccountIds,
