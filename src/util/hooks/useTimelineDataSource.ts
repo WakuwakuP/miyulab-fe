@@ -99,6 +99,12 @@ export function useTimelineDataSource(
   // onFirstFetch 発火済みフラグ
   const hasFiredFirstFetchRef = useRef(false)
 
+  // options を ref に同期して fetchPage の依存から外す
+  const disabledRef = useRef(options?.disabled ?? false)
+  disabledRef.current = options?.disabled ?? false
+  const onFirstFetchRef = useRef(options?.onFirstFetch)
+  onFirstFetchRef.current = options?.onFirstFetch
+
   // ベースプラン生成 (TIMELINE_QUERY_LIMIT で固定、カーソルなし)
   // biome-ignore lint/correctness/useExhaustiveDependencies: refreshToken は外部からの設定変更を検知するために必要
   const basePlan: QueryPlanV2 | null = useMemo(() => {
@@ -152,12 +158,12 @@ export function useTimelineDataSource(
     async (
       fetchOptions?: FetchPageOptions,
     ): Promise<FetchPageResult | null> => {
-      if (options?.disabled) return null
+      if (disabledRef.current) return null
       if (!basePlan || targetBackendUrls.length === 0) {
         // plan が生成できない場合でも初回コールバックを発火
-        if (!hasFiredFirstFetchRef.current && options?.onFirstFetch) {
+        if (!hasFiredFirstFetchRef.current && onFirstFetchRef.current) {
           hasFiredFirstFetchRef.current = true
-          options.onFirstFetch()
+          onFirstFetchRef.current()
         }
         return null
       }
@@ -183,9 +189,9 @@ export function useTimelineDataSource(
         )
 
         // 初回データ取得成功を通知
-        if (!hasFiredFirstFetchRef.current && options?.onFirstFetch) {
+        if (!hasFiredFirstFetchRef.current && onFirstFetchRef.current) {
           hasFiredFirstFetchRef.current = true
-          options.onFirstFetch()
+          onFirstFetchRef.current()
         }
 
         return {
@@ -197,7 +203,7 @@ export function useTimelineDataSource(
         return null
       }
     },
-    [basePlan, targetBackendUrls, apps, options],
+    [basePlan, targetBackendUrls, apps],
   )
 
   /**
