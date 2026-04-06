@@ -318,6 +318,19 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
         const { backendUrl } = app
 
         try {
+          // ローカルアカウント情報を先に同期する。
+          // DB が空の場合、local_accounts レコードが存在しないと
+          // bulkUpsertStatuses が timeline_entries を作成できない。
+          try {
+            const credRes = await client.verifyAccountCredentials()
+            await ensureLocalAccount(credRes.data, backendUrl)
+          } catch (error) {
+            console.warn(
+              `Failed to verify credentials for ${backendUrl}:`,
+              error,
+            )
+          }
+
           // ホームタイムラインと通知を並行して取得
           const [homeRes, notifRes] = await Promise.all([
             client.getHomeTimeline({ limit: 40 }),
@@ -387,19 +400,6 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
                 self.findIndex((e) => e.acct === element.acct) === idx,
             ),
           )
-
-          // ローカルアカウント情報を同期
-          client
-            .verifyAccountCredentials()
-            .then(async (res) => {
-              await ensureLocalAccount(res.data, backendUrl)
-            })
-            .catch((error) => {
-              console.warn(
-                `Failed to verify credentials for ${backendUrl}:`,
-                error,
-              )
-            })
         } catch (error) {
           console.error(`Failed to initialize for ${backendUrl}:`, error)
         }
