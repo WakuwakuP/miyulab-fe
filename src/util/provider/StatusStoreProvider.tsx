@@ -12,7 +12,6 @@ import {
   useRef,
 } from 'react'
 import type { App } from 'types/types'
-import { initAccountResolver } from 'util/accountResolver'
 import { startPeriodicCleanup } from 'util/db/sqlite/cleanup'
 import { startPeriodicExport } from 'util/db/sqlite/dbExport'
 import {
@@ -38,6 +37,7 @@ import { getRetryDelay, MAX_RETRY_COUNT } from 'util/streaming/constants'
 import { restartStream, stopStream } from 'util/streaming/stopStream'
 import { AppsContext } from './AppsProvider'
 import { SetTagsContext, SetUsersContext } from './ResourceProvider'
+import { StartupCoordinatorContext } from './StartupCoordinator'
 
 // ストア操作の型定義
 type StatusStoreActions = {
@@ -74,7 +74,10 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
   const apps = useContext(AppsContext)
   const setUsers = useContext(SetUsersContext)
   const setTags = useContext(SetTagsContext)
+  const { isPhaseReached, advanceTo } = useContext(StartupCoordinatorContext)
   const refFirstRef = useRef(true)
+  const refFirstRestRef = useRef(true)
+  const refFirstStreamRef = useRef(true)
   const streamsRef = useRef<Map<string, WebSocketInterface>>(new Map())
 
   // useEffectEvent でイベントハンドラを安定化
@@ -269,7 +272,11 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
     }
   })
 
-  // 初期化処理
+  // =========================================================================
+  // Effect 1: 即時処理（フェーズ不問）
+  // 定期クリーンアップと定期エクスポートのみ。DB 初期化は StartupCoordinator
+  // が担うため、ここでは initAccountResolver() を呼ばない。
+  // =========================================================================
   useEffect(() => {
     if (process.env.NODE_ENV === 'development' && refFirstRef.current) {
       refFirstRef.current = false
@@ -277,21 +284,158 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
     }
     if (apps.length <= 0) return
 
-    // 定期クリーンアップと定期エクスポートを開始
     const stopCleanup = startPeriodicCleanup()
     const stopExport = startPeriodicExport()
 
-    // local_accounts キャッシュを構築（SQL から local_accounts JOIN を排除するため）
-    initAccountResolver().catch((error) => {
-      console.warn('Failed to initialize account resolver:', error)
-    })
+    return () => {
+      stopCleanup()
+      stopExport()
+    }
+  }, [apps])
 
-    // 各アプリのデータを取得してストリーミング接続
+  // =========================================================================
+  // Effect 2: Phase 3 — REST API 取得 + DB 書き込み
+  // timeline-displayed フェーズに達してから REST 取得を開始する。
+  // 完了後に advanceTo('rest-fetched') を呼ぶ。
+  // =========================================================================
+  const timelineDisplayed = isPhaseReached('timeline-displayed')
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: advanceTo is stable; createStreamHandlers is useEffectEvent
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development' && refFirstRestRef.current) {
+      refFirstRestRef.current = false
+      return
+    }
+    if (!timelineDisplayed) return
+    if (apps.length <= 0) return
+
+    let cancelled = false
+
+    const fetchAll = async () => {
+      const promises = apps.map(async (app) => {
+        const client = GetClient(app)
+        const { backendUrl } = app
+
+        try {
+          // ホームタイムラインと通知を並行して取得
+          const [homeRes, notifRes] = await Promise.all([
+            client.getHomeTimeline({ limit: 40 }),
+            client.getNotifications({ limit: 40 }),
+          ])
+
+          if (cancelled) return
+
+          // Raw data capture (API response)
+          if (isRawDataCaptureEnabled()) {
+            captureApiResponse({
+              backend: app.backend,
+              backendUrl,
+              dataCount: homeRes.data.length,
+              eventType: 'getHomeTimeline',
+              origin: app.backend === 'misskey' ? 'misskey-js' : 'megalodon',
+              rawData: homeRes.data,
+            })
+            captureApiResponse({
+              backend: app.backend,
+              backendUrl,
+              dataCount: notifRes.data.length,
+              eventType: 'getNotifications',
+              origin: app.backend === 'misskey' ? 'misskey-js' : 'megalodon',
+              rawData: notifRes.data,
+            })
+          }
+
+          await bulkUpsertStatuses(homeRes.data, backendUrl, 'home')
+
+          // ユーザー情報を収集
+          const users = homeRes.data
+            .map((status) => status.reblog?.account ?? status.account)
+            .map((account) => ({
+              acct: account.acct,
+              avatar: account.avatar,
+              display_name: account.display_name,
+              id: account.id,
+            }))
+          setUsersEvent((prev) =>
+            [...users, ...prev].filter(
+              (element, idx, self) =>
+                self.findIndex((e) => e.acct === element.acct) === idx,
+            ),
+          )
+
+          await bulkAddNotifications(notifRes.data, backendUrl)
+
+          // 通知からユーザー情報を収集
+          const notifUsers = notifRes.data
+            .filter(
+              (
+                n,
+              ): n is typeof n & {
+                account: NonNullable<typeof n.account>
+              } => n.account != null,
+            )
+            .map((n) => ({
+              acct: n.account.acct,
+              avatar: n.account.avatar,
+              display_name: n.account.display_name,
+              id: n.account.id,
+            }))
+          setUsersEvent((prev) =>
+            [...prev, ...notifUsers].filter(
+              (element, idx, self) =>
+                self.findIndex((e) => e.acct === element.acct) === idx,
+            ),
+          )
+
+          // ローカルアカウント情報を同期
+          client
+            .verifyAccountCredentials()
+            .then(async (res) => {
+              await ensureLocalAccount(res.data, backendUrl)
+            })
+            .catch((error) => {
+              console.warn(
+                `Failed to verify credentials for ${backendUrl}:`,
+                error,
+              )
+            })
+        } catch (error) {
+          console.error(`Failed to initialize for ${backendUrl}:`, error)
+        }
+      })
+
+      await Promise.all(promises)
+
+      if (!cancelled) {
+        advanceTo('rest-fetched')
+      }
+    }
+
+    fetchAll()
+
+    return () => {
+      cancelled = true
+    }
+  }, [apps, timelineDisplayed])
+
+  // =========================================================================
+  // Effect 3: Phase 4 — userStreaming 接続
+  // rest-fetched フェーズに達してから WebSocket 接続を開始する。
+  // =========================================================================
+  const restFetched = isPhaseReached('rest-fetched')
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development' && refFirstStreamRef.current) {
+      refFirstStreamRef.current = false
+      return
+    }
+    if (!restFetched) return
+    if (apps.length <= 0) return
+
     apps.forEach(async (app, index) => {
       const client = GetClient(app)
       const { backendUrl } = app
 
-      // WebSocketストリーミング接続をREST API呼び出しと並行して開始
       client
         .userStreaming()
         .then((stream) => {
@@ -310,100 +454,15 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
         .catch((error) => {
           console.error(`Failed to start streaming for ${backendUrl}:`, error)
         })
-
-      try {
-        // ホームタイムラインと通知を並行して取得
-        const [homeRes, notifRes] = await Promise.all([
-          client.getHomeTimeline({ limit: 40 }),
-          client.getNotifications({ limit: 40 }),
-        ])
-
-        // Raw data capture (API response)
-        if (isRawDataCaptureEnabled()) {
-          captureApiResponse({
-            backend: app.backend,
-            backendUrl,
-            dataCount: homeRes.data.length,
-            eventType: 'getHomeTimeline',
-            origin: app.backend === 'misskey' ? 'misskey-js' : 'megalodon',
-            rawData: homeRes.data,
-          })
-          captureApiResponse({
-            backend: app.backend,
-            backendUrl,
-            dataCount: notifRes.data.length,
-            eventType: 'getNotifications',
-            origin: app.backend === 'misskey' ? 'misskey-js' : 'megalodon',
-            rawData: notifRes.data,
-          })
-        }
-
-        await bulkUpsertStatuses(homeRes.data, backendUrl, 'home')
-
-        // ユーザー情報を収集
-        const users = homeRes.data
-          .map((status) => status.reblog?.account ?? status.account)
-          .map((account) => ({
-            acct: account.acct,
-            avatar: account.avatar,
-            display_name: account.display_name,
-            id: account.id,
-          }))
-        setUsersEvent((prev) =>
-          [...users, ...prev].filter(
-            (element, idx, self) =>
-              self.findIndex((e) => e.acct === element.acct) === idx,
-          ),
-        )
-
-        await bulkAddNotifications(notifRes.data, backendUrl)
-
-        // 通知からユーザー情報を収集
-        const notifUsers = notifRes.data
-          .filter(
-            (n): n is typeof n & { account: NonNullable<typeof n.account> } =>
-              n.account != null,
-          )
-          .map((n) => ({
-            acct: n.account.acct,
-            avatar: n.account.avatar,
-            display_name: n.account.display_name,
-            id: n.account.id,
-          }))
-        setUsersEvent((prev) =>
-          [...prev, ...notifUsers].filter(
-            (element, idx, self) =>
-              self.findIndex((e) => e.acct === element.acct) === idx,
-          ),
-        )
-
-        // ローカルアカウント情報を同期
-        client
-          .verifyAccountCredentials()
-          .then(async (res) => {
-            await ensureLocalAccount(res.data, backendUrl)
-          })
-          .catch((error) => {
-            console.warn(
-              `Failed to verify credentials for ${backendUrl}:`,
-              error,
-            )
-          })
-      } catch (error) {
-        console.error(`Failed to initialize for ${backendUrl}:`, error)
-      }
     })
 
-    // クリーンアップ
     return () => {
-      stopCleanup()
-      stopExport()
       for (const stream of streamsRef.current.values()) {
         stopStream(stream)
       }
       streamsRef.current.clear()
     }
-  }, [apps])
+  }, [apps, restFetched])
 
   const storeActionsValue = useMemo(
     () => ({

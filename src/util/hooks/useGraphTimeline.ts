@@ -82,7 +82,17 @@ function resolveAppIndex(
 
 // --------------- メインフック ---------------
 
-export function useGraphTimeline(config: TimelineConfigV2): {
+export type UseGraphTimelineOptions = {
+  /** 初回データ取得成功時に呼ばれるコールバック */
+  onFirstFetch?: () => void
+  /** true の間、データ取得を無効化する */
+  disabled?: boolean
+}
+
+export function useGraphTimeline(
+  config: TimelineConfigV2,
+  options?: UseGraphTimelineOptions,
+): {
   data: (NotificationAddAppIndex | StatusAddAppIndex)[]
   queryDuration: number | null
   loadMore: () => void
@@ -122,6 +132,9 @@ export function useGraphTimeline(config: TimelineConfigV2): {
 
   // race condition 防止
   const fetchVersionRef = useRef(0)
+
+  // onFirstFetch 発火済みフラグ
+  const hasFiredFirstFetchRef = useRef(false)
 
   // QueryPlanV2 生成 (config.queryPlan 優先、なければ自動生成)
   const plan: QueryPlanV2 | null = useMemo(() => {
@@ -165,6 +178,7 @@ export function useGraphTimeline(config: TimelineConfigV2): {
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: refreshToken forces re-fetch on config save
   const fetchData = useCallback(async () => {
+    if (options?.disabled) return
     if (!plan) return
     if (targetBackendUrls.length === 0) return
 
@@ -237,10 +251,16 @@ export function useGraphTimeline(config: TimelineConfigV2): {
         }
       }
       setData(items)
+
+      // 初回データ取得成功を通知
+      if (!hasFiredFirstFetchRef.current && options?.onFirstFetch) {
+        hasFiredFirstFetchRef.current = true
+        options.onFirstFetch()
+      }
     } catch (e) {
       console.error('[useGraphTimeline] fetch error:', e)
     }
-  }, [plan, targetBackendUrls, apps, recordDuration, refreshToken])
+  }, [plan, targetBackendUrls, apps, recordDuration, refreshToken, options])
 
   // ---- データ取得トリガー ----
 
