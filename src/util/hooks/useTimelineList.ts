@@ -199,6 +199,10 @@ export function useTimelineList(
   useEffect(() => {
     // ストリーミング差分取得
     const onMatched = () => {
+      // loadOlder 実行中はストリーミング差分取得をスキップする。
+      // fetchOlderFromApi → notifyChange が retry の fetchPage と
+      // fetchVersionRef で競合し、retry 結果が破棄される問題を回避する。
+      if (isLoadingRef.current) return
       if (newestMsRef.current <= 0) return
 
       fetchPage({
