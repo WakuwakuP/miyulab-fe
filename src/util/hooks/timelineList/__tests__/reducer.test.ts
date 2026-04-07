@@ -1,6 +1,6 @@
 import type { TimelineItem } from 'util/hooks/useTimelineDataSource'
 import { describe, expect, it } from 'vitest'
-
+import { itemTimestamp } from '../itemHelpers'
 import {
   createInitialState,
   type TimelineListEvent,
@@ -64,7 +64,7 @@ describe('INITIAL_FETCH_SUCCEEDED', () => {
     ]
     const s1 = dispatch(s0, { items, type: 'INITIAL_FETCH_SUCCEEDED' })
 
-    const timestamps = s1.sortedItems.map((i) => (i as any).created_at_ms)
+    const timestamps = s1.sortedItems.map((i) => itemTimestamp(i))
     expect(timestamps).toEqual([300, 200, 100])
   })
 
@@ -118,7 +118,9 @@ describe('STREAMING_FETCH_SUCCEEDED', () => {
     )
 
     expect(s1.itemMap.size).toBe(1)
-    expect((s1.itemMap.get('p:1') as any).content).toBe('updated')
+    expect(
+      (s1.itemMap.get('p:1') as unknown as { content: string }).content,
+    ).toBe('updated')
   })
 
   it('空配列は状態を変更しない', () => {
@@ -354,7 +356,7 @@ describe('複合シナリオ', () => {
     expect(s.isScrollbackRunning).toBe(false)
     expect(s.hasMoreOlder).toBe(true)
 
-    const timestamps = s.sortedItems.map((i) => (i as any).created_at_ms)
+    const timestamps = s.sortedItems.map((i) => itemTimestamp(i))
     expect(timestamps).toEqual([300, 200, 100])
   })
 
@@ -476,7 +478,7 @@ describe('複合シナリオ', () => {
     expect(s.hasMoreOlder).toBe(false)
     expect(s.deferredStreaming).toBe(false)
 
-    const timestamps = s.sortedItems.map((i) => (i as any).created_at_ms)
+    const timestamps = s.sortedItems.map((i) => itemTimestamp(i))
     expect(timestamps).toEqual([800, 700, 600, 500, 400, 300, 200, 100])
   })
 })
