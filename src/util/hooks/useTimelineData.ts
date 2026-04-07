@@ -1,12 +1,16 @@
 'use client'
 
-import type {
-  NotificationAddAppIndex,
-  StatusAddAppIndex,
-  TimelineConfigV2,
-} from 'types/types'
+import type { TimelineConfigV2 } from 'types/types'
 import type { UseTimelineDataSourceOptions } from 'util/hooks/useTimelineDataSource'
 import { useTimelineList } from 'util/hooks/useTimelineList'
+
+export type { TimelineViewModel } from 'types/timelineViewModel'
+
+/** useTimelineData の戻り値型（TimelineViewModel のデータ部分） */
+export type TimelineDataResult = Pick<
+  import('types/timelineViewModel').TimelineViewModel,
+  'data' | 'hasMoreOlder' | 'isLoadingOlder' | 'loadOlder' | 'queryDuration'
+>
 
 /**
  * `TimelineConfigV2` に基づき、インメモリリスト管理 + カーソルベースページネーションで
@@ -20,13 +24,7 @@ import { useTimelineList } from 'util/hooks/useTimelineList'
 export function useTimelineData(
   config: TimelineConfigV2,
   options?: UseTimelineDataSourceOptions,
-): {
-  data: (NotificationAddAppIndex | StatusAddAppIndex)[]
-  hasMoreOlder: boolean
-  isLoadingOlder: boolean
-  loadOlder: () => Promise<void>
-  queryDuration: number | null
-} {
+): TimelineDataResult {
   const { hasMoreOlder, isLoadingOlder, items, loadOlder, queryDuration } =
     useTimelineList(config, options)
 
