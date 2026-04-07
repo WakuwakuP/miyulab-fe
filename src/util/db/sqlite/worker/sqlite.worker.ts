@@ -139,6 +139,7 @@ self.onmessage = (
           msg.backendUrl,
           msg.timelineType,
           msg.tag,
+          msg.skipProfileUpdate,
         )
         sendResponse(msg.id, { ok: true }, r.changedTables, undefined, {
           backendUrl: msg.backendUrl,

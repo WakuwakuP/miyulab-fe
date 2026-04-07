@@ -119,6 +119,8 @@ export type BulkUpsertStatusesRequest = {
   backendUrl: string
   timelineType: string
   tag?: string
+  /** スクロールバック時など、古いプロフィールで既存データを上書きしたくない場合に true */
+  skipProfileUpdate?: boolean
 }
 
 /** Status のアクション状態更新 */

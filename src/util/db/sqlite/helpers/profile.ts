@@ -45,10 +45,55 @@ export function ensureProfile(
   account: Entity.Account,
   serverId: number,
   collector?: WrittenTableCollector,
+  skipUpdate?: boolean,
 ): number {
   const acct = account.acct
   const host = resolveServerHost(db, serverId)
   const canonicalAcct = computeCanonicalAcct(acct, host)
+
+  if (skipUpdate) {
+    // キャッシュヒット → DB アクセス不要
+    const cached = profileIdCache.get(canonicalAcct)
+    if (cached !== undefined) return cached
+
+    // 既存プロフィールを上書きしない INSERT OR IGNORE
+    db.exec(
+      `INSERT OR IGNORE INTO profiles (
+        actor_uri, username, server_id, acct, canonical_acct, display_name,
+        url, avatar_url, avatar_static_url, header_url, header_static_url,
+        bio, is_locked, is_bot, last_fetched_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+      {
+        bind: [
+          account.url || null,
+          account.username,
+          serverId,
+          acct,
+          canonicalAcct,
+          account.display_name ?? '',
+          account.url ?? '',
+          account.avatar ?? '',
+          account.avatar_static ?? '',
+          account.header ?? '',
+          account.header_static ?? '',
+          account.note ?? '',
+          account.locked ? 1 : 0,
+          account.bot ? 1 : 0,
+          Date.now(),
+        ],
+      },
+    )
+    collector?.add('profiles')
+
+    const rows = db.exec('SELECT id FROM profiles WHERE canonical_acct = ?;', {
+      bind: [canonicalAcct],
+      returnValue: 'resultRows',
+    }) as number[][]
+
+    const id = rows[0][0]
+    profileIdCache.set(canonicalAcct, id)
+    return id
+  }
 
   db.exec(
     `INSERT INTO profiles (

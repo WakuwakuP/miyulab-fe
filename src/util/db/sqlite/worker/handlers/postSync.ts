@@ -211,6 +211,7 @@ export function ensureReblogOriginalPost(
   now: number,
   localAccountId: number | null,
   collector?: WrittenTableCollector,
+  skipProfileUpdate?: boolean,
 ): void {
   const normalizedUri = originalStatus.uri?.trim() || ''
   if (!normalizedUri) return
@@ -222,18 +223,21 @@ export function ensureReblogOriginalPost(
     originalStatus.account,
     serverId,
     collector,
+    skipProfileUpdate,
   )
-  const accountEmojis =
-    originalStatus.account.emojis.length > 0
-      ? originalStatus.account.emojis
-      : resolveEmojisFromDb(
-          db,
-          serverId,
-          originalStatus.account.display_name,
-          accountDomain,
-        )
-  if (accountEmojis.length > 0) {
-    syncProfileCustomEmojis(db, profileId, serverId, accountEmojis, collector)
+  if (!skipProfileUpdate) {
+    const accountEmojis =
+      originalStatus.account.emojis.length > 0
+        ? originalStatus.account.emojis
+        : resolveEmojisFromDb(
+            db,
+            serverId,
+            originalStatus.account.display_name,
+            accountDomain,
+          )
+    if (accountEmojis.length > 0) {
+      syncProfileCustomEmojis(db, profileId, serverId, accountEmojis, collector)
+    }
   }
 
   let postId: number | undefined

@@ -109,12 +109,14 @@ export async function bulkUpsertStatuses(
   backendUrl: string,
   timelineType: TimelineType,
   tag?: string,
+  skipProfileUpdate?: boolean,
 ): Promise<void> {
   if (statuses.length === 0) return
 
   const handle = await getSqliteDb()
   await handle.sendCommand({
     backendUrl,
+    skipProfileUpdate,
     statusesJson: statuses.map((s) => JSON.stringify(s)),
     tag,
     timelineType,

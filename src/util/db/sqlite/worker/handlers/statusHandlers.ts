@@ -98,24 +98,33 @@ function upsertSingleStatus(
   timelineKey: string,
   uriCache?: Map<string, number>,
   collector?: WrittenTableCollector,
+  skipProfileUpdate?: boolean,
 ): number {
   const normalizedUri = status.uri?.trim() || ''
   const cols = extractPostColumns(status)
   const visibilityId = resolveVisibilityId(db, cols.visibility_id.toString())
-  const profileId = ensureProfile(db, status.account, serverId, collector)
+  const profileId = ensureProfile(
+    db,
+    status.account,
+    serverId,
+    collector,
+    skipProfileUpdate,
+  )
 
   const accountDomain = deriveAccountDomain(status.account)
-  const acctEmojis =
-    status.account.emojis.length > 0
-      ? status.account.emojis
-      : resolveEmojisFromDb(
-          db,
-          serverId,
-          status.account.display_name,
-          accountDomain,
-        )
-  if (acctEmojis.length > 0) {
-    syncProfileCustomEmojis(db, profileId, serverId, acctEmojis, collector)
+  if (!skipProfileUpdate) {
+    const acctEmojis =
+      status.account.emojis.length > 0
+        ? status.account.emojis
+        : resolveEmojisFromDb(
+            db,
+            serverId,
+            status.account.display_name,
+            accountDomain,
+          )
+    if (acctEmojis.length > 0) {
+      syncProfileCustomEmojis(db, profileId, serverId, acctEmojis, collector)
+    }
   }
 
   const isReblog = status.reblog != null ? 1 : 0
@@ -131,6 +140,7 @@ function upsertSingleStatus(
       now,
       localAccountId,
       collector,
+      skipProfileUpdate,
     )
   }
 
@@ -461,6 +471,7 @@ export function handleBulkUpsertStatuses(
   backendUrl: string,
   timelineType: string,
   tag?: string,
+  skipProfileUpdate?: boolean,
 ): HandlerResult {
   if (statusesJson.length === 0) return { changedTables: [] }
 
@@ -487,6 +498,7 @@ export function handleBulkUpsertStatuses(
         timelineKey,
         uriCache,
         collector,
+        skipProfileUpdate,
       )
 
       // tag timeline から来た場合、ハッシュタグを確保する

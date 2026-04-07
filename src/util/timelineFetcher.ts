@@ -78,7 +78,7 @@ export async function fetchMoreData(
   switch (config.type) {
     case 'home': {
       const res = await client.getHomeTimeline({ limit, max_id: maxId })
-      await bulkUpsertStatuses(res.data, backendUrl, 'home')
+      await bulkUpsertStatuses(res.data, backendUrl, 'home', undefined, true)
       return res.data.length
     }
 
@@ -87,7 +87,7 @@ export async function fetchMoreData(
         limit,
         max_id: maxId,
       })
-      await bulkUpsertStatuses(res.data, backendUrl, 'local')
+      await bulkUpsertStatuses(res.data, backendUrl, 'local', undefined, true)
       return res.data.length
     }
 
@@ -96,7 +96,7 @@ export async function fetchMoreData(
         limit,
         max_id: maxId,
       })
-      await bulkUpsertStatuses(res.data, backendUrl, 'public')
+      await bulkUpsertStatuses(res.data, backendUrl, 'public', undefined, true)
       return res.data.length
     }
 
@@ -136,7 +136,7 @@ export async function fetchMoreData(
           limit,
           max_id: tagMaxId,
         })
-        await bulkUpsertStatuses(res.data, backendUrl, 'tag', tag)
+        await bulkUpsertStatuses(res.data, backendUrl, 'tag', tag, true)
         total += res.data.length
       }
       return total
