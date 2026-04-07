@@ -295,9 +295,9 @@ describe('handleUpsertStatus', () => {
       expect.anything(),
     )
 
-    // ensureProfile が新シグネチャ (db, account, serverId) で呼ばれること
+    // ensureProfile が新シグネチャ (db, account, serverId, collector, skipProfileUpdate) で呼ばれること
     const callArgs = vi.mocked(helpersModule.ensureProfile).mock.calls[0]
-    expect(callArgs).toHaveLength(4)
+    expect(callArgs).toHaveLength(5)
     expect(callArgs[0]).toBe(db)
     expect(callArgs[1]).toEqual(
       expect.objectContaining({ acct: 'alice@example.com' }),

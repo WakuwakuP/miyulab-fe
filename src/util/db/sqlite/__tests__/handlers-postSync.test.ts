@@ -741,10 +741,10 @@ describe('ensureReblogOriginalPost', () => {
       42,
     )
 
-    // ensureProfile が (db, account, serverId) の3引数で呼ばれている
+    // ensureProfile が (db, account, serverId, collector, skipProfileUpdate) の5引数で呼ばれている
     expect(helpersModule.ensureProfile).toHaveBeenCalled()
     const callArgs = vi.mocked(helpersModule.ensureProfile).mock.calls[0]
-    expect(callArgs).toHaveLength(4)
+    expect(callArgs).toHaveLength(5)
     expect(callArgs[0]).toBe(db) // db
     expect(callArgs[1]).toBe(originalStatus.account) // account
     expect(callArgs[2]).toBe(7) // serverId
