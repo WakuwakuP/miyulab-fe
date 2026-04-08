@@ -1,7 +1,11 @@
 /**
  * DB エクスポート（単一 sqlite3 ファイルとして OPFS に保存）
+ *
+ * エクスポート前に quick_check で健全性を検査し、破損した DB から
+ * 正常なバックアップを上書きすることを防止する。
  */
 
+import { isDatabaseHealthy } from './workerRecovery'
 import { getDb, getSqlite3Module } from './workerState'
 
 export async function handleExportDatabase(): Promise<void> {
@@ -10,6 +14,14 @@ export async function handleExportDatabase(): Promise<void> {
 
   if (!db || !sqlite3Module) {
     throw new Error('Database or sqlite3 module not initialized')
+  }
+
+  // 健全性チェック — 破損 DB のエクスポートを防止
+  if (!isDatabaseHealthy(db)) {
+    console.warn(
+      'SQLite Worker: skipping export — database is corrupt, preserving existing backup',
+    )
+    return
   }
 
   // WAL を可能な範囲でフラッシュ（PASSIVE: ノンブロッキング）
