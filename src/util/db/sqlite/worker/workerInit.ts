@@ -2,11 +2,18 @@
  * SQLite OPFS 初期化ロジック
  *
  * OPFS SAH Pool VFS → 通常 OPFS → インメモリ DB のフォールバックチェーンで初期化する。
+ * 初期化後に PRAGMA quick_check で破損を検出し、必要に応じてバックアップから復元する。
  */
 
+import type { RecoveryResult } from './workerRecovery'
 import { setDb, setSqlite3Module } from './workerState'
 
-export async function init(origin: string): Promise<'opfs' | 'memory'> {
+export type InitResult = {
+  persistence: 'opfs' | 'memory'
+  recovered?: 'restored' | 'reset'
+}
+
+export async function init(origin: string): Promise<InitResult> {
   // Turbopack が import.meta.url を無効なスキームに書き換えるため、
   // Worker 内の相対 URL 解決が失敗する。
   // メインスレッドから渡された origin を使い絶対 URL で WASM を取得する。
@@ -63,7 +70,26 @@ export async function init(origin: string): Promise<'opfs' | 'memory'> {
   const { ensureSchema } = await import('../schema')
   ensureSchema({ db })
 
+  // 破損検出 — OPFS 永続化の場合のみ検査（インメモリは破損しない）
+  let recovered: 'restored' | 'reset' | undefined
+  if (persistence === 'opfs') {
+    const { isDatabaseHealthy, recoverFromCorruption } = await import(
+      './workerRecovery'
+    )
+    if (!isDatabaseHealthy(db)) {
+      console.warn('SQLite Worker: database corruption detected at startup')
+      const result: RecoveryResult = await recoverFromCorruption(db, sqlite3)
+      if (result === 'restored' || result === 'reset') {
+        recovered = result
+      } else {
+        console.error(
+          'SQLite Worker: recovery failed, continuing with corrupt database',
+        )
+      }
+    }
+  }
+
   setDb(db)
 
-  return persistence
+  return { persistence, recovered }
 }

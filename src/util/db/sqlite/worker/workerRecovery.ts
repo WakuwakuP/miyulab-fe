@@ -1,0 +1,228 @@
+/**
+ * SQLite Worker: 破損データベースの検出とリカバリ
+ *
+ * SQLITE_CORRUPT (rc=11) が検出された場合、以下の順序でリカバリを試みる:
+ * 1. OPFS バックアップからの復元 (sqlite3_deserialize → quick_check → sqlite3_backup API)
+ * 2. 全テーブル DROP → 最新スキーマで再作成（フォールバック）
+ */
+
+import { createFreshSchema, dropAllTables } from '../schema'
+import { encodeSemVer, LATEST_VERSION } from '../schema/version'
+
+/** リカバリの結果 */
+export type RecoveryResult = 'restored' | 'reset' | 'failed'
+
+/**
+ * PRAGMA quick_check(1) でデータベースの健全性を検査する。
+ * 最初の B-tree ページのみ検査するため非常に軽量。
+ */
+export function isDatabaseHealthy(
+  // biome-ignore lint/suspicious/noExplicitAny: sqlite-wasm types are not exact
+  db: any,
+): boolean {
+  try {
+    const rows = db.exec('PRAGMA quick_check(1);', {
+      returnValue: 'resultRows',
+    })
+    return rows?.[0]?.[0] === 'ok'
+  } catch {
+    return false
+  }
+}
+
+/**
+ * エラーが SQLITE_CORRUPT かどうかを判定する
+ */
+export function isSqliteCorruptError(error: unknown): boolean {
+  const msg =
+    error instanceof Error
+      ? error.message
+      : typeof error === 'string'
+        ? error
+        : ''
+  return (
+    msg.includes('SQLITE_CORRUPT') ||
+    msg.includes('database disk image is malformed') ||
+    msg.includes('result code 11')
+  )
+}
+
+/**
+ * 破損した DB のリカバリを試行する。
+ *
+ * 1. OPFS バックアップ (miyulab-fe-backup.sqlite3) から復元を試みる
+ * 2. 失敗した場合、全テーブル DROP → 最新スキーマで再作成にフォールバック
+ *
+ * @returns リカバリ方法
+ */
+export async function recoverFromCorruption(
+  // biome-ignore lint/suspicious/noExplicitAny: sqlite-wasm types are not exact
+  db: any,
+  // biome-ignore lint/suspicious/noExplicitAny: sqlite-wasm module type
+  sqlite3: any,
+): Promise<RecoveryResult> {
+  // Attempt 1: バックアップから復元
+  try {
+    const restored = await tryRestoreFromBackup(db, sqlite3)
+    if (restored) {
+      // 復元した DB のスキーマを最新化（マイグレーション適用）
+      const { ensureSchema } = await import('../schema')
+      ensureSchema({ db })
+      console.info('SQLite Worker: database restored from backup')
+      return 'restored'
+    }
+  } catch (e) {
+    console.warn('SQLite Worker: backup restoration failed:', e)
+  }
+
+  // Attempt 2: 空の DB にリセット
+  if (resetToEmpty(db)) {
+    return 'reset'
+  }
+
+  return 'failed'
+}
+
+/**
+ * OPFS バックアップからの復元を試みる。
+ *
+ * 1. OPFS ルートから miyulab-fe-backup.sqlite3 を読み込む
+ * 2. インメモリ DB にデシリアライズして整合性を検証
+ * 3. sqlite3_backup API で破損 DB のページを上書き
+ * 4. 復元後の DB を再検証
+ */
+async function tryRestoreFromBackup(
+  // biome-ignore lint/suspicious/noExplicitAny: sqlite-wasm types are not exact
+  db: any,
+  // biome-ignore lint/suspicious/noExplicitAny: sqlite-wasm module type
+  sqlite3: any,
+): Promise<boolean> {
+  if (typeof sqlite3.capi.sqlite3_deserialize !== 'function') {
+    console.info(
+      'SQLite Worker: sqlite3_deserialize not available, skipping backup restore',
+    )
+    return false
+  }
+
+  // 1. OPFS からバックアップを読み込み
+  const root = await navigator.storage.getDirectory()
+  let fileHandle: FileSystemFileHandle
+  try {
+    fileHandle = await root.getFileHandle('miyulab-fe-backup.sqlite3')
+  } catch {
+    console.info('SQLite Worker: no backup file found')
+    return false
+  }
+
+  const file = await fileHandle.getFile()
+  const arrayBuffer = await file.arrayBuffer()
+  const backupBytes = new Uint8Array(arrayBuffer)
+
+  if (backupBytes.byteLength === 0) {
+    console.info('SQLite Worker: backup file is empty')
+    return false
+  }
+
+  console.info(
+    `SQLite Worker: attempting restore from backup (${(backupBytes.byteLength / 1024).toFixed(1)} KB)`,
+  )
+
+  // 2. インメモリ DB にデシリアライズして整合性を検証
+  const backupDb = new sqlite3.oo1.DB(':memory:', 'c')
+  try {
+    const pBuf = sqlite3.wasm.alloc(backupBytes.byteLength)
+    sqlite3.wasm.heap8u().set(backupBytes, pBuf)
+
+    const SQLITE_DESERIALIZE_FREEONCLOSE = 1
+    const SQLITE_DESERIALIZE_RESIZEABLE = 2
+    const rc = sqlite3.capi.sqlite3_deserialize(
+      backupDb,
+      'main',
+      pBuf,
+      backupBytes.byteLength,
+      backupBytes.byteLength,
+      SQLITE_DESERIALIZE_FREEONCLOSE | SQLITE_DESERIALIZE_RESIZEABLE,
+    )
+
+    if (rc !== 0) {
+      console.warn(`SQLite Worker: backup deserialize failed (rc=${rc})`)
+      backupDb.close()
+      return false
+    }
+
+    if (!isDatabaseHealthy(backupDb)) {
+      console.warn('SQLite Worker: backup file is also corrupt')
+      backupDb.close()
+      return false
+    }
+
+    // 3. sqlite3_backup API で破損 DB のページを上書き
+    const pBackup = sqlite3.capi.sqlite3_backup_init(
+      db,
+      'main',
+      backupDb,
+      'main',
+    )
+    if (!pBackup) {
+      console.warn('SQLite Worker: sqlite3_backup_init failed')
+      backupDb.close()
+      return false
+    }
+
+    const SQLITE_DONE = 101
+    const stepRc = sqlite3.capi.sqlite3_backup_step(pBackup, -1)
+    sqlite3.capi.sqlite3_backup_finish(pBackup)
+    backupDb.close()
+
+    if (stepRc !== SQLITE_DONE) {
+      console.warn(`SQLite Worker: sqlite3_backup_step failed (rc=${stepRc})`)
+      return false
+    }
+
+    // 4. 復元後の DB を検証
+    if (!isDatabaseHealthy(db)) {
+      console.warn('SQLite Worker: restored DB failed integrity check')
+      return false
+    }
+
+    console.info(
+      `SQLite Worker: successfully restored ${(backupBytes.byteLength / 1024).toFixed(1)} KB from backup`,
+    )
+    return true
+  } catch (e) {
+    try {
+      backupDb.close()
+    } catch {
+      /* ignore close error */
+    }
+    throw e
+  }
+}
+
+/**
+ * 全テーブルを DROP → 最新スキーマで再作成する
+ */
+function resetToEmpty(
+  // biome-ignore lint/suspicious/noExplicitAny: sqlite-wasm types are not exact
+  db: any,
+): boolean {
+  try {
+    const handle = { db }
+    db.exec('PRAGMA user_version = 0;')
+    dropAllTables(handle)
+    db.exec('BEGIN;')
+    createFreshSchema(handle)
+    db.exec(`PRAGMA user_version = ${encodeSemVer(LATEST_VERSION)};`)
+    db.exec('COMMIT;')
+    console.info('SQLite Worker: database reset to empty schema')
+    return true
+  } catch (e) {
+    try {
+      db.exec('ROLLBACK;')
+    } catch {
+      /* ignore rollback error */
+    }
+    console.error('SQLite Worker: failed to reset database:', e)
+    return false
+  }
+}

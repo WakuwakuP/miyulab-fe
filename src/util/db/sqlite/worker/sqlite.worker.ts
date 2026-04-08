@@ -22,6 +22,7 @@ import {
 } from '../../query-ir/executor/graphExecutor'
 import { buildTimelineKey, resolveLocalAccountId } from '../helpers'
 import type { WorkerMessage, WorkerRequest } from '../protocol'
+import { ALL_TABLE_NAMES } from '../protocol'
 import { executeQueryPlan as runQueryPlan } from '../queries/executionEngine'
 import { resolvePostIdInternal } from './handlers/statusHelpers'
 import { handleEnforceMaxLength } from './workerCleanup'
@@ -35,7 +36,14 @@ import {
   handleBulkAddNotifications,
   handleUpdateNotificationStatusAction,
 } from './workerNotificationStore'
-import { captureTableVersions, getDb, getTableVersionsMap } from './workerState'
+import { isSqliteCorruptError, recoverFromCorruption } from './workerRecovery'
+import {
+  bumpTableVersions,
+  captureTableVersions,
+  getDb,
+  getSqlite3Module,
+  getTableVersionsMap,
+} from './workerState'
 import {
   handleBulkUpsertCustomEmojis,
   handleBulkUpsertStatuses,
@@ -47,6 +55,9 @@ import {
   handleUpdateStatusAction,
   handleUpsertStatus,
 } from './workerStatusStore'
+
+// ランタイムリカバリ中フラグ — true の間は RPC メッセージを拒否する
+let recoveryInProgress = false
 
 // ================================================================
 // メッセージルーター
@@ -61,8 +72,12 @@ self.onmessage = (
   if (msg.type === '__init') {
     const { origin } = msg
     init(origin)
-      .then((persistence) => {
-        const initMsg: WorkerMessage = { persistence, type: 'init' }
+      .then((result) => {
+        const initMsg: WorkerMessage = {
+          persistence: result.persistence,
+          recovered: result.recovered,
+          type: 'init',
+        }
         self.postMessage(initMsg)
       })
       .catch((e) => {
@@ -82,6 +97,12 @@ self.onmessage = (
     handleExportDatabase()
       .then(() => sendResponse(msg.id, { ok: true }))
       .catch((e) => sendError(msg.id, e))
+    return
+  }
+
+  // ランタイムリカバリ中は RPC を拒否
+  if (recoveryInProgress) {
+    sendError(msg.id, 'Database recovery in progress')
     return
   }
 
@@ -349,6 +370,60 @@ self.onmessage = (
     }
   } catch (e) {
     sendError(msg.id, e)
+
+    // ランタイム SQLITE_CORRUPT 検出 → 非同期リカバリ開始
+    if (!recoveryInProgress && isSqliteCorruptError(e)) {
+      recoveryInProgress = true
+      console.warn(
+        'SQLite Worker: SQLITE_CORRUPT detected at runtime, starting recovery...',
+      )
+      performRuntimeRecovery()
+    }
+  }
+}
+
+/**
+ * ランタイムでの SQLITE_CORRUPT リカバリ。
+ * バックアップ復元を試み、失敗したら空 DB にリセットする。
+ * 完了後、メインスレッドに db-recovered メッセージを送信して全テーブルの再描画を促す。
+ */
+async function performRuntimeRecovery(): Promise<void> {
+  const db = getDb()
+  const sqlite3 = getSqlite3Module()
+  if (!db || !sqlite3) {
+    recoveryInProgress = false
+    return
+  }
+
+  try {
+    const result = await recoverFromCorruption(db, sqlite3)
+
+    // 全テーブルのバージョンをバンプしてキャッシュを無効化
+    bumpTableVersions([...ALL_TABLE_NAMES])
+
+    const reason =
+      result === 'restored'
+        ? 'Restored from backup'
+        : result === 'reset'
+          ? 'Reset to empty database'
+          : 'Recovery failed'
+
+    const msg: WorkerMessage = {
+      method: result,
+      reason,
+      type: 'db-recovered',
+    }
+    self.postMessage(msg)
+  } catch (e) {
+    console.error('SQLite Worker: runtime recovery failed:', e)
+    const msg: WorkerMessage = {
+      method: 'failed',
+      reason: `Recovery error: ${e instanceof Error ? e.message : String(e)}`,
+      type: 'db-recovered',
+    }
+    self.postMessage(msg)
+  } finally {
+    recoveryInProgress = false
   }
 }
 

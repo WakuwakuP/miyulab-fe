@@ -39,7 +39,7 @@ export type TableName =
 /** 書き込みが発生したテーブル名を収集するコレクタ */
 export type WrittenTableCollector = Set<TableName>
 
-const TABLE_NAME_SET: ReadonlySet<string> = new Set<string>([
+export const ALL_TABLE_NAMES: readonly TableName[] = [
   'cards',
   'hashtags',
   'local_accounts',
@@ -58,7 +58,9 @@ const TABLE_NAME_SET: ReadonlySet<string> = new Set<string>([
   'profiles',
   'servers',
   'timeline_entries',
-])
+]
+
+const TABLE_NAME_SET: ReadonlySet<string> = new Set<string>(ALL_TABLE_NAMES)
 
 /** 文字列が有効な TableName かどうかを判定する型ガード */
 export function isTableName(s: string): s is TableName {
@@ -419,6 +421,8 @@ export type ErrorResponse = {
 export type InitMessage = {
   type: 'init'
   persistence: 'opfs' | 'memory'
+  /** 初期化時に破損検出・リカバリが行われた場合の結果 */
+  recovered?: 'restored' | 'reset'
 }
 
 /** スロークエリログエントリ（Worker → Main Thread 通知用） */
@@ -437,12 +441,22 @@ export type SlowQueryLogMessage = {
   logs: SlowQueryLogEntry[]
 }
 
+/** Worker → Main Thread: DB 破損リカバリ完了通知 */
+export type DbRecoveredMessage = {
+  type: 'db-recovered'
+  /** リカバリ方法 */
+  method: 'restored' | 'reset' | 'failed'
+  /** 人間向けの説明 */
+  reason: string
+}
+
 /** Worker → Main Thread 全メッセージ型 */
 export type WorkerMessage =
   | SuccessResponse
   | ErrorResponse
   | InitMessage
   | SlowQueryLogMessage
+  | DbRecoveredMessage
 
 // ================================================================
 // sendCommand 用: id を除外したコマンドペイロード型

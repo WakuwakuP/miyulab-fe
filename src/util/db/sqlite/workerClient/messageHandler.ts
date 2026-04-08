@@ -7,6 +7,7 @@
 import { startSnapshotRecording } from '../../dbQueue'
 import type { ChangeHint } from '../connection'
 import type { SlowQueryLogEntry, WorkerMessage } from '../protocol'
+import { ALL_TABLE_NAMES, isTableName } from '../protocol'
 import {
   durationForId,
   initReject,
@@ -29,6 +30,11 @@ export function handleMessage(event: MessageEvent<WorkerMessage>): void {
       if (initResolve) {
         // 初期化成功 — スナップショット記録を開始
         startSnapshotRecording()
+        if (msg.recovered) {
+          console.warn(
+            `SQLite: database was recovered at startup (${msg.recovered})`,
+          )
+        }
         initResolve(msg.persistence)
         setInitResolve(null)
         setInitReject(null)
@@ -84,6 +90,19 @@ export function handleMessage(event: MessageEvent<WorkerMessage>): void {
 
     case 'slowQueryLogs': {
       slowQueryLogCallback?.(msg.logs)
+      break
+    }
+
+    case 'db-recovered': {
+      console.warn(
+        `SQLite: database recovered at runtime (${msg.method}): ${msg.reason}`,
+      )
+      // 全テーブルの変更通知を発火 → 全サブスクライバーが再クエリ
+      for (const table of ALL_TABLE_NAMES) {
+        if (isTableName(table)) {
+          notifyChangeCallback?.(table)
+        }
+      }
       break
     }
   }
