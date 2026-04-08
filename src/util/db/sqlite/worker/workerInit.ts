@@ -80,11 +80,46 @@ export async function init(origin: string): Promise<InitResult> {
       console.warn('SQLite Worker: database corruption detected at startup')
       const result: RecoveryResult = await recoverFromCorruption(db, sqlite3)
       if (result === 'restored' || result === 'reset') {
-        recovered = result
+        // リカバリ後に再検証 — VACUUM/backup で本当に破損が除去されたか確認
+        if (isDatabaseHealthy(db)) {
+          recovered = result
+        } else {
+          console.error(
+            'SQLite Worker: recovery completed but DB still corrupt, falling back to in-memory',
+          )
+          try {
+            db.close()
+          } catch {
+            /* ignore close error */
+          }
+          db = new sqlite3.oo1.DB(':memory:', 'c')
+          persistence = 'memory'
+          db.exec('PRAGMA journal_mode=WAL;')
+          db.exec('PRAGMA synchronous=NORMAL;')
+          db.exec('PRAGMA foreign_keys = ON;')
+          db.exec('PRAGMA cache_size = -8000;')
+          db.exec('PRAGMA temp_store = MEMORY;')
+          ensureSchema({ db })
+          recovered = 'reset'
+        }
       } else {
         console.error(
-          'SQLite Worker: recovery failed, continuing with corrupt database',
+          'SQLite Worker: recovery failed, falling back to in-memory',
         )
+        try {
+          db.close()
+        } catch {
+          /* ignore close error */
+        }
+        db = new sqlite3.oo1.DB(':memory:', 'c')
+        persistence = 'memory'
+        db.exec('PRAGMA journal_mode=WAL;')
+        db.exec('PRAGMA synchronous=NORMAL;')
+        db.exec('PRAGMA foreign_keys = ON;')
+        db.exec('PRAGMA cache_size = -8000;')
+        db.exec('PRAGMA temp_store = MEMORY;')
+        ensureSchema({ db })
+        recovered = 'reset'
       }
     }
   }

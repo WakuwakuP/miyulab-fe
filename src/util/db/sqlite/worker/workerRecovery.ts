@@ -3,7 +3,8 @@
  *
  * SQLITE_CORRUPT (rc=11) が検出された場合、以下の順序でリカバリを試みる:
  * 1. OPFS バックアップからの復元 (sqlite3_deserialize → quick_check → sqlite3_backup API)
- * 2. 全テーブル DROP → 最新スキーマで再作成（フォールバック）
+ * 2. 全テーブル DROP → 最新スキーマで再作成 → VACUUM でファイルを再構築
+ * 3. VACUUM 失敗時はインメモリ空 DB から sqlite3_backup でページ全体を上書き
  */
 
 import { createFreshSchema, dropAllTables } from '../schema'
@@ -75,8 +76,8 @@ export async function recoverFromCorruption(
     console.warn('SQLite Worker: backup restoration failed:', e)
   }
 
-  // Attempt 2: 空の DB にリセット
-  if (resetToEmpty(db)) {
+  // Attempt 2: 空の DB にリセット（VACUUM + backup fallback でファイル再構築）
+  if (resetToEmpty(db, sqlite3)) {
     return 'reset'
   }
 
@@ -200,11 +201,18 @@ async function tryRestoreFromBackup(
 }
 
 /**
- * 全テーブルを DROP → 最新スキーマで再作成する
+ * 全テーブルを DROP → 最新スキーマで再作成 → VACUUM でファイルを再構築する。
+ *
+ * DROP+CREATE だけでは OPFS SAH Pool ファイルの free pages に残った破損データが
+ * ページ再利用時に SQLITE_CORRUPT を引き起こす。VACUUM はファイル全体を再構築して
+ * 破損 free pages を除去する。VACUUM が失敗した場合はインメモリ空 DB から
+ * sqlite3_backup API でページ全体を上書きする。
  */
 function resetToEmpty(
   // biome-ignore lint/suspicious/noExplicitAny: sqlite-wasm types are not exact
   db: any,
+  // biome-ignore lint/suspicious/noExplicitAny: sqlite-wasm module type
+  sqlite3: any,
 ): boolean {
   try {
     const handle = { db }
@@ -214,15 +222,82 @@ function resetToEmpty(
     createFreshSchema(handle)
     db.exec(`PRAGMA user_version = ${encodeSemVer(LATEST_VERSION)};`)
     db.exec('COMMIT;')
-    console.info('SQLite Worker: database reset to empty schema')
-    return true
+
+    // VACUUM でファイル全体を再構築 — 破損 free pages を除去
+    try {
+      db.exec('VACUUM;')
+      console.info(
+        'SQLite Worker: database reset to empty schema (with VACUUM)',
+      )
+      return true
+    } catch (vacuumError) {
+      console.warn(
+        'SQLite Worker: VACUUM failed after reset, trying backup-based reset:',
+        vacuumError,
+      )
+      return resetViaBackupFromMemory(db, sqlite3)
+    }
   } catch (e) {
     try {
       db.exec('ROLLBACK;')
     } catch {
       /* ignore rollback error */
     }
-    console.error('SQLite Worker: failed to reset database:', e)
+    console.warn(
+      'SQLite Worker: DROP/CREATE reset failed, trying backup-based reset:',
+      e,
+    )
+    return resetViaBackupFromMemory(db, sqlite3)
+  }
+}
+
+/**
+ * インメモリ空 DB を作成し、sqlite3_backup API で OPFS DB を完全に上書きする。
+ * これにより破損ファイルの全ページ（free pages 含む）が新しいデータで置き換えられる。
+ */
+function resetViaBackupFromMemory(
+  // biome-ignore lint/suspicious/noExplicitAny: sqlite-wasm types are not exact
+  db: any,
+  // biome-ignore lint/suspicious/noExplicitAny: sqlite-wasm module type
+  sqlite3: any,
+): boolean {
+  const SQLITE_DONE = 101
+  const memDb = new sqlite3.oo1.DB(':memory:', 'c')
+  try {
+    memDb.exec('PRAGMA foreign_keys = ON;')
+    const handle = { db: memDb }
+    memDb.exec('BEGIN;')
+    createFreshSchema(handle)
+    memDb.exec(`PRAGMA user_version = ${encodeSemVer(LATEST_VERSION)};`)
+    memDb.exec('COMMIT;')
+
+    const pBackup = sqlite3.capi.sqlite3_backup_init(db, 'main', memDb, 'main')
+    if (!pBackup) {
+      console.warn('SQLite Worker: sqlite3_backup_init for memory reset failed')
+      memDb.close()
+      return false
+    }
+
+    const rc = sqlite3.capi.sqlite3_backup_step(pBackup, -1)
+    sqlite3.capi.sqlite3_backup_finish(pBackup)
+    memDb.close()
+
+    if (rc !== SQLITE_DONE) {
+      console.warn(
+        `SQLite Worker: sqlite3_backup_step for memory reset failed (rc=${rc})`,
+      )
+      return false
+    }
+
+    console.info('SQLite Worker: database reset via backup from memory')
+    return true
+  } catch (e) {
+    try {
+      memDb.close()
+    } catch {
+      /* ignore close error */
+    }
+    console.error('SQLite Worker: backup-based reset failed:', e)
     return false
   }
 }

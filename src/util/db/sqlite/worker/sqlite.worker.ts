@@ -398,6 +398,15 @@ async function performRuntimeRecovery(): Promise<void> {
   try {
     const result = await recoverFromCorruption(db, sqlite3)
 
+    // リカバリ後にヘルスチェック
+    const { isDatabaseHealthy } = await import('./workerRecovery')
+    const healthy = isDatabaseHealthy(db)
+    if (!healthy) {
+      console.error(
+        'SQLite Worker: runtime recovery completed but DB still corrupt',
+      )
+    }
+
     // 全テーブルのバージョンをバンプしてキャッシュを無効化
     bumpTableVersions([...ALL_TABLE_NAMES])
 
