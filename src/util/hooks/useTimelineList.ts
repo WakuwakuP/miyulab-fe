@@ -81,6 +81,14 @@ export function useTimelineList(
     return false
   }, [config.customQuery, config.queryPlan, config.type])
 
+  // home / notification の初期データは StatusStoreProvider が REST API 経由で
+  // 非同期に投入するため、DB の初期件数が PAGE_SIZE 未満でも
+  // API 側にデータが残っている可能性がある。
+  // このフラグが true の場合、初期フェッチの件数だけで hasMoreOlder を
+  // false にしない（枯渇判定はスクロールバック時の API チェックに委ねる）。
+  const hasExternalInitialFetch =
+    config.type === 'home' || config.type === 'notification'
+
   // config 変更検知
   const configIdRef = useRef(config.id)
 
@@ -101,20 +109,26 @@ export function useTimelineList(
       if (!result) return
       recordDuration(result.durationMs)
       if (result.items.length === 0) {
-        dispatch({ type: 'INITIAL_FETCH_EMPTY' })
+        if (hasExternalInitialFetch) {
+          // DB 未投入でも initialized にしつつ hasMoreOlder を維持
+          dispatch({ items: [], type: 'INITIAL_FETCH_SUCCEEDED' })
+        } else {
+          dispatch({ type: 'INITIAL_FETCH_EMPTY' })
+        }
       } else {
         dispatch({ items: result.items, type: 'INITIAL_FETCH_SUCCEEDED' })
-        if (result.items.length < PAGE_SIZE) {
+        if (!hasExternalInitialFetch && result.items.length < PAGE_SIZE) {
           dispatch({ hasMoreOlder: false, type: 'SCROLLBACK_COMPLETED' })
         }
       }
     })
-  }, [fetchPage, recordDuration, options?.disabled])
+  }, [fetchPage, recordDuration, options?.disabled, hasExternalInitialFetch])
 
   // ---- ストリーミング controller ----
   useTimelineStreamingController({
     dispatch,
     fetchPage,
+    hasExternalInitialFetch,
     recordDuration,
     stateRef,
     subscribeToChanges,

@@ -271,15 +271,30 @@ async function fetchOlderNotificationsFromApi(
       const client = GetClient(app)
       const oldestNotifId = await getOldestNotificationId(handle, url)
 
-      if (oldestNotifId) {
+      if (!oldestNotifId) {
+        // DB が空の場合は最新通知を取得（StatusStoreProvider 未完了時のフォールバック）
         try {
-          const count = await fetchMoreNotifications(client, url, oldestNotifId)
-          if (count < FETCH_LIMIT) {
+          const res = await client.getNotifications({ limit: FETCH_LIMIT })
+          await bulkAddNotifications(res.data, url)
+          if (res.data.length < FETCH_LIMIT) {
             markExhausted(exhaustedResources, url, 'notifications')
           }
         } catch (error) {
-          console.error(`Failed to fetch more notifications for ${url}:`, error)
+          console.error(
+            `Failed to fetch initial notifications for ${url}:`,
+            error,
+          )
         }
+        return
+      }
+
+      try {
+        const count = await fetchMoreNotifications(client, url, oldestNotifId)
+        if (count < FETCH_LIMIT) {
+          markExhausted(exhaustedResources, url, 'notifications')
+        }
+      } catch (error) {
+        console.error(`Failed to fetch more notifications for ${url}:`, error)
       }
     }),
   )
