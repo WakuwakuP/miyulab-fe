@@ -33,7 +33,6 @@ const PAGE_SIZE = TIMELINE_QUERY_LIMIT
 type UseTimelineStreamingControllerArgs = {
   dispatch: Dispatch<TimelineListEvent>
   fetchPage: (options?: FetchPageOptions) => Promise<FetchPageResult | null>
-  hasExternalInitialFetch?: boolean
   recordDuration: (ms: number) => void
   stateRef: RefObject<TimelineListState>
   subscribeToChanges: (
@@ -45,7 +44,6 @@ type UseTimelineStreamingControllerArgs = {
 export function useTimelineStreamingController({
   dispatch,
   fetchPage,
-  hasExternalInitialFetch,
   recordDuration,
   stateRef,
   subscribeToChanges,
@@ -83,25 +81,16 @@ export function useTimelineStreamingController({
     }
 
     // hintless 変更 (mute/block): 全クリア + 再初期化
+    // DB 件数では枯渇を判定しない（スクロールバック時の API 応答に委ねる）
     const onHintless = () => {
       dispatch({ type: 'HINTLESS_INVALIDATED' })
       fetchPage({ limit: PAGE_SIZE }).then((result) => {
         if (!result) return
         recordDuration(result.durationMs)
         dispatch({ items: result.items, type: 'HINTLESS_REFETCH_SUCCEEDED' })
-        if (!hasExternalInitialFetch && result.items.length < PAGE_SIZE) {
-          dispatch({ hasMoreOlder: false, type: 'SCROLLBACK_COMPLETED' })
-        }
       })
     }
 
     return subscribeToChanges(onMatched, onHintless)
-  }, [
-    subscribeToChanges,
-    fetchPage,
-    hasExternalInitialFetch,
-    recordDuration,
-    dispatch,
-    stateRef,
-  ])
+  }, [subscribeToChanges, fetchPage, recordDuration, dispatch, stateRef])
 }

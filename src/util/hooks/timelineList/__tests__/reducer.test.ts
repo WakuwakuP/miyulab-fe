@@ -79,11 +79,11 @@ describe('INITIAL_FETCH_SUCCEEDED', () => {
 })
 
 describe('INITIAL_FETCH_EMPTY', () => {
-  it('hasMoreOlder=false, initialized=true になる', () => {
+  it('initialized=true, hasMoreOlder は維持される（枯渇判定は API に委ねる）', () => {
     const s0 = createInitialState()
     const s1 = dispatch(s0, { type: 'INITIAL_FETCH_EMPTY' })
 
-    expect(s1.hasMoreOlder).toBe(false)
+    expect(s1.hasMoreOlder).toBe(true)
     expect(s1.initialized).toBe(true)
     expect(s1.sortedItems).toEqual([])
   })

@@ -61,9 +61,9 @@ export function useTimelineScrollbackController({
     dispatch({ type: 'SCROLLBACK_STARTED' })
 
     try {
-      if (s.oldestMs >= Number.MAX_SAFE_INTEGER) return
-
       // DB からカーソル以前のアイテムを取得
+      // oldestMs が MAX_SAFE_INTEGER（アイテム未取得）の場合もスキップせず
+      // API フォールバックまで進めて、バックエンド側で枯渇を判定する。
       const result = await fetchPage({
         cursor: {
           direction: 'before',

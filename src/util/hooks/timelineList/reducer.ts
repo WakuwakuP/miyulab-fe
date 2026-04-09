@@ -87,7 +87,7 @@ export function timelineListReducer(
       return mergeItems({ ...state, initialized: true }, event.items)
 
     case 'INITIAL_FETCH_EMPTY':
-      return { ...state, hasMoreOlder: false, initialized: true }
+      return { ...state, initialized: true }
 
     case 'STREAMING_FETCH_SUCCEEDED':
       return mergeItems(state, event.items)
