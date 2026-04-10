@@ -1,8 +1,8 @@
 /* eslint-disable @next/next/no-img-element */
 'use client'
 
-import { Media } from 'app/_parts/Media'
 import { Modal } from 'app/_parts/Modal'
+import { ZoomableMedia } from 'app/_parts/ZoomableMedia'
 import {
   Carousel,
   type CarouselApi,
@@ -80,13 +80,10 @@ const ModalContent = () => {
                 {attachment.map((media) => {
                   return (
                     <CarouselItem key={media.id}>
-                      <div key={media.id}>
-                        <Media
-                          className="h-[90vh] max-h-none w-[90vw] max-w-none"
-                          fullSize
-                          media={media}
-                        />
-                      </div>
+                      <ZoomableMedia
+                        className="h-[90vh] w-[90vw]"
+                        media={media}
+                      />
                     </CarouselItem>
                   )
                 })}
@@ -113,9 +110,8 @@ const ModalContent = () => {
         </>
       ) : (
         attachment[index].type === 'image' && (
-          <Media
-            className="fixed inset-0 z-50 m-auto h-[90vh] max-h-none w-[90vw] max-w-none"
-            fullSize
+          <ZoomableMedia
+            className="fixed inset-0 z-50 m-auto h-[90vh] w-[90vw]"
             media={attachment[index]}
           />
         )
