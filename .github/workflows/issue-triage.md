@@ -33,7 +33,10 @@ Title: "${{ github.event.issue.title }}"
 ## Instructions
 
 1. Read the issue body and any linked context carefully.
-2. Classify the issue into one of these categories:
+
+2. If the issue already has the `agentic-workflows` label, call `noop` with message "Skipping: issue has agentic-workflows label" and stop.
+
+3. Classify the issue into one of these categories:
    - `bug` — Something is broken or behaving incorrectly
    - `feature` — A new feature or enhancement request
    - `question` — A question about usage or behavior
@@ -42,7 +45,7 @@ Title: "${{ github.event.issue.title }}"
    - `accessibility` — Accessibility improvement needed
    - `maintenance` — Refactoring, dependency update, or tech debt
 
-3. Identify the relevant area(s) of the codebase:
+4. Identify the relevant area(s) of the codebase:
    - `area:timeline` — Timeline display, streaming, scrollback (`src/util/hooks/timelineList/`, `src/util/streaming/`)
    - `area:sqlite` — SQLite Wasm, Dexie, IndexedDB, query-ir (`src/util/db/`)
    - `area:ui` — UI components, layout, styling (`src/app/_components/`, `src/app/_parts/`)
@@ -50,31 +53,34 @@ Title: "${{ github.event.issue.title }}"
    - `area:api` — Fediverse API, megalodon integration
    - `area:build` — Build tooling, Next.js config, Biome, Yarn
 
-4. Assess priority:
+5. Assess priority:
    - `priority:critical` — App crash, data loss, or security issue
    - `priority:high` — Major feature broken, affects many users
    - `priority:medium` — Non-critical bug or important feature request
    - `priority:low` — Minor enhancement or cosmetic issue
 
-5. If the issue is a `bug`:
+6. If the issue is a `bug`:
    - Check if reproduction steps are provided
    - If missing, mention in the triage comment that repro steps would be helpful
 
-## Required Actions — You MUST perform BOTH of these
+## Required Actions — You MUST perform BOTH tool calls
 
-### Action 1: Apply labels (REQUIRED)
+### Action 1: Apply labels with `update_issue` tool (REQUIRED — DO THIS FIRST)
 
-**You MUST call the `update-issue` tool** to add labels to issue #${{ github.event.issue.number }}. This is a separate tool call from posting a comment. Add ALL of these labels in a single `update-issue` call:
+You MUST call the `update_issue` safe-output tool to add labels to issue #${{ github.event.issue.number }}.
+The tool name is exactly `update_issue` (with underscore). Pass the issue number and labels array.
+Add ALL of these labels in a single `update_issue` call:
 - The category label (e.g., `bug`, `feature`)
 - The area label(s) (e.g., `area:timeline`)
 - The priority label (e.g., `priority:medium`)
 - The `triaged` label to mark the issue as processed
 
-⚠️ Writing label names in a comment is NOT enough. You must use the `update-issue` tool to actually apply labels to the issue.
+⚠️ WARNING: Writing label names in a comment is NOT enough. You MUST call the `update_issue` tool to actually apply labels.
+⚠️ WARNING: If you skip this step, the triage is incomplete and will be retried.
 
-### Action 2: Post a triage comment (REQUIRED)
+### Action 2: Post a triage comment with `add_comment` tool (REQUIRED)
 
-**Call the `add-comment` tool** to post a triage comment summarizing:
+Call the `add_comment` safe-output tool to post a triage comment summarizing:
 - Your classification and reasoning
 - The area(s) of the codebase likely involved
 - Any suggestions or next steps

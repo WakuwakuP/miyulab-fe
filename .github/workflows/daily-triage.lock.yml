@@ -23,14 +23,14 @@
 #
 # Daily batch triage of untriaged issues
 #
-# gh-aw-metadata: {"schema_version":"v1","frontmatter_hash":"a77c1e6d0ae943d0359bd529ebbccaf00823615282b7492397be9f9ec7473167","compiler_version":"v0.51.5"}
+# gh-aw-metadata: {"schema_version":"v1","frontmatter_hash":"598c592ac400500c641bf9e32f9a3ca3f2e195988a16576f03b783ea3a5ab576","compiler_version":"v0.51.5"}
 
 name: "📋 Daily Issue Triage"
 "on":
   schedule:
   - cron: "40 5 * * 1-5"
     # Friendly format: daily on weekdays (scattered)
-  # skip-if-no-match: is:issue is:open -label:triaged # Skip-if-no-match processed as search check in pre-activation job
+  # skip-if-no-match: is:issue is:open -label:triaged -label:agentic-workflows # Skip-if-no-match processed as search check in pre-activation job
   workflow_dispatch:
 
 permissions: {}
@@ -1188,7 +1188,7 @@ jobs:
         id: check_skip_if_no_match
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
-          GH_AW_SKIP_QUERY: "is:issue is:open -label:triaged"
+          GH_AW_SKIP_QUERY: "is:issue is:open -label:triaged -label:agentic-workflows"
           GH_AW_WORKFLOW_NAME: "📋 Daily Issue Triage"
           GH_AW_SKIP_MIN_MATCHES: "1"
         with:

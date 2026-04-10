@@ -45,6 +45,7 @@ This workflow runs once per weekday. Your job is to **pick one issue and impleme
 Search for open issues in **${{ github.repository }}** that meet ALL of:
 - Has `triaged` label
 - Does NOT have `agent:in-progress`, `agent:claimed`, `agent:blocked`, or `agent:done` labels
+- Does NOT have the `agentic-workflows` label
 - Does NOT already have a linked pull request
 
 From the results, pick **exactly one** issue using this priority order:

@@ -3,7 +3,7 @@ description: Daily batch triage of untriaged issues
 on:
   schedule: daily on weekdays
   workflow_dispatch:
-  skip-if-no-match: "is:issue is:open -label:triaged"
+  skip-if-no-match: "is:issue is:open -label:triaged -label:agentic-workflows"
 permissions:
   issues: read
   contents: read
@@ -39,7 +39,7 @@ Read cache memory to identify previously processed issues. Avoid re-processing i
 
 ### Step 2: Search for Untriaged Issues
 
-Search for all open issues in **${{ github.repository }}** that do NOT have the `triaged` label.
+Search for all open issues in **${{ github.repository }}** that do NOT have the `triaged` label AND do NOT have the `agentic-workflows` label. Use search query: `repo:${{ github.repository }} is:open is:issue -label:triaged -label:agentic-workflows`
 
 ### Step 3: Process Each Issue (up to 10)
 
@@ -69,16 +69,19 @@ For each untriaged issue, process in priority order (oldest first):
    - `priority:medium` — Non-critical bug or important feature
    - `priority:low` — Minor enhancement or cosmetic issue
 
-5. **Apply labels by calling the `update-issue` tool** (REQUIRED for each issue):
-   You MUST call the `update-issue` tool to add labels to each issue. Add ALL of these labels in a single call:
+5. **Apply labels by calling the `update_issue` tool** (REQUIRED — DO THIS FIRST for each issue):
+   You MUST call the `update_issue` safe-output tool to add labels to the issue.
+   The tool name is exactly `update_issue` (with underscore). Pass the issue number and labels array.
+   Add ALL of these labels in a single `update_issue` call:
    - The category label (e.g., `bug`, `feature`)
    - The area label(s) (e.g., `area:timeline`)
    - The priority label (e.g., `priority:medium`)
    - The `triaged` label to mark the issue as processed
 
-   ⚠️ Writing label names in a comment is NOT enough. You must use the `update-issue` tool to actually apply labels.
+   ⚠️ WARNING: Writing label names in a comment is NOT enough. You MUST call the `update_issue` tool to actually apply labels.
+   ⚠️ WARNING: If you skip this step, the triage is incomplete and will be retried.
 
-6. **Post a triage comment by calling the `add-comment` tool** (REQUIRED for each issue):
+6. **Post a triage comment by calling the `add_comment` tool** (REQUIRED for each issue):
    Summarize the classification, area(s), priority, and any suggestions.
 
 ### Step 4: Update Cache Memory
