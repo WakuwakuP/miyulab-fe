@@ -8,6 +8,7 @@ import {
   queryPlanV2ReferencedTables,
 } from 'util/db/query-ir/nodes'
 import { isMixedQuery, isNotificationQuery } from 'util/queryBuilder'
+import { MediaGridTimeline } from './MediaGridTimeline'
 import { MixedTimeline } from './MixedTimeline'
 
 export const DynamicTimeline = ({
@@ -19,6 +20,11 @@ export const DynamicTimeline = ({
 }) => {
   if (!config.visible) {
     return null
+  }
+
+  // メディアグリッド表示タイプの場合は MediaGridTimeline を使用
+  if (config.displayType === 'media-grid') {
+    return <MediaGridTimeline config={config} headerOffset={headerOffset} />
   }
 
   const query = config.customQuery ?? ''

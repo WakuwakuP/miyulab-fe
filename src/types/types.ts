@@ -172,6 +172,15 @@ export type TimelineConfigV2 = {
   id: string
   /** 表示名（ユーザーがカスタマイズ可能、未設定時はデフォルト名を使用） */
   label?: string
+  /**
+   * タイムラインの表示タイプ
+   *
+   * - 'list' (デフォルト): 通常のリスト表示
+   * - 'media-grid': メディア付き投稿をグリッド表示
+   *
+   * @default 'list'
+   */
+  displayType?: 'list' | 'media-grid'
   /** メディア付き投稿のみ表示するか（デフォルト: false） */
   onlyMedia?: boolean
   /** 表示順序（0始まり、昇順） */

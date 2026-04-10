@@ -89,6 +89,9 @@ export function FlowQueryEditorModal({
   onSave,
 }: FlowQueryEditorModalProps) {
   const [label, setLabel] = useState(config.label ?? '')
+  const [displayType, setDisplayType] = useState<'list' | 'media-grid'>(
+    config.displayType ?? 'list',
+  )
   const [showMuteManager, setShowMuteManager] = useState(false)
   const [showBlockManager, setShowBlockManager] = useState(false)
 
@@ -111,8 +114,9 @@ export function FlowQueryEditorModal({
   useEffect(() => {
     if (open) {
       setLabel(config.label ?? '')
+      setDisplayType(config.displayType ?? 'list')
     }
-  }, [open, config.label])
+  }, [open, config.label, config.displayType])
 
   // モーダルが開いた瞬間のみフローを初期化する
   // resolvedPlanV2 の参照変更で再初期化しないようにする
@@ -211,6 +215,7 @@ export function FlowQueryEditorModal({
         applyMuteFilter: applyMute || undefined,
         backendFilter,
         customQuery: undefined,
+        displayType: displayType === 'list' ? undefined : displayType,
         label: label.trim() || undefined,
         queryPlan: plan,
       }
@@ -218,12 +223,15 @@ export function FlowQueryEditorModal({
       onSave(updates)
       onOpenChange(false)
     },
-    [label, onSave, onOpenChange],
+    [displayType, label, onSave, onOpenChange],
   )
 
   const handleSave = useCallback(() => {
-    onSave({ label: label.trim() || undefined })
-  }, [label, onSave])
+    onSave({
+      displayType: displayType === 'list' ? undefined : displayType,
+      label: label.trim() || undefined,
+    })
+  }, [displayType, label, onSave])
 
   const handleSaveFlow = useCallback(() => {
     handleFlowSave(currentPlanV2)
@@ -351,6 +359,33 @@ export function FlowQueryEditorModal({
                   value={label}
                 />
               </label>
+              <div className="flex items-center gap-1 shrink-0">
+                <span className="text-xs text-gray-500">表示:</span>
+                <button
+                  className={`px-2 py-1 rounded text-xs transition-colors ${
+                    displayType === 'list'
+                      ? 'bg-blue-700 text-white'
+                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  }`}
+                  onClick={() => setDisplayType('list')}
+                  title="リスト表示"
+                  type="button"
+                >
+                  📋 リスト
+                </button>
+                <button
+                  className={`px-2 py-1 rounded text-xs transition-colors ${
+                    displayType === 'media-grid'
+                      ? 'bg-blue-700 text-white'
+                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  }`}
+                  onClick={() => setDisplayType('media-grid')}
+                  title="メディアグリッド表示"
+                  type="button"
+                >
+                  🖼 グリッド
+                </button>
+              </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
               {!validation.valid && (
