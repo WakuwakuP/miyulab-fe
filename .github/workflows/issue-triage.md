@@ -3,7 +3,7 @@ description: Automatically triage new issues with AI classification
 on:
   issues:
     types: [opened]
-  skip-if-match: "is:issue is:open label:triaged"
+
   roles: all
   reaction: eyes
 permissions:
