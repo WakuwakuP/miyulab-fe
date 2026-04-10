@@ -59,7 +59,11 @@ For each labeled issue found:
 
 For each issue with a stale label:
 
-1. **Remove the stale label** (`agent:in-progress`, `agent:claimed`, or `agent:retry-queued`) using the `update-issue` safe output.
+1. **Remove the stale label** using the `update_issue` safe output (underscore, not hyphen).
+   You MUST include the `title` field (set to the issue's current title) AND the updated `labels` array (without the stale label).
+   The `title` field is REQUIRED by the system validator — calls with only `labels` will be silently rejected.
+
+   Example: `update_issue(issue_number=123, title="<the issue's current title>", labels=["remaining-label1", "remaining-label2"])`
 2. **Post a warning comment** explaining:
    - Which label was removed and why
    - That the issue is now eligible for re-dispatch

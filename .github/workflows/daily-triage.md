@@ -73,15 +73,19 @@ For each untriaged issue, process in priority order (oldest first):
 
 5. **Apply labels by calling the `update_issue` tool** (REQUIRED — DO THIS FIRST for each issue):
    You MUST call the `update_issue` safe-output tool to add labels to the issue.
-   The tool name is exactly `update_issue` (with underscore). Pass the issue number and labels array.
+   The tool name is exactly `update_issue` (with underscore).
+   You MUST include the `title` field (set to the issue's current title) AND the `labels` array.
+   The `title` field is REQUIRED by the system validator — calls with only `labels` will be silently rejected.
    Add ALL of these labels in a single `update_issue` call:
    - The category label (e.g., `bug`, `feature`)
    - The area label(s) (e.g., `area:timeline`)
    - The priority label (e.g., `priority:medium`)
    - The `triaged` label to mark the issue as processed
 
-   ⚠️ WARNING: Writing label names in a comment is NOT enough. You MUST call the `update_issue` tool to actually apply labels.
-   ⚠️ WARNING: If you skip this step, the triage is incomplete and will be retried.
+   Example: `update_issue(issue_number=123, title="<the issue's current title>", labels=["feature", "area:timeline", "priority:medium", "triaged"])`
+
+   ⚠️ WARNING: You MUST include both `title` and `labels` — omitting `title` causes the call to be silently dropped.
+   ⚠️ WARNING: Writing label names in a comment is NOT enough. You MUST call the `update_issue` tool.
 
 6. **Post a triage comment by calling the `add_comment` tool** (REQUIRED for each issue):
    Summarize the classification, area(s), priority, and any suggestions.
