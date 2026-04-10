@@ -18,7 +18,7 @@ export async function enforceMaxLength(): Promise<void> {
 }
 
 /** 初回クリーンアップの遅延: 起動直後の Worker ブロッキングを回避 */
-const INITIAL_DELAY_MS = 60_000
+const INITIAL_DELAY_MS = 120_000
 
 /**
  * 定期クリーンアップの開始

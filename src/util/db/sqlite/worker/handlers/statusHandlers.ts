@@ -487,23 +487,33 @@ export function handleBulkUpsertStatuses(
     const timelineKey = buildTimelineKey(timelineType, { tag })
 
     for (const sJson of statusesJson) {
-      const status = JSON.parse(sJson) as Entity.Status
+      // SAVEPOINT で個別ステータスの失敗を隔離し、バッチ全体の ROLLBACK を防ぐ
+      db.exec('SAVEPOINT sp_status;')
+      try {
+        const status = JSON.parse(sJson) as Entity.Status
 
-      const postId = upsertSingleStatus(
-        db,
-        status,
-        serverId,
-        localAccountId,
-        now,
-        timelineKey,
-        uriCache,
-        collector,
-        skipProfileUpdate,
-      )
+        const postId = upsertSingleStatus(
+          db,
+          status,
+          serverId,
+          localAccountId,
+          now,
+          timelineKey,
+          uriCache,
+          collector,
+          skipProfileUpdate,
+        )
 
-      // tag timeline から来た場合、ハッシュタグを確保する
-      if (tag) {
-        ensureTagForPost(db, postId, tag, collector)
+        // tag timeline から来た場合、ハッシュタグを確保する
+        if (tag) {
+          ensureTagForPost(db, postId, tag, collector)
+        }
+
+        db.exec('RELEASE sp_status;')
+      } catch (e) {
+        db.exec('ROLLBACK TO sp_status;')
+        db.exec('RELEASE sp_status;')
+        console.error('Failed to upsert single status, skipping:', e)
       }
     }
 

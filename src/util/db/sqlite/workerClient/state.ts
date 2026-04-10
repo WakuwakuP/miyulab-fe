@@ -15,6 +15,16 @@ import type { PendingRequest, QueuedRequest } from './types'
 export const TIMEOUT_MS = 30_000
 export const INIT_TIMEOUT_MS = 15_000
 
+/**
+ * 操作種別ごとのタイムアウト (ms)。
+ * ここに定義がない操作は TIMEOUT_MS がフォールバックとして使われる。
+ */
+export const TIMEOUT_BY_TYPE: Readonly<Record<string, number>> = {
+  bulkUpsertStatuses: 60_000,
+  enforceMaxLength: 90_000,
+  executeGraphPlan: 45_000,
+}
+
 // ================================================================
 // 内部状態
 // ================================================================

@@ -19,6 +19,7 @@ import {
   pending,
   setActiveRequest,
   setConsecutiveOther,
+  TIMEOUT_BY_TYPE,
   TIMEOUT_MS,
   timelineDedup,
   timelineQueue,
@@ -227,6 +228,7 @@ function processQueue(): void {
   setActiveRequest(true)
   const { kind, message, resolve, reject } = next
   const id = message.id
+  const timeoutMs = TIMEOUT_BY_TYPE[message.type] ?? TIMEOUT_MS
 
   const timer = setTimeout(() => {
     pending.delete(id)
@@ -236,7 +238,7 @@ function processQueue(): void {
       new Error(`Worker request timed out (id=${id}, type=${message.type})`),
     )
     processQueue()
-  }, TIMEOUT_MS)
+  }, timeoutMs)
 
   pending.set(id, {
     kind,

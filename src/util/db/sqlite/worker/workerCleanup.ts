@@ -22,13 +22,20 @@ type HandlerResult = { changedTables: TableName[] }
  * タイムラインと通知それぞれに個別の上限を設定可能。
  * Worker 側には環境変数がないため、引数で受け取る。
  * デフォルト値はそれぞれ 100000。
+ *
+ * 孤立 posts の削除はバッチ単位で行い、長時間ロックを防止する。
  */
+
+/** 孤立 posts 削除の 1 バッチあたりの上限 */
+const ORPHAN_DELETE_BATCH = 1000
+
 export function handleEnforceMaxLength(
   db: DbExec,
   maxTimeline = 100000,
   maxNotifications = 100000,
 ): HandlerResult {
   const changedTables: TableName[] = []
+  let needOrphanCleanup = false
 
   db.exec('BEGIN;')
   try {
@@ -38,7 +45,6 @@ export function handleEnforceMaxLength(
       { bind: [maxTimeline], returnValue: 'resultRows' },
     ) as (number | string)[][]
 
-    let postsDeleted = false
     for (const [laId, tlKey, cnt] of groups) {
       const excess = (cnt as number) - maxTimeline
       if (excess > 0) {
@@ -51,23 +57,8 @@ export function handleEnforceMaxLength(
           );`,
           { bind: [laId, tlKey, excess] },
         )
-        postsDeleted = true
+        needOrphanCleanup = true
       }
-    }
-
-    // どのタイムラインにも属さなくなった孤立 posts を削除
-    // notifications.related_post_id の FK は ON DELETE CASCADE がないため、
-    // notifications から参照されている posts も除外する
-    // NOT EXISTS は NOT IN より効率的（サブクエリがインデックスを活用しやすい）
-    if (postsDeleted) {
-      db.exec(
-        `DELETE FROM posts WHERE NOT EXISTS (
-           SELECT 1 FROM timeline_entries te WHERE te.post_id = posts.id
-         ) AND NOT EXISTS (
-           SELECT 1 FROM notifications n WHERE n.related_post_id = posts.id
-         );`,
-      )
-      changedTables.push('posts')
     }
 
     // 2. notifications: 各 local_account_id で上限チェック
@@ -88,23 +79,13 @@ export function handleEnforceMaxLength(
           );`,
           { bind: [laId, excess] },
         )
+        needOrphanCleanup = true
       }
     }
 
     if (notifGroups.length > 0) {
-      // 通知削除後、孤立 posts も削除する
-      db.exec(
-        `DELETE FROM posts WHERE NOT EXISTS (
-           SELECT 1 FROM timeline_entries te WHERE te.post_id = posts.id
-         ) AND NOT EXISTS (
-           SELECT 1 FROM notifications n WHERE n.related_post_id = posts.id
-         );`,
-      )
       if (!changedTables.includes('notifications')) {
         changedTables.push('notifications')
-      }
-      if (!changedTables.includes('posts')) {
-        changedTables.push('posts')
       }
     }
 
@@ -112,6 +93,43 @@ export function handleEnforceMaxLength(
   } catch (e) {
     db.exec('ROLLBACK;')
     throw e
+  }
+
+  // 孤立 posts をバッチ削除（トランザクション外で段階的に実行）
+  if (needOrphanCleanup) {
+    let deletedInBatch: number
+    do {
+      db.exec('BEGIN;')
+      try {
+        db.exec(
+          `DELETE FROM posts WHERE id IN (
+            SELECT p.id FROM posts p
+            WHERE NOT EXISTS (
+              SELECT 1 FROM timeline_entries te WHERE te.post_id = p.id
+            ) AND NOT EXISTS (
+              SELECT 1 FROM notifications n WHERE n.related_post_id = p.id
+            )
+            LIMIT ?
+          );`,
+          { bind: [ORPHAN_DELETE_BATCH] },
+        )
+        const changesRows = db.exec('SELECT changes();', {
+          returnValue: 'resultRows',
+        }) as number[][]
+        deletedInBatch =
+          changesRows.length > 0 && changesRows[0] !== undefined
+            ? changesRows[0][0]
+            : 0
+        db.exec('COMMIT;')
+      } catch (e) {
+        db.exec('ROLLBACK;')
+        throw e
+      }
+    } while (deletedInBatch >= ORPHAN_DELETE_BATCH)
+
+    if (!changedTables.includes('posts')) {
+      changedTables.push('posts')
+    }
   }
 
   return { changedTables }

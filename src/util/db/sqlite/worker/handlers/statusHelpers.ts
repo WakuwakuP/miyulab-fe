@@ -58,11 +58,13 @@ export function resolvePostIdInternal(
 }
 
 export function getLastInsertRowId(db: DbExec): number {
-  return (
-    db.exec('SELECT last_insert_rowid();', {
-      returnValue: 'resultRows',
-    }) as number[][]
-  )[0][0]
+  const rows = db.exec('SELECT last_insert_rowid();', {
+    returnValue: 'resultRows',
+  }) as number[][]
+  if (rows.length === 0 || rows[0] === undefined) {
+    throw new Error('last_insert_rowid() returned no rows')
+  }
+  return rows[0][0]
 }
 
 export function resolveVisibilityId(
@@ -95,6 +97,11 @@ export function resolveMediaTypeId(db: DbExec, mediaType: string): number {
     "SELECT id FROM media_types WHERE name = 'unknown';",
     { returnValue: 'resultRows' },
   ) as number[][]
+  if (fallback.length === 0 || fallback[0] === undefined) {
+    throw new Error(
+      `media_types table missing 'unknown' entry (lookup for: ${mediaType})`,
+    )
+  }
   mediaTypeCache.set(mediaType, fallback[0][0])
   return fallback[0][0]
 }
