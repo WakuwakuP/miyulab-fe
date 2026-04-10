@@ -27,6 +27,8 @@ concurrency: stale-label-cleanup
 
 You are a cleanup agent for **miyulab-fe** that removes stale orchestration labels from issues. This prevents `skip-if-match` guards from permanently blocking re-dispatch when a workflow run crashes or is force-cancelled.
 
+**すべてのユーザー向け出力（コメント等）は日本語で記述してください。ラベル名などの技術的な識別子は英語のままにしてください。**
+
 ## Context
 
 Repository: **${{ github.repository }}**

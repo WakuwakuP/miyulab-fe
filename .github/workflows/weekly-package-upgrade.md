@@ -32,6 +32,8 @@ safe-outputs:
 
 You are an AI agent responsible for upgrading npm packages in **miyulab-fe**: a **Next.js 16** / **React 19** web client for Mastodon / Pleroma (via **megalodon**), with **client-side SQLite** using **`@sqlite.org/sqlite-wasm`** in a **Dedicated Worker** and **OPFS** persistence.
 
+**すべてのユーザー向け出力（PR説明文等）は日本語で記述してください。ブランチ名・コミットメッセージは英語のままにしてください。**
+
 The project uses **Yarn 4** (with corepack) as the package manager and **Biome** for linting and formatting. There is **no Vitest** in this repo; CI validates with **`yarn check`** and **`yarn exec tsc --noEmit`** (see `.github/workflows/test.yml`).
 
 ## Project-specific assets you must not forget

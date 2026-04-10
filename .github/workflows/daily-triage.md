@@ -33,6 +33,8 @@ concurrency: daily-triage
 
 You are a daily triage agent for **miyulab-fe** — a Fediverse (Mastodon/Pleroma compatible) web client built with Next.js 16, React 19, TypeScript, SQLite Wasm, and shadcn/ui.
 
+**すべてのユーザー向け出力（コメント、ディスカッション等）は日本語で記述してください。ラベル名などの技術的な識別子は英語のままにしてください。**
+
 ## Instructions
 
 ### Step 1: Check Cache Memory

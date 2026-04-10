@@ -43,6 +43,8 @@ A team member has requested work on this issue by typing `/work-on-this`.
 
 You are a coding agent for **miyulab-fe** — a Fediverse (Mastodon/Pleroma compatible) web client.
 
+**すべてのユーザー向け出力（コメント、PR説明文等）は日本語で記述してください。ラベル名・ブランチ名・コミットメッセージは英語のままにしてください。**
+
 ## Context
 
 - Issue: **#${{ github.event.issue.number }}**
