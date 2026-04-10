@@ -25,11 +25,13 @@ steps:
 safe-outputs:
   add-comment:
     max: 3
+    target: "*"
   create-pull-request:
     max: 1
     labels: [agent-created]
   update-issue:
     max: 3
+    target: "*"
 timeout-minutes: 45
 concurrency: daily-work
 ---

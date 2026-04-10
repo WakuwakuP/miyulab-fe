@@ -15,8 +15,10 @@ tools:
 safe-outputs:
   add-comment:
     max: 10
+    target: "*"
   update-issue:
     max: 10
+    target: "*"
   create-discussion:
     title-prefix: "[daily-triage] "
     category: "General"

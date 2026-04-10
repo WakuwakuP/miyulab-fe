@@ -15,8 +15,10 @@ tools:
 safe-outputs:
   update-issue:
     max: 10
+    target: "*"
   add-comment:
     max: 5
+    target: "*"
 timeout-minutes: 10
 concurrency: stale-label-cleanup
 ---
