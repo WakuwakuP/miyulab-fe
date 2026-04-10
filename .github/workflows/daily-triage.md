@@ -69,9 +69,17 @@ For each untriaged issue, process in priority order (oldest first):
    - `priority:medium` — Non-critical bug or important feature
    - `priority:low` — Minor enhancement or cosmetic issue
 
-5. **Apply labels**: category, area(s), priority, and `triaged`.
+5. **Apply labels by calling the `update-issue` tool** (REQUIRED for each issue):
+   You MUST call the `update-issue` tool to add labels to each issue. Add ALL of these labels in a single call:
+   - The category label (e.g., `bug`, `feature`)
+   - The area label(s) (e.g., `area:timeline`)
+   - The priority label (e.g., `priority:medium`)
+   - The `triaged` label to mark the issue as processed
 
-6. **Post a triage comment** summarizing the classification.
+   ⚠️ Writing label names in a comment is NOT enough. You must use the `update-issue` tool to actually apply labels.
+
+6. **Post a triage comment by calling the `add-comment` tool** (REQUIRED for each issue):
+   Summarize the classification, area(s), priority, and any suggestions.
 
 ### Step 4: Update Cache Memory
 
@@ -86,5 +94,7 @@ After processing all issues, create a summary discussion with:
 - Classification breakdown (how many bugs, features, etc.)
 - Priority distribution
 - Issues that may need urgent human attention (priority:critical or priority:high)
+
+If discussion creation fails (e.g., Discussions not enabled), skip this step — label application and comments are the primary outputs.
 
 If no issues were found to process, use the `noop` safe output with the message: "No untriaged issues found. All issues are up to date."

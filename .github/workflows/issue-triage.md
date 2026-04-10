@@ -60,14 +60,22 @@ Title: "${{ github.event.issue.title }}"
    - Check if reproduction steps are provided
    - If missing, mention in the triage comment that repro steps would be helpful
 
-6. Apply labels using the `update-issue` safe output:
-   - The category label (e.g., `bug`, `feature`)
-   - The area label(s) (e.g., `area:timeline`)
-   - The priority label (e.g., `priority:medium`)
-   - The `triaged` label to mark the issue as processed
+## Required Actions — You MUST perform BOTH of these
 
-7. Post a triage comment summarizing:
-   - Your classification and reasoning
-   - The area(s) of the codebase likely involved
-   - Any suggestions or next steps
-   - If a bug, whether repro steps are adequate
+### Action 1: Apply labels (REQUIRED)
+
+**You MUST call the `update-issue` tool** to add labels to issue #${{ github.event.issue.number }}. This is a separate tool call from posting a comment. Add ALL of these labels in a single `update-issue` call:
+- The category label (e.g., `bug`, `feature`)
+- The area label(s) (e.g., `area:timeline`)
+- The priority label (e.g., `priority:medium`)
+- The `triaged` label to mark the issue as processed
+
+⚠️ Writing label names in a comment is NOT enough. You must use the `update-issue` tool to actually apply labels to the issue.
+
+### Action 2: Post a triage comment (REQUIRED)
+
+**Call the `add-comment` tool** to post a triage comment summarizing:
+- Your classification and reasoning
+- The area(s) of the codebase likely involved
+- Any suggestions or next steps
+- If a bug, whether repro steps are adequate
