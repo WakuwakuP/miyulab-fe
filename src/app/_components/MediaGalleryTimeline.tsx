@@ -5,6 +5,7 @@ import { TimelineStreamIcon } from 'app/_parts/TimelineIcon'
 import { TimelineLoading } from 'app/_parts/TimelineLoading'
 import type { Entity } from 'megalodon'
 import {
+  memo,
   useCallback,
   useContext,
   useEffect,
@@ -38,38 +39,30 @@ const PLAYABLE_TYPES = new Set<Entity.Attachment['type']>([
   'audio',
 ])
 
-function MediaGalleryCell({
+type CellHandlers = {
+  onOpen: (
+    attachments: Entity.Attachment[],
+    index: number,
+    type: Entity.Attachment['type'],
+  ) => void
+  showSensitive: boolean
+}
+
+const MediaGalleryCell = memo(function MediaGalleryCell({
   item,
-  scrolling,
+  handlers,
 }: {
   item: MediaGalleryItem
-  scrolling: boolean
+  handlers: CellHandlers
 }) {
-  const setting = useContext(SettingContext)
-  const setMediaModal = useContext(SetMediaModalContext)
-  const setPlayer = useContext(SetPlayerContext)
   const [isShowSensitive, setIsShowSensitive] = useState<boolean>(
-    setting.showSensitive,
+    handlers.showSensitive,
   )
-
-  const onOpen = useCallback(() => {
-    if (PLAYABLE_TYPES.has(item.attachment.type)) {
-      setPlayer({ attachment: item.attachments, index: item.index })
-      return
-    }
-    setMediaModal({ attachment: item.attachments, index: item.index })
-  }, [
-    item.attachment.type,
-    item.attachments,
-    item.index,
-    setMediaModal,
-    setPlayer,
-  ])
 
   if (item.sensitive && !isShowSensitive) {
     return (
       <button
-        className="flex aspect-square w-full items-center justify-center rounded bg-gray-800 text-xs text-gray-300"
+        className="flex aspect-square w-full items-center justify-center bg-gray-800 text-xs text-gray-300"
         onClick={() => setIsShowSensitive(true)}
         type="button"
       >
@@ -78,17 +71,15 @@ function MediaGalleryCell({
     )
   }
 
-  if (scrolling) {
-    return <div className="aspect-square w-full rounded bg-gray-800/30" />
-  }
-
   const previewUrl = item.attachment.preview_url ?? item.attachment.url
   const isPlayable = PLAYABLE_TYPES.has(item.attachment.type)
 
   return (
     <button
-      className="group relative aspect-square w-full overflow-hidden rounded bg-black"
-      onClick={onOpen}
+      className="group relative aspect-square w-full overflow-hidden bg-black"
+      onClick={() =>
+        handlers.onOpen(item.attachments, item.index, item.attachment.type)
+      }
       type="button"
     >
       {previewUrl ? (
@@ -108,7 +99,7 @@ function MediaGalleryCell({
       )}
     </button>
   )
-}
+})
 
 export const MediaGalleryTimeline = ({
   config,
@@ -125,6 +116,9 @@ export const MediaGalleryTimeline = ({
     queryDuration,
   } = useTimelineData(config)
   const { initializing } = useOtherQueueProgress()
+  const setting = useContext(SettingContext)
+  const setMediaModal = useContext(SetMediaModalContext)
+  const setPlayer = useContext(SetPlayerContext)
 
   const displayName = useMemo(() => {
     if (config.label) return config.label
@@ -158,7 +152,6 @@ export const MediaGalleryTimeline = ({
   const scrollerRef = useRef<VirtuosoGridHandle>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [enableScrollToTop, setEnableScrollToTop] = useState(true)
-  const [isScrolling, setIsScrolling] = useState(false)
   const dataLength = mediaItems.length
 
   const onWheel = useCallback<WheelEventHandler<HTMLDivElement>>((e) => {
@@ -199,7 +192,27 @@ export const MediaGalleryTimeline = ({
     [isLoadingOlder],
   )
 
-  const scrolling = enableScrollToTop ? false : isScrolling
+  // Hoist context-dependent handler to parent; stable ref avoids cell re-renders
+  const cellHandlers = useMemo<CellHandlers>(
+    () => ({
+      onOpen: (attachments, index, type) => {
+        if (PLAYABLE_TYPES.has(type)) {
+          setPlayer({ attachment: attachments, index })
+          return
+        }
+        setMediaModal({ attachment: attachments, index })
+      },
+      showSensitive: setting.showSensitive,
+    }),
+    [setMediaModal, setPlayer, setting.showSensitive],
+  )
+
+  const itemContent = useCallback(
+    (_index: number, item: MediaGalleryItem) => (
+      <MediaGalleryCell handlers={cellHandlers} item={item} />
+    ),
+    [cellHandlers],
+  )
 
   return (
     <Panel
@@ -221,11 +234,8 @@ export const MediaGalleryTimeline = ({
             data={mediaItems}
             endReached={hasMoreOlder ? loadOlder : undefined}
             increaseViewportBy={200}
-            isScrolling={setIsScrolling}
             itemClassName="p-0"
-            itemContent={(_, item) => (
-              <MediaGalleryCell item={item} scrolling={scrolling} />
-            )}
+            itemContent={itemContent}
             listClassName="grid grid-cols-2 gap-0 sm:grid-cols-3"
             onWheel={onWheel}
             ref={scrollerRef}
