@@ -181,7 +181,7 @@ export const MediaGalleryTimeline = ({
       scrollToTop()
     }, 50)
     return () => {
-      if (timerRef.current != null) clearTimeout(timerRef.current)
+      if (timerRef.current !== null) clearTimeout(timerRef.current)
     }
   }, [dataLength, enableScrollToTop, scrollToTop])
 
