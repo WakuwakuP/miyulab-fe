@@ -141,11 +141,13 @@ export const MediaGalleryTimeline = ({
       if (attachments.length === 0) continue
       const sensitive = status.reblog?.sensitive ?? status.sensitive ?? false
       attachments.forEach((attachment, index) => {
+        const attachmentKey =
+          attachment.id ?? `${status.id}-media-${index.toString()}`
         items.push({
           attachment,
           attachments,
           index,
-          key: `${status.id}-${attachment.id}-${index}`,
+          key: `${status.id}-${attachmentKey}`,
           sensitive,
         })
       })
