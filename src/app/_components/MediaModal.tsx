@@ -1,7 +1,5 @@
-/* eslint-disable @next/next/no-img-element */
 'use client'
 
-import { Media } from 'app/_parts/Media'
 import { Modal } from 'app/_parts/Modal'
 import {
   Carousel,
@@ -9,31 +7,49 @@ import {
   CarouselContent,
   CarouselItem,
 } from 'components/ui/carousel'
-import { type MouseEventHandler, useContext, useEffect, useState } from 'react'
+import {
+  type MouseEventHandler,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from 'react'
 import { RiArrowLeftSLine, RiArrowRightSLine } from 'react-icons/ri'
 import {
   MediaModalContext,
   SetMediaModalContext,
 } from 'util/provider/ModalProvider'
+import { ZoomableImage } from './ZoomableImage'
 
-const ModalContent = () => {
+const ModalContent = ({
+  onZoomChange,
+}: {
+  onZoomChange: (isZoomed: boolean) => void
+}) => {
   const { attachment, index } = useContext(MediaModalContext)
 
   const [carouselApi, setCarouselApi] = useState<CarouselApi>()
   const [currentSlide, setCurrentSlide] = useState(index ?? 0)
+  const [isCurrentSlideZoomed, setIsCurrentSlideZoomed] = useState(false)
+  const zoomedSlideRef = useRef<Set<number>>(new Set())
 
   useEffect(() => {
     if (carouselApi == null) return
 
     const onSelect = () => {
-      setCurrentSlide(carouselApi.selectedScrollSnap())
+      const slide = carouselApi.selectedScrollSnap()
+      setCurrentSlide(slide)
+      const nextSlideZoomed = zoomedSlideRef.current.has(slide)
+      setIsCurrentSlideZoomed(nextSlideZoomed)
+      onZoomChange(nextSlideZoomed)
     }
 
     carouselApi.on('select', onSelect)
     return () => {
       carouselApi.off('select', onSelect)
     }
-  }, [carouselApi])
+  }, [carouselApi, onZoomChange])
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -59,6 +75,21 @@ const ModalContent = () => {
     carouselApi?.scrollNext()
   }
 
+  const handleZoomChange = useCallback(
+    (slideIndex: number, isZoomed: boolean) => {
+      if (isZoomed) {
+        zoomedSlideRef.current.add(slideIndex)
+      } else {
+        zoomedSlideRef.current.delete(slideIndex)
+      }
+      if (slideIndex === currentSlide) {
+        setIsCurrentSlideZoomed(isZoomed)
+        onZoomChange(isZoomed)
+      }
+    },
+    [currentSlide, onZoomChange],
+  )
+
   if (attachment.length === 0 || index == null) return null
 
   if (['video', 'gifv', 'audio'].includes(attachment[index].type)) {
@@ -73,18 +104,21 @@ const ModalContent = () => {
               opts={{
                 loop: true,
                 startIndex: index,
+                watchDrag: !isCurrentSlideZoomed,
               }}
               setApi={setCarouselApi}
             >
               <CarouselContent>
-                {attachment.map((media) => {
+                {attachment.map((media, slideIndex) => {
                   return (
                     <CarouselItem key={media.id}>
-                      <div key={media.id}>
-                        <Media
-                          className="h-[90vh] max-h-none w-[90vw] max-w-none"
-                          fullSize
+                      <div className="h-[90vh] w-[90vw]">
+                        <ZoomableImage
+                          className="h-[90vh] w-[90vw]"
                           media={media}
+                          onZoomChange={(isZoomed) =>
+                            handleZoomChange(slideIndex, isZoomed)
+                          }
                         />
                       </div>
                     </CarouselItem>
@@ -113,11 +147,13 @@ const ModalContent = () => {
         </>
       ) : (
         attachment[index].type === 'image' && (
-          <Media
-            className="fixed inset-0 z-50 m-auto h-[90vh] max-h-none w-[90vw] max-w-none"
-            fullSize
-            media={attachment[index]}
-          />
+          <div className="fixed inset-0 z-50 m-auto h-[90vh] w-[90vw]">
+            <ZoomableImage
+              className="h-[90vh] w-[90vw]"
+              media={attachment[index]}
+              onZoomChange={onZoomChange}
+            />
+          </div>
         )
       )}
     </>
@@ -128,6 +164,7 @@ export const MediaModal = () => {
   const { attachment, index } = useContext(MediaModalContext)
 
   const setAttachment = useContext(SetMediaModalContext)
+  const [isZoomed, setIsZoomed] = useState(false)
 
   if (attachment.length === 0 || index == null) return null
 
@@ -137,14 +174,15 @@ export const MediaModal = () => {
 
   return (
     <Modal
-      onClick={() =>
+      onClick={() => {
+        if (isZoomed) return
         setAttachment({
           attachment: [],
           index: null,
         })
-      }
+      }}
     >
-      <ModalContent />
+      <ModalContent onZoomChange={setIsZoomed} />
     </Modal>
   )
 }
