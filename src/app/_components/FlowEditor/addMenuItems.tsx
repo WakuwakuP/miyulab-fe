@@ -70,6 +70,7 @@ export const ADD_MENU_ITEMS: AddMenuItem[] = [
     createNode: (id, vp) => ({
       data: {
         config: {
+          displayMode: 'auto',
           kind: 'output-v2',
           pagination: { limit: 50 },
           sort: { direction: 'DESC', field: 'created_at_ms' },

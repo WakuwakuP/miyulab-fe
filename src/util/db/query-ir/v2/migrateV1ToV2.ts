@@ -103,6 +103,7 @@ function mergeFreePlanToV2(plan: QueryPlan): QueryPlanV2 {
   const oId = nid()
 
   const outputNode: OutputNodeV2 = {
+    displayMode: 'auto',
     kind: 'output-v2',
     pagination: {
       limit: plan.pagination.limit,
@@ -154,6 +155,7 @@ function mergePlanToV2(plan: QueryPlan): QueryPlanV2 {
   }
 
   const outputNode: OutputNodeV2 = {
+    displayMode: 'auto',
     kind: 'output-v2',
     pagination: {
       limit: plan.pagination.limit,

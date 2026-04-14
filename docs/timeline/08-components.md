@@ -28,6 +28,11 @@ function DynamicTimeline({ config, headerOffset }: Props) {
   // 非表示のタイムラインはレンダリングしない
   if (!config.visible) return null
 
+  const displayMode = resolveOutputDisplayMode(config.queryPlan)
+
+  // Output ノードの displayMode が media-gallery の場合は MediaGalleryTimeline
+  if (displayMode === 'media-gallery') return <MediaGalleryTimeline />
+
   const query = config.customQuery ?? ''
 
   // 混合クエリ: statuses と notifications の両方を参照する場合は MixedTimeline

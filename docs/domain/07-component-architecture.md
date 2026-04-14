@@ -123,7 +123,8 @@ page.tsx
 ├── DynamicTimeline ─── タイムラインルーター
 │   ├── UnifiedTimeline ─── 投稿タイムライン（デフォルト）
 │   ├── MixedTimeline ──── 投稿＋通知の混合表示
-│   └── NotificationTimeline ── 通知専用表示
+│   ├── NotificationTimeline ── 通知専用表示
+│   └── MediaGalleryTimeline ── メディアギャラリー表示
 └── TabbedTimeline ──── タブグループ
     └── DynamicTimeline × N（タブごとに1つ）
 ```
@@ -134,10 +135,11 @@ page.tsx
 
 **ルーティングロジック:**
 
-1. `queryPlan` が QueryPlanV2 で `posts` と `notifications` 両方のテーブルを参照 → **MixedTimeline**
-2. `customQuery` が混合クエリ (`isMixedQuery`) → **MixedTimeline**
-3. `type === 'notification'` または `customQuery` が通知クエリ → **NotificationTimeline**
-4. 上記以外 → **UnifiedTimeline**
+1. Output ノードの `displayMode === 'media-gallery'` → **MediaGalleryTimeline**
+2. `queryPlan` が QueryPlanV2 で `posts` と `notifications` 両方のテーブルを参照 → **MixedTimeline**
+3. `customQuery` が混合クエリ (`isMixedQuery`) → **MixedTimeline**
+4. `type === 'notification'` または `customQuery` が通知クエリ → **NotificationTimeline**
+5. 上記以外 → **UnifiedTimeline**
 
 | props | 型 | 説明 |
 |---|---|---|

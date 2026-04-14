@@ -268,8 +268,10 @@ export function executeGraphPlan(
         const firstInput =
           incoming.length > 0 ? outputs.get(incoming[0]) : undefined
         if (!firstInput) {
+          const displayMode = node.displayMode ?? 'auto'
           return {
             capturedVersions: captureVersionsFn(),
+            displayMode,
             displayOrder: [],
             meta: {
               nodeStats,
@@ -293,6 +295,7 @@ export function executeGraphPlan(
 
         return {
           capturedVersions: captureVersionsFn(),
+          displayMode: result.displayMode,
           displayOrder: result.displayOrder,
           meta: {
             nodeStats,
@@ -310,6 +313,7 @@ export function executeGraphPlan(
   // Output ノードに到達しなかった場合のフォールバック
   return {
     capturedVersions: captureVersionsFn(),
+    displayMode: 'auto',
     displayOrder: [],
     meta: {
       nodeStats,

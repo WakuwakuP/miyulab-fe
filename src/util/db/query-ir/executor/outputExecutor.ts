@@ -47,6 +47,7 @@ export function executeOutput(
 } {
   // --- 1. sort + cursor + pagination ---
   let rows = [...input.rows]
+  const displayMode = node.displayMode ?? 'auto'
 
   // sort
   const direction = node.sort.direction === 'ASC' ? 1 : -1
@@ -85,6 +86,7 @@ export function executeOutput(
 
   if (rows.length === 0) {
     return {
+      displayMode,
       displayOrder: [],
       notifications: { detailRows: [] },
       posts: { batchResults: {}, detailRows: [] },
@@ -119,6 +121,7 @@ export function executeOutput(
       : { detailRows: [] as (string | number | null)[][] }
 
   return {
+    displayMode,
     displayOrder,
     notifications: notifsResult,
     posts: postsResult,

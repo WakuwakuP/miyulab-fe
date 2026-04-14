@@ -27,6 +27,7 @@ export function createDefaultQueryPlanV2(): QueryPlanV2 {
       {
         id: b,
         node: {
+          displayMode: 'auto',
           kind: 'output-v2',
           pagination: { limit: 50 },
           sort: { direction: 'DESC', field: 'created_at_ms' },

@@ -345,9 +345,13 @@ export type PaginationCursor = {
   direction: 'before' | 'after'
 }
 
+/** 表示モード (Output ノード) */
+export type DisplayMode = 'auto' | 'media-gallery'
+
 /** 最終出力 */
 export type OutputNodeV2 = {
   kind: 'output-v2'
+  displayMode?: DisplayMode
   sort: {
     field: string
     direction: 'ASC' | 'DESC'

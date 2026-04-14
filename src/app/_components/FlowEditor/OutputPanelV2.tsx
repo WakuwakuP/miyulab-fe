@@ -17,6 +17,7 @@ type OutputPanelV2Props = {
 
 export function OutputPanelV2({ node, onUpdate }: OutputPanelV2Props) {
   const data = node.data as OutputFlowNodeDataV2
+  const displayMode = data.config.displayMode ?? 'auto'
 
   return (
     <div className="space-y-3">
@@ -45,6 +46,31 @@ export function OutputPanelV2({ node, onUpdate }: OutputPanelV2Props) {
           <SelectContent className="max-h-60">
             <SelectItem value="DESC">新しい順 (DESC)</SelectItem>
             <SelectItem value="ASC">古い順 (ASC)</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div>
+        <span className="text-xs font-semibold text-gray-300 block mb-1">
+          表示モード
+        </span>
+        <Select
+          onValueChange={(v) =>
+            onUpdate(node.id, {
+              ...data,
+              config: {
+                ...data.config,
+                displayMode: v as 'auto' | 'media-gallery',
+              },
+            })
+          }
+          value={displayMode}
+        >
+          <SelectTrigger className="w-full h-7 text-xs bg-gray-700 border-gray-600 text-white">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className="max-h-60">
+            <SelectItem value="auto">自動選択 (投稿/通知/混合)</SelectItem>
+            <SelectItem value="media-gallery">メディアギャラリー</SelectItem>
           </SelectContent>
         </Select>
       </div>

@@ -5,6 +5,7 @@
 // コマンド・結果・内部型を定義する。
 // ============================================================
 
+import type { DisplayMode } from '../nodes'
 import type { NodeOutputRow } from '../plan'
 
 // --------------- ノード出力 ---------------
@@ -135,6 +136,7 @@ export type SerializedMergeNode = {
 
 export type SerializedOutputNode = {
   kind: 'output-v2'
+  displayMode?: DisplayMode
   sort: { field: string; direction: 'ASC' | 'DESC' }
   pagination: {
     limit: number
@@ -174,6 +176,8 @@ export type GraphExecuteResult = {
   }
   /** 表示順序 — (table, id) ペアの配列 (sort 適用済み) */
   displayOrder: DisplayOrderEntry[]
+  /** Output ノードの表示モード */
+  displayMode: DisplayMode
   /** メタ情報 */
   meta: {
     sourceType: 'post' | 'notification' | 'mixed'

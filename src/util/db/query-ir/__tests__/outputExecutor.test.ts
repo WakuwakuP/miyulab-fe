@@ -50,6 +50,7 @@ describe('executeOutput', () => {
       const db = mockDb()
       const result = executeOutput(db, mkNode(), mkInput([]), [])
 
+      expect(result.displayMode).toBe('auto')
       expect(result.displayOrder).toEqual([])
       expect(result.posts.detailRows).toEqual([])
       expect(result.notifications.detailRows).toEqual([])
@@ -99,6 +100,19 @@ describe('executeOutput', () => {
       const result = executeOutput(db, mkNode(), input, [])
 
       expect(result.notifications.detailRows).toEqual([])
+    })
+
+    it('displayMode がノード設定に従う', () => {
+      const db = mockDb()
+      const input = mkInput([mkRow(1, 100, 'posts')])
+      const result = executeOutput(
+        db,
+        mkNode({ displayMode: 'media-gallery' }),
+        input,
+        [],
+      )
+
+      expect(result.displayMode).toBe('media-gallery')
     })
   })
 

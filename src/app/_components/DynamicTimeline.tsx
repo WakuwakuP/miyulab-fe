@@ -8,6 +8,7 @@ import {
   queryPlanV2ReferencedTables,
 } from 'util/db/query-ir/nodes'
 import { isMixedQuery, isNotificationQuery } from 'util/queryBuilder'
+import { MediaGalleryTimeline } from './MediaGalleryTimeline'
 import { MixedTimeline } from './MixedTimeline'
 
 export const DynamicTimeline = ({
@@ -19,6 +20,18 @@ export const DynamicTimeline = ({
 }) => {
   if (!config.visible) {
     return null
+  }
+
+  const outputNode = isQueryPlanV2(config.queryPlan)
+    ? config.queryPlan.nodes.find((n) => n.node.kind === 'output-v2')
+    : undefined
+  const displayMode =
+    outputNode && outputNode.node.kind === 'output-v2'
+      ? (outputNode.node.displayMode ?? 'auto')
+      : 'auto'
+
+  if (displayMode === 'media-gallery') {
+    return <MediaGalleryTimeline config={config} headerOffset={headerOffset} />
   }
 
   const query = config.customQuery ?? ''

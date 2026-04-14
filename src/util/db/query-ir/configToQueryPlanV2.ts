@@ -402,6 +402,7 @@ function addModerationFilters(
 
 function buildOutputNode(queryLimit: number): OutputNodeV2 {
   return {
+    displayMode: 'auto',
     kind: 'output-v2',
     pagination: { limit: queryLimit },
     sort: { direction: 'DESC', field: 'created_at_ms' },
