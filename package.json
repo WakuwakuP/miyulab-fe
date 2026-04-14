@@ -43,6 +43,7 @@
     "react-innertext": "^1.1.5",
     "react-player": "^3.4.0",
     "react-virtuoso": "^4.18.4",
+    "react-zoom-pan-pinch": "^4.0.3",
     "rich-textarea": "0.27.0",
     "sharp": "0.34.5",
     "slick-carousel": "^1.8.1",
