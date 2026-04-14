@@ -222,11 +222,11 @@ export const MediaGalleryTimeline = ({
             endReached={hasMoreOlder ? loadOlder : undefined}
             increaseViewportBy={200}
             isScrolling={setIsScrolling}
-            itemClassName="p-0.5"
+            itemClassName="p-0"
             itemContent={(_, item) => (
               <MediaGalleryCell item={item} scrolling={scrolling} />
             )}
-            listClassName="grid grid-cols-2 gap-1 p-2 sm:grid-cols-3 lg:grid-cols-4"
+            listClassName="grid grid-cols-2 gap-0 sm:grid-cols-3"
             onWheel={onWheel}
             ref={scrollerRef}
             totalCount={mediaItems.length}
