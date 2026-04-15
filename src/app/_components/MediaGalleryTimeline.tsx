@@ -155,7 +155,11 @@ export const MediaGalleryTimeline = ({
 
         // Reuse cached item if content is unchanged (preserves reference for memo)
         const cached = prevCache.get(key)
-        if (cached && cached.sensitive === sensitive) {
+        if (
+          cached &&
+          cached.sensitive === sensitive &&
+          cached.attachment.preview_url === attachment.preview_url
+        ) {
           nextCache.set(key, cached)
           items.push(cached)
         } else {
