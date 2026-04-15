@@ -86,6 +86,7 @@ const MediaGalleryCell = memo(function MediaGalleryCell({
         <img
           alt=""
           className="h-full w-full object-cover"
+          decoding="async"
           loading="lazy"
           src={previewUrl}
         />
@@ -100,6 +101,11 @@ const MediaGalleryCell = memo(function MediaGalleryCell({
     </button>
   )
 })
+
+/** Lightweight placeholder shown during fast scroll */
+const GridScrollSeekPlaceholder = () => (
+  <div className="aspect-square w-full bg-gray-800/30" />
+)
 
 export const MediaGalleryTimeline = ({
   config,
@@ -125,7 +131,14 @@ export const MediaGalleryTimeline = ({
     return getDefaultTimelineName(config)
   }, [config])
 
+  // Cache preserves stable MediaGalleryItem references across re-computations.
+  // Without this, every streaming update creates new item objects — React.memo
+  // compares by reference, so all visible cells re-render even when unchanged.
+  const mediaItemsCacheRef = useRef(new Map<string, MediaGalleryItem>())
+
   const mediaItems = useMemo((): MediaGalleryItem[] => {
+    const prevCache = mediaItemsCacheRef.current
+    const nextCache = new Map<string, MediaGalleryItem>()
     const items: MediaGalleryItem[] = []
     for (const item of rawData) {
       if ('type' in item) continue
@@ -134,18 +147,31 @@ export const MediaGalleryTimeline = ({
         status.reblog?.media_attachments ?? status.media_attachments ?? []
       if (attachments.length === 0) continue
       const sensitive = status.reblog?.sensitive ?? status.sensitive ?? false
-      attachments.forEach((attachment, index) => {
+      for (let i = 0; i < attachments.length; i++) {
+        const attachment = attachments[i]
         const attachmentKey =
-          attachment.id ?? `${status.id}-media-${index.toString()}`
-        items.push({
-          attachment,
-          attachments,
-          index,
-          key: `${status.id}-${attachmentKey}`,
-          sensitive,
-        })
-      })
+          attachment.id ?? `${status.id}-media-${i.toString()}`
+        const key = `${status.id}-${attachmentKey}`
+
+        // Reuse cached item if content is unchanged (preserves reference for memo)
+        const cached = prevCache.get(key)
+        if (cached && cached.sensitive === sensitive) {
+          nextCache.set(key, cached)
+          items.push(cached)
+        } else {
+          const newItem: MediaGalleryItem = {
+            attachment,
+            attachments,
+            index: i,
+            key,
+            sensitive,
+          }
+          nextCache.set(key, newItem)
+          items.push(newItem)
+        }
+      }
     }
+    mediaItemsCacheRef.current = nextCache
     return items
   }, [rawData])
 
@@ -188,6 +214,7 @@ export const MediaGalleryTimeline = ({
             <CgSpinner className="animate-spin text-gray-400" size={24} />
           </div>
         ) : null,
+      ScrollSeekPlaceholder: GridScrollSeekPlaceholder,
     }),
     [isLoadingOlder],
   )
@@ -214,6 +241,24 @@ export const MediaGalleryTimeline = ({
     [cellHandlers],
   )
 
+  const computeItemKey = useCallback(
+    (_index: number, item: MediaGalleryItem) => item.key,
+    [],
+  )
+
+  const scrollSeekConfiguration = useMemo(
+    () => ({
+      enter: (velocity: number) => Math.abs(velocity) > 500,
+      exit: (velocity: number) => Math.abs(velocity) < 100,
+    }),
+    [],
+  )
+
+  const endReached = useMemo(
+    () => (hasMoreOlder ? loadOlder : undefined),
+    [hasMoreOlder, loadOlder],
+  )
+
   return (
     <Panel
       className="relative"
@@ -230,16 +275,16 @@ export const MediaGalleryTimeline = ({
           <VirtuosoGrid
             atTopStateChange={atTopStateChange}
             components={components}
-            computeItemKey={(_, item) => item.key}
+            computeItemKey={computeItemKey}
             data={mediaItems}
-            endReached={hasMoreOlder ? loadOlder : undefined}
+            endReached={endReached}
             increaseViewportBy={200}
             itemClassName="p-0"
             itemContent={itemContent}
             listClassName="grid grid-cols-2 gap-0 sm:grid-cols-3"
             onWheel={onWheel}
             ref={scrollerRef}
-            totalCount={mediaItems.length}
+            scrollSeekConfiguration={scrollSeekConfiguration}
           />
         </>
       )}
