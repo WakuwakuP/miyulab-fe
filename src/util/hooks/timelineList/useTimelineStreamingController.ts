@@ -9,6 +9,7 @@
  * - 変更検知時に最新ページを再取得 (reducer の mergeItems で重複排除)
  * - scrollback 中の STREAMING_DEFERRED dispatch
  * - hintless 変更時の再初期化
+ * - コアレッシング: フェッチ実行中の変更通知を統合して 1 回のフェッチにまとめる
  *
  * NOTE: カーソルベースの差分取得により、newestMs / newestId 以降のアイテムのみを取得する。
  * changedTables を渡すことで patchPlanForStreamingFetch による選択的テーブルスキャンを活用。
@@ -49,6 +50,39 @@ export function useTimelineStreamingController({
   subscribeToChanges,
 }: UseTimelineStreamingControllerArgs): void {
   useEffect(() => {
+    // コアレッシング状態: フェッチ実行中に到着した変更を統合する
+    let pendingFetch = false
+    let coalescedChangedTables: Set<string> | null = null
+
+    const doFetch = (changedTables: ReadonlySet<string>) => {
+      pendingFetch = true
+      const s = stateRef.current
+      const cursor = buildStreamingCursor(s)
+      tlDebug(
+        '[TL] onMatched: fetching latest page',
+        cursor ? 'with cursor' : 'full',
+      )
+
+      fetchPage({ changedTables, cursor, limit: PAGE_SIZE }).then((result) => {
+        tlDebug(
+          '[TL] onMatched: fetch result',
+          result ? result.items.length : 'null',
+        )
+        if (result) {
+          recordDuration(result.durationMs)
+          dispatch({ items: result.items, type: 'STREAMING_FETCH_SUCCEEDED' })
+        }
+
+        pendingFetch = false
+        // 保留中の変更があればまとめてフェッチ
+        if (coalescedChangedTables) {
+          const merged = coalescedChangedTables
+          coalescedChangedTables = null
+          doFetch(merged)
+        }
+      })
+    }
+
     const onMatched = (changedTables: ReadonlySet<string>) => {
       const s = stateRef.current
       // scrollback 中は保留
@@ -63,21 +97,20 @@ export function useTimelineStreamingController({
         return
       }
 
-      const cursor = buildStreamingCursor(s)
-      tlDebug(
-        '[TL] onMatched: fetching latest page',
-        cursor ? 'with cursor' : 'full',
-      )
+      // コアレッシング: フェッチ実行中なら変更テーブルを蓄積して待機
+      if (pendingFetch) {
+        tlDebug('[TL] onMatched: coalesced (fetch in progress)')
+        if (!coalescedChangedTables) {
+          coalescedChangedTables = new Set(changedTables)
+        } else {
+          for (const t of changedTables) {
+            coalescedChangedTables.add(t)
+          }
+        }
+        return
+      }
 
-      fetchPage({ changedTables, cursor, limit: PAGE_SIZE }).then((result) => {
-        tlDebug(
-          '[TL] onMatched: fetch result',
-          result ? result.items.length : 'null',
-        )
-        if (!result) return
-        recordDuration(result.durationMs)
-        dispatch({ items: result.items, type: 'STREAMING_FETCH_SUCCEEDED' })
-      })
+      doFetch(changedTables)
     }
 
     // hintless 変更 (mute/block): 全クリア + 再初期化

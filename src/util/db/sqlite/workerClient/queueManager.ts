@@ -9,6 +9,7 @@
 import type { QueueKind } from '../../dbQueue'
 import {
   getMaxConsecutiveOther,
+  MAX_TIMELINE_QUEUE_SIZE,
   reportDequeue,
   reportEnqueue,
 } from '../../dbQueue'
@@ -30,6 +31,21 @@ import type { QueuedRequest } from './types'
 // ================================================================
 // タイムラインキュー重複排除ユーティリティ
 // ================================================================
+
+/**
+ * タイムラインキューが上限を超えている場合に最古のリクエストを破棄する。
+ * 破棄されたリクエストの Promise は undefined で resolve される。
+ * ストリーミング差分取得では次の通知で再取得されるため破棄しても一貫性は保たれる。
+ */
+function evictOldestIfOverflow(): void {
+  while (timelineQueue.length > MAX_TIMELINE_QUEUE_SIZE) {
+    const oldest = timelineQueue.shift()
+    if (oldest) {
+      reportDequeue('timeline')
+      oldest.resolve(undefined)
+    }
+  }
+}
 
 /**
  * exec リクエストの SQL + bind + returnValue からタイムラインキュー重複排除用キーを生成する。
@@ -164,6 +180,7 @@ export function sendRequest(
           resolve: sharedResolve,
         })
         reportEnqueue('timeline')
+        evictOldestIfOverflow()
         processQueue()
         return
       }
@@ -200,6 +217,9 @@ export function sendRequest(
     const queue = kind === 'other' ? otherQueue : timelineQueue
     queue.push({ kind, message, reject, resolve, sessionTag })
     reportEnqueue(kind)
+    if (kind === 'timeline') {
+      evictOldestIfOverflow()
+    }
     processQueue()
   })
 }

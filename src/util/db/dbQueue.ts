@@ -73,6 +73,19 @@ const MAX_SNAPSHOTS = 200
 /** スナップショット記録間隔 (ms) */
 const SNAPSHOT_INTERVAL_MS = 500
 
+/**
+ * タイムラインキューの最大サイズ。
+ * これを超えると最古のリクエストを破棄して新しいリクエストを受け付ける。
+ * タイムライン数 5〜10 × 2 程度を想定。
+ */
+export const MAX_TIMELINE_QUEUE_SIZE = 20
+
+/**
+ * キュー飽和と判定する timeline キューサイズの閾値。
+ * この値以上のとき debounce を延長する。
+ */
+export const QUEUE_SATURATED_THRESHOLD = 15
+
 /** 固定プリセットごとの maxConsecutiveOther 定義 */
 const FIXED_PRESETS: Record<Exclude<QueuePriorityPreset, 'auto'>, number> = {
   balanced: 2,
@@ -318,6 +331,14 @@ export function getMaxConsecutiveOther(
  */
 export function hasOtherQueueBeenActive(): boolean {
   return otherHasBeenNonZero
+}
+
+/**
+ * timeline キューが飽和状態かどうかを返す。
+ * connection.ts の動的 debounce 調整に使用する。
+ */
+export function isTimelineQueueSaturated(): boolean {
+  return timelineQueueSize >= QUEUE_SATURATED_THRESHOLD
 }
 
 // ================================================================
