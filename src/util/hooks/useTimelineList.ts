@@ -114,6 +114,7 @@ export function useTimelineList(
 
   // ---- ストリーミング controller ----
   useTimelineStreamingController({
+    configId: config.id ?? '',
     dispatch,
     fetchPage,
     recordDuration,

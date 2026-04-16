@@ -10,6 +10,7 @@ import type { QueueKind } from '../../dbQueue'
 import {
   getMaxConsecutiveOther,
   MAX_TIMELINE_QUEUE_SIZE,
+  recordWaitTime,
   reportDequeue,
   reportEnqueue,
 } from '../../dbQueue'
@@ -174,6 +175,7 @@ export function sendRequest(
           }
         }
         timelineQueue.push({
+          enqueuedAt: performance.now(),
           kind,
           message,
           reject: sharedReject,
@@ -202,6 +204,7 @@ export function sendRequest(
         old.resolve(undefined)
         // 同じ位置に新しいアイテムを配置（末尾に押し出さない）
         timelineQueue[existingIndex] = {
+          enqueuedAt: old.enqueuedAt,
           kind,
           message,
           reject,
@@ -215,7 +218,8 @@ export function sendRequest(
     }
 
     const queue = kind === 'other' ? otherQueue : timelineQueue
-    queue.push({ kind, message, reject, resolve, sessionTag })
+    const enqueuedAt = kind === 'timeline' ? performance.now() : undefined
+    queue.push({ enqueuedAt, kind, message, reject, resolve, sessionTag })
     reportEnqueue(kind)
     if (kind === 'timeline') {
       evictOldestIfOverflow()
@@ -247,6 +251,10 @@ function processQueue(): void {
   if (!next) return
   setActiveRequest(true)
   const { kind, message, resolve, reject } = next
+  // timeline キューの待機時間を記録
+  if (kind === 'timeline' && next.enqueuedAt != null) {
+    recordWaitTime(performance.now() - next.enqueuedAt)
+  }
   const id = message.id
   const timeoutMs = TIMEOUT_BY_TYPE[message.type] ?? TIMEOUT_MS
 

@@ -32,6 +32,8 @@ import { buildStreamingCursor } from './streamingHelpers'
 const PAGE_SIZE = TIMELINE_QUERY_LIMIT
 
 type UseTimelineStreamingControllerArgs = {
+  /** タイムライン設定 ID (sessionTag 生成に使用) */
+  configId: string
   dispatch: Dispatch<TimelineListEvent>
   fetchPage: (options?: FetchPageOptions) => Promise<FetchPageResult | null>
   recordDuration: (ms: number) => void
@@ -43,6 +45,7 @@ type UseTimelineStreamingControllerArgs = {
 }
 
 export function useTimelineStreamingController({
+  configId,
   dispatch,
   fetchPage,
   recordDuration,
@@ -50,6 +53,10 @@ export function useTimelineStreamingController({
   subscribeToChanges,
 }: UseTimelineStreamingControllerArgs): void {
   useEffect(() => {
+    // ストリーミング取得用の sessionTag
+    // 同じパネルの古いリクエストをキュー内でインプレース置換するために使用
+    const sessionTag = `streaming:${configId}`
+
     // コアレッシング状態: フェッチ実行中に到着した変更を統合する
     let pendingFetch = false
     let coalescedChangedTables: Set<string> | null = null
@@ -63,24 +70,26 @@ export function useTimelineStreamingController({
         cursor ? 'with cursor' : 'full',
       )
 
-      fetchPage({ changedTables, cursor, limit: PAGE_SIZE }).then((result) => {
-        tlDebug(
-          '[TL] onMatched: fetch result',
-          result ? result.items.length : 'null',
-        )
-        if (result) {
-          recordDuration(result.durationMs)
-          dispatch({ items: result.items, type: 'STREAMING_FETCH_SUCCEEDED' })
-        }
+      fetchPage({ changedTables, cursor, limit: PAGE_SIZE, sessionTag }).then(
+        (result) => {
+          tlDebug(
+            '[TL] onMatched: fetch result',
+            result ? result.items.length : 'null',
+          )
+          if (result) {
+            recordDuration(result.durationMs)
+            dispatch({ items: result.items, type: 'STREAMING_FETCH_SUCCEEDED' })
+          }
 
-        pendingFetch = false
-        // 保留中の変更があればまとめてフェッチ
-        if (coalescedChangedTables) {
-          const merged = coalescedChangedTables
-          coalescedChangedTables = null
-          doFetch(merged)
-        }
-      })
+          pendingFetch = false
+          // 保留中の変更があればまとめてフェッチ
+          if (coalescedChangedTables) {
+            const merged = coalescedChangedTables
+            coalescedChangedTables = null
+            doFetch(merged)
+          }
+        },
+      )
     }
 
     const onMatched = (changedTables: ReadonlySet<string>) => {
@@ -125,5 +134,12 @@ export function useTimelineStreamingController({
     }
 
     return subscribeToChanges(onMatched, onHintless)
-  }, [subscribeToChanges, fetchPage, recordDuration, dispatch, stateRef])
+  }, [
+    subscribeToChanges,
+    fetchPage,
+    recordDuration,
+    dispatch,
+    stateRef,
+    configId,
+  ])
 }

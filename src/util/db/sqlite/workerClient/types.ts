@@ -17,4 +17,6 @@ export type QueuedRequest = {
   reject: (reason: Error) => void
   kind: QueueKind
   sessionTag?: string
+  /** キューに追加された時刻 (performance.now()) — 待機時間計測用 */
+  enqueuedAt?: number
 }

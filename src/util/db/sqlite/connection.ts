@@ -10,6 +10,7 @@
  * notifyChange には 80ms の debounce が適用されており、ストリーミングの
  * バースト（数十 ms 間隔で複数テーブルが変更される）を吸収して
  * リスナーの発火回数を削減する。
+ * キューが飽和状態のときは debounce を 300ms に延長して負荷を軽減する。
  *
  * ## ChangeHint (Plan B: スマート無効化)
  *
@@ -20,6 +21,7 @@
  * 不要な再クエリを抑制する。
  */
 
+import { isTimelineQueueSaturated } from '../dbQueue'
 import { getDb } from './initSqlite'
 import type { TableName } from './protocol'
 import { isTableName } from './protocol'
@@ -63,12 +65,28 @@ export function subscribe(table: TableName, fn: ChangeListener): () => void {
 }
 
 /**
- * debounce 間隔 (ms)
+ * 通常時の debounce 間隔 (ms)
  *
  * ストリーミングのバースト（数十 ms 間隔）を吸収しつつ、
  * ユーザー操作のフィードバックが遅延しすぎない値。
  */
 const DEBOUNCE_MS = 80
+
+/**
+ * キュー飽和時の debounce 間隔 (ms)
+ *
+ * timeline キューが飽和状態のとき、通知頻度を下げて
+ * キューへの新規リクエスト追加を抑制する。
+ */
+const SATURATED_DEBOUNCE_MS = 300
+
+/**
+ * 現在の debounce 間隔を返す。
+ * キューが飽和状態のときは長めの間隔を使用する。
+ */
+function getDebounceMs(): number {
+  return isTimelineQueueSaturated() ? SATURATED_DEBOUNCE_MS : DEBOUNCE_MS
+}
 
 /** debounce 用: テーブル別ヒント蓄積 */
 type PendingEntry = {
@@ -131,7 +149,7 @@ export function notifyChange(table: TableName, hint?: ChangeHint): void {
     entry.hasHintlessChange = true
   }
   if (timerId != null) return
-  timerId = setTimeout(flushNotifications, DEBOUNCE_MS)
+  timerId = setTimeout(flushNotifications, getDebounceMs())
 }
 
 let ready: Promise<DbHandle> | null = null
