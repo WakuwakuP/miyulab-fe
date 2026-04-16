@@ -25,7 +25,11 @@ import {
   SetPlayerSettingContext,
 } from 'util/provider/PlayerProvider'
 import { SettingContext } from 'util/provider/SettingProvider'
-import { getDirectEmbedUrl, isExternalVideo } from 'util/videoEmbed'
+import {
+  extractYouTubeVideoId,
+  getDirectEmbedUrl,
+  isExternalVideo,
+} from 'util/videoEmbed'
 
 const playableTypes = ['audio', 'video', 'gifv'] as Readonly<
   Entity.Attachment['type'][]
@@ -42,6 +46,7 @@ const PlayerController = () => {
   const [playing, setPlaying] = useState<boolean>(false)
   const [played, setPlayed] = useState<number>(0)
   const [seeking, setSeeking] = useState<boolean>(false)
+  const [externalEmbedFailed, setExternalEmbedFailed] = useState(false)
 
   const classNamePlayerSize = useMemo(() => {
     switch (playerSize) {
@@ -156,7 +161,17 @@ const PlayerController = () => {
     })
   }
 
-  if (attachment.length === 0 || index == null) return null
+  const currentAttachment = index == null ? null : attachment[index]
+  const currentUrl = currentAttachment?.url ?? ''
+  const currentYouTubeVideoId = extractYouTubeVideoId(currentUrl)
+
+  useEffect(() => {
+    if (currentUrl === '') return
+    setExternalEmbedFailed(false)
+  }, [currentUrl])
+
+  if (currentAttachment == null) return null
+
   return (
     <div
       className={[
@@ -165,43 +180,73 @@ const PlayerController = () => {
       ].join(' ')}
     >
       <div className=" bg-black" onClick={onClickPlay}>
-        {playableTypes.includes(attachment[index].type) &&
-          (isExternalVideo(attachment[index].url) ? (
-            <iframe
-              allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
-              allowFullScreen
-              className={['aspect-video w-full', classNamePlayerSize.h].join(
-                ' ',
-              )}
-              // @ts-expect-error -- credentialless is a valid HTML attribute but not yet in React's type definitions
-              credentialless=""
-              src={
-                getDirectEmbedUrl(attachment[index].url) ??
-                attachment[index].url
-              }
-              style={{ border: 'none' }}
-              title="Video player"
-            />
+        {playableTypes.includes(currentAttachment.type) &&
+          (isExternalVideo(currentUrl) ? (
+            externalEmbedFailed ? (
+              <div
+                className={[
+                  'relative aspect-video w-full',
+                  classNamePlayerSize.h,
+                ].join(' ')}
+              >
+                {currentYouTubeVideoId != null ? (
+                  <img
+                    alt="YouTube thumbnail"
+                    className="h-full w-full object-contain"
+                    src={`https://img.youtube.com/vi/${currentYouTubeVideoId}/hqdefault.jpg`}
+                  />
+                ) : (
+                  <div className="h-full w-full bg-black" />
+                )}
+                <a
+                  className="absolute inset-0 flex items-center justify-center bg-black/35 text-sm font-medium text-white underline"
+                  href={currentUrl}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                  }}
+                  rel="noopener noreferrer"
+                  target="_blank"
+                >
+                  Open externally
+                </a>
+              </div>
+            ) : (
+              <iframe
+                allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
+                allowFullScreen
+                className={['aspect-video w-full', classNamePlayerSize.h].join(
+                  ' ',
+                )}
+                // @ts-expect-error -- credentialless is a valid HTML attribute but not yet in React's type definitions
+                credentialless=""
+                onError={() => {
+                  setExternalEmbedFailed(true)
+                }}
+                src={getDirectEmbedUrl(currentUrl) ?? currentUrl}
+                style={{ border: 'none' }}
+                title="Video player"
+              />
+            )
           ) : (
             <ReactPlayer
               className="aspect-video"
               height={
-                attachment[index].type === 'audio' ? 0 : classNamePlayerSize.h
+                currentAttachment.type === 'audio' ? 0 : classNamePlayerSize.h
               }
               loop
               onTimeUpdate={handleProgress}
               playing={playing}
               ref={player}
-              src={attachment[index].url}
+              src={currentUrl}
               volume={volume}
               width={'100%'}
             />
           ))}
-        {'image' === attachment[index].type && (
+        {'image' === currentAttachment.type && (
           <img
-            alt={attachment[index].description ?? ''}
+            alt={currentAttachment.description ?? ''}
             className="h-full w-full object-contain"
-            src={attachment[index].url}
+            src={currentUrl}
           />
         )}
       </div>
