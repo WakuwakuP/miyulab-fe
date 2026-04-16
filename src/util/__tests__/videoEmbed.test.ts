@@ -19,6 +19,9 @@ describe('videoEmbed', () => {
 
     it('YouTube 以外は false を返す', () => {
       expect(isExternalVideo('https://example.com/video.mp4')).toBe(false)
+      expect(
+        isExternalVideo('https://notyoutube.com/watch?v=-2pJ1dyzEE0'),
+      ).toBe(false)
     })
   })
 
@@ -31,6 +34,9 @@ describe('videoEmbed', () => {
 
     it('非 YouTube URL は null を返す', () => {
       expect(getDirectEmbedUrl('https://example.com/video.mp4')).toBeNull()
+      expect(
+        getDirectEmbedUrl('https://notyoutube.com/watch?v=-2pJ1dyzEE0'),
+      ).toBeNull()
     })
   })
 
@@ -51,6 +57,9 @@ describe('videoEmbed', () => {
 
     it('非 YouTube URL は null を返す', () => {
       expect(extractYouTubeVideoId('https://example.com/video.mp4')).toBeNull()
+      expect(
+        extractYouTubeVideoId('https://notyoutube.com/watch?v=-2pJ1dyzEE0'),
+      ).toBeNull()
     })
   })
 })
