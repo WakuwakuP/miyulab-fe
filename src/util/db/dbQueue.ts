@@ -58,6 +58,8 @@ export type QueueSnapshot = {
   timelineProcessed: number
   /** スナップショット記録時点の maxConsecutiveOther 値 */
   maxConsecutiveOther: number
+  /** 直近の timeline キューの平均待機時間 (ms)。データなしの場合は 0 */
+  avgWaitMs: number
 }
 
 /** キュー変更リスナー */
@@ -72,6 +74,19 @@ const MAX_SNAPSHOTS = 200
 
 /** スナップショット記録間隔 (ms) */
 const SNAPSHOT_INTERVAL_MS = 500
+
+/**
+ * タイムラインキューの最大サイズ。
+ * これを超えると最古のリクエストを破棄して新しいリクエストを受け付ける。
+ * タイムライン数 5〜10 × 2 程度を想定。
+ */
+export const MAX_TIMELINE_QUEUE_SIZE = 20
+
+/**
+ * キュー飽和と判定する timeline キューサイズの閾値。
+ * この値以上のとき debounce を延長する。
+ */
+export const QUEUE_SATURATED_THRESHOLD = 15
 
 /** 固定プリセットごとの maxConsecutiveOther 定義 */
 const FIXED_PRESETS: Record<Exclude<QueuePriorityPreset, 'auto'>, number> = {
@@ -129,6 +144,18 @@ const listeners = new Set<QueueChangeListener>()
 /** 現在の優先度プリセット */
 let currentPriorityPreset: QueuePriorityPreset = 'auto'
 
+// ---- timeline キュー待機時間トラッキング ----
+
+/** timeline キューの直近待機時間バッファ (ms) — 循環バッファ */
+const WAIT_TIME_BUFFER_SIZE = 50
+const waitTimeBuffer: number[] = []
+
+/** 前回の飽和警告ログの時刻 (performance.now()) — スロットリング用 */
+let lastSaturationLogTime = 0
+
+/** 飽和警告ログのスロットリング間隔 (ms) */
+const SATURATION_LOG_INTERVAL_MS = 5_000
+
 /** 直近の auto 算出値 (スナップショット記録・getQueuePriority 用) */
 let lastAutoValue: number = ADAPTIVE_DEFAULT
 
@@ -158,8 +185,31 @@ function computeAdaptiveMax(otherLen: number, timelineLen: number): number {
 // スナップショット管理
 // ================================================================
 
+/**
+ * 直近の timeline キューの平均待機時間を算出する。
+ */
+function computeAvgWaitMs(): number {
+  if (waitTimeBuffer.length === 0) return 0
+  let sum = 0
+  for (const ms of waitTimeBuffer) sum += ms
+  return Math.round(sum / waitTimeBuffer.length)
+}
+
+/**
+ * timeline キューの待機時間を記録する。
+ * 循環バッファに追加し、古いエントリを自動的に押し出す。
+ */
+export function recordWaitTime(ms: number): void {
+  waitTimeBuffer.push(ms)
+  if (waitTimeBuffer.length > WAIT_TIME_BUFFER_SIZE) {
+    waitTimeBuffer.shift()
+  }
+}
+
 function recordSnapshot(): void {
+  const avgWaitMs = computeAvgWaitMs()
   const snapshot: QueueSnapshot = {
+    avgWaitMs,
     maxConsecutiveOther:
       currentPriorityPreset === 'auto'
         ? lastAutoValue
@@ -173,6 +223,17 @@ function recordSnapshot(): void {
   snapshots.push(snapshot)
   if (snapshots.length > MAX_SNAPSHOTS) {
     snapshots.shift()
+  }
+
+  // 飽和状態の警告ログ（スロットリング付き）
+  if (timelineQueueSize >= QUEUE_SATURATED_THRESHOLD) {
+    const now = performance.now()
+    if (now - lastSaturationLogTime >= SATURATION_LOG_INTERVAL_MS) {
+      lastSaturationLogTime = now
+      console.warn(
+        `[dbQueue] Timeline queue saturated: size=${timelineQueueSize}, avgWaitMs=${avgWaitMs}`,
+      )
+    }
   }
 }
 
@@ -318,6 +379,14 @@ export function getMaxConsecutiveOther(
  */
 export function hasOtherQueueBeenActive(): boolean {
   return otherHasBeenNonZero
+}
+
+/**
+ * timeline キューが飽和状態かどうかを返す。
+ * connection.ts の動的 debounce 調整に使用する。
+ */
+export function isTimelineQueueSaturated(): boolean {
+  return timelineQueueSize >= QUEUE_SATURATED_THRESHOLD
 }
 
 // ================================================================

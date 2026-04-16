@@ -59,6 +59,8 @@ export type FetchPageOptions = {
   cursor?: PaginationCursor
   limit?: number
   changedTables?: ReadonlySet<string>
+  /** キュー管理用セッションタグ。ストリーミング取得で同一パネルのリクエストを識別する */
+  sessionTag?: string
 }
 
 export type FetchPageResult = {
@@ -191,6 +193,7 @@ export function useTimelineDataSource(
         const result = await handle.executeGraphPlan(
           plan as unknown as SerializedGraphPlan,
           { backendUrls: targetBackendUrls },
+          fetchOptions?.sessionTag,
         )
 
         if (fetchVersionRef.current !== version) return null
