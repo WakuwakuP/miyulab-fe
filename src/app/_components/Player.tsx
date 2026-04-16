@@ -166,7 +166,7 @@ const PlayerController = () => {
   const currentYouTubeVideoId = extractYouTubeVideoId(currentUrl)
 
   useEffect(() => {
-    void currentUrl
+    if (currentUrl === '') return
     setExternalEmbedFailed(false)
   }, [currentUrl])
 
@@ -207,7 +207,7 @@ const PlayerController = () => {
                   rel="noopener noreferrer"
                   target="_blank"
                 >
-                  YouTubeで開く
+                  Open externally
                 </a>
               </div>
             ) : (

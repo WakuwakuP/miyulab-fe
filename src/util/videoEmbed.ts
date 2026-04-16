@@ -18,7 +18,7 @@ export const extractYouTubeVideoId = (url: string): string | null => {
  * embedded via an iframe with the `credentialless` attribute to bypass COEP.
  */
 export const isExternalVideo = (url: string): boolean => {
-  return extractYouTubeVideoId(url) != null
+  return extractYouTubeVideoId(url) !== null
 }
 
 /**
