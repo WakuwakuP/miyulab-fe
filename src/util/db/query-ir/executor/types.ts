@@ -81,6 +81,12 @@ export type SerializedGetIdsNode = {
   outputIdColumn?: string
   outputTimeColumn?: string | null
   inputBindings?: { column: string; sourceNodeId: string }[]
+  timeSourceJoin?: {
+    table: string
+    localColumn: string
+    foreignColumn: string
+    timeColumn: string
+  }
 }
 
 export type SerializedGetIdsFilter =

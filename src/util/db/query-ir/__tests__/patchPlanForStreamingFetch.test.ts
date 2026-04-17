@@ -347,4 +347,104 @@ describe('patchPlanForStreamingFetch', () => {
       value: 42,
     })
   })
+
+  describe('FK→posts パターン (timeSourceJoin)', () => {
+    it('post_hashtags の changedTables 一致時に timeSourceJoin が設定される', () => {
+      const plan: QueryPlanV2 = {
+        edges: [
+          { source: 'get-hashtags', target: 'get-ph' },
+          { source: 'get-ph', target: 'output' },
+        ],
+        nodes: [
+          {
+            id: 'get-hashtags',
+            node: {
+              filters: [
+                {
+                  column: 'name',
+                  op: 'IN',
+                  table: 'hashtags',
+                  value: ['foo'],
+                },
+              ],
+              kind: 'get-ids',
+              table: 'hashtags',
+            },
+          },
+          {
+            id: 'get-ph',
+            node: {
+              filters: [
+                {
+                  column: 'hashtag_id',
+                  op: 'IN',
+                  table: 'post_hashtags',
+                  upstreamSourceNodeId: 'get-hashtags',
+                },
+              ],
+              kind: 'get-ids',
+              outputIdColumn: 'post_id',
+              table: 'post_hashtags',
+            },
+          },
+          {
+            id: 'output',
+            node: {
+              kind: 'output-v2',
+              pagination: { limit: 50 },
+              sort: { direction: 'DESC', field: 'created_at_ms' },
+            },
+          },
+        ],
+        version: 2,
+      }
+      const changed = new Set(['post_hashtags', 'posts'])
+      const patched = patchPlanForStreamingFetch(plan, 50, afterCursor, changed)
+      const ph = patched.nodes.find((n) => n.id === 'get-ph')
+      const phNode = ph?.node as GetIdsNode
+      expect(phNode.cursor).toEqual({
+        column: 'created_at_ms',
+        op: '>',
+        value: 5000,
+      })
+      expect(phNode.timeSourceJoin).toEqual({
+        foreignColumn: 'id',
+        localColumn: 'post_id',
+        table: 'posts',
+        timeColumn: 'created_at_ms',
+      })
+    })
+
+    it('post_hashtags が changedTables にない場合は timeSourceJoin を設定しない', () => {
+      const plan: QueryPlanV2 = {
+        edges: [{ source: 'get-ph', target: 'output' }],
+        nodes: [
+          {
+            id: 'get-ph',
+            node: {
+              filters: [],
+              kind: 'get-ids',
+              outputIdColumn: 'post_id',
+              table: 'post_hashtags',
+            },
+          },
+          {
+            id: 'output',
+            node: {
+              kind: 'output-v2',
+              pagination: { limit: 50 },
+              sort: { direction: 'DESC', field: 'created_at_ms' },
+            },
+          },
+        ],
+        version: 2,
+      }
+      const changed = new Set(['posts']) // post_hashtags not in changedTables
+      const patched = patchPlanForStreamingFetch(plan, 50, afterCursor, changed)
+      const ph = patched.nodes.find((n) => n.id === 'get-ph')
+      const phNode = ph?.node as GetIdsNode
+      expect(phNode.cursor).toBeUndefined()
+      expect(phNode.timeSourceJoin).toBeUndefined()
+    })
+  })
 })

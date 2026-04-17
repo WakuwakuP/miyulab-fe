@@ -11,7 +11,7 @@
  * - merge-v2: limit が不足していれば引き上げ
  */
 
-import { getDefaultTimeColumn } from './completion'
+import { getDefaultTimeColumn, resolveOutputTable } from './completion'
 import type { PaginationCursor, QueryPlanV2, QueryPlanV2Node } from './nodes'
 
 export function patchPlanForFetch(
@@ -65,6 +65,35 @@ export function patchPlanForFetch(
                 value: cursor.value,
               },
             },
+          }
+        }
+
+        // FK→posts パターン: 自テーブルに時刻カラムがないが
+        // outputIdColumn が posts を指す場合、JOIN 経由でカーソルを push down する
+        if (cursor.field === 'created_at_ms' && node.outputIdColumn) {
+          const outputTable = resolveOutputTable(
+            node.table,
+            node.outputIdColumn,
+          )
+          if (outputTable === 'posts') {
+            const timeColumn = 'created_at_ms'
+            return {
+              ...entry,
+              node: {
+                ...node,
+                cursor: {
+                  column: timeColumn,
+                  op: cursorOp as '<' | '>',
+                  value: cursor.value,
+                },
+                timeSourceJoin: {
+                  foreignColumn: 'id',
+                  localColumn: node.outputIdColumn,
+                  table: 'posts',
+                  timeColumn,
+                },
+              },
+            }
           }
         }
       }
@@ -133,6 +162,35 @@ export function patchPlanForStreamingFetch(
                 value: cursor.value,
               },
             },
+          }
+        }
+
+        // FK→posts パターン: 自テーブルに時刻カラムがないが
+        // outputIdColumn が posts を指す場合、JOIN 経由でカーソルを push down する
+        if (cursor.field === 'created_at_ms' && node.outputIdColumn) {
+          const outputTable = resolveOutputTable(
+            node.table,
+            node.outputIdColumn,
+          )
+          if (outputTable === 'posts') {
+            const timeColumn = 'created_at_ms'
+            return {
+              ...entry,
+              node: {
+                ...node,
+                cursor: {
+                  column: timeColumn,
+                  op: cursorOp as '<' | '>',
+                  value: cursor.value,
+                },
+                timeSourceJoin: {
+                  foreignColumn: 'id',
+                  localColumn: node.outputIdColumn,
+                  table: 'posts',
+                  timeColumn,
+                },
+              },
+            }
           }
         }
       }

@@ -433,4 +433,147 @@ describe('compileGetIds', () => {
       expect(sql).toContain('0 AS created_at_ms')
     })
   })
+
+  describe('timeSourceJoin（FK→posts 経由の時刻カーソル最適化）', () => {
+    it('INNER JOIN posts が生成される', () => {
+      const node = makeNode({
+        outputIdColumn: 'post_id',
+        table: 'post_hashtags',
+        timeSourceJoin: {
+          foreignColumn: 'id',
+          localColumn: 'post_id',
+          table: 'posts',
+          timeColumn: 'created_at_ms',
+        },
+      })
+      const { sql } = compileGetIds(node, new Map())
+
+      expect(sql).toContain('INNER JOIN posts _tsj ON p.post_id = _tsj.id')
+    })
+
+    it('JOIN先の時刻カラムで SELECT される', () => {
+      const node = makeNode({
+        outputIdColumn: 'post_id',
+        table: 'post_hashtags',
+        timeSourceJoin: {
+          foreignColumn: 'id',
+          localColumn: 'post_id',
+          table: 'posts',
+          timeColumn: 'created_at_ms',
+        },
+      })
+      const { sql } = compileGetIds(node, new Map())
+
+      expect(sql).toContain('_tsj.created_at_ms AS created_at_ms')
+      expect(sql).not.toContain('0 AS created_at_ms')
+    })
+
+    it('JOIN先の時刻カラムで ORDER BY される', () => {
+      const node = makeNode({
+        outputIdColumn: 'post_id',
+        table: 'post_hashtags',
+        timeSourceJoin: {
+          foreignColumn: 'id',
+          localColumn: 'post_id',
+          table: 'posts',
+          timeColumn: 'created_at_ms',
+        },
+      })
+      const { sql } = compileGetIds(node, new Map())
+
+      expect(sql).toContain('ORDER BY _tsj.created_at_ms DESC')
+    })
+
+    it('cursor は JOIN先エイリアスで WHERE に追加される', () => {
+      const node = makeNode({
+        cursor: { column: 'created_at_ms', op: '<', value: 9999 },
+        outputIdColumn: 'post_id',
+        table: 'post_hashtags',
+        timeSourceJoin: {
+          foreignColumn: 'id',
+          localColumn: 'post_id',
+          table: 'posts',
+          timeColumn: 'created_at_ms',
+        },
+      })
+      const { sql, binds } = compileGetIds(node, new Map())
+
+      expect(sql).toContain('WHERE _tsj.created_at_ms < ?')
+      expect(binds).toContain(9999)
+    })
+
+    it('フィルタと cursor が AND で結合される', () => {
+      const upstreamRows = [
+        { createdAtMs: 0, id: 1, table: 'hashtags' },
+        { createdAtMs: 0, id: 2, table: 'hashtags' },
+      ]
+      const upstream = new Map([
+        [
+          'get-hashtags',
+          { hash: 'h1', rows: upstreamRows, sourceTable: 'hashtags' },
+        ],
+      ])
+      const node = makeNode({
+        cursor: { column: 'created_at_ms', op: '<', value: 5000 },
+        filters: [
+          {
+            column: 'hashtag_id',
+            op: 'IN',
+            table: 'post_hashtags',
+            upstreamSourceNodeId: 'get-hashtags',
+          },
+        ],
+        outputIdColumn: 'post_id',
+        table: 'post_hashtags',
+        timeSourceJoin: {
+          foreignColumn: 'id',
+          localColumn: 'post_id',
+          table: 'posts',
+          timeColumn: 'created_at_ms',
+        },
+      })
+      const { sql, binds } = compileGetIds(node, upstream)
+
+      expect(sql).toContain('WHERE')
+      expect(sql).toContain('p.hashtag_id IN (?, ?)')
+      expect(sql).toContain('_tsj.created_at_ms < ?')
+      const whereMatch = sql.match(/WHERE\s+(.+?)\s+ORDER/)
+      expect(whereMatch?.[1]).toContain(' AND ')
+      expect(binds).toEqual([1, 2, 5000])
+    })
+
+    it('LIMIT と組み合わせて正しく動作する', () => {
+      const node = makeNode({
+        cursor: { column: 'created_at_ms', op: '<', value: 9999 },
+        outputIdColumn: 'post_id',
+        table: 'post_hashtags',
+        timeSourceJoin: {
+          foreignColumn: 'id',
+          localColumn: 'post_id',
+          table: 'posts',
+          timeColumn: 'created_at_ms',
+        },
+      })
+      const { sql } = compileGetIds(node, new Map(), 50)
+
+      expect(sql).toContain('LIMIT 50')
+    })
+
+    it('dependentTables に JOIN先テーブルが含まれる', () => {
+      const node = makeNode({
+        outputIdColumn: 'post_id',
+        table: 'post_hashtags',
+        timeSourceJoin: {
+          foreignColumn: 'id',
+          localColumn: 'post_id',
+          table: 'posts',
+          timeColumn: 'created_at_ms',
+        },
+      })
+      const { dependentTables } = compileGetIds(node, new Map())
+
+      expect(dependentTables).toContain('post_hashtags')
+      expect(dependentTables).toContain('posts')
+    })
+  })
 })
