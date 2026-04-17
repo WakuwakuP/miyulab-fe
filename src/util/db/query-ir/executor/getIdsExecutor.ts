@@ -79,12 +79,12 @@ export function compileGetIds(
 
   // timeSourceJoin: FK→posts 経由で時刻カラムを取得する設定
   const tsj = node.timeSourceJoin
-  const tsjAlias = tsj ? '_tsj' : null
+  const tsjAlias = tsj ? '_time_src' : null
   // effectiveTimeCol: 完全修飾の時刻カラム式 (alias.column 形式)
-  // - timeSourceJoin あり: '_tsj.created_at_ms' 等
+  // - timeSourceJoin あり: '_time_src.created_at_ms' 等
   // - なし: 'p.created_at_ms' 等 (ローカルカラム)
   const effectiveTimeCol: string | null = tsjAlias
-    ? `${tsjAlias}.${tsj!.timeColumn}`
+    ? `${tsjAlias}.${tsj?.timeColumn}`
     : timeCol !== null && timeCol !== undefined
       ? `${alias}.${timeCol}`
       : null

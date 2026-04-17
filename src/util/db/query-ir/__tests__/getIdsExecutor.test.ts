@@ -448,7 +448,9 @@ describe('compileGetIds', () => {
       })
       const { sql } = compileGetIds(node, new Map())
 
-      expect(sql).toContain('INNER JOIN posts _tsj ON p.post_id = _tsj.id')
+      expect(sql).toContain(
+        'INNER JOIN posts _time_src ON p.post_id = _time_src.id',
+      )
     })
 
     it('JOIN先の時刻カラムで SELECT される', () => {
@@ -464,7 +466,7 @@ describe('compileGetIds', () => {
       })
       const { sql } = compileGetIds(node, new Map())
 
-      expect(sql).toContain('_tsj.created_at_ms AS created_at_ms')
+      expect(sql).toContain('_time_src.created_at_ms AS created_at_ms')
       expect(sql).not.toContain('0 AS created_at_ms')
     })
 
@@ -481,7 +483,7 @@ describe('compileGetIds', () => {
       })
       const { sql } = compileGetIds(node, new Map())
 
-      expect(sql).toContain('ORDER BY _tsj.created_at_ms DESC')
+      expect(sql).toContain('ORDER BY _time_src.created_at_ms DESC')
     })
 
     it('cursor は JOIN先エイリアスで WHERE に追加される', () => {
@@ -498,7 +500,7 @@ describe('compileGetIds', () => {
       })
       const { sql, binds } = compileGetIds(node, new Map())
 
-      expect(sql).toContain('WHERE _tsj.created_at_ms < ?')
+      expect(sql).toContain('WHERE _time_src.created_at_ms < ?')
       expect(binds).toContain(9999)
     })
 
@@ -536,7 +538,7 @@ describe('compileGetIds', () => {
 
       expect(sql).toContain('WHERE')
       expect(sql).toContain('p.hashtag_id IN (?, ?)')
-      expect(sql).toContain('_tsj.created_at_ms < ?')
+      expect(sql).toContain('_time_src.created_at_ms < ?')
       const whereMatch = sql.match(/WHERE\s+(.+?)\s+ORDER/)
       expect(whereMatch?.[1]).toContain(' AND ')
       expect(binds).toEqual([1, 2, 5000])

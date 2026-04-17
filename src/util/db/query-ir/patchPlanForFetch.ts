@@ -12,7 +12,47 @@
  */
 
 import { getDefaultTimeColumn, resolveOutputTable } from './completion'
-import type { PaginationCursor, QueryPlanV2, QueryPlanV2Node } from './nodes'
+import type {
+  GetIdsNode,
+  PaginationCursor,
+  QueryPlanV2,
+  QueryPlanV2Node,
+} from './nodes'
+
+/**
+ * FK→posts パターン検出: 自テーブルに時刻カラムがないが outputIdColumn が posts を
+ * 指す場合、timeSourceJoin 付きの get-ids ノードを返す。
+ * 該当しない場合は undefined を返す。
+ */
+function applyFkToPostsCursorPushDown(
+  entry: QueryPlanV2Node,
+  node: GetIdsNode,
+  cursor: PaginationCursor,
+  cursorOp: '<' | '>',
+): QueryPlanV2Node | undefined {
+  if (cursor.field !== 'created_at_ms' || !node.outputIdColumn) return undefined
+  const outputTable = resolveOutputTable(node.table, node.outputIdColumn)
+  if (outputTable !== 'posts') return undefined
+
+  const timeColumn = 'created_at_ms'
+  return {
+    ...entry,
+    node: {
+      ...node,
+      cursor: {
+        column: timeColumn,
+        op: cursorOp,
+        value: cursor.value,
+      },
+      timeSourceJoin: {
+        foreignColumn: 'id',
+        localColumn: node.outputIdColumn,
+        table: 'posts',
+        timeColumn,
+      },
+    },
+  }
+}
 
 export function patchPlanForFetch(
   plan: QueryPlanV2,
@@ -20,7 +60,7 @@ export function patchPlanForFetch(
   cursor?: PaginationCursor,
 ): QueryPlanV2 {
   // カーソル方向を SQL 演算子に変換
-  const cursorOp = cursor?.direction === 'before' ? '<' : '>'
+  const cursorOp: '<' | '>' = cursor?.direction === 'before' ? '<' : '>'
 
   return {
     ...plan,
@@ -61,41 +101,21 @@ export function patchPlanForFetch(
               ...node,
               cursor: {
                 column: col,
-                op: cursorOp as '<' | '>',
+                op: cursorOp,
                 value: cursor.value,
               },
             },
           }
         }
 
-        // FK→posts パターン: 自テーブルに時刻カラムがないが
-        // outputIdColumn が posts を指す場合、JOIN 経由でカーソルを push down する
-        if (cursor.field === 'created_at_ms' && node.outputIdColumn) {
-          const outputTable = resolveOutputTable(
-            node.table,
-            node.outputIdColumn,
-          )
-          if (outputTable === 'posts') {
-            const timeColumn = 'created_at_ms'
-            return {
-              ...entry,
-              node: {
-                ...node,
-                cursor: {
-                  column: timeColumn,
-                  op: cursorOp as '<' | '>',
-                  value: cursor.value,
-                },
-                timeSourceJoin: {
-                  foreignColumn: 'id',
-                  localColumn: node.outputIdColumn,
-                  table: 'posts',
-                  timeColumn,
-                },
-              },
-            }
-          }
-        }
+        // FK→posts パターン: JOIN 経由でカーソルを push down する
+        const fkPatched = applyFkToPostsCursorPushDown(
+          entry,
+          node,
+          cursor,
+          cursorOp,
+        )
+        if (fkPatched) return fkPatched
       }
       return entry
     }),
@@ -115,7 +135,7 @@ export function patchPlanForStreamingFetch(
   cursor: PaginationCursor,
   changedTables: ReadonlySet<string>,
 ): QueryPlanV2 {
-  const cursorOp = cursor.direction === 'before' ? '<' : '>'
+  const cursorOp: '<' | '>' = cursor.direction === 'before' ? '<' : '>'
 
   return {
     ...plan,
@@ -158,41 +178,21 @@ export function patchPlanForStreamingFetch(
               ...node,
               cursor: {
                 column: col,
-                op: cursorOp as '<' | '>',
+                op: cursorOp,
                 value: cursor.value,
               },
             },
           }
         }
 
-        // FK→posts パターン: 自テーブルに時刻カラムがないが
-        // outputIdColumn が posts を指す場合、JOIN 経由でカーソルを push down する
-        if (cursor.field === 'created_at_ms' && node.outputIdColumn) {
-          const outputTable = resolveOutputTable(
-            node.table,
-            node.outputIdColumn,
-          )
-          if (outputTable === 'posts') {
-            const timeColumn = 'created_at_ms'
-            return {
-              ...entry,
-              node: {
-                ...node,
-                cursor: {
-                  column: timeColumn,
-                  op: cursorOp as '<' | '>',
-                  value: cursor.value,
-                },
-                timeSourceJoin: {
-                  foreignColumn: 'id',
-                  localColumn: node.outputIdColumn,
-                  table: 'posts',
-                  timeColumn,
-                },
-              },
-            }
-          }
-        }
+        // FK→posts パターン: JOIN 経由でカーソルを push down する
+        const fkPatched = applyFkToPostsCursorPushDown(
+          entry,
+          node,
+          cursor,
+          cursorOp,
+        )
+        if (fkPatched) return fkPatched
       }
       return entry
     }),
