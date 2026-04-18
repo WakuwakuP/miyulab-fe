@@ -268,9 +268,11 @@ export type GetIdsNode = {
   cursor?: { column: string; op: '<' | '>'; value: number }
   /**
    * 時刻カラム取得のために JOIN するテーブル設定。
-   * 自テーブルに時刻カラムがない場合に、FK 経由で別テーブルの時刻カラムを
-   * SELECT / ORDER BY / カーソル push-down に使用する。
-   * patchPlanForFetch が自動設定する。
+   * 自テーブルに時刻カラムがない（`outputTimeColumn: null`）場合に、
+   * FK 経由で別テーブルの時刻カラムを SELECT / ORDER BY / カーソル push-down に使用する。
+   * `timeSourceJoin` が設定されている場合、`outputTimeColumn: null` であっても
+   * JOIN 先の `timeColumn` が時刻カラムとして優先される。
+   * `patchPlanForFetch` および `patchPlanForStreamingFetch` が自動設定する。
    */
   timeSourceJoin?: {
     /** JOIN するテーブル名 (e.g. 'posts') */
