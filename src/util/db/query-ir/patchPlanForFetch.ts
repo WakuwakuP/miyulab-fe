@@ -167,9 +167,9 @@ export function patchPlanForStreamingFetch(
             node.outputTimeColumn ??
             getDefaultTimeColumn(node.table) ??
             undefined
-        } else {
-          col = node.outputIdColumn ?? 'id'
         }
+        // cursor.field === 'created_at_ms' && outputTimeColumn === null:
+        // ID フォールバックより先に FK→posts 判定を優先する
 
         if (col) {
           return {
@@ -193,6 +193,25 @@ export function patchPlanForStreamingFetch(
           cursorOp,
         )
         if (fkPatched) return fkPatched
+
+        // 時刻カラムなし・FK→posts 非該当: ID ベースカーソルにフォールバック
+        if (
+          cursor.field === 'created_at_ms' &&
+          node.outputTimeColumn === null
+        ) {
+          const idCol = node.outputIdColumn ?? 'id'
+          return {
+            ...entry,
+            node: {
+              ...node,
+              cursor: {
+                column: idCol,
+                op: cursorOp,
+                value: cursor.value,
+              },
+            },
+          }
+        }
       }
       return entry
     }),

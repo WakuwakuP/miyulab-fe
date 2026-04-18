@@ -446,5 +446,86 @@ describe('patchPlanForStreamingFetch', () => {
       expect(phNode.cursor).toBeUndefined()
       expect(phNode.timeSourceJoin).toBeUndefined()
     })
+
+    it('outputTimeColumn: null かつ outputIdColumn=post_id の場合は ID フォールバックより先に timeSourceJoin が適用される', () => {
+      const plan: QueryPlanV2 = {
+        edges: [{ source: 'get-ph', target: 'output' }],
+        nodes: [
+          {
+            id: 'get-ph',
+            node: {
+              filters: [],
+              kind: 'get-ids',
+              outputIdColumn: 'post_id',
+              outputTimeColumn: null,
+              table: 'post_hashtags',
+            },
+          },
+          {
+            id: 'output',
+            node: {
+              kind: 'output-v2',
+              pagination: { limit: 50 },
+              sort: { direction: 'DESC', field: 'created_at_ms' },
+            },
+          },
+        ],
+        version: 2,
+      }
+      const changed = new Set(['post_hashtags'])
+      const patched = patchPlanForStreamingFetch(plan, 50, afterCursor, changed)
+      const ph = patched.nodes.find((n) => n.id === 'get-ph')
+      const phNode = ph?.node as GetIdsNode
+      // ID フォールバックではなく timeSourceJoin が適用されること
+      expect(phNode.cursor).toEqual({
+        column: 'created_at_ms',
+        op: '>',
+        value: 5000,
+      })
+      expect(phNode.timeSourceJoin).toEqual({
+        foreignColumn: 'id',
+        localColumn: 'post_id',
+        table: 'posts',
+        timeColumn: 'created_at_ms',
+      })
+    })
+
+    it('outputTimeColumn: null かつ FK→posts 非該当の場合は ID ベースカーソルにフォールバックする', () => {
+      const plan: QueryPlanV2 = {
+        edges: [{ source: 'get-tags', target: 'output' }],
+        nodes: [
+          {
+            id: 'get-tags',
+            node: {
+              filters: [],
+              kind: 'get-ids',
+              outputIdColumn: 'tag_id',
+              outputTimeColumn: null,
+              table: 'post_tags',
+            },
+          },
+          {
+            id: 'output',
+            node: {
+              kind: 'output-v2',
+              pagination: { limit: 20 },
+              sort: { direction: 'DESC', field: 'created_at_ms' },
+            },
+          },
+        ],
+        version: 2,
+      }
+      const changed = new Set(['post_tags'])
+      const patched = patchPlanForStreamingFetch(plan, 50, afterCursor, changed)
+      const getIds = patched.nodes.find((n) => n.node.kind === 'get-ids')
+      const node = getIds?.node as GetIdsNode
+      // FK→posts 非該当なので ID ベースカーソルにフォールバックする
+      expect(node.cursor).toEqual({
+        column: 'tag_id',
+        op: '>',
+        value: 5000,
+      })
+      expect(node.timeSourceJoin).toBeUndefined()
+    })
   })
 })
