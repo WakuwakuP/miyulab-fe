@@ -266,6 +266,24 @@ export type GetIdsNode = {
    * get-ids SQL の WHERE 句に `{column} {op} ?` として追加される。
    */
   cursor?: { column: string; op: '<' | '>'; value: number }
+  /**
+   * 時刻カラム取得のために JOIN するテーブル設定。
+   * 自テーブルに時刻カラムがない（`outputTimeColumn: null`）場合に、
+   * FK 経由で別テーブルの時刻カラムを SELECT / ORDER BY / カーソル push-down に使用する。
+   * `timeSourceJoin` が設定されている場合、`outputTimeColumn: null` であっても
+   * JOIN 先の `timeColumn` が時刻カラムとして優先される。
+   * `patchPlanForFetch` および `patchPlanForStreamingFetch` が自動設定する。
+   */
+  timeSourceJoin?: {
+    /** JOIN するテーブル名 (e.g. 'posts') */
+    table: string
+    /** 自テーブルの FK カラム (e.g. 'post_id') */
+    localColumn: string
+    /** JOIN先の PK カラム (e.g. 'id') */
+    foreignColumn: string
+    /** 時刻カラム名 (e.g. 'created_at_ms') */
+    timeColumn: string
+  }
   /** @deprecated FilterCondition.upstreamSourceNodeId を使用してください */
   inputBindings?: GetIdsInputBinding[]
   /** @deprecated FilterCondition.upstreamSourceNodeId を使用してください */

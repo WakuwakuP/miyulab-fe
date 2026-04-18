@@ -174,4 +174,144 @@ describe('patchPlanForFetch', () => {
     })
     expect(JSON.stringify(plan.nodes)).toBe(originalNodes)
   })
+
+  describe('FK→posts パターン (timeSourceJoin)', () => {
+    it('outputIdColumn=post_id の中間テーブルに timeSourceJoin と cursor が設定される', () => {
+      const plan: QueryPlanV2 = {
+        edges: [
+          { source: 'get-hashtags', target: 'get-post-hashtags' },
+          { source: 'get-post-hashtags', target: 'output' },
+        ],
+        nodes: [
+          {
+            id: 'get-hashtags',
+            node: {
+              filters: [
+                { column: 'name', op: 'IN', table: 'hashtags', value: ['foo'] },
+              ],
+              kind: 'get-ids',
+              table: 'hashtags',
+            },
+          },
+          {
+            id: 'get-post-hashtags',
+            node: {
+              filters: [
+                {
+                  column: 'hashtag_id',
+                  op: 'IN',
+                  table: 'post_hashtags',
+                  upstreamSourceNodeId: 'get-hashtags',
+                },
+              ],
+              kind: 'get-ids',
+              outputIdColumn: 'post_id',
+              table: 'post_hashtags',
+            },
+          },
+          {
+            id: 'output',
+            node: {
+              kind: 'output-v2',
+              pagination: { limit: 50 },
+              sort: { direction: 'DESC', field: 'created_at_ms' },
+            },
+          },
+        ],
+        version: 2,
+      }
+      const cursor: PaginationCursor = {
+        direction: 'before',
+        field: 'created_at_ms',
+        value: 9999,
+      }
+      const patched = patchPlanForFetch(plan, 50, cursor)
+      const ph = patched.nodes.find((n) => n.id === 'get-post-hashtags')
+      const phNode = ph?.node as GetIdsNode
+      expect(phNode.cursor).toEqual({
+        column: 'created_at_ms',
+        op: '<',
+        value: 9999,
+      })
+      expect(phNode.timeSourceJoin).toEqual({
+        foreignColumn: 'id',
+        localColumn: 'post_id',
+        table: 'posts',
+        timeColumn: 'created_at_ms',
+      })
+    })
+
+    it('outputIdColumn が post_id でない場合は timeSourceJoin を設定しない', () => {
+      const plan: QueryPlanV2 = {
+        edges: [{ source: 'get-nodes', target: 'output' }],
+        nodes: [
+          {
+            id: 'get-nodes',
+            node: {
+              filters: [],
+              kind: 'get-ids',
+              outputIdColumn: 'hashtag_id',
+              table: 'post_hashtags',
+            },
+          },
+          {
+            id: 'output',
+            node: {
+              kind: 'output-v2',
+              pagination: { limit: 50 },
+              sort: { direction: 'DESC', field: 'created_at_ms' },
+            },
+          },
+        ],
+        version: 2,
+      }
+      const cursor: PaginationCursor = {
+        direction: 'before',
+        field: 'created_at_ms',
+        value: 9999,
+      }
+      const patched = patchPlanForFetch(plan, 50, cursor)
+      const node = patched.nodes.find((n) => n.id === 'get-nodes')
+      const n = node?.node as GetIdsNode
+      expect(n.timeSourceJoin).toBeUndefined()
+      expect(n.cursor).toBeUndefined()
+    })
+
+    it('cursor が id フィールドの場合は timeSourceJoin を設定しない', () => {
+      const plan: QueryPlanV2 = {
+        edges: [{ source: 'get-ph', target: 'output' }],
+        nodes: [
+          {
+            id: 'get-ph',
+            node: {
+              filters: [],
+              kind: 'get-ids',
+              outputIdColumn: 'post_id',
+              table: 'post_hashtags',
+            },
+          },
+          {
+            id: 'output',
+            node: {
+              kind: 'output-v2',
+              pagination: { limit: 50 },
+              sort: { direction: 'DESC', field: 'id' },
+            },
+          },
+        ],
+        version: 2,
+      }
+      const cursor: PaginationCursor = {
+        direction: 'before',
+        field: 'id',
+        value: 100,
+      }
+      const patched = patchPlanForFetch(plan, 50, cursor)
+      const node = patched.nodes.find((n) => n.id === 'get-ph')
+      const n = node?.node as GetIdsNode
+      expect(n.timeSourceJoin).toBeUndefined()
+      // ID カーソルは outputIdColumn に直接 push down される
+      expect(n.cursor).toEqual({ column: 'post_id', op: '<', value: 100 })
+    })
+  })
 })

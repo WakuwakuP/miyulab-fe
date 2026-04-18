@@ -77,6 +77,18 @@ export function compileGetIds(
       ? (node.outputTimeColumn ?? getDefaultTimeColumn(node.table))
       : null
 
+  // timeSourceJoin: FK→posts 経由で時刻カラムを取得する設定
+  const tsj = node.timeSourceJoin
+  const tsjAlias = tsj ? '_time_src' : null
+  // effectiveTimeCol: 完全修飾の時刻カラム式 (alias.column 形式)
+  // - timeSourceJoin あり: '_time_src.created_at_ms' 等
+  // - なし: 'p.created_at_ms' 等 (ローカルカラム)
+  const effectiveTimeCol: string | null = tsjAlias
+    ? `${tsjAlias}.${tsj?.timeColumn}`
+    : timeCol !== null && timeCol !== undefined
+      ? `${alias}.${timeCol}`
+      : null
+
   const whereConditions: string[] = []
   const allBinds: BindValue[] = []
   const allJoins: JoinClause[] = []
@@ -141,7 +153,11 @@ export function compileGetIds(
 
   // --- カーソル条件 ---
   if (node.cursor) {
-    whereConditions.push(`${alias}.${node.cursor.column} ${node.cursor.op} ?`)
+    // timeSourceJoin がある場合は JOIN先エイリアスで時刻カラムを参照する
+    const cursorPrefix = tsjAlias ?? alias
+    whereConditions.push(
+      `${cursorPrefix}.${node.cursor.column} ${node.cursor.op} ?`,
+    )
     allBinds.push(node.cursor.value)
   }
 
@@ -156,6 +172,14 @@ export function compileGetIds(
   // --- GROUP BY (1:N JOIN がある場合) ---
   const needsGroupBy = uniqueJoins.some((j) => j.type === 'inner')
 
+  // --- timeSourceJoin: posts などへの追加 INNER JOIN ---
+  // (1:1 FK なので GROUP BY は不要)
+  let timeJoinStr = ''
+  if (tsjAlias && tsj) {
+    dependentTables.add(tsj.table)
+    timeJoinStr = `INNER JOIN ${tsj.table} ${tsjAlias} ON ${alias}.${tsj.localColumn} = ${tsjAlias}.${tsj.foreignColumn}`
+  }
+
   // --- SQL 組み立て ---
   const joinStr = buildJoinString(uniqueJoins)
   const whereStr =
@@ -163,17 +187,18 @@ export function compileGetIds(
   const groupByStr = needsGroupBy ? `GROUP BY ${alias}.${idCol}` : ''
   const limitStr = limit != null ? `LIMIT ${limit}` : ''
 
-  const selectTime = timeCol
-    ? `${alias}.${timeCol} AS created_at_ms`
+  const selectTime = effectiveTimeCol
+    ? `${effectiveTimeCol} AS created_at_ms`
     : '0 AS created_at_ms'
-  const orderBy = timeCol
-    ? `ORDER BY ${alias}.${timeCol} DESC`
+  const orderBy = effectiveTimeCol
+    ? `ORDER BY ${effectiveTimeCol} DESC`
     : `ORDER BY ${alias}.rowid DESC`
 
   const sql = [
     `SELECT ${alias}.${idCol} AS id, ${selectTime}`,
     `FROM ${node.table} ${alias}`,
     joinStr,
+    timeJoinStr,
     whereStr,
     groupByStr,
     orderBy,
