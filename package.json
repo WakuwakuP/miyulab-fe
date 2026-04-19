@@ -13,7 +13,7 @@
     "@radix-ui/react-switch": "^1.2.6",
     "@radix-ui/react-tabs": "^1.1.13",
     "@radix-ui/react-tooltip": "^1.2.8",
-    "@sqlite.org/sqlite-wasm": "^3.51.2-build8",
+    "@sqlite.org/sqlite-wasm": "^3.51.2-build9",
     "@vercel/analytics": "^2.0.1",
     "@xyflow/react": "^12.10.2",
     "@zenstackhq/orm": "^3.5.6",
