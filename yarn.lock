@@ -2771,14 +2771,14 @@ __metadata:
   languageName: node
   linkType: hard
 
-"axios@npm:1.13.4":
-  version: 1.13.4
-  resolution: "axios@npm:1.13.4"
+"axios@npm:1.15.0":
+  version: 1.15.0
+  resolution: "axios@npm:1.15.0"
   dependencies:
-    follow-redirects: "npm:^1.15.6"
-    form-data: "npm:^4.0.4"
-    proxy-from-env: "npm:^1.1.0"
-  checksum: 10c0/474c00b7d71f4de4ad562589dae6b615149df7c2583bbc5ebba96229f3f85bfb0775d23705338df072f12e48d3e85685c065a3cf6855d58968a672d19214c728
+    follow-redirects: "npm:^1.15.11"
+    form-data: "npm:^4.0.5"
+    proxy-from-env: "npm:^2.1.0"
+  checksum: 10c0/47e0f860e98d4d7aa145e89ce0cae00e1fb0f1d2485f065c21fce955ddb1dba4103a46bd0e47acd18a27208a7f62c96249e620db575521b92a968619ab133409
   languageName: node
   linkType: hard
 
@@ -4000,17 +4000,17 @@ __metadata:
   languageName: node
   linkType: hard
 
-"follow-redirects@npm:^1.15.6":
-  version: 1.15.6
-  resolution: "follow-redirects@npm:1.15.6"
+"follow-redirects@npm:^1.15.11":
+  version: 1.16.0
+  resolution: "follow-redirects@npm:1.16.0"
   peerDependenciesMeta:
     debug:
       optional: true
-  checksum: 10c0/9ff767f0d7be6aa6870c82ac79cf0368cd73e01bbc00e9eb1c2a16fbb198ec105e3c9b6628bb98e9f3ac66fe29a957b9645bcb9a490bb7aa0d35f908b6b85071
+  checksum: 10c0/a1e2900163e6f1b4d1ed5c221b607f41decbab65534c63fe7e287e40a5d552a6496e7d9d7d976fa4ba77b4c51c11e5e9f683f10b43011ea11e442ff128d0e181
   languageName: node
   linkType: hard
 
-"form-data@npm:^4.0.4, form-data@npm:^4.0.5":
+"form-data@npm:^4.0.5":
   version: 4.0.5
   resolution: "form-data@npm:4.0.5"
   dependencies:
@@ -5020,13 +5020,13 @@ __metadata:
   languageName: node
   linkType: hard
 
-"megalodon@npm:^10.2.4":
-  version: 10.2.4
-  resolution: "megalodon@npm:10.2.4"
+"megalodon@npm:^10.3.0":
+  version: 10.3.0
+  resolution: "megalodon@npm:10.3.0"
   dependencies:
     "@badgateway/oauth2-client": "npm:^2.4.2"
     "@types/ws": "npm:^8.18.1"
-    axios: "npm:1.13.4"
+    axios: "npm:1.15.0"
     dayjs: "npm:^1.11.13"
     events: "npm:^3.3.0"
     form-data: "npm:^4.0.5"
@@ -5034,7 +5034,7 @@ __metadata:
     object-assign-deep: "npm:^0.4.0"
     uuid: "npm:^11.1.0"
     ws: "npm:8.19.0"
-  checksum: 10c0/cb506a782a1f89384c63db53809fb6ef7e3c31e3bff7fefe9de702953530fcb6beb33e73b7b95463bce9d6ce10ea9ed8dea328ff4fc8a3f3e5b766c8011eae0b
+  checksum: 10c0/a7e992fae0ef8a1ab37c2281efdcacd82dab039df3be494e40230a6aa3cee806195f87b4f61a1050340515c2382d12a3bb9917bcf8ebaf65532615dff7d0dcb4
   languageName: node
   linkType: hard
 
@@ -5250,7 +5250,7 @@ __metadata:
     jquery: "npm:^4.0.0"
     lint-staged: "npm:^16.4.0"
     lucide-react: "npm:^1.8.0"
-    megalodon: "npm:^10.2.4"
+    megalodon: "npm:^10.3.0"
     mfm-js: "npm:^0.25.0"
     misskey-js: "npm:^2026.1.0-beta.0"
     next: "npm:^16.2.4"
@@ -5927,10 +5927,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"proxy-from-env@npm:^1.1.0":
-  version: 1.1.0
-  resolution: "proxy-from-env@npm:1.1.0"
-  checksum: 10c0/fe7dd8b1bdbbbea18d1459107729c3e4a2243ca870d26d34c2c1bcd3e4425b7bcc5112362df2d93cc7fb9746f6142b5e272fd1cc5c86ddf8580175186f6ad42b
+"proxy-from-env@npm:^2.1.0":
+  version: 2.1.0
+  resolution: "proxy-from-env@npm:2.1.0"
+  checksum: 10c0/ed01729fd4d094eab619cd7e17ce3698b3413b31eb102c4904f9875e677cd207392795d5b4adee9cec359dfd31c44d5ad7595a3a3ad51c40250e141512281c58
   languageName: node
   linkType: hard
 

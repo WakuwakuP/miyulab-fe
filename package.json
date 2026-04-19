@@ -28,7 +28,7 @@
     "html-react-parser": "^6.0.1",
     "jquery": "^4.0.0",
     "lucide-react": "^1.8.0",
-    "megalodon": "^10.2.4",
+    "megalodon": "^10.3.0",
     "mfm-js": "^0.25.0",
     "misskey-js": "^2026.1.0-beta.0",
     "next": "^16.2.4",
