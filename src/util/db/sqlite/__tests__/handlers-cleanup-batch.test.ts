@@ -61,7 +61,7 @@ describe('handleEnforceMaxLength — batching & modes', () => {
         [[1, 'home', 15005]],
         // timeline DELETE changes() — 10000 件削除
         [[10000]],
-        // notification GROUP BY: 空（bulk の場合呼ばれないが残予算 0 で skip）
+        // notification GROUP BY: budget=0 なので削除は発生しないが常に呼ばれる
       ])
 
       const result = handleEnforceMaxLength(db, 5, 100, { batchLimit: 10000 })
@@ -116,10 +116,8 @@ describe('handleEnforceMaxLength — batching & modes', () => {
 
     it('mode=emergency, targetRatio=0.5 で cnt の半分を残す (1000 → 500 削除)', () => {
       const { db, calls } = createMockDb([
-        // timeline GROUP BY (maxTimeline=100000 なので periodic 条件では超過なし) — 空
-        // emergency モードは HAVING cnt > maxTimeline では拾わないため、
-        // 実装的には `HAVING cnt > maxTimeline` をモード別に切り替えるか
-        // あるいは emergency では `maxTimeline` を 0 等にして全グループを拾う必要がある
+        // emergency モードでは threshold=0 になるため、
+        // periodic 条件では超過しないグループも対象になる
         [[1, 'home', 1000]],
         // timeline DELETE changes()
         [[500]],
@@ -149,7 +147,7 @@ describe('handleEnforceMaxLength — batching & modes', () => {
         [[1, 'home', 50000]],
         // timeline DELETE changes() — batchLimit=10000 ぶん
         [[10000]],
-        // (以降は呼ばれない想定 — 予算枯渇で notif はスキップ)
+        // notification GROUP BY (budget=0 なので削除は発生しないが hasRemainingExcess を確認)
       ])
 
       const result = handleEnforceMaxLength(db, 0, 0, {
