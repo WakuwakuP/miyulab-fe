@@ -78,9 +78,15 @@ describe('enforceMaxLength — batch loop', () => {
     expect(calls[0].opts?.kind).toBe('priority')
   })
 
-  it('options.kind 未指定のとき "other" が使われる', async () => {
+  it('options.kind 未指定のとき "priority" が使われる', async () => {
     const { calls } = installMockHandle([{ hasMore: false }])
     await enforceMaxLength()
+    expect(calls[0].opts?.kind).toBe('priority')
+  })
+
+  it('options.kind="other" を明示指定すれば sendCommand に伝播する', async () => {
+    const { calls } = installMockHandle([{ hasMore: false }])
+    await enforceMaxLength({ kind: 'other' })
     expect(calls[0].opts?.kind).toBe('other')
   })
 

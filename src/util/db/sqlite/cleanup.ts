@@ -55,7 +55,12 @@ const MAX_BATCH_ITERATIONS = 100
 type EnforceMaxLengthOptions = {
   mode?: 'periodic' | 'emergency'
   targetRatio?: number
-  /** Worker キューの振り分け (default 'other'; 緊急時は 'priority') */
+  /**
+   * Worker キューの振り分け (default 'priority')。
+   *
+   * クリーンアップは書き込み・タイムライン取得より優先して処理する方針のため、
+   * 基本的にすべて 'priority' で投入する。テスト等の特殊用途で上書き可能。
+   */
   kind?: 'priority' | 'other'
 }
 
@@ -80,7 +85,8 @@ type EnforceMaxLengthResponse = {
  *
  * @param options.mode - 'periodic' (default): 上限までの削減 / 'emergency': targetRatio までの削減
  * @param options.targetRatio - emergency モードで残す割合 (default 0.5)
- * @param options.kind - Worker キューの振り分け (default 'other'; 緊急時は 'priority')
+ * @param options.kind - Worker キューの振り分け (default 'priority')。
+ *   クリーンアップは他の書き込みより優先処理する方針のため、基本 'priority' を使う。
  */
 export async function enforceMaxLength(
   options?: EnforceMaxLengthOptions,
@@ -88,7 +94,7 @@ export async function enforceMaxLength(
   const handle = await getSqliteDb()
   const mode = options?.mode ?? 'periodic'
   const targetRatio = options?.targetRatio ?? EMERGENCY_TARGET_RATIO
-  const kind = options?.kind ?? 'other'
+  const kind = options?.kind ?? 'priority'
 
   const startedAt = Date.now()
   const totalDeleted = {
@@ -143,7 +149,9 @@ async function runPeriodicCleanup(): Promise<void> {
   console.info('[cleanup] Periodic cleanup started')
   const startedAt = Date.now()
   try {
-    await enforceMaxLength({ kind: 'other', mode: 'periodic' })
+    // 定期クリーンアップも priority キューで処理し、書き込み・タイムライン取得より優先する。
+    // other キューで投入すると bulkUpsertStatuses 等と競合して 90s timeout に巻き込まれやすい。
+    await enforceMaxLength({ kind: 'priority', mode: 'periodic' })
     console.info(
       `[cleanup] Periodic cleanup finished (elapsedMs=${Date.now() - startedAt})`,
     )
