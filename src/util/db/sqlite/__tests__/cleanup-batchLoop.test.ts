@@ -103,4 +103,47 @@ describe('enforceMaxLength — batch loop', () => {
       type: 'enforceMaxLength',
     })
   })
+
+  it('sendCommand が throw した場合、途中までの集計ログを出してから再 throw する', async () => {
+    // 1 回目は成功 (削除件数あり)、2 回目で throw
+    let callCount = 0
+    const sendCommand = vi.fn(async () => {
+      callCount++
+      if (callCount === 1) {
+        return {
+          deletedCounts: {
+            notifications: 3,
+            posts: 5,
+            timeline_entries: 10,
+          },
+          hasMore: true,
+          ok: true,
+        }
+      }
+      throw new Error(
+        'Worker request timed out (id=108, type=enforceMaxLength)',
+      )
+    })
+    vi.mocked(getSqliteDb).mockResolvedValue({
+      sendCommand,
+    } as unknown as Awaited<ReturnType<typeof getSqliteDb>>)
+
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    await expect(enforceMaxLength()).rejects.toThrow(/Worker request timed out/)
+
+    // `aborted (partial)` を含むログが呼ばれている
+    const abortedCalls = warnSpy.mock.calls.filter((args) =>
+      String(args[0]).includes('aborted (partial)'),
+    )
+    expect(abortedCalls.length).toBeGreaterThan(0)
+    const message = String(abortedCalls[0][0])
+    expect(message).toContain('timeline_entries=10')
+    expect(message).toContain('notifications=3')
+    expect(message).toContain('posts=5')
+    expect(message).toContain('total=18')
+    expect(message).toContain('iterations=2')
+
+    warnSpy.mockRestore()
+  })
 })

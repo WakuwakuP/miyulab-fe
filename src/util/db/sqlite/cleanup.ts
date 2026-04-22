@@ -104,37 +104,49 @@ export async function enforceMaxLength(
   }
 
   let iteration = 0
-  while (iteration < MAX_BATCH_ITERATIONS) {
-    iteration++
-    const result = (await handle.sendCommand(
-      {
-        mode,
-        targetRatio,
-        type: 'enforceMaxLength',
-      },
-      { kind },
-    )) as EnforceMaxLengthResponse | undefined
-    if (result?.deletedCounts) {
-      totalDeleted.timeline_entries += result.deletedCounts.timeline_entries
-      totalDeleted.notifications += result.deletedCounts.notifications
-      totalDeleted.posts += result.deletedCounts.posts
+  let aborted = false
+  let abortError: unknown
+  try {
+    while (iteration < MAX_BATCH_ITERATIONS) {
+      iteration++
+      const result = (await handle.sendCommand(
+        {
+          mode,
+          targetRatio,
+          type: 'enforceMaxLength',
+        },
+        { kind },
+      )) as EnforceMaxLengthResponse | undefined
+      if (result?.deletedCounts) {
+        totalDeleted.timeline_entries += result.deletedCounts.timeline_entries
+        totalDeleted.notifications += result.deletedCounts.notifications
+        totalDeleted.posts += result.deletedCounts.posts
+      }
+      if (!result?.hasMore) break
     }
-    if (!result?.hasMore) break
+    if (iteration >= MAX_BATCH_ITERATIONS) {
+      console.warn(
+        `[cleanup] enforceMaxLength reached MAX_BATCH_ITERATIONS (${MAX_BATCH_ITERATIONS}); remaining work will be processed on the next invocation.`,
+      )
+    }
+  } catch (error) {
+    aborted = true
+    abortError = error
+    throw error
+  } finally {
+    const elapsedMs = Date.now() - startedAt
+    const totalCount =
+      totalDeleted.timeline_entries +
+      totalDeleted.notifications +
+      totalDeleted.posts
+    const status = aborted ? 'aborted (partial)' : 'completed'
+    const summary = `[cleanup] enforceMaxLength ${status} (mode=${mode}, kind=${kind}, iterations=${iteration}, elapsedMs=${elapsedMs}, deleted: timeline_entries=${totalDeleted.timeline_entries}, notifications=${totalDeleted.notifications}, posts=${totalDeleted.posts}, total=${totalCount})`
+    if (aborted) {
+      console.warn(summary, abortError)
+    } else {
+      console.info(summary)
+    }
   }
-  if (iteration >= MAX_BATCH_ITERATIONS) {
-    console.warn(
-      `[cleanup] enforceMaxLength reached MAX_BATCH_ITERATIONS (${MAX_BATCH_ITERATIONS}); remaining work will be processed on the next invocation.`,
-    )
-  }
-
-  const elapsedMs = Date.now() - startedAt
-  const totalCount =
-    totalDeleted.timeline_entries +
-    totalDeleted.notifications +
-    totalDeleted.posts
-  console.info(
-    `[cleanup] enforceMaxLength completed (mode=${mode}, kind=${kind}, iterations=${iteration}, elapsedMs=${elapsedMs}, deleted: timeline_entries=${totalDeleted.timeline_entries}, notifications=${totalDeleted.notifications}, posts=${totalDeleted.posts}, total=${totalCount})`,
-  )
 }
 
 // ================================================================
@@ -148,14 +160,23 @@ async function runPeriodicCleanup(): Promise<void> {
   isPeriodicRunning = true
   console.info('[cleanup] Periodic cleanup started')
   const startedAt = Date.now()
+  let succeeded = false
   try {
     // 定期クリーンアップも priority キューで処理し、書き込み・タイムライン取得より優先する。
     // other キューで投入すると bulkUpsertStatuses 等と競合して 90s timeout に巻き込まれやすい。
     await enforceMaxLength({ kind: 'priority', mode: 'periodic' })
-    console.info(
-      `[cleanup] Periodic cleanup finished (elapsedMs=${Date.now() - startedAt})`,
-    )
+    succeeded = true
   } finally {
+    const elapsedMs = Date.now() - startedAt
+    if (succeeded) {
+      console.info(
+        `[cleanup] Periodic cleanup finished (elapsedMs=${elapsedMs})`,
+      )
+    } else {
+      console.warn(
+        `[cleanup] Periodic cleanup aborted (elapsedMs=${elapsedMs})`,
+      )
+    }
     isPeriodicRunning = false
   }
 }
@@ -240,7 +261,10 @@ async function triggerEmergencyCleanup(): Promise<void> {
       `[cleanup] Emergency cleanup completed (elapsedMs=${Date.now() - startedAt})`,
     )
   } catch (error) {
-    console.error('[cleanup] Emergency cleanup failed', error)
+    console.error(
+      `[cleanup] Emergency cleanup failed (elapsedMs=${Date.now() - startedAt})`,
+      error,
+    )
   } finally {
     isEmergencyRunning = false
     lastEmergencyFinishedAt = Date.now()
