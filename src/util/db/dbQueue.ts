@@ -27,7 +27,7 @@
 // 型定義
 // ================================================================
 
-export type QueueKind = 'other' | 'timeline'
+export type QueueKind = 'priority' | 'other' | 'timeline'
 
 /** キュー処理優先度プリセット名 */
 export type QueuePriorityPreset =
@@ -48,10 +48,14 @@ export type QueuePriorityConfig = {
 export type QueueSnapshot = {
   /** 記録時刻 (performance.now()) */
   time: number
+  /** 未完了の priority リクエスト数 (緊急クリーンアップ等、最優先処理) */
+  priority: number
   /** 未完了の other リクエスト数 (キュー待機中 + 実行中) */
   other: number
   /** 未完了のタイムライン取得リクエスト数 (キュー待機中 + 実行中) */
   timeline: number
+  /** 処理完了した priority 数の累計 */
+  priorityProcessed: number
   /** 処理完了した other 数の累計 */
   otherProcessed: number
   /** 処理完了したタイムライン取得数の累計 */
@@ -123,6 +127,9 @@ const snapshots: QueueSnapshot[] = []
 /** other キューの現在サイズ */
 let otherQueueSize = 0
 
+/** priority キューの現在サイズ */
+let priorityQueueSize = 0
+
 /** other キューに一度でもアイテムが入ったか */
 let otherHasBeenNonZero = false
 
@@ -131,6 +138,9 @@ let timelineQueueSize = 0
 
 /** 処理済み other 数（累計） */
 let otherProcessedTotal = 0
+
+/** 処理済み priority 数（累計） */
+let priorityProcessedTotal = 0
 
 /** 処理済みタイムライン取得数（累計） */
 let timelineProcessedTotal = 0
@@ -216,6 +226,8 @@ function recordSnapshot(): void {
         : FIXED_PRESETS[currentPriorityPreset],
     other: otherQueueSize,
     otherProcessed: otherProcessedTotal,
+    priority: priorityQueueSize,
+    priorityProcessed: priorityProcessedTotal,
     time: performance.now(),
     timeline: timelineQueueSize,
     timelineProcessed: timelineProcessedTotal,
@@ -279,7 +291,9 @@ export function stopSnapshotRecording(): void {
  * キューにアイテムが追加されたときに呼ぶ。
  */
 export function reportEnqueue(kind: QueueKind): void {
-  if (kind === 'other') {
+  if (kind === 'priority') {
+    priorityQueueSize++
+  } else if (kind === 'other') {
     otherQueueSize++
     if (!otherHasBeenNonZero) {
       otherHasBeenNonZero = true
@@ -294,7 +308,10 @@ export function reportEnqueue(kind: QueueKind): void {
  * キューからアイテムが処理完了したときに呼ぶ。
  */
 export function reportDequeue(kind: QueueKind): void {
-  if (kind === 'other') {
+  if (kind === 'priority') {
+    priorityQueueSize = Math.max(0, priorityQueueSize - 1)
+    priorityProcessedTotal++
+  } else if (kind === 'other') {
     otherQueueSize = Math.max(0, otherQueueSize - 1)
     otherProcessedTotal++
     if (otherQueueSize === 0) {
@@ -321,8 +338,16 @@ export function getSnapshots(): readonly QueueSnapshot[] {
 /**
  * 現在のキューサイズを返す。
  */
-export function getCurrentQueueSizes(): { other: number; timeline: number } {
-  return { other: otherQueueSize, timeline: timelineQueueSize }
+export function getCurrentQueueSizes(): {
+  priority: number
+  other: number
+  timeline: number
+} {
+  return {
+    other: otherQueueSize,
+    priority: priorityQueueSize,
+    timeline: timelineQueueSize,
+  }
 }
 
 /**

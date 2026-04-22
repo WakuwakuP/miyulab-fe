@@ -279,8 +279,20 @@ self.onmessage = (
 
       // ---- Cleanup ----
       case 'enforceMaxLength': {
-        const r = handleEnforceMaxLength(db)
-        sendResponse(msg.id, { ok: true }, r.changedTables)
+        const r = handleEnforceMaxLength(db, 100000, 100000, {
+          batchLimit: msg.batchLimit,
+          mode: msg.mode,
+          targetRatio: msg.targetRatio,
+        })
+        sendResponse(
+          msg.id,
+          {
+            deletedCounts: r.deletedCounts,
+            hasMore: r.hasMore,
+            ok: true,
+          },
+          r.changedTables,
+        )
         break
       }
 

@@ -416,9 +416,19 @@ async function initMainThreadFallback(
             command.value,
           )
           break
-        case 'enforceMaxLength':
-          result = handleEnforceMaxLength(db)
+        case 'enforceMaxLength': {
+          const r = handleEnforceMaxLength(db, 100000, 100000, {
+            batchLimit: command.batchLimit,
+            mode: command.mode,
+            targetRatio: command.targetRatio,
+          })
+          result = {
+            changedTables: r.changedTables,
+            deletedCounts: r.deletedCounts,
+            hasMore: r.hasMore,
+          }
           break
+        }
         case 'ensureLocalAccount':
           result = handleEnsureLocalAccount(
             db,

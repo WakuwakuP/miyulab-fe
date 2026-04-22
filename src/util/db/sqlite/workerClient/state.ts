@@ -33,6 +33,8 @@ export let worker: Worker | null = null
 export let nextId = 0
 export const pending = new Map<number, PendingRequest>()
 
+/** priority キュー（最優先 — 緊急クリーンアップ等） */
+export const priorityQueue: QueuedRequest[] = []
 /** other キュー（優先） */
 export const otherQueue: QueuedRequest[] = []
 /** タイムライン取得キュー */

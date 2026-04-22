@@ -193,6 +193,35 @@ export type UpdateNotificationStatusActionRequest = {
 export type EnforceMaxLengthRequest = {
   type: 'enforceMaxLength'
   id: number
+  /**
+   * クリーンアップモード。
+   * - 'periodic' (default): 各グループを `maxTimeline` / `maxNotifications` まで削減
+   * - 'emergency': 各グループを `cnt * targetRatio` 以下まで削減（キュー飽和時）
+   */
+  mode?: 'periodic' | 'emergency'
+  /**
+   * emergency モード時に残す割合 (0 < targetRatio <= 1)。
+   * 例: 0.5 なら現在件数の半分まで削除する。default 0.5。
+   */
+  targetRatio?: number
+  /**
+   * 1 バッチあたりの削除上限。default 10,000。
+   * 呼び出し側は `hasMore === false` になるまで繰り返し呼ぶ。
+   */
+  batchLimit?: number
+}
+
+/** MAX_LENGTH クリーンアップのレスポンス本体 */
+export type EnforceMaxLengthResult = {
+  ok: true
+  /** まだ処理すべき超過分が残っていれば true */
+  hasMore: boolean
+  /** 本バッチで削除した件数の内訳 */
+  deletedCounts: {
+    timeline_entries: number
+    notifications: number
+    posts: number
+  }
 }
 
 /** フォロー関係の同期 */
