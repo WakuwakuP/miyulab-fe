@@ -65,7 +65,10 @@ export type DbHandle = {
   ) => Promise<Record<number, unknown>>
 
   /** 専用ハンドラ呼び出し（Worker に委譲） */
-  sendCommand: (command: SendCommandPayload) => Promise<unknown>
+  sendCommand: (
+    command: SendCommandPayload,
+    opts?: { kind?: 'priority' | 'other' },
+  ) => Promise<unknown>
 
   /**
    * 指定した sessionTag を持つ未処理の timeline キューアイテムを除去する。

@@ -19,6 +19,7 @@ import {
   consecutiveOther,
   otherQueue,
   pending,
+  priorityQueue,
   setActiveRequest,
   setConsecutiveOther,
   TIMEOUT_BY_TYPE,
@@ -217,7 +218,12 @@ export function sendRequest(
       }
     }
 
-    const queue = kind === 'other' ? otherQueue : timelineQueue
+    const queue =
+      kind === 'priority'
+        ? priorityQueue
+        : kind === 'other'
+          ? otherQueue
+          : timelineQueue
     const enqueuedAt = kind === 'timeline' ? performance.now() : undefined
     queue.push({ enqueuedAt, kind, message, reject, resolve, sessionTag })
     reportEnqueue(kind)
@@ -231,22 +237,28 @@ export function sendRequest(
 function processQueue(): void {
   if (activeRequest || !worker) return
 
-  // other キューを優先するが、timeline キューの飢餓を防ぐため
-  // maxConsecutiveOther 回連続処理したら timeline に譲る
-  const maxConsecutive = getMaxConsecutiveOther(
-    otherQueue.length,
-    timelineQueue.length,
-  )
+  // priority キューは常に最優先で処理する（maxConsecutiveOther の制約外）
   let next: QueuedRequest | undefined
-  if (
-    otherQueue.length > 0 &&
-    (timelineQueue.length === 0 || consecutiveOther < maxConsecutive)
-  ) {
-    next = otherQueue.shift()
-    setConsecutiveOther(consecutiveOther + 1)
-  } else if (timelineQueue.length > 0) {
-    next = timelineQueue.shift()
-    setConsecutiveOther(0)
+  if (priorityQueue.length > 0) {
+    next = priorityQueue.shift()
+    // priority 処理は consecutiveOther カウンタに影響させない
+  } else {
+    // other キューを優先するが、timeline キューの飢餓を防ぐため
+    // maxConsecutiveOther 回連続処理したら timeline に譲る
+    const maxConsecutive = getMaxConsecutiveOther(
+      otherQueue.length,
+      timelineQueue.length,
+    )
+    if (
+      otherQueue.length > 0 &&
+      (timelineQueue.length === 0 || consecutiveOther < maxConsecutive)
+    ) {
+      next = otherQueue.shift()
+      setConsecutiveOther(consecutiveOther + 1)
+    } else if (timelineQueue.length > 0) {
+      next = timelineQueue.shift()
+      setConsecutiveOther(0)
+    }
   }
   if (!next) return
   setActiveRequest(true)

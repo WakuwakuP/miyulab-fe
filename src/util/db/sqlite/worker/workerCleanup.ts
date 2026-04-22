@@ -1,5 +1,11 @@
 /**
  * Worker 側: クリーンアップ処理
+ *
+ * 1 呼び出し = 1 バッチ設計。呼び出し側は `hasMore === false` になるまで繰り返す。
+ *
+ * 優先順: (a) timeline_entries 超過分 → (b) notifications 超過分 → (c) 孤立 posts。
+ * `batchLimit` (default 10,000) を超えないように 1 回の呼び出しで削除する。
+ * これにより単一トランザクションが肥大化してタイムアウトする問題を回避する。
  */
 
 import type { TableName } from '../protocol'
@@ -14,79 +20,244 @@ type DbExec = {
   ) => unknown
 }
 
-type HandlerResult = { changedTables: TableName[] }
+/** 1 バッチあたりの削除上限（default） */
+const DEFAULT_BATCH_LIMIT = 10_000
+
+export type EnforceMaxLengthOptions = {
+  /** 'periodic' (default) または 'emergency' */
+  mode?: 'periodic' | 'emergency'
+  /** emergency モードで各グループに残す割合 (0 < x <= 1)。default 0.5 */
+  targetRatio?: number
+  /** 1 バッチあたりの削除上限。default 10,000 */
+  batchLimit?: number
+}
+
+export type EnforceMaxLengthHandlerResult = {
+  changedTables: TableName[]
+  hasMore: boolean
+  deletedCounts: {
+    timeline_entries: number
+    notifications: number
+    posts: number
+  }
+}
+
+function readChanges(db: DbExec): number {
+  const rows = db.exec('SELECT changes();', {
+    returnValue: 'resultRows',
+  }) as number[][]
+  if (rows.length > 0 && rows[0] !== undefined) {
+    return rows[0][0] ?? 0
+  }
+  return 0
+}
 
 /**
- * MAX_LENGTH を超えるデータを削除
- *
- * タイムラインと通知それぞれに個別の上限を設定可能。
- * Worker 側には環境変数がないため、引数で受け取る。
- * デフォルト値はそれぞれ 100000。
- *
- * 孤立 posts の削除はバッチ単位で行い、長時間ロックを防止する。
+ * (local_account_id, timeline_key) グループで超過 1 件以上あるか確認しつつ 1 バッチ削除する。
+ * 戻り値は { deleted, issuedDelete, remainingBudget, hasRemainingExcess }。
  */
+function processTimelineBatch(
+  db: DbExec,
+  maxTimeline: number,
+  mode: 'periodic' | 'emergency',
+  targetRatio: number,
+  budget: number,
+): {
+  deleted: number
+  issuedDelete: boolean
+  remainingBudget: number
+  hasRemainingExcess: boolean
+} {
+  // emergency モードでは maxTimeline の制限を外して全グループを対象とする
+  // (ターゲットは cnt * targetRatio で決まる)。HAVING の閾値は 0 にする。
+  const havingThreshold = mode === 'emergency' ? 0 : maxTimeline
 
-/** 孤立 posts 削除の 1 バッチあたりの上限 */
-const ORPHAN_DELETE_BATCH = 1000
+  // 超過のあるグループを列挙
+  const groups = db.exec(
+    'SELECT local_account_id, timeline_key, COUNT(*) as cnt FROM timeline_entries GROUP BY local_account_id, timeline_key HAVING cnt > ?;',
+    { bind: [havingThreshold], returnValue: 'resultRows' },
+  ) as (number | string)[][]
 
+  let deleted = 0
+  let issuedDelete = false
+  let remaining = budget
+  let hasRemainingExcess = false
+
+  for (const [laId, tlKey, cntRaw] of groups) {
+    const cnt = cntRaw as number
+    // emergency モード: cnt * targetRatio を残す → 超過 = cnt - floor(cnt * targetRatio)
+    // periodic モード: maxTimeline を残す → 超過 = cnt - maxTimeline
+    const target =
+      mode === 'emergency' ? Math.floor(cnt * targetRatio) : maxTimeline
+    const excess = cnt - target
+    if (excess <= 0) continue
+
+    if (remaining <= 0) {
+      hasRemainingExcess = true
+      break
+    }
+
+    const limit = Math.min(excess, remaining)
+    db.exec(
+      `DELETE FROM timeline_entries WHERE id IN (
+        SELECT id FROM timeline_entries
+        WHERE local_account_id = ? AND timeline_key = ?
+        ORDER BY created_at_ms ASC
+        LIMIT ?
+      );`,
+      { bind: [laId, tlKey, limit] },
+    )
+    issuedDelete = true
+    const changed = readChanges(db)
+    deleted += changed
+    remaining -= limit
+    if (excess > limit) {
+      hasRemainingExcess = true
+    }
+  }
+
+  return {
+    deleted,
+    hasRemainingExcess,
+    issuedDelete,
+    remainingBudget: remaining,
+  }
+}
+
+function processNotificationsBatch(
+  db: DbExec,
+  maxNotifications: number,
+  mode: 'periodic' | 'emergency',
+  targetRatio: number,
+  budget: number,
+): {
+  deleted: number
+  issuedDelete: boolean
+  remainingBudget: number
+  hasRemainingExcess: boolean
+} {
+  const havingThreshold = mode === 'emergency' ? 0 : maxNotifications
+
+  const groups = db.exec(
+    'SELECT local_account_id, COUNT(*) as cnt FROM notifications GROUP BY local_account_id HAVING cnt > ?;',
+    { bind: [havingThreshold], returnValue: 'resultRows' },
+  ) as number[][]
+
+  let deleted = 0
+  let issuedDelete = false
+  let remaining = budget
+  let hasRemainingExcess = false
+
+  for (const [laId, cnt] of groups) {
+    const target =
+      mode === 'emergency' ? Math.floor(cnt * targetRatio) : maxNotifications
+    const excess = cnt - target
+    if (excess <= 0) continue
+
+    if (remaining <= 0) {
+      hasRemainingExcess = true
+      break
+    }
+
+    const limit = Math.min(excess, remaining)
+    db.exec(
+      `DELETE FROM notifications WHERE id IN (
+        SELECT id FROM notifications
+        WHERE local_account_id = ?
+        ORDER BY created_at_ms ASC
+        LIMIT ?
+      );`,
+      { bind: [laId, limit] },
+    )
+    issuedDelete = true
+    const changed = readChanges(db)
+    deleted += changed
+    remaining -= limit
+    if (excess > limit) {
+      hasRemainingExcess = true
+    }
+  }
+
+  return {
+    deleted,
+    hasRemainingExcess,
+    issuedDelete,
+    remainingBudget: remaining,
+  }
+}
+
+/**
+ * MAX_LENGTH を超えるデータを 1 バッチ削除する。
+ *
+ * 優先順: (a) timeline_entries → (b) notifications → (c) 孤立 posts。
+ * `batchLimit` を超える作業が残っている場合 `hasMore: true` を返し、
+ * 呼び出し側は `hasMore === false` になるまで繰り返し呼び出す。
+ *
+ * 後方互換: `options` を省略すると従来の periodic モード相当で動作する。
+ */
 export function handleEnforceMaxLength(
   db: DbExec,
   maxTimeline = 100000,
   maxNotifications = 100000,
-): HandlerResult {
+  options: EnforceMaxLengthOptions = {},
+): EnforceMaxLengthHandlerResult {
+  const mode = options.mode ?? 'periodic'
+  const targetRatio = options.targetRatio ?? 0.5
+  const batchLimit = options.batchLimit ?? DEFAULT_BATCH_LIMIT
+
   const changedTables: TableName[] = []
+  const deletedCounts = {
+    notifications: 0,
+    posts: 0,
+    timeline_entries: 0,
+  }
+  let hasMore = false
   let needOrphanCleanup = false
 
+  // Phase 1: timeline_entries + notifications を 1 トランザクションで処理
   db.exec('BEGIN;')
   try {
-    // 1. timeline_entries: 各 (local_account_id, timeline_key) グループで上限チェック
-    const groups = db.exec(
-      'SELECT local_account_id, timeline_key, COUNT(*) as cnt FROM timeline_entries GROUP BY local_account_id, timeline_key HAVING cnt > ?;',
-      { bind: [maxTimeline], returnValue: 'resultRows' },
-    ) as (number | string)[][]
-
-    for (const [laId, tlKey, cnt] of groups) {
-      const excess = (cnt as number) - maxTimeline
-      if (excess > 0) {
-        db.exec(
-          `DELETE FROM timeline_entries WHERE id IN (
-            SELECT id FROM timeline_entries
-            WHERE local_account_id = ? AND timeline_key = ?
-            ORDER BY created_at_ms ASC
-            LIMIT ?
-          );`,
-          { bind: [laId, tlKey, excess] },
-        )
-        needOrphanCleanup = true
+    const tlResult = processTimelineBatch(
+      db,
+      maxTimeline,
+      mode,
+      targetRatio,
+      batchLimit,
+    )
+    deletedCounts.timeline_entries = tlResult.deleted
+    if (tlResult.issuedDelete) {
+      needOrphanCleanup = true
+      if (!changedTables.includes('timeline_entries')) {
+        changedTables.push('timeline_entries')
       }
     }
 
-    // 2. notifications: 各 local_account_id で上限チェック
-    const notifGroups = db.exec(
-      'SELECT local_account_id, COUNT(*) as cnt FROM notifications GROUP BY local_account_id HAVING cnt > ?;',
-      { bind: [maxNotifications], returnValue: 'resultRows' },
-    ) as number[][]
-
-    for (const [laId, cnt] of notifGroups) {
-      const excess = cnt - maxNotifications
-      if (excess > 0) {
-        db.exec(
-          `DELETE FROM notifications WHERE id IN (
-            SELECT id FROM notifications
-            WHERE local_account_id = ?
-            ORDER BY created_at_ms ASC
-            LIMIT ?
-          );`,
-          { bind: [laId, excess] },
-        )
+    const notifBudget = tlResult.remainingBudget
+    if (notifBudget > 0) {
+      const notifResult = processNotificationsBatch(
+        db,
+        maxNotifications,
+        mode,
+        targetRatio,
+        notifBudget,
+      )
+      deletedCounts.notifications = notifResult.deleted
+      if (notifResult.issuedDelete) {
         needOrphanCleanup = true
+        if (!changedTables.includes('notifications')) {
+          changedTables.push('notifications')
+        }
       }
-    }
-
-    if (notifGroups.length > 0) {
-      if (!changedTables.includes('notifications')) {
-        changedTables.push('notifications')
+      if (
+        tlResult.hasRemainingExcess ||
+        notifResult.hasRemainingExcess ||
+        notifResult.remainingBudget <= 0
+      ) {
+        hasMore = true
       }
+    } else {
+      // 予算枯渇: notifications は次回回し
+      hasMore = true
     }
 
     db.exec('COMMIT;')
@@ -95,42 +266,42 @@ export function handleEnforceMaxLength(
     throw e
   }
 
-  // 孤立 posts をバッチ削除（トランザクション外で段階的に実行）
+  // Phase 2: 孤立 posts を 1 バッチだけ削除（短いトランザクション）
+  // timeline/notifications のいずれかで削除があった場合のみ実行する。
+  // 削除件数がバッチ上限に達した場合は次回呼び出しで続きを処理する。
   if (needOrphanCleanup) {
-    let deletedInBatch: number
-    do {
-      db.exec('BEGIN;')
-      try {
-        db.exec(
-          `DELETE FROM posts WHERE id IN (
-            SELECT p.id FROM posts p
-            WHERE NOT EXISTS (
-              SELECT 1 FROM timeline_entries te WHERE te.post_id = p.id
-            ) AND NOT EXISTS (
-              SELECT 1 FROM notifications n WHERE n.related_post_id = p.id
-            )
-            LIMIT ?
-          );`,
-          { bind: [ORPHAN_DELETE_BATCH] },
-        )
-        const changesRows = db.exec('SELECT changes();', {
-          returnValue: 'resultRows',
-        }) as number[][]
-        deletedInBatch =
-          changesRows.length > 0 && changesRows[0] !== undefined
-            ? changesRows[0][0]
-            : 0
-        db.exec('COMMIT;')
-      } catch (e) {
-        db.exec('ROLLBACK;')
-        throw e
-      }
-    } while (deletedInBatch >= ORPHAN_DELETE_BATCH)
+    db.exec('BEGIN;')
+    let orphanDeleted = 0
+    try {
+      db.exec(
+        `DELETE FROM posts WHERE id IN (
+          SELECT p.id FROM posts p
+          WHERE NOT EXISTS (
+            SELECT 1 FROM timeline_entries te WHERE te.post_id = p.id
+          ) AND NOT EXISTS (
+            SELECT 1 FROM notifications n WHERE n.related_post_id = p.id
+          )
+          LIMIT ?
+        );`,
+        { bind: [batchLimit] },
+      )
+      orphanDeleted = readChanges(db)
+      db.exec('COMMIT;')
+    } catch (e) {
+      db.exec('ROLLBACK;')
+      throw e
+    }
 
+    deletedCounts.posts = orphanDeleted
+    // DELETE を発行した時点で posts テーブル変更として扱う（後方互換）
     if (!changedTables.includes('posts')) {
       changedTables.push('posts')
     }
+    // バッチ上限いっぱいまで削除した場合、まだ孤立 posts が残っている可能性あり
+    if (orphanDeleted >= batchLimit) {
+      hasMore = true
+    }
   }
 
-  return { changedTables }
+  return { changedTables, deletedCounts, hasMore }
 }
