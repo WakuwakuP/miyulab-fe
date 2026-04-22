@@ -217,6 +217,7 @@ export function handleEnforceMaxLength(
     )
   }
   const batchLimit = Math.floor(rawBatchLimit)
+  // floor が 0 になるケース (0 < rawBatchLimit < 1) を防ぐ
   if (batchLimit <= 0) {
     throw new RangeError(
       `handleEnforceMaxLength: options.batchLimit must resolve to at least 1 after normalization, got ${String(rawBatchLimit)}`,
