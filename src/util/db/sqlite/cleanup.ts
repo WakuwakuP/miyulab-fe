@@ -278,7 +278,11 @@ function startSaturationWatcher(): () => void {
 // テスト用エクスポート（内部状態のリセット）
 // ================================================================
 
-/** @internal テストからのみ使用する */
+/**
+ * @internal テストからのみ使用する。
+ * cleanup モジュールの全内部状態（実行中フラグ・タイマー・飽和監視インターバル）を
+ * リセットする。テストケース間の状態リークを防ぐために各テスト後に呼び出す。
+ */
 export function __resetCleanupStateForTest(): void {
   isPeriodicRunning = false
   isEmergencyRunning = false
