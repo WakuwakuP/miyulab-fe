@@ -103,6 +103,11 @@ export async function enforceMaxLength(
     )) as EnforceMaxLengthResponse | undefined
     if (!result?.hasMore) break
   }
+  if (iteration >= MAX_BATCH_ITERATIONS) {
+    console.warn(
+      `[cleanup] enforceMaxLength reached MAX_BATCH_ITERATIONS (${MAX_BATCH_ITERATIONS}); remaining work will be processed on the next invocation.`,
+    )
+  }
 }
 
 // ================================================================
@@ -212,44 +217,60 @@ async function triggerEmergencyCleanup(): Promise<void> {
  * - 起動から INITIAL_GRACE_MS が経過しており
  * - 前回緊急クリーンアップから EMERGENCY_COOLDOWN_MS が経過している
  * 場合に緊急クリーンアップを発火する。
+ *
+ * 既に監視ループが起動している場合は新しいループを起動せず、既存を流用する。
+ * 戻り値の関数で停止できる（参照カウント方式で最後の停止関数呼び出し時に実際に停止）。
  */
+let saturationWatcherRefCount = 0
+let saturationWatcherIntervalId: ReturnType<typeof setInterval> | null = null
+
 function startSaturationWatcher(): () => void {
-  const startedAt = Date.now()
-  let saturatedSince: number | null = null
-  let stopped = false
+  saturationWatcherRefCount++
+  if (saturationWatcherIntervalId === null) {
+    const startedAt = Date.now()
+    let saturatedSince: number | null = null
 
-  const intervalId: ReturnType<typeof setInterval> = setInterval(() => {
-    if (stopped) return
-    const now = Date.now()
+    saturationWatcherIntervalId = setInterval(() => {
+      const now = Date.now()
 
-    if (!isTimelineQueueSaturated()) {
+      if (!isTimelineQueueSaturated()) {
+        saturatedSince = null
+        return
+      }
+
+      if (saturatedSince === null) {
+        saturatedSince = now
+        return
+      }
+
+      if (now - saturatedSince < SATURATION_DURATION_MS) return
+      if (now - startedAt < INITIAL_GRACE_MS) return
+      if (isEmergencyRunning) return
+      if (
+        lastEmergencyFinishedAt > 0 &&
+        now - lastEmergencyFinishedAt < EMERGENCY_COOLDOWN_MS
+      ) {
+        return
+      }
+
+      // 発火条件を満たした: 連続飽和カウンタをリセットして発火
       saturatedSince = null
-      return
-    }
+      void triggerEmergencyCleanup()
+    }, SATURATION_TICK_MS)
+  }
 
-    if (saturatedSince === null) {
-      saturatedSince = now
-      return
-    }
-
-    if (now - saturatedSince < SATURATION_DURATION_MS) return
-    if (now - startedAt < INITIAL_GRACE_MS) return
-    if (isEmergencyRunning) return
-    if (
-      lastEmergencyFinishedAt > 0 &&
-      now - lastEmergencyFinishedAt < EMERGENCY_COOLDOWN_MS
-    ) {
-      return
-    }
-
-    // 発火条件を満たした: 連続飽和カウンタをリセットして発火
-    saturatedSince = null
-    void triggerEmergencyCleanup()
-  }, SATURATION_TICK_MS)
-
+  let stopped = false
   return () => {
+    if (stopped) return
     stopped = true
-    clearInterval(intervalId)
+    saturationWatcherRefCount = Math.max(0, saturationWatcherRefCount - 1)
+    if (
+      saturationWatcherRefCount === 0 &&
+      saturationWatcherIntervalId !== null
+    ) {
+      clearInterval(saturationWatcherIntervalId)
+      saturationWatcherIntervalId = null
+    }
   }
 }
 
