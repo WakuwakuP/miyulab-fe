@@ -41,6 +41,7 @@ import {
   initTimer,
   otherQueue,
   pending,
+  priorityQueue,
   setActiveRequest,
   setConsecutiveOther,
   setInitPromise,
@@ -347,15 +348,22 @@ export function fetchTimeline(
 
 /**
  * 専用ハンドラ呼び出し — Worker に委譲するコマンドを送信する。
+ *
+ * @param command - Worker に送信するコマンドペイロード
+ * @param opts.kind - キュー振り分け。default 'other'。
+ *   'priority' を指定すると other/timeline より最優先で処理される（緊急クリーンアップ等）。
  */
-export function sendCommand(command: SendCommandPayload): Promise<unknown> {
+export function sendCommand(
+  command: SendCommandPayload,
+  opts?: { kind?: QueueKind },
+): Promise<unknown> {
   const id = incrementNextId()
   const message = { ...command, id } as {
     type: string
     id: number
     [key: string]: unknown
   }
-  return sendRequest(message, 'other')
+  return sendRequest(message, opts?.kind ?? 'other')
 }
 
 /**
@@ -372,6 +380,10 @@ export function terminateWorker(): void {
   }
   pending.clear()
   // キュー内の未送信リクエストを拒否してクリア（stats カウンタも減算）
+  for (const queued of priorityQueue) {
+    reportDequeue('priority')
+    queued.reject(new Error('Worker terminated'))
+  }
   for (const queued of otherQueue) {
     reportDequeue('other')
     queued.reject(new Error('Worker terminated'))
@@ -380,6 +392,7 @@ export function terminateWorker(): void {
     reportDequeue('timeline')
     queued.reject(new Error('Worker terminated'))
   }
+  priorityQueue.length = 0
   otherQueue.length = 0
   timelineQueue.length = 0
   timelineDedup.clear()
