@@ -90,6 +90,13 @@ export async function enforceMaxLength(
   const targetRatio = options?.targetRatio ?? EMERGENCY_TARGET_RATIO
   const kind = options?.kind ?? 'other'
 
+  const startedAt = Date.now()
+  const totalDeleted = {
+    notifications: 0,
+    posts: 0,
+    timeline_entries: 0,
+  }
+
   let iteration = 0
   while (iteration < MAX_BATCH_ITERATIONS) {
     iteration++
@@ -101,6 +108,11 @@ export async function enforceMaxLength(
       },
       { kind },
     )) as EnforceMaxLengthResponse | undefined
+    if (result?.deletedCounts) {
+      totalDeleted.timeline_entries += result.deletedCounts.timeline_entries
+      totalDeleted.notifications += result.deletedCounts.notifications
+      totalDeleted.posts += result.deletedCounts.posts
+    }
     if (!result?.hasMore) break
   }
   if (iteration >= MAX_BATCH_ITERATIONS) {
@@ -108,6 +120,15 @@ export async function enforceMaxLength(
       `[cleanup] enforceMaxLength reached MAX_BATCH_ITERATIONS (${MAX_BATCH_ITERATIONS}); remaining work will be processed on the next invocation.`,
     )
   }
+
+  const elapsedMs = Date.now() - startedAt
+  const totalCount =
+    totalDeleted.timeline_entries +
+    totalDeleted.notifications +
+    totalDeleted.posts
+  console.info(
+    `[cleanup] enforceMaxLength completed (mode=${mode}, kind=${kind}, iterations=${iteration}, elapsedMs=${elapsedMs}, deleted: timeline_entries=${totalDeleted.timeline_entries}, notifications=${totalDeleted.notifications}, posts=${totalDeleted.posts}, total=${totalCount})`,
+  )
 }
 
 // ================================================================
@@ -119,8 +140,13 @@ let isPeriodicRunning = false
 async function runPeriodicCleanup(): Promise<void> {
   if (isPeriodicRunning) return
   isPeriodicRunning = true
+  console.info('[cleanup] Periodic cleanup started')
+  const startedAt = Date.now()
   try {
     await enforceMaxLength({ kind: 'other', mode: 'periodic' })
+    console.info(
+      `[cleanup] Periodic cleanup finished (elapsedMs=${Date.now() - startedAt})`,
+    )
   } finally {
     isPeriodicRunning = false
   }
@@ -190,6 +216,7 @@ let lastEmergencyFinishedAt = 0
 async function triggerEmergencyCleanup(): Promise<void> {
   if (isEmergencyRunning) return
   isEmergencyRunning = true
+  const startedAt = Date.now()
   try {
     console.warn(
       '[cleanup] Queue saturation persisted; triggering emergency cleanup (targetRatio=' +
@@ -201,7 +228,9 @@ async function triggerEmergencyCleanup(): Promise<void> {
       mode: 'emergency',
       targetRatio: EMERGENCY_TARGET_RATIO,
     })
-    console.info('[cleanup] Emergency cleanup completed')
+    console.info(
+      `[cleanup] Emergency cleanup completed (elapsedMs=${Date.now() - startedAt})`,
+    )
   } catch (error) {
     console.error('[cleanup] Emergency cleanup failed', error)
   } finally {
