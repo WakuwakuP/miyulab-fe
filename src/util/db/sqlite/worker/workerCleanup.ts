@@ -203,7 +203,25 @@ export function handleEnforceMaxLength(
 ): EnforceMaxLengthHandlerResult {
   const mode = options.mode ?? 'periodic'
   const targetRatio = options.targetRatio ?? 0.5
-  const batchLimit = options.batchLimit ?? DEFAULT_BATCH_LIMIT
+
+  if (!Number.isFinite(targetRatio) || targetRatio <= 0 || targetRatio > 1) {
+    throw new RangeError(
+      `handleEnforceMaxLength: options.targetRatio must satisfy 0 < targetRatio <= 1, got ${String(targetRatio)}`,
+    )
+  }
+
+  const rawBatchLimit = options.batchLimit ?? DEFAULT_BATCH_LIMIT
+  if (!Number.isFinite(rawBatchLimit) || rawBatchLimit <= 0) {
+    throw new RangeError(
+      `handleEnforceMaxLength: options.batchLimit must be a positive number, got ${String(rawBatchLimit)}`,
+    )
+  }
+  const batchLimit = Math.floor(rawBatchLimit)
+  if (batchLimit <= 0) {
+    throw new RangeError(
+      `handleEnforceMaxLength: options.batchLimit must resolve to at least 1 after normalization, got ${String(rawBatchLimit)}`,
+    )
+  }
 
   const changedTables: TableName[] = []
   const deletedCounts = {
@@ -212,7 +230,6 @@ export function handleEnforceMaxLength(
     timeline_entries: 0,
   }
   let hasMore = false
-  let needOrphanCleanup = false
 
   // Phase 1: timeline_entries + notifications を 1 トランザクションで処理
   db.exec('BEGIN;')
@@ -226,7 +243,6 @@ export function handleEnforceMaxLength(
     )
     deletedCounts.timeline_entries = tlResult.deleted
     if (tlResult.issuedDelete) {
-      needOrphanCleanup = true
       if (!changedTables.includes('timeline_entries')) {
         changedTables.push('timeline_entries')
       }
@@ -243,21 +259,22 @@ export function handleEnforceMaxLength(
       )
       deletedCounts.notifications = notifResult.deleted
       if (notifResult.issuedDelete) {
-        needOrphanCleanup = true
         if (!changedTables.includes('notifications')) {
           changedTables.push('notifications')
         }
       }
-      if (
-        tlResult.hasRemainingExcess ||
-        notifResult.hasRemainingExcess ||
-        notifResult.remainingBudget <= 0
-      ) {
+      if (tlResult.hasRemainingExcess || notifResult.hasRemainingExcess) {
         hasMore = true
       }
     } else {
-      // 予算枯渇: notifications は次回回し
-      hasMore = true
+      // 予算枯渇: notifications に超過があるか確認
+      const notifExcessRows = db.exec(
+        'SELECT 1 FROM notifications GROUP BY local_account_id HAVING COUNT(*) > ? LIMIT 1;',
+        { bind: [maxNotifications], returnValue: 'resultRows' },
+      ) as number[][]
+      if (tlResult.hasRemainingExcess || notifExcessRows.length > 0) {
+        hasMore = true
+      }
     }
 
     db.exec('COMMIT;')
@@ -267,40 +284,40 @@ export function handleEnforceMaxLength(
   }
 
   // Phase 2: 孤立 posts を 1 バッチだけ削除（短いトランザクション）
-  // timeline/notifications のいずれかで削除があった場合のみ実行する。
+  // timeline/notifications の削除有無にかかわらず常に実行する。
+  // 前のバッチで孤立 posts が発生していた場合でも確実に処理できるようにするため。
   // 削除件数がバッチ上限に達した場合は次回呼び出しで続きを処理する。
-  if (needOrphanCleanup) {
-    db.exec('BEGIN;')
-    let orphanDeleted = 0
-    try {
-      db.exec(
-        `DELETE FROM posts WHERE id IN (
-          SELECT p.id FROM posts p
-          WHERE NOT EXISTS (
-            SELECT 1 FROM timeline_entries te WHERE te.post_id = p.id
-          ) AND NOT EXISTS (
-            SELECT 1 FROM notifications n WHERE n.related_post_id = p.id
-          )
-          LIMIT ?
-        );`,
-        { bind: [batchLimit] },
-      )
-      orphanDeleted = readChanges(db)
-      db.exec('COMMIT;')
-    } catch (e) {
-      db.exec('ROLLBACK;')
-      throw e
-    }
+  db.exec('BEGIN;')
+  let orphanDeleted = 0
+  try {
+    db.exec(
+      `DELETE FROM posts WHERE id IN (
+        SELECT p.id FROM posts p
+        WHERE NOT EXISTS (
+          SELECT 1 FROM timeline_entries te WHERE te.post_id = p.id
+        ) AND NOT EXISTS (
+          SELECT 1 FROM notifications n WHERE n.related_post_id = p.id
+        )
+        LIMIT ?
+      );`,
+      { bind: [batchLimit] },
+    )
+    orphanDeleted = readChanges(db)
+    db.exec('COMMIT;')
+  } catch (e) {
+    db.exec('ROLLBACK;')
+    throw e
+  }
 
+  if (orphanDeleted > 0) {
     deletedCounts.posts = orphanDeleted
-    // DELETE を発行した時点で posts テーブル変更として扱う（後方互換）
     if (!changedTables.includes('posts')) {
       changedTables.push('posts')
     }
-    // バッチ上限いっぱいまで削除した場合、まだ孤立 posts が残っている可能性あり
-    if (orphanDeleted >= batchLimit) {
-      hasMore = true
-    }
+  }
+  // バッチ上限いっぱいまで削除した場合、まだ孤立 posts が残っている可能性あり
+  if (orphanDeleted >= batchLimit) {
+    hasMore = true
   }
 
   return { changedTables, deletedCounts, hasMore }

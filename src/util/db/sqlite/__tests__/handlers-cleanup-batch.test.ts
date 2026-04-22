@@ -61,7 +61,8 @@ describe('handleEnforceMaxLength — batching & modes', () => {
         [[1, 'home', 15005]],
         // timeline DELETE changes() — 10000 件削除
         [[10000]],
-        // notification GROUP BY: 空（bulk の場合呼ばれないが残予算 0 で skip）
+        // 予算枯渇時の notification 超過存在チェック (LIMIT 1) → 空
+        [],
       ])
 
       const result = handleEnforceMaxLength(db, 5, 100, { batchLimit: 10000 })
@@ -106,8 +107,8 @@ describe('handleEnforceMaxLength — batching & modes', () => {
         targetRatio: 0.5,
       })
 
-      const deleteTimeline = calls.find(
-        (c) => c.sql.includes('DELETE') && c.sql.includes('timeline_entries'),
+      const deleteTimeline = calls.find((c) =>
+        c.sql.includes('DELETE FROM timeline_entries'),
       )
       // excess = 1000 - floor(1000*0.5) = 500
       expect(deleteTimeline?.opts?.bind).toContain(500)
@@ -116,10 +117,8 @@ describe('handleEnforceMaxLength — batching & modes', () => {
 
     it('mode=emergency, targetRatio=0.5 で cnt の半分を残す (1000 → 500 削除)', () => {
       const { db, calls } = createMockDb([
-        // timeline GROUP BY (maxTimeline=100000 なので periodic 条件では超過なし) — 空
-        // emergency モードは HAVING cnt > maxTimeline では拾わないため、
-        // 実装的には `HAVING cnt > maxTimeline` をモード別に切り替えるか
-        // あるいは emergency では `maxTimeline` を 0 等にして全グループを拾う必要がある
+        // timeline GROUP BY — emergency モードでは threshold=0 になるため、
+        // periodic 条件では超過しないグループも対象になる
         [[1, 'home', 1000]],
         // timeline DELETE changes()
         [[500]],
@@ -136,8 +135,8 @@ describe('handleEnforceMaxLength — batching & modes', () => {
       })
 
       // emergency モード: excess = cnt - floor(cnt * 0.5) = 1000 - 500 = 500
-      const deleteTimeline = calls.find(
-        (c) => c.sql.includes('DELETE') && c.sql.includes('timeline_entries'),
+      const deleteTimeline = calls.find((c) =>
+        c.sql.includes('DELETE FROM timeline_entries'),
       )
       expect(deleteTimeline?.opts?.bind).toContain(500)
       expect(result.deletedCounts.timeline_entries).toBe(500)
@@ -149,7 +148,8 @@ describe('handleEnforceMaxLength — batching & modes', () => {
         [[1, 'home', 50000]],
         // timeline DELETE changes() — batchLimit=10000 ぶん
         [[10000]],
-        // (以降は呼ばれない想定 — 予算枯渇で notif はスキップ)
+        // 予算枯渇時の notification 超過存在チェック (LIMIT 1) → 空
+        [],
       ])
 
       const result = handleEnforceMaxLength(db, 0, 0, {
@@ -158,8 +158,8 @@ describe('handleEnforceMaxLength — batching & modes', () => {
         targetRatio: 0.5,
       })
 
-      const deleteTimeline = calls.find(
-        (c) => c.sql.includes('DELETE') && c.sql.includes('timeline_entries'),
+      const deleteTimeline = calls.find((c) =>
+        c.sql.includes('DELETE FROM timeline_entries'),
       )
       // 最初のバッチ: min(excess=25000, budget=10000) = 10000
       expect(deleteTimeline?.opts?.bind).toContain(10000)
@@ -173,8 +173,8 @@ describe('handleEnforceMaxLength — batching & modes', () => {
 
       const result = handleEnforceMaxLength(db, 5, 100)
 
-      const deleteTimeline = calls.find(
-        (c) => c.sql.includes('DELETE') && c.sql.includes('timeline_entries'),
+      const deleteTimeline = calls.find((c) =>
+        c.sql.includes('DELETE FROM timeline_entries'),
       )
       // periodic: excess = 8 - 5 = 3
       expect(deleteTimeline?.opts?.bind).toContain(3)
