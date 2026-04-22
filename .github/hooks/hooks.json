@@ -1,0 +1,23 @@
+{
+  "hooks": {
+    "postToolUse": [
+      {
+        "bash": "node .github/hooks/biome/autofix.mjs",
+        "comment": "編集/作成/書き込み後に `biome check --write` を実行し、残件を state ファイルに記録",
+        "powershell": "node .github/hooks/biome/autofix.mjs",
+        "timeoutSec": 60,
+        "type": "command"
+      }
+    ],
+    "preToolUse": [
+      {
+        "bash": "node .github/hooks/biome/enforce-clean.mjs",
+        "comment": "未解決の Biome 指摘がある場合、他ファイルの編集を deny して先に修正させる",
+        "powershell": "node .github/hooks/biome/enforce-clean.mjs",
+        "timeoutSec": 15,
+        "type": "command"
+      }
+    ]
+  },
+  "version": 1
+}
