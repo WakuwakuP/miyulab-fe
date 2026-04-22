@@ -283,6 +283,11 @@ export function __resetCleanupStateForTest(): void {
   isPeriodicRunning = false
   isEmergencyRunning = false
   lastEmergencyFinishedAt = 0
+  if (saturationWatcherIntervalId !== null) {
+    clearInterval(saturationWatcherIntervalId)
+    saturationWatcherIntervalId = null
+  }
+  saturationWatcherRefCount = 0
 }
 
 /** @internal テスト用の定数 */

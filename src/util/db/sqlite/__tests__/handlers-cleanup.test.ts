@@ -42,8 +42,12 @@ describe('handleEnforceMaxLength', () => {
     const { db, calls } = createMockDb([
       // 1. timeline GROUP BY HAVING → 1 グループ: (1, 'home', 8)
       [[1, 'home', 8]],
-      // 2. notification GROUP BY HAVING → 上限以内なので空
+      // 2. timeline DELETE changes() → 3 件削除
+      [[3]],
+      // 3. notification GROUP BY HAVING → 上限以内なので空
       [],
+      // 4. orphan DELETE changes() → 2 件削除
+      [[2]],
     ])
 
     const result = handleEnforceMaxLength(db, maxTimeline, maxNotifications)
@@ -55,8 +59,8 @@ describe('handleEnforceMaxLength', () => {
     expect(calls[calls.length - 1].sql).toBe('COMMIT;')
 
     // timeline_entries から古いエントリが削除される
-    const deleteTimeline = calls.find(
-      (c) => c.sql.includes('DELETE') && c.sql.includes('timeline_entries'),
+    const deleteTimeline = calls.find((c) =>
+      c.sql.includes('DELETE FROM timeline_entries'),
     )
     expect(deleteTimeline).toBeDefined()
     // LIMIT = count - maxTimeline = 8 - 5 = 3
@@ -89,8 +93,8 @@ describe('handleEnforceMaxLength', () => {
     expect(result.changedTables).toEqual([])
 
     // timeline_entries からの DELETE は実行されない
-    const deleteTimeline = calls.find(
-      (c) => c.sql.includes('DELETE') && c.sql.includes('timeline_entries'),
+    const deleteTimeline = calls.find((c) =>
+      c.sql.includes('DELETE FROM timeline_entries'),
     )
     expect(deleteTimeline).toBeUndefined()
   })
@@ -104,6 +108,10 @@ describe('handleEnforceMaxLength', () => {
       [],
       // 2. notification GROUP BY HAVING → (local_account_id=1, cnt=10)
       [[1, 10]],
+      // 3. notification DELETE changes() → 7 件削除
+      [[7]],
+      // 4. orphan DELETE changes() → 3 件削除
+      [[3]],
     ])
 
     const result = handleEnforceMaxLength(db, maxTimeline, maxNotifications)

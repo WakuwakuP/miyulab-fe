@@ -116,10 +116,8 @@ describe('handleEnforceMaxLength — batching & modes', () => {
 
     it('mode=emergency, targetRatio=0.5 で cnt の半分を残す (1000 → 500 削除)', () => {
       const { db, calls } = createMockDb([
-        // timeline GROUP BY (maxTimeline=100000 なので periodic 条件では超過なし) — 空
-        // emergency モードは HAVING cnt > maxTimeline では拾わないため、
-        // 実装的には `HAVING cnt > maxTimeline` をモード別に切り替えるか
-        // あるいは emergency では `maxTimeline` を 0 等にして全グループを拾う必要がある
+        // timeline GROUP BY — emergency モードでは threshold=0 になるため、
+        // periodic 条件では超過しないグループも対象になる
         [[1, 'home', 1000]],
         // timeline DELETE changes()
         [[500]],

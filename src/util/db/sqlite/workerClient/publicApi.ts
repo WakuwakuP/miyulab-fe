@@ -355,7 +355,7 @@ export function fetchTimeline(
  */
 export function sendCommand(
   command: SendCommandPayload,
-  opts?: { kind?: QueueKind },
+  opts?: { kind?: Exclude<QueueKind, 'timeline'> },
 ): Promise<unknown> {
   const id = incrementNextId()
   const message = { ...command, id } as {

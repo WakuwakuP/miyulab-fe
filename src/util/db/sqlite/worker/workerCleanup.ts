@@ -187,6 +187,23 @@ function processNotificationsBatch(
 }
 
 /**
+ * notifications テーブルに超過エントリが存在するかを安価に確認する。
+ * notifications フェーズをスキップした場合のみ呼ぶ。
+ */
+function checkNotificationsHaveExcess(
+  db: DbExec,
+  maxNotifications: number,
+  mode: 'periodic' | 'emergency',
+): boolean {
+  const threshold = mode === 'emergency' ? 0 : maxNotifications
+  const rows = db.exec(
+    'SELECT 1 FROM notifications GROUP BY local_account_id HAVING COUNT(*) > ? LIMIT 1;',
+    { bind: [threshold], returnValue: 'resultRows' },
+  ) as number[][]
+  return rows.length > 0
+}
+
+/**
  * MAX_LENGTH を超えるデータを 1 バッチ削除する。
  *
  * 優先順: (a) timeline_entries → (b) notifications → (c) 孤立 posts。
@@ -203,7 +220,24 @@ export function handleEnforceMaxLength(
 ): EnforceMaxLengthHandlerResult {
   const mode = options.mode ?? 'periodic'
   const targetRatio = options.targetRatio ?? 0.5
-  const batchLimit = options.batchLimit ?? DEFAULT_BATCH_LIMIT
+  if (!Number.isFinite(targetRatio) || targetRatio <= 0 || targetRatio > 1) {
+    throw new RangeError(
+      `handleEnforceMaxLength: options.targetRatio must satisfy 0 < targetRatio <= 1, got ${String(targetRatio)}`,
+    )
+  }
+
+  const rawBatchLimit = options.batchLimit ?? DEFAULT_BATCH_LIMIT
+  if (!Number.isFinite(rawBatchLimit) || rawBatchLimit <= 0) {
+    throw new RangeError(
+      `handleEnforceMaxLength: options.batchLimit must be a positive number, got ${String(rawBatchLimit)}`,
+    )
+  }
+  const batchLimit = Math.floor(rawBatchLimit)
+  if (batchLimit <= 0) {
+    throw new RangeError(
+      `handleEnforceMaxLength: options.batchLimit must resolve to at least 1 after normalization, got ${String(rawBatchLimit)}`,
+    )
+  }
 
   const changedTables: TableName[] = []
   const deletedCounts = {
@@ -212,7 +246,6 @@ export function handleEnforceMaxLength(
     timeline_entries: 0,
   }
   let hasMore = false
-  let needOrphanCleanup = false
 
   // Phase 1: timeline_entries + notifications を 1 トランザクションで処理
   db.exec('BEGIN;')
@@ -226,7 +259,6 @@ export function handleEnforceMaxLength(
     )
     deletedCounts.timeline_entries = tlResult.deleted
     if (tlResult.issuedDelete) {
-      needOrphanCleanup = true
       if (!changedTables.includes('timeline_entries')) {
         changedTables.push('timeline_entries')
       }
@@ -243,21 +275,22 @@ export function handleEnforceMaxLength(
       )
       deletedCounts.notifications = notifResult.deleted
       if (notifResult.issuedDelete) {
-        needOrphanCleanup = true
         if (!changedTables.includes('notifications')) {
           changedTables.push('notifications')
         }
       }
-      if (
-        tlResult.hasRemainingExcess ||
-        notifResult.hasRemainingExcess ||
-        notifResult.remainingBudget <= 0
-      ) {
+      if (tlResult.hasRemainingExcess || notifResult.hasRemainingExcess) {
         hasMore = true
       }
     } else {
-      // 予算枯渇: notifications は次回回し
-      hasMore = true
+      // 予算枯渇: notifications フェーズをスキップ。
+      // 実際に超過があるか安価に確認してから hasMore をセットする。
+      if (
+        tlResult.hasRemainingExcess ||
+        checkNotificationsHaveExcess(db, maxNotifications, mode)
+      ) {
+        hasMore = true
+      }
     }
 
     db.exec('COMMIT;')
@@ -267,9 +300,10 @@ export function handleEnforceMaxLength(
   }
 
   // Phase 2: 孤立 posts を 1 バッチだけ削除（短いトランザクション）
-  // timeline/notifications のいずれかで削除があった場合のみ実行する。
+  // 前回の呼び出しで孤立 posts が残っている場合も処理できるよう、
+  // timeline/notifications の削除有無にかかわらず毎回実行する。
   // 削除件数がバッチ上限に達した場合は次回呼び出しで続きを処理する。
-  if (needOrphanCleanup) {
+  {
     db.exec('BEGIN;')
     let orphanDeleted = 0
     try {
@@ -293,8 +327,7 @@ export function handleEnforceMaxLength(
     }
 
     deletedCounts.posts = orphanDeleted
-    // DELETE を発行した時点で posts テーブル変更として扱う（後方互換）
-    if (!changedTables.includes('posts')) {
+    if (orphanDeleted > 0 && !changedTables.includes('posts')) {
       changedTables.push('posts')
     }
     // バッチ上限いっぱいまで削除した場合、まだ孤立 posts が残っている可能性あり
