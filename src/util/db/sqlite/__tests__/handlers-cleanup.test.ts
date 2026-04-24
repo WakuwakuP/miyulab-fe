@@ -156,6 +156,12 @@ describe('handleEnforceMaxLength', () => {
     expect(orphanSql).toContain('timeline_entries')
     expect(orphanSql).toContain('notifications')
     expect(orphanSql).toContain('IS NULL')
+
+    // posts 自己参照 (reblog_of_post_id / quote_of_post_id) も除外されること。
+    // これらは ON DELETE 指定がない FK のため、参照元がある行を削除すると
+    // SQLITE_CONSTRAINT_FOREIGNKEY が発生する。
+    expect(orphanSql).toContain('reblog_of_post_id')
+    expect(orphanSql).toContain('quote_of_post_id')
   })
 
   it('複数のタイムライングループを個別に処理する', () => {

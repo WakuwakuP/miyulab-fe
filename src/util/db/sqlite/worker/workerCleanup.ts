@@ -277,10 +277,18 @@ export function handleEnforceMaxLength(
   // 削除件数がバッチ上限に達した場合は次回呼び出しで続きを処理する。
   //
   // SQL は LEFT JOIN 形式で書く:
-  //   - te (timeline_entries.post_id) → idx_timeline_entries_post (v2.0.6 で追加)
-  //   - n  (notifications.related_post_id) → idx_notifications_post
-  // いずれもインデックスで解決できるため、posts × timeline_entries の
-  // 全件スキャンが発生しない。
+  //   - te   (timeline_entries.post_id)       → idx_timeline_entries_post (v2.0.6 で追加)
+  //   - n    (notifications.related_post_id)  → idx_notifications_post
+  //   - rb   (posts.reblog_of_post_id)        → idx_posts_reblog_of
+  //   - qt   (posts.quote_of_post_id)         → idx_posts_quote_of
+  //
+  // reblog_of_post_id / quote_of_post_id は posts 同士の自己参照 FK で
+  // ON DELETE 指定がないため、参照されている行を削除しようとすると
+  // SQLITE_CONSTRAINT_FOREIGNKEY が発生する。
+  // これらを参照元として持つ行も「孤立していない」とみなして除外する。
+  //
+  // いずれのインデックスも partial index / 単列インデックスが存在するため
+  // posts 全件スキャンは発生しない。
   if (needOrphanCleanup) {
     db.exec('BEGIN;')
     let orphanDeleted = 0
@@ -290,7 +298,12 @@ export function handleEnforceMaxLength(
           SELECT p.id FROM posts p
           LEFT JOIN timeline_entries te ON te.post_id = p.id
           LEFT JOIN notifications n ON n.related_post_id = p.id
-          WHERE te.post_id IS NULL AND n.related_post_id IS NULL
+          LEFT JOIN posts rb ON rb.reblog_of_post_id = p.id
+          LEFT JOIN posts qt ON qt.quote_of_post_id = p.id
+          WHERE te.post_id IS NULL
+            AND n.related_post_id IS NULL
+            AND rb.id IS NULL
+            AND qt.id IS NULL
           LIMIT ?
         );`,
         { bind: [batchLimit] },
