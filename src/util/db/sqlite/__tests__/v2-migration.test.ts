@@ -197,7 +197,7 @@ describe('v2.0.0 マイグレーション', () => {
       migrations.push(...savedMigrations)
     })
 
-    it('v2.0.0 DB に対して v2.0.1 ~ v2.0.5 マイグレーションが適用される', () => {
+    it('v2.0.0 DB に対して v2.0.1 ~ v2.0.6 マイグレーションが適用される', () => {
       const v2Encoded = encodeSemVer({ major: 2, minor: 0, patch: 0 })
       let canonicalAcctAdded = false
       let usernameServerIndexCreated = false

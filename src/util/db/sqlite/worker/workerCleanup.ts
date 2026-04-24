@@ -20,8 +20,14 @@ type DbExec = {
   ) => unknown
 }
 
-/** 1 バッチあたりの削除上限（default） */
-const DEFAULT_BATCH_LIMIT = 10_000
+/**
+ * 1 バッチあたりの削除上限（default）
+ *
+ * OPFS 上の SQLite では 1 件あたりの DELETE コスト (WAL 書き込み + fsync) が
+ * 無視できないため、90s の Worker タイムアウト内に確実に完了するサイズに抑える。
+ * 旧値 10,000 ではタイムアウトするケースがあったため 2,000 に引き下げた。
+ */
+const DEFAULT_BATCH_LIMIT = 2_000
 
 export type EnforceMaxLengthOptions = {
   /** 'periodic' (default) または 'emergency' */
@@ -269,6 +275,12 @@ export function handleEnforceMaxLength(
   // Phase 2: 孤立 posts を 1 バッチだけ削除（短いトランザクション）
   // timeline/notifications のいずれかで削除があった場合のみ実行する。
   // 削除件数がバッチ上限に達した場合は次回呼び出しで続きを処理する。
+  //
+  // SQL は LEFT JOIN 形式で書く:
+  //   - te (timeline_entries.post_id) → idx_timeline_entries_post (v2.0.6 で追加)
+  //   - n  (notifications.related_post_id) → idx_notifications_post
+  // いずれもインデックスで解決できるため、posts × timeline_entries の
+  // 全件スキャンが発生しない。
   if (needOrphanCleanup) {
     db.exec('BEGIN;')
     let orphanDeleted = 0
@@ -276,11 +288,9 @@ export function handleEnforceMaxLength(
       db.exec(
         `DELETE FROM posts WHERE id IN (
           SELECT p.id FROM posts p
-          WHERE NOT EXISTS (
-            SELECT 1 FROM timeline_entries te WHERE te.post_id = p.id
-          ) AND NOT EXISTS (
-            SELECT 1 FROM notifications n WHERE n.related_post_id = p.id
-          )
+          LEFT JOIN timeline_entries te ON te.post_id = p.id
+          LEFT JOIN notifications n ON n.related_post_id = p.id
+          WHERE te.post_id IS NULL AND n.related_post_id IS NULL
           LIMIT ?
         );`,
         { bind: [batchLimit] },

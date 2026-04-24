@@ -67,7 +67,7 @@ describe('handleEnforceMaxLength', () => {
       (c) =>
         c.sql.includes('DELETE') &&
         c.sql.includes('posts') &&
-        c.sql.includes('NOT EXISTS'),
+        c.sql.includes('LEFT JOIN'),
     )
     expect(deleteOrphan).toBeDefined()
   })
@@ -124,7 +124,7 @@ describe('handleEnforceMaxLength', () => {
       (c) =>
         c.sql.includes('DELETE') &&
         c.sql.includes('posts') &&
-        c.sql.includes('NOT EXISTS'),
+        c.sql.includes('LEFT JOIN'),
     )
     expect(deleteOrphan).toBeDefined()
   })
@@ -147,14 +147,15 @@ describe('handleEnforceMaxLength', () => {
       (c) =>
         c.sql.includes('DELETE') &&
         c.sql.includes('posts') &&
-        c.sql.includes('NOT EXISTS'),
+        c.sql.includes('LEFT JOIN'),
     )
     expect(deleteOrphanCalls.length).toBeGreaterThanOrEqual(1)
 
-    // timeline_entries と notifications の両方を NOT IN チェック
+    // timeline_entries と notifications の両方を LEFT JOIN でチェック
     const orphanSql = deleteOrphanCalls[0].sql
     expect(orphanSql).toContain('timeline_entries')
     expect(orphanSql).toContain('notifications')
+    expect(orphanSql).toContain('IS NULL')
   })
 
   it('複数のタイムライングループを個別に処理する', () => {

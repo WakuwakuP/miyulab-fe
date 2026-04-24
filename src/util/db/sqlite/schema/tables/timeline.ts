@@ -20,4 +20,13 @@ export function createTimelineTables(db: DbExec): void {
     CREATE INDEX IF NOT EXISTS idx_timeline_entries_feed
       ON timeline_entries(local_account_id, timeline_key, created_at_ms DESC);
   `)
+
+  // post_id 単独インデックス: 孤立 posts クリーンアップで
+  // `WHERE te.post_id = ?` 検索を高速化するために必須。
+  // UNIQUE(local_account_id, timeline_key, post_id) の 3 列目では prefix が
+  // 合わず使えないため、別途インデックスを作成する。
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_timeline_entries_post
+      ON timeline_entries(post_id);
+  `)
 }

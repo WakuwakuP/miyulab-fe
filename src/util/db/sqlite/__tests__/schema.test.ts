@@ -410,6 +410,14 @@ describe('スキーマ定義', () => {
         true,
       )
     })
+
+    it('idx_timeline_entries_post インデックスを作成する (孤立 posts クリーンアップ用)', () => {
+      const { db, execCalls } = createMockDb()
+      createTimelineTables(db)
+      expect(sqlContainsIndex(execCalls, 'idx_timeline_entries_post')).toBe(
+        true,
+      )
+    })
   })
 
   // ═══════════════════════════════════════════════════════════════
