@@ -73,6 +73,54 @@ type EnforceMaxLengthResponse = {
   }
 }
 
+type TableCounts = {
+  timeline_entries: number
+  notifications: number
+  posts: number
+}
+
+/**
+ * 直前の enforceMaxLength 完了時点でのテーブル件数。
+ * 次回実行時の「前回からの変動」算出に使う。
+ * undefined のときは初回実行（差分は表示しない）。
+ */
+let lastTableCounts: TableCounts | undefined
+
+/**
+ * 主要 3 テーブルの行数を取得する。
+ *
+ * クリーンアップは priority キューで実行されるため、件数取得もそれに合わせる。
+ * 失敗してもクリーンアップ本体の挙動には影響を与えないよう、呼び出し側で握り潰す。
+ */
+async function fetchTableCounts(
+  handle: Awaited<ReturnType<typeof getSqliteDb>>,
+): Promise<TableCounts> {
+  // 注: execAsync の kind は 'timeline' | 'other' のみ。
+  // クリーンアップ完了後の単発カウント取得なので 'other' で十分。
+  const rows = (await handle.execAsync(
+    `SELECT
+       (SELECT COUNT(*) FROM timeline_entries) AS te,
+       (SELECT COUNT(*) FROM notifications)    AS n,
+       (SELECT COUNT(*) FROM posts)            AS p;`,
+    { kind: 'other', returnValue: 'resultRows' },
+  )) as number[][]
+  const row = rows[0] ?? [0, 0, 0]
+  return {
+    notifications: (row[1] as number) ?? 0,
+    posts: (row[2] as number) ?? 0,
+    timeline_entries: (row[0] as number) ?? 0,
+  }
+}
+
+/** +N / -N / ±0 形式の差分文字列を作る */
+function formatDelta(current: number, previous: number | undefined): string {
+  if (previous === undefined) return 'n/a'
+  const diff = current - previous
+  if (diff > 0) return `+${diff}`
+  if (diff < 0) return `${diff}`
+  return '±0'
+}
+
 // ================================================================
 // enforceMaxLength (公開 API)
 // ================================================================
@@ -141,10 +189,33 @@ export async function enforceMaxLength(
       totalDeleted.posts
     const status = aborted ? 'aborted (partial)' : 'completed'
     const summary = `[cleanup] enforceMaxLength ${status} (mode=${mode}, kind=${kind}, iterations=${iteration}, elapsedMs=${elapsedMs}, deleted: timeline_entries=${totalDeleted.timeline_entries}, notifications=${totalDeleted.notifications}, posts=${totalDeleted.posts}, total=${totalCount})`
+
+    // 完了/中断後のテーブル件数と前回からの変動を表示する。
+    // 件数取得自体が失敗してもクリーンアップ結果ログは残す。
+    let countsLine: string | undefined
+    try {
+      const current = await fetchTableCounts(handle)
+      const teDelta = formatDelta(
+        current.timeline_entries,
+        lastTableCounts?.timeline_entries,
+      )
+      const nDelta = formatDelta(
+        current.notifications,
+        lastTableCounts?.notifications,
+      )
+      const pDelta = formatDelta(current.posts, lastTableCounts?.posts)
+      countsLine = `[cleanup] table counts after ${status}: timeline_entries=${current.timeline_entries} (${teDelta}), notifications=${current.notifications} (${nDelta}), posts=${current.posts} (${pDelta})`
+      lastTableCounts = current
+    } catch (countErr) {
+      countsLine = `[cleanup] table counts unavailable: ${String(countErr)}`
+    }
+
     if (aborted) {
       console.warn(summary, abortError)
+      if (countsLine) console.warn(countsLine)
     } else {
       console.info(summary)
+      if (countsLine) console.info(countsLine)
     }
   }
 }
@@ -344,6 +415,7 @@ export function __resetCleanupStateForTest(): void {
   isPeriodicRunning = false
   isEmergencyRunning = false
   lastEmergencyFinishedAt = 0
+  lastTableCounts = undefined
 }
 
 /** @internal テスト用の定数 */

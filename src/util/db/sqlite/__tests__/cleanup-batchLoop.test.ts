@@ -4,7 +4,10 @@
  * sendCommand が hasMore を返している間はループ呼び出しし、false になったら停止することを検証する。
  */
 
-import { enforceMaxLength } from 'util/db/sqlite/cleanup'
+import {
+  __resetCleanupStateForTest,
+  enforceMaxLength,
+} from 'util/db/sqlite/cleanup'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // getSqliteDb を差し替えるため、モジュール全体をモックする
@@ -21,7 +24,17 @@ type SendCommandCall = {
   opts?: { kind?: 'priority' | 'other' }
 }
 
-function installMockHandle(responses: { hasMore: boolean }[]) {
+type MockHandleOptions = {
+  /** execAsync が返す件数 [timeline_entries, notifications, posts]。順次返される。 */
+  countsSequence?: [number, number, number][]
+  /** execAsync を強制的に throw させたいテスト用 */
+  execAsyncThrows?: boolean
+}
+
+function installMockHandle(
+  responses: { hasMore: boolean }[],
+  options: MockHandleOptions = {},
+) {
   const calls: SendCommandCall[] = []
   let index = 0
   const sendCommand = vi.fn(
@@ -39,19 +52,34 @@ function installMockHandle(responses: { hasMore: boolean }[]) {
       }
     },
   )
+
+  let countsIndex = 0
+  const execAsync = vi.fn(async () => {
+    if (options.execAsyncThrows) {
+      throw new Error('execAsync failed (test)')
+    }
+    const seq = options.countsSequence ?? [[0, 0, 0]]
+    const row = seq[countsIndex] ?? seq[seq.length - 1] ?? [0, 0, 0]
+    countsIndex++
+    return [row]
+  })
+
   vi.mocked(getSqliteDb).mockResolvedValue({
+    execAsync,
     sendCommand,
   } as unknown as Awaited<ReturnType<typeof getSqliteDb>>)
-  return { calls, sendCommand }
+  return { calls, execAsync, sendCommand }
 }
 
 describe('enforceMaxLength — batch loop', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    __resetCleanupStateForTest()
   })
 
   afterEach(() => {
     vi.clearAllMocks()
+    __resetCleanupStateForTest()
   })
 
   it('hasMore=false が返されるまで sendCommand を繰り返す', async () => {
@@ -124,7 +152,9 @@ describe('enforceMaxLength — batch loop', () => {
         'Worker request timed out (id=108, type=enforceMaxLength)',
       )
     })
+    const execAsync = vi.fn(async () => [[0, 0, 0]])
     vi.mocked(getSqliteDb).mockResolvedValue({
+      execAsync,
       sendCommand,
     } as unknown as Awaited<ReturnType<typeof getSqliteDb>>)
 
@@ -145,5 +175,65 @@ describe('enforceMaxLength — batch loop', () => {
     expect(message).toContain('iterations=2')
 
     warnSpy.mockRestore()
+  })
+
+  it('完了ログにテーブル件数を出力する (初回は前回比 n/a)', async () => {
+    installMockHandle([{ hasMore: false }], {
+      countsSequence: [[123, 45, 678]],
+    })
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {})
+
+    await enforceMaxLength()
+
+    const countsCalls = infoSpy.mock.calls.filter((args) =>
+      String(args[0]).includes('table counts after'),
+    )
+    expect(countsCalls.length).toBe(1)
+    const line = String(countsCalls[0][0])
+    expect(line).toContain('timeline_entries=123 (n/a)')
+    expect(line).toContain('notifications=45 (n/a)')
+    expect(line).toContain('posts=678 (n/a)')
+
+    infoSpy.mockRestore()
+  })
+
+  it('2 回目以降は前回からの差分を符号付きで出力する', async () => {
+    // 1 回目: (1000, 200, 5000)
+    // 2 回目: (900, 250, 5000)  → te=-100, n=+50, posts=±0
+    installMockHandle([{ hasMore: false }, { hasMore: false }], {
+      countsSequence: [
+        [1000, 200, 5000],
+        [900, 250, 5000],
+      ],
+    })
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {})
+
+    await enforceMaxLength()
+    await enforceMaxLength()
+
+    const countsCalls = infoSpy.mock.calls.filter((args) =>
+      String(args[0]).includes('table counts after'),
+    )
+    expect(countsCalls.length).toBe(2)
+    const second = String(countsCalls[1][0])
+    expect(second).toContain('timeline_entries=900 (-100)')
+    expect(second).toContain('notifications=250 (+50)')
+    expect(second).toContain('posts=5000 (±0)')
+
+    infoSpy.mockRestore()
+  })
+
+  it('execAsync が throw しても enforceMaxLength は完了し、unavailable ログを出す', async () => {
+    installMockHandle([{ hasMore: false }], { execAsyncThrows: true })
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {})
+
+    await expect(enforceMaxLength()).resolves.toBeUndefined()
+
+    const unavailable = infoSpy.mock.calls.find((args) =>
+      String(args[0]).includes('table counts unavailable'),
+    )
+    expect(unavailable).toBeDefined()
+
+    infoSpy.mockRestore()
   })
 })
