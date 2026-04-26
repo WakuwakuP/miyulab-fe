@@ -3706,14 +3706,14 @@ __metadata:
   languageName: node
   linkType: hard
 
-"emoji-picker-react@npm:^4.18.0":
-  version: 4.18.0
-  resolution: "emoji-picker-react@npm:4.18.0"
+"emoji-picker-react@npm:^4.19.0":
+  version: 4.19.0
+  resolution: "emoji-picker-react@npm:4.19.0"
   dependencies:
     flairup: "npm:1.0.0"
   peerDependencies:
     react: ">=16"
-  checksum: 10c0/a37b79a8c54440caf5fa473a440dd83d6fd9dca4a1ffd0c4d951127783aefc5ba0570ffd1af429b97dee0e1e4b27c1c797524d968b3a4ed921ac83393224fb01
+  checksum: 10c0/0077745636c8d8cd485f15121db477175b131ebe75f61ca7ea52ee0dc7fdbae779cb93762c674de9ff9552406656906f0c01b47ee17743aa1bcc6339a3358ee1
   languageName: node
   linkType: hard
 
@@ -5251,7 +5251,7 @@ __metadata:
     cmdk: "npm:^1.1.1"
     domelementtype: "npm:^3.0.0"
     embla-carousel-react: "npm:^8.6.0"
-    emoji-picker-react: "npm:^4.18.0"
+    emoji-picker-react: "npm:^4.19.0"
     globals: "npm:^17.5.0"
     html-react-parser: "npm:^6.0.1"
     husky: "npm:9.1.7"
