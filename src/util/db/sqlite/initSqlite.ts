@@ -417,7 +417,7 @@ async function initMainThreadFallback(
           )
           break
         case 'enforceMaxLength': {
-          const r = handleEnforceMaxLength(db, 100000, 100000, {
+          const r = handleEnforceMaxLength(db, 100000, 100000, 100000, {
             batchLimit: command.batchLimit,
             mode: command.mode,
             targetRatio: command.targetRatio,

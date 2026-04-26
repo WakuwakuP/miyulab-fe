@@ -279,7 +279,7 @@ self.onmessage = (
 
       // ---- Cleanup ----
       case 'enforceMaxLength': {
-        const r = handleEnforceMaxLength(db, 100000, 100000, {
+        const r = handleEnforceMaxLength(db, 100000, 100000, 100000, {
           batchLimit: msg.batchLimit,
           mode: msg.mode,
           targetRatio: msg.targetRatio,

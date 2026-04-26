@@ -10,7 +10,16 @@ type ExecCall = { sql: string; opts?: Parameters<DbExecCompat['exec']>[1] }
 
 /**
  * Mock DB. selectResults はクエリの登場順に返す。
- * GROUP BY HAVING クエリ (2 個)、その後 SELECT changes() のレスポンス (削除回数分) を順に返す。
+ *
+ * Phase 1 (timeline + notifications):
+ *   - timeline GROUP BY HAVING
+ *   - (各 timeline グループ) SELECT changes()
+ *   - notifications GROUP BY HAVING
+ *   - (各 notif グループ) SELECT changes()
+ *
+ * Phase 2 (posts):
+ *   - SELECT COUNT(*) FROM posts
+ *   - (削除を発行すれば) SELECT changes()
  */
 function createMockDb(selectResults: unknown[][] = []): {
   db: DbExecCompat
@@ -44,11 +53,15 @@ describe('handleEnforceMaxLength — batching & modes', () => {
         [[3]],
         // notification GROUP BY: 空
         [],
-        // orphan DELETE changes()
+        // posts COUNT — 上限以下 (forceCleanup=true で発火)
+        [[100]],
+        // posts DELETE changes()
         [[2]],
       ])
 
-      const result = handleEnforceMaxLength(db, 5, 100, { batchLimit: 10000 })
+      const result = handleEnforceMaxLength(db, 5, 100, 100000, {
+        batchLimit: 10000,
+      })
 
       expect(result.hasMore).toBe(false)
       expect(result.deletedCounts.timeline_entries).toBe(3)
@@ -61,31 +74,135 @@ describe('handleEnforceMaxLength — batching & modes', () => {
         [[1, 'home', 15005]],
         // timeline DELETE changes() — 10000 件削除
         [[10000]],
-        // notification GROUP BY: 空（bulk の場合呼ばれないが残予算 0 で skip）
+        // (notification は予算枯渇で skip)
+        // Phase 2: posts COUNT — needPostsFollowup=true で発火
+        [[100]],
+        // posts DELETE changes()
+        [[0]],
       ])
 
-      const result = handleEnforceMaxLength(db, 5, 100, { batchLimit: 10000 })
+      const result = handleEnforceMaxLength(db, 5, 100, 100000, {
+        batchLimit: 10000,
+      })
 
       expect(result.hasMore).toBe(true)
       expect(result.deletedCounts.timeline_entries).toBe(10000)
     })
 
-    it('orphan 削除がバッチ上限に達したら hasMore=true', () => {
+    it('posts 削除がバッチ上限に達したら hasMore=true', () => {
       const { db } = createMockDb([
-        // timeline GROUP BY: 超過あり（orphan が動く条件）
+        // timeline GROUP BY: 超過あり (followup を発火させる)
         [[1, 'home', 6]],
         // timeline DELETE changes()
         [[1]],
         // notification GROUP BY: 空
         [],
-        // orphan DELETE changes() — batchLimit ちょうど
+        // posts COUNT — 上限以下
+        [[100]],
+        // posts DELETE changes() — batchLimit ちょうど
         [[10000]],
       ])
 
-      const result = handleEnforceMaxLength(db, 5, 100, { batchLimit: 10000 })
+      const result = handleEnforceMaxLength(db, 5, 100, 100000, {
+        batchLimit: 10000,
+      })
 
       expect(result.hasMore).toBe(true)
       expect(result.deletedCounts.posts).toBe(10000)
+    })
+
+    it('posts 総件数が maxPosts を超えていれば timeline 削除なしでも posts を削減する', () => {
+      const { db, calls } = createMockDb([
+        // timeline GROUP BY: 空
+        [],
+        // notification GROUP BY: 空
+        [],
+        // posts COUNT — 上限超過 (101000 - 100000 = 1000 件超過)
+        [[101000]],
+        // posts DELETE changes() — 1000 件削除
+        [[1000]],
+      ])
+
+      const result = handleEnforceMaxLength(db, 100000, 100000, 100000, {
+        batchLimit: 10000,
+      })
+
+      // posts DELETE が呼ばれており、孤立かつ古い順条件付き
+      const deletePosts = calls.find(
+        (c) =>
+          c.sql.includes('DELETE FROM posts') &&
+          c.sql.includes('LEFT JOIN') &&
+          c.sql.includes('ORDER BY p.created_at_ms ASC'),
+      )
+      expect(deletePosts).toBeDefined()
+      // limit = min(excess=1000, budget=10000) = 1000
+      expect(deletePosts?.opts?.bind).toContain(1000)
+      expect(result.deletedCounts.posts).toBe(1000)
+      // excess (1000) === deleted (1000) なので hasRemainingExcess=false
+      expect(result.hasMore).toBe(false)
+    })
+
+    it('posts 上限超過分が batchLimit を超えれば hasMore=true', () => {
+      const { db } = createMockDb([
+        // timeline GROUP BY: 空
+        [],
+        // notification GROUP BY: 空
+        [],
+        // posts COUNT — 大幅超過
+        [[150000]],
+        // posts DELETE changes() — batchLimit ぶん
+        [[10000]],
+      ])
+
+      const result = handleEnforceMaxLength(db, 100000, 100000, 100000, {
+        batchLimit: 10000,
+      })
+
+      // excess = 150000 - 100000 = 50000、deleted = 10000、まだ残っている
+      expect(result.hasMore).toBe(true)
+      expect(result.deletedCounts.posts).toBe(10000)
+    })
+
+    it('posts 上限以内かつ followup なしなら posts 削除はスキップされる', () => {
+      const { db, calls } = createMockDb([
+        // timeline GROUP BY: 空
+        [],
+        // notification GROUP BY: 空
+        [],
+        // posts COUNT — 上限以下
+        [[5000]],
+      ])
+
+      const result = handleEnforceMaxLength(db, 100000, 100000, 100000, {
+        batchLimit: 10000,
+      })
+
+      // posts DELETE は呼ばれない
+      const deletePosts = calls.find((c) => c.sql.includes('DELETE FROM posts'))
+      expect(deletePosts).toBeUndefined()
+      expect(result.deletedCounts.posts).toBe(0)
+      expect(result.hasMore).toBe(false)
+    })
+
+    it('posts が全件参照されていて削除ゼロなら hasRemainingExcess=false でループを抜ける', () => {
+      const { db } = createMockDb([
+        // timeline GROUP BY: 空
+        [],
+        // notification GROUP BY: 空
+        [],
+        // posts COUNT — 大幅超過だが…
+        [[200000]],
+        // posts DELETE changes() — 全件参照されていて 0 件削除
+        [[0]],
+      ])
+
+      const result = handleEnforceMaxLength(db, 100000, 100000, 100000, {
+        batchLimit: 10000,
+      })
+
+      // deleted === 0 のとき hasRemainingExcess は false (無限ループ防止)
+      expect(result.hasMore).toBe(false)
+      expect(result.deletedCounts.posts).toBe(0)
     })
   })
 
@@ -97,10 +214,13 @@ describe('handleEnforceMaxLength — batching & modes', () => {
         [[500]],
         // notification GROUP BY: 空
         [],
+        // posts COUNT
+        [[100]],
+        // posts DELETE changes()
         [[0]],
       ])
 
-      const result = handleEnforceMaxLength(db, 100000, 100000, {
+      const result = handleEnforceMaxLength(db, 100000, 100000, 100000, {
         batchLimit: 10000,
         mode: 'emergency',
         targetRatio: 0.5,
@@ -116,20 +236,19 @@ describe('handleEnforceMaxLength — batching & modes', () => {
 
     it('mode=emergency, targetRatio=0.5 で cnt の半分を残す (1000 → 500 削除)', () => {
       const { db, calls } = createMockDb([
-        // timeline GROUP BY (maxTimeline=100000 なので periodic 条件では超過なし) — 空
-        // emergency モードは HAVING cnt > maxTimeline では拾わないため、
-        // 実装的には `HAVING cnt > maxTimeline` をモード別に切り替えるか
-        // あるいは emergency では `maxTimeline` を 0 等にして全グループを拾う必要がある
+        // timeline GROUP BY
         [[1, 'home', 1000]],
         // timeline DELETE changes()
         [[500]],
         // notification GROUP BY: 空
         [],
-        // orphan DELETE changes()
+        // posts COUNT
+        [[100]],
+        // posts DELETE changes()
         [[0]],
       ])
 
-      const result = handleEnforceMaxLength(db, 0, 0, {
+      const result = handleEnforceMaxLength(db, 0, 0, 0, {
         batchLimit: 10000,
         mode: 'emergency',
         targetRatio: 0.5,
@@ -149,10 +268,14 @@ describe('handleEnforceMaxLength — batching & modes', () => {
         [[1, 'home', 50000]],
         // timeline DELETE changes() — batchLimit=10000 ぶん
         [[10000]],
-        // (以降は呼ばれない想定 — 予算枯渇で notif はスキップ)
+        // (notif は予算枯渇で skip)
+        // posts COUNT
+        [[100]],
+        // posts DELETE changes()
+        [[0]],
       ])
 
-      const result = handleEnforceMaxLength(db, 0, 0, {
+      const result = handleEnforceMaxLength(db, 0, 0, 0, {
         batchLimit: 10000,
         mode: 'emergency',
         targetRatio: 0.5,
@@ -165,11 +288,43 @@ describe('handleEnforceMaxLength — batching & modes', () => {
       expect(deleteTimeline?.opts?.bind).toContain(10000)
       expect(result.hasMore).toBe(true)
     })
+
+    it('mode=emergency は posts 総件数の cnt * targetRatio まで削減する', () => {
+      const { db, calls } = createMockDb([
+        // timeline GROUP BY: 空
+        [],
+        // notification GROUP BY: 空
+        [],
+        // posts COUNT — 1000 件
+        [[1000]],
+        // posts DELETE changes() — 500 件
+        [[500]],
+      ])
+
+      const result = handleEnforceMaxLength(db, 100000, 100000, 100000, {
+        batchLimit: 10000,
+        mode: 'emergency',
+        targetRatio: 0.5,
+      })
+
+      // emergency: target = floor(1000 * 0.5) = 500、excess = 500
+      const deletePosts = calls.find((c) => c.sql.includes('DELETE FROM posts'))
+      expect(deletePosts?.opts?.bind).toContain(500)
+      expect(result.deletedCounts.posts).toBe(500)
+    })
   })
 
   describe('option デフォルト', () => {
     it('オプション未指定時は periodic モードとして動作する', () => {
-      const { db, calls } = createMockDb([[[1, 'home', 8]], [[3]], [], [[0]]])
+      const { db, calls } = createMockDb([
+        [[1, 'home', 8]],
+        [[3]],
+        [],
+        // posts COUNT
+        [[100]],
+        // posts DELETE changes()
+        [[0]],
+      ])
 
       const result = handleEnforceMaxLength(db, 5, 100)
 
