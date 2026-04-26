@@ -5282,7 +5282,7 @@ __metadata:
     tailwindcss: "npm:^4.2.4"
     tailwindcss-animate: "npm:^1.0.7"
     typescript: "npm:^6.0.3"
-    unicode-emoji-json: "npm:^0.8.0"
+    unicode-emoji-json: "npm:^0.9.0"
     vitest: "npm:^4.1.5"
   languageName: unknown
   linkType: soft
@@ -7054,10 +7054,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"unicode-emoji-json@npm:^0.8.0":
-  version: 0.8.0
-  resolution: "unicode-emoji-json@npm:0.8.0"
-  checksum: 10c0/6a075cbcfd245ad3976047a6b3fccd1401c6bca6035082fe9844838ad5b1d4bd83c574ffeb8a9b0a56d1efaacd62c4a03609e0b5beb39797ca44fc84130a42d9
+"unicode-emoji-json@npm:^0.9.0":
+  version: 0.9.0
+  resolution: "unicode-emoji-json@npm:0.9.0"
+  checksum: 10c0/372e2e48c7a857f90fa790a54ad4ccf5fa097dae778ca2d8f4e83e8eaf74023e195ddb58300c4163524dbf63becfb5cbe60908529fe412252e5c7881c0e1340a
   languageName: node
   linkType: hard
 
