@@ -222,6 +222,19 @@ export type EnforceMaxLengthResult = {
     notifications: number
     posts: number
   }
+  /**
+   * フェーズ別の経過時間 (ms)。Worker タイムアウト原因切り分け用。
+   * サポートしない古い worker との互換を考えて optional。
+   */
+  phaseTimings?: {
+    timeline: number
+    notifications: number
+    postsCount: number
+    postsDelete: number
+    phase1Total: number
+    phase2Total: number
+    total: number
+  }
 }
 
 /** フォロー関係の同期 */

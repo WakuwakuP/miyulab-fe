@@ -79,6 +79,27 @@ export type EnforceMaxLengthOptions = {
   batchLimit?: number
 }
 
+/**
+ * フェーズ別の処理時間 (ms)。タイムアウト原因切り分け用。
+ *
+ * - timeline: timeline_entries の COUNT + DELETE
+ * - notifications: notifications の COUNT + DELETE
+ * - postsCount: posts の COUNT (Phase 2 冒頭)
+ * - postsDelete: posts の孤立 LEFT JOIN DELETE クエリ
+ * - phase1Total: BEGIN〜COMMIT を含む timeline+notifications トランザクション全体
+ * - phase2Total: BEGIN〜COMMIT を含む posts トランザクション全体
+ * - total: handleEnforceMaxLength 全体
+ */
+export type CleanupPhaseTimings = {
+  timeline: number
+  notifications: number
+  postsCount: number
+  postsDelete: number
+  phase1Total: number
+  phase2Total: number
+  total: number
+}
+
 export type EnforceMaxLengthHandlerResult = {
   changedTables: TableName[]
   hasMore: boolean
@@ -87,6 +108,8 @@ export type EnforceMaxLengthHandlerResult = {
     notifications: number
     posts: number
   }
+  /** フェーズ別経過時間 (ms)。デバッグ・タイムアウト切り分け用 */
+  phaseTimings: CleanupPhaseTimings
 }
 
 function readChanges(db: DbExec): number {
@@ -119,7 +142,9 @@ function processTimelineBatch(
   issuedDelete: boolean
   remainingBudget: number
   hasRemainingExcess: boolean
+  elapsedMs: number
 } {
+  const startedAt = nowMs()
   const cntRows = db.exec('SELECT COUNT(*) FROM timeline_entries;', {
     returnValue: 'resultRows',
   }) as number[][]
@@ -134,6 +159,7 @@ function processTimelineBatch(
   if (excess <= 0 || budget <= 0) {
     return {
       deleted: 0,
+      elapsedMs: nowMs() - startedAt,
       hasRemainingExcess: excess > 0,
       issuedDelete: false,
       remainingBudget: budget,
@@ -153,6 +179,7 @@ function processTimelineBatch(
 
   return {
     deleted,
+    elapsedMs: nowMs() - startedAt,
     hasRemainingExcess: excess > deleted,
     issuedDelete: deleted > 0,
     remainingBudget: budget - limit,
@@ -176,7 +203,9 @@ function processNotificationsBatch(
   issuedDelete: boolean
   remainingBudget: number
   hasRemainingExcess: boolean
+  elapsedMs: number
 } {
+  const startedAt = nowMs()
   const cntRows = db.exec('SELECT COUNT(*) FROM notifications;', {
     returnValue: 'resultRows',
   }) as number[][]
@@ -189,6 +218,7 @@ function processNotificationsBatch(
   if (excess <= 0 || budget <= 0) {
     return {
       deleted: 0,
+      elapsedMs: nowMs() - startedAt,
       hasRemainingExcess: excess > 0,
       issuedDelete: false,
       remainingBudget: budget,
@@ -208,6 +238,7 @@ function processNotificationsBatch(
 
   return {
     deleted,
+    elapsedMs: nowMs() - startedAt,
     hasRemainingExcess: excess > deleted,
     issuedDelete: deleted > 0,
     remainingBudget: budget - limit,
@@ -246,20 +277,26 @@ function processPostsBatch(
   deleted: number
   issuedDelete: boolean
   hasRemainingExcess: boolean
+  countElapsedMs: number
+  deleteElapsedMs: number
 } {
   if (budget <= 0) {
     return {
+      countElapsedMs: 0,
       deleted: 0,
+      deleteElapsedMs: 0,
       hasRemainingExcess: false,
       issuedDelete: false,
     }
   }
 
   // 現在の総件数を取得
+  const countStartedAt = nowMs()
   const cntRows = db.exec('SELECT COUNT(*) FROM posts;', {
     returnValue: 'resultRows',
   }) as number[][]
   const cnt = cntRows[0]?.[0] ?? 0
+  const countElapsedMs = nowMs() - countStartedAt
 
   // emergency モード: cnt * targetRatio を残す
   // periodic モード: maxPosts を残す
@@ -269,7 +306,9 @@ function processPostsBatch(
   // 上限以内かつ forceCleanup でなければ何もしない
   if (excess <= 0 && !forceCleanup) {
     return {
+      countElapsedMs,
       deleted: 0,
+      deleteElapsedMs: 0,
       hasRemainingExcess: false,
       issuedDelete: false,
     }
@@ -281,11 +320,15 @@ function processPostsBatch(
   const desiredLimit = excess > 0 ? Math.min(excess, budget) : budget
   if (desiredLimit <= 0) {
     return {
+      countElapsedMs,
       deleted: 0,
+      deleteElapsedMs: 0,
       hasRemainingExcess: false,
       issuedDelete: false,
     }
   }
+
+  const deleteStartedAt = nowMs()
 
   // 「孤立」かつ「古い順」で削除。
   //
@@ -314,6 +357,7 @@ function processPostsBatch(
     { bind: [desiredLimit] },
   )
   const deleted = readChanges(db)
+  const deleteElapsedMs = nowMs() - deleteStartedAt
 
   // hasRemainingExcess は「上限超過がまだ残っているか」のシグナル。
   //   - excess > deleted: まだ超過分が残っている → 次バッチで継続
@@ -323,10 +367,23 @@ function processPostsBatch(
   const hasRemainingExcess = deleted > 0 && excess > deleted
 
   return {
+    countElapsedMs,
     deleted,
+    deleteElapsedMs,
     hasRemainingExcess,
     issuedDelete: deleted > 0,
   }
+}
+
+/**
+ * 高解像度時刻 (ms) を返す。Worker でも performance API は利用可能。
+ * テスト等で performance が無いケースに備えて Date.now にフォールバックする。
+ */
+function nowMs(): number {
+  if (typeof performance !== 'undefined' && performance?.now) {
+    return performance.now()
+  }
+  return Date.now()
 }
 
 /**
@@ -358,7 +415,19 @@ export function handleEnforceMaxLength(
   let hasMore = false
   let needPostsFollowup = false
 
+  const totalStartedAt = nowMs()
+  const phaseTimings: CleanupPhaseTimings = {
+    notifications: 0,
+    phase1Total: 0,
+    phase2Total: 0,
+    postsCount: 0,
+    postsDelete: 0,
+    timeline: 0,
+    total: 0,
+  }
+
   // Phase 1: timeline_entries + notifications を 1 トランザクションで処理
+  const phase1StartedAt = nowMs()
   db.exec('BEGIN;')
   try {
     const tlResult = processTimelineBatch(
@@ -369,6 +438,7 @@ export function handleEnforceMaxLength(
       batchLimit,
     )
     deletedCounts.timeline_entries = tlResult.deleted
+    phaseTimings.timeline = tlResult.elapsedMs
     if (tlResult.issuedDelete) {
       needPostsFollowup = true
       if (!changedTables.includes('timeline_entries')) {
@@ -389,6 +459,7 @@ export function handleEnforceMaxLength(
         notifBudget,
       )
       deletedCounts.notifications = notifResult.deleted
+      phaseTimings.notifications = notifResult.elapsedMs
       if (notifResult.issuedDelete) {
         needPostsFollowup = true
         if (!changedTables.includes('notifications')) {
@@ -404,8 +475,11 @@ export function handleEnforceMaxLength(
     }
 
     db.exec('COMMIT;')
+    phaseTimings.phase1Total = nowMs() - phase1StartedAt
   } catch (e) {
     db.exec('ROLLBACK;')
+    phaseTimings.phase1Total = nowMs() - phase1StartedAt
+    phaseTimings.total = nowMs() - totalStartedAt
     throw e
   }
 
@@ -420,6 +494,7 @@ export function handleEnforceMaxLength(
   //
   // reblog/quote 自己参照 FK のため、参照元がある posts は削除されない。
   // 参照元 (reblog post 子) が先に消えれば次バッチで親も孤立化して削除可能になる。
+  const phase2StartedAt = nowMs()
   db.exec('BEGIN;')
   try {
     const postsResult = processPostsBatch(
@@ -431,6 +506,8 @@ export function handleEnforceMaxLength(
       needPostsFollowup,
     )
     deletedCounts.posts = postsResult.deleted
+    phaseTimings.postsCount = postsResult.countElapsedMs
+    phaseTimings.postsDelete = postsResult.deleteElapsedMs
 
     if (needPostsFollowup || postsResult.issuedDelete) {
       // DELETE を発行した時点で posts テーブル変更として扱う（後方互換）。
@@ -450,10 +527,14 @@ export function handleEnforceMaxLength(
     }
 
     db.exec('COMMIT;')
+    phaseTimings.phase2Total = nowMs() - phase2StartedAt
   } catch (e) {
     db.exec('ROLLBACK;')
+    phaseTimings.phase2Total = nowMs() - phase2StartedAt
+    phaseTimings.total = nowMs() - totalStartedAt
     throw e
   }
 
-  return { changedTables, deletedCounts, hasMore }
+  phaseTimings.total = nowMs() - totalStartedAt
+  return { changedTables, deletedCounts, hasMore, phaseTimings }
 }

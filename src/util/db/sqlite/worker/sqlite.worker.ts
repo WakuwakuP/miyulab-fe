@@ -301,6 +301,7 @@ self.onmessage = (
             deletedCounts: r.deletedCounts,
             hasMore: r.hasMore,
             ok: true,
+            phaseTimings: r.phaseTimings,
           },
           r.changedTables,
         )
