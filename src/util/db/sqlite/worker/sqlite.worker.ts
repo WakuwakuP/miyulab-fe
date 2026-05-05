@@ -25,7 +25,12 @@ import type { WorkerMessage, WorkerRequest } from '../protocol'
 import { ALL_TABLE_NAMES } from '../protocol'
 import { executeQueryPlan as runQueryPlan } from '../queries/executionEngine'
 import { resolvePostIdInternal } from './handlers/statusHelpers'
-import { handleEnforceMaxLength } from './workerCleanup'
+import {
+  DEFAULT_MAX_NOTIFICATIONS,
+  DEFAULT_MAX_POSTS,
+  DEFAULT_MAX_TIMELINE_ENTRIES,
+  handleEnforceMaxLength,
+} from './workerCleanup'
 import { handleExec, handleExecBatch } from './workerExecHandlers'
 import { handleExportDatabase } from './workerExportHandler'
 import { handleFetchTimeline } from './workerFetchTimelineHandler'
@@ -279,11 +284,17 @@ self.onmessage = (
 
       // ---- Cleanup ----
       case 'enforceMaxLength': {
-        const r = handleEnforceMaxLength(db, 100000, 100000, 100000, {
-          batchLimit: msg.batchLimit,
-          mode: msg.mode,
-          targetRatio: msg.targetRatio,
-        })
+        const r = handleEnforceMaxLength(
+          db,
+          DEFAULT_MAX_TIMELINE_ENTRIES,
+          DEFAULT_MAX_NOTIFICATIONS,
+          DEFAULT_MAX_POSTS,
+          {
+            batchLimit: msg.batchLimit,
+            mode: msg.mode,
+            targetRatio: msg.targetRatio,
+          },
+        )
         sendResponse(
           msg.id,
           {

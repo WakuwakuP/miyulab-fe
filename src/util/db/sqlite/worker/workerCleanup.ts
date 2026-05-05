@@ -7,6 +7,14 @@
  * `batchLimit` (default 2,000) を超えないように 1 回の呼び出しで削除する。
  * これにより単一トランザクションが肥大化してタイムアウトする問題を回避する。
  *
+ * 上限判定の方針 (v2.0.x で変更):
+ *   - timeline_entries / notifications / posts いずれも **テーブル全体の COUNT** で判定する。
+ *   - 旧実装は (local_account_id, timeline_key) / (local_account_id) ごとのグループ単位で
+ *     `HAVING cnt > 上限` を見ていたため、複数のタイムライングループに分散しているケースで
+ *     全体としては大量に蓄積していてもどのグループも上限に届かず削除が走らない問題があった
+ *     (例: home 8 万 + local 8 万 + tag 5 万 = 21 万件あるのに上限 10 万を 1 グループも超えず削除ゼロ)。
+ *   - 全体合計で判定することで、流入バランスに依らず安定して上限を保てるようにした。
+ *
  * posts cleanup の方針:
  *   - posts 総件数が `maxPosts` を超えたら、孤立 (= timeline_entries / notifications /
  *     他 posts の reblog_of_post_id / quote_of_post_id から参照されていない) かつ古い post を
@@ -19,6 +27,29 @@
  */
 
 import type { TableName } from '../protocol'
+
+// ================================================================
+// 上限の既定値 (sqlite.worker.ts のハンドラで参照する)
+// ================================================================
+
+/**
+ * timeline_entries テーブル全体の最大行数。
+ * これを超えた分は古い順 (created_at_ms ASC) に削除される。
+ */
+export const DEFAULT_MAX_TIMELINE_ENTRIES = 100_000
+
+/**
+ * notifications テーブル全体の最大行数。
+ * 通知は流入が少なく、UI で扱う件数も限定的なため timeline より低めに設定。
+ */
+export const DEFAULT_MAX_NOTIFICATIONS = 10_000
+
+/**
+ * posts テーブル全体の最大行数。
+ * timeline_entries / notifications / posts 自己参照のいずれからも参照されない
+ * 「孤立 post」だけが削除対象になる。
+ */
+export const DEFAULT_MAX_POSTS = 100_000
 
 type DbExec = {
   exec: (
@@ -69,7 +100,12 @@ function readChanges(db: DbExec): number {
 }
 
 /**
- * (local_account_id, timeline_key) グループで超過 1 件以上あるか確認しつつ 1 バッチ削除する。
+ * timeline_entries テーブル全体の COUNT で超過判定し、超過分を 1 バッチ削除する。
+ *
+ * 旧実装は (local_account_id, timeline_key) ごとのグループ単位で判定していたが、
+ * 複数タイムラインに分散しているケースで全体としては大量にあってもグループ単位の上限に
+ * 届かず削除が走らない問題があったため、全体合計判定に変更した。
+ *
  * 戻り値は { deleted, issuedDelete, remainingBudget, hasRemainingExcess }。
  */
 function processTimelineBatch(
@@ -84,62 +120,51 @@ function processTimelineBatch(
   remainingBudget: number
   hasRemainingExcess: boolean
 } {
-  // emergency モードでは maxTimeline の制限を外して全グループを対象とする
-  // (ターゲットは cnt * targetRatio で決まる)。HAVING の閾値は 0 にする。
-  const havingThreshold = mode === 'emergency' ? 0 : maxTimeline
+  const cntRows = db.exec('SELECT COUNT(*) FROM timeline_entries;', {
+    returnValue: 'resultRows',
+  }) as number[][]
+  const cnt = cntRows[0]?.[0] ?? 0
 
-  // 超過のあるグループを列挙
-  const groups = db.exec(
-    'SELECT local_account_id, timeline_key, COUNT(*) as cnt FROM timeline_entries GROUP BY local_account_id, timeline_key HAVING cnt > ?;',
-    { bind: [havingThreshold], returnValue: 'resultRows' },
-  ) as (number | string)[][]
+  // emergency モード: cnt * targetRatio を残す
+  // periodic モード: maxTimeline を残す
+  const target =
+    mode === 'emergency' ? Math.floor(cnt * targetRatio) : maxTimeline
+  const excess = cnt - target
 
-  let deleted = 0
-  let issuedDelete = false
-  let remaining = budget
-  let hasRemainingExcess = false
-
-  for (const [laId, tlKey, cntRaw] of groups) {
-    const cnt = cntRaw as number
-    // emergency モード: cnt * targetRatio を残す → 超過 = cnt - floor(cnt * targetRatio)
-    // periodic モード: maxTimeline を残す → 超過 = cnt - maxTimeline
-    const target =
-      mode === 'emergency' ? Math.floor(cnt * targetRatio) : maxTimeline
-    const excess = cnt - target
-    if (excess <= 0) continue
-
-    if (remaining <= 0) {
-      hasRemainingExcess = true
-      break
-    }
-
-    const limit = Math.min(excess, remaining)
-    db.exec(
-      `DELETE FROM timeline_entries WHERE id IN (
-        SELECT id FROM timeline_entries
-        WHERE local_account_id = ? AND timeline_key = ?
-        ORDER BY created_at_ms ASC
-        LIMIT ?
-      );`,
-      { bind: [laId, tlKey, limit] },
-    )
-    issuedDelete = true
-    const changed = readChanges(db)
-    deleted += changed
-    remaining -= limit
-    if (excess > limit) {
-      hasRemainingExcess = true
+  if (excess <= 0 || budget <= 0) {
+    return {
+      deleted: 0,
+      hasRemainingExcess: excess > 0,
+      issuedDelete: false,
+      remainingBudget: budget,
     }
   }
+
+  const limit = Math.min(excess, budget)
+  db.exec(
+    `DELETE FROM timeline_entries WHERE id IN (
+      SELECT id FROM timeline_entries
+      ORDER BY created_at_ms ASC
+      LIMIT ?
+    );`,
+    { bind: [limit] },
+  )
+  const deleted = readChanges(db)
 
   return {
     deleted,
-    hasRemainingExcess,
-    issuedDelete,
-    remainingBudget: remaining,
+    hasRemainingExcess: excess > deleted,
+    issuedDelete: deleted > 0,
+    remainingBudget: budget - limit,
   }
 }
 
+/**
+ * notifications テーブル全体の COUNT で超過判定し、超過分を 1 バッチ削除する。
+ *
+ * 旧実装は local_account_id ごとのグループ判定だったが、timeline と同じく
+ * 全体合計判定に統一した。
+ */
 function processNotificationsBatch(
   db: DbExec,
   maxNotifications: number,
@@ -152,53 +177,40 @@ function processNotificationsBatch(
   remainingBudget: number
   hasRemainingExcess: boolean
 } {
-  const havingThreshold = mode === 'emergency' ? 0 : maxNotifications
+  const cntRows = db.exec('SELECT COUNT(*) FROM notifications;', {
+    returnValue: 'resultRows',
+  }) as number[][]
+  const cnt = cntRows[0]?.[0] ?? 0
 
-  const groups = db.exec(
-    'SELECT local_account_id, COUNT(*) as cnt FROM notifications GROUP BY local_account_id HAVING cnt > ?;',
-    { bind: [havingThreshold], returnValue: 'resultRows' },
-  ) as number[][]
+  const target =
+    mode === 'emergency' ? Math.floor(cnt * targetRatio) : maxNotifications
+  const excess = cnt - target
 
-  let deleted = 0
-  let issuedDelete = false
-  let remaining = budget
-  let hasRemainingExcess = false
-
-  for (const [laId, cnt] of groups) {
-    const target =
-      mode === 'emergency' ? Math.floor(cnt * targetRatio) : maxNotifications
-    const excess = cnt - target
-    if (excess <= 0) continue
-
-    if (remaining <= 0) {
-      hasRemainingExcess = true
-      break
-    }
-
-    const limit = Math.min(excess, remaining)
-    db.exec(
-      `DELETE FROM notifications WHERE id IN (
-        SELECT id FROM notifications
-        WHERE local_account_id = ?
-        ORDER BY created_at_ms ASC
-        LIMIT ?
-      );`,
-      { bind: [laId, limit] },
-    )
-    issuedDelete = true
-    const changed = readChanges(db)
-    deleted += changed
-    remaining -= limit
-    if (excess > limit) {
-      hasRemainingExcess = true
+  if (excess <= 0 || budget <= 0) {
+    return {
+      deleted: 0,
+      hasRemainingExcess: excess > 0,
+      issuedDelete: false,
+      remainingBudget: budget,
     }
   }
 
+  const limit = Math.min(excess, budget)
+  db.exec(
+    `DELETE FROM notifications WHERE id IN (
+      SELECT id FROM notifications
+      ORDER BY created_at_ms ASC
+      LIMIT ?
+    );`,
+    { bind: [limit] },
+  )
+  const deleted = readChanges(db)
+
   return {
     deleted,
-    hasRemainingExcess,
-    issuedDelete,
-    remainingBudget: remaining,
+    hasRemainingExcess: excess > deleted,
+    issuedDelete: deleted > 0,
+    remainingBudget: budget - limit,
   }
 }
 
@@ -328,9 +340,9 @@ function processPostsBatch(
  */
 export function handleEnforceMaxLength(
   db: DbExec,
-  maxTimeline = 100000,
-  maxNotifications = 100000,
-  maxPosts = 100000,
+  maxTimeline: number = DEFAULT_MAX_TIMELINE_ENTRIES,
+  maxNotifications: number = DEFAULT_MAX_NOTIFICATIONS,
+  maxPosts: number = DEFAULT_MAX_POSTS,
   options: EnforceMaxLengthOptions = {},
 ): EnforceMaxLengthHandlerResult {
   const mode = options.mode ?? 'periodic'

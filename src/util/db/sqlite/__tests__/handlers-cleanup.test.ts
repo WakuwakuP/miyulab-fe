@@ -10,11 +10,13 @@ type ExecCall = { sql: string; opts?: Parameters<DbExecCompat['exec']>[1] }
  * returnValue === 'resultRows' の呼び出しに対して、
  * selectResults を順番に返す Mock DB を作成する。
  *
+ * クエリ順 (v2.0.x — 全体合計判定):
+ *
  * Phase 1 (timeline + notifications):
- *   - timeline GROUP BY HAVING
- *   - (各 timeline グループ) SELECT changes()
- *   - notifications GROUP BY HAVING
- *   - (各 notif グループ) SELECT changes()
+ *   - SELECT COUNT(*) FROM timeline_entries
+ *   - (超過していれば) SELECT changes()
+ *   - SELECT COUNT(*) FROM notifications
+ *   - (超過していれば) SELECT changes()
  *
  * Phase 2 (posts):
  *   - SELECT COUNT(*) FROM posts
@@ -45,18 +47,18 @@ function createMockDb(selectResults: unknown[][] = []): {
 // ─── handleEnforceMaxLength ─────────────────────────────────────
 
 describe('handleEnforceMaxLength', () => {
-  it('タイムラインの上限を超えた投稿を削除する', () => {
+  it('タイムライン全体の上限を超えたエントリを削除する', () => {
     const maxTimeline = 5
     const maxNotifications = 100
     const maxPosts = 100000
 
     const { db, calls } = createMockDb([
-      // 1. timeline GROUP BY HAVING → 1 グループ: (1, 'home', 8)
-      [[1, 'home', 8]],
+      // 1. timeline COUNT — 8 件 (上限 5 を 3 件超過)
+      [[8]],
       // 2. timeline DELETE changes()
       [[3]],
-      // 3. notification GROUP BY HAVING → 上限以内なので空
-      [],
+      // 3. notifications COUNT — 上限以内
+      [[10]],
       // 4. posts COUNT (上限以下、followup で発火)
       [[100]],
       // 5. posts DELETE changes()
@@ -70,7 +72,9 @@ describe('handleEnforceMaxLength', () => {
       maxPosts,
     )
 
+    expect(result.changedTables).toContain('timeline_entries')
     expect(result.changedTables).toContain('posts')
+    expect(result.deletedCounts.timeline_entries).toBe(3)
 
     // Phase 1 BEGIN + COMMIT、Phase 2 BEGIN + COMMIT が両方走る
     const beginCount = calls.filter((c) => c.sql === 'BEGIN;').length
@@ -78,13 +82,16 @@ describe('handleEnforceMaxLength', () => {
     expect(beginCount).toBe(2)
     expect(commitCount).toBe(2)
 
-    // timeline_entries から古いエントリが削除される
+    // timeline_entries から古いエントリが削除される (全体古い順、グループ条件なし)
     const deleteTimeline = calls.find(
       (c) => c.sql.includes('DELETE') && c.sql.includes('timeline_entries'),
     )
     expect(deleteTimeline).toBeDefined()
     // LIMIT = count - maxTimeline = 8 - 5 = 3
     expect(deleteTimeline?.opts?.bind).toContain(3)
+    // local_account_id / timeline_key の WHERE 条件は付かない
+    expect(deleteTimeline?.sql).not.toContain('local_account_id')
+    expect(deleteTimeline?.sql).not.toContain('timeline_key')
 
     // 孤立 posts の削除クエリが実行される (LEFT JOIN + ORDER BY 古い順)
     const deleteOrphan = calls.find(
@@ -103,10 +110,10 @@ describe('handleEnforceMaxLength', () => {
     const maxPosts = 100000
 
     const { db, calls } = createMockDb([
-      // 1. timeline GROUP BY HAVING → 上限以内なので空
-      [],
-      // 2. notification GROUP BY HAVING → 上限以内なので空
-      [],
+      // 1. timeline COUNT — 上限以内
+      [[50]],
+      // 2. notifications COUNT — 上限以内
+      [[10]],
       // 3. posts COUNT (上限以下)
       [[100]],
     ])
@@ -138,11 +145,11 @@ describe('handleEnforceMaxLength', () => {
     const maxPosts = 100000
 
     const { db, calls } = createMockDb([
-      // 1. timeline GROUP BY HAVING → タイムライングループなし
-      [],
-      // 2. notification GROUP BY HAVING → (local_account_id=1, cnt=10)
-      [[1, 10]],
-      // 3. notification DELETE changes()
+      // 1. timeline COUNT — 上限以内
+      [[10]],
+      // 2. notifications COUNT — 10 件 (上限 3 を 7 件超過)
+      [[10]],
+      // 3. notifications DELETE changes()
       [[7]],
       // 4. posts COUNT (上限以下、followup で発火)
       [[100]],
@@ -167,6 +174,8 @@ describe('handleEnforceMaxLength', () => {
     expect(deleteNotif).toBeDefined()
     // LIMIT = 10 - 3 = 7
     expect(deleteNotif?.opts?.bind).toContain(7)
+    // local_account_id の WHERE 条件は付かない (全体合計判定)
+    expect(deleteNotif?.sql).not.toContain('local_account_id')
 
     // 孤立 posts の削除クエリが実行される
     const deleteOrphan = calls.find(
@@ -184,13 +193,13 @@ describe('handleEnforceMaxLength', () => {
     const maxPosts = 100000
 
     const { db, calls } = createMockDb([
-      // 1. timeline GROUP BY HAVING → (1, 'home', 5)
-      [[1, 'home', 5]],
+      // 1. timeline COUNT — 5 件 (3 件超過)
+      [[5]],
       // 2. timeline DELETE changes()
       [[3]],
-      // 3. notification GROUP BY HAVING → (1, 4)
-      [[1, 4]],
-      // 4. notification DELETE changes()
+      // 3. notifications COUNT — 4 件 (2 件超過)
+      [[4]],
+      // 4. notifications DELETE changes()
       [[2]],
       // 5. posts COUNT
       [[100]],
@@ -225,43 +234,6 @@ describe('handleEnforceMaxLength', () => {
     expect(orphanSql).toContain('ORDER BY p.created_at_ms ASC')
   })
 
-  it('複数のタイムライングループを個別に処理する', () => {
-    const maxTimeline = 5
-    const maxNotifications = 100
-    const maxPosts = 100000
-
-    const { db, calls } = createMockDb([
-      // 1. timeline GROUP BY HAVING → 2 グループとも超過
-      [
-        [1, 'home', 10],
-        [1, 'local', 8],
-      ],
-      // 2. home の DELETE changes()
-      [[5]],
-      // 3. local の DELETE changes()
-      [[3]],
-      // 4. notification GROUP BY HAVING → 空
-      [],
-      // 5. posts COUNT
-      [[100]],
-      // 6. posts DELETE changes()
-      [[0]],
-    ])
-
-    handleEnforceMaxLength(db, maxTimeline, maxNotifications, maxPosts)
-
-    // timeline_entries からの DELETE は 2 回（home と local）
-    const deleteTimelines = calls.filter((c) =>
-      c.sql.includes('DELETE FROM timeline_entries'),
-    )
-    expect(deleteTimelines).toHaveLength(2)
-
-    // home の超過分: 10 - 5 = 5
-    expect(deleteTimelines[0].opts?.bind).toContain(5)
-    // local の超過分: 8 - 5 = 3
-    expect(deleteTimelines[1].opts?.bind).toContain(3)
-  })
-
   it('エラー時にROLLBACKする', () => {
     const calls: ExecCall[] = []
     const db: DbExecCompat = {
@@ -285,10 +257,10 @@ describe('handleEnforceMaxLength', () => {
 
   it('デフォルトの maxNotifications / maxPosts が使用される', () => {
     const { db, calls } = createMockDb([
-      // timeline GROUP BY HAVING → 空
-      [],
-      // notification GROUP BY HAVING → 空
-      [],
+      // timeline COUNT — 上限以内
+      [[100]],
+      // notifications COUNT — 上限以内
+      [[100]],
       // posts COUNT (デフォルト 100000 以下)
       [[1000]],
     ])
@@ -305,10 +277,10 @@ describe('handleEnforceMaxLength', () => {
 
   it('posts 上限超過のみで timeline/notif 削除がなくても posts を削減する', () => {
     const { db, calls } = createMockDb([
-      // 1. timeline GROUP BY: 空
-      [],
-      // 2. notification GROUP BY: 空
-      [],
+      // 1. timeline COUNT — 上限以内
+      [[100]],
+      // 2. notifications COUNT — 上限以内
+      [[100]],
       // 3. posts COUNT: 上限超過
       [[101000]],
       // 4. posts DELETE changes()
