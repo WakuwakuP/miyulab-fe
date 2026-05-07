@@ -1901,10 +1901,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@simplewebauthn/types@npm:12.0.0":
-  version: 12.0.0
-  resolution: "@simplewebauthn/types@npm:12.0.0"
-  checksum: 10c0/b7ce0ae692ea1e069ad9cb028fc1ccfe3f37e0f197825ba9e468e60194f463e88f5db254ddea296019b470a465ffaffa96fe27bb5e1e5d5d14bfcd068b04abed
+"@simplewebauthn/browser@npm:13.3.0":
+  version: 13.3.0
+  resolution: "@simplewebauthn/browser@npm:13.3.0"
+  checksum: 10c0/23a9c14777c4ef6d15fd6c876a1035e6e597e92f96cd0ffe83b0b869f0e4db7789a591da9a39d1fe2c0529c42ecc291c4a30227fc705f0b7729c255f9ccc7c21
   languageName: node
   linkType: hard
 
@@ -5200,14 +5200,14 @@ __metadata:
   languageName: node
   linkType: hard
 
-"misskey-js@npm:^2026.5.1-alpha.0":
-  version: 2026.5.1-alpha.0
-  resolution: "misskey-js@npm:2026.5.1-alpha.0"
+"misskey-js@npm:^2026.5.1":
+  version: 2026.5.1
+  resolution: "misskey-js@npm:2026.5.1"
   dependencies:
-    "@simplewebauthn/types": "npm:12.0.0"
+    "@simplewebauthn/browser": "npm:13.3.0"
     eventemitter3: "npm:5.0.4"
     reconnecting-websocket: "npm:4.4.0"
-  checksum: 10c0/51b9736051e811eaf6879a49e9801888007d53a9fc4c3e0cfa2457036890701e51a56a33d42ac12b51242d24b09348947a00bb58f654ba4ab6ad16fd4770c5be
+  checksum: 10c0/8ab4ef6e2a949ef63bcc32472819f29e137bdcf25a5cb001789f0fd812344790774845d29dcaac5ea3a50260a271f017b98fb6aeffd95b0da9f079c353780f45
   languageName: node
   linkType: hard
 
@@ -5267,7 +5267,7 @@ __metadata:
     lucide-react: "npm:^1.14.0"
     megalodon: "npm:^10.3.0"
     mfm-js: "npm:^0.25.0"
-    misskey-js: "npm:^2026.5.1-alpha.0"
+    misskey-js: "npm:^2026.5.1"
     next: "npm:^16.2.5"
     node-emoji: "npm:^2.2.0"
     pg: "npm:^8.20.0"
