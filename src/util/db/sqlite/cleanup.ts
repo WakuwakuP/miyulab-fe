@@ -71,6 +71,15 @@ type EnforceMaxLengthResponse = {
     notifications: number
     posts: number
   }
+  phaseTimings?: {
+    timeline: number
+    notifications: number
+    postsCount: number
+    postsDelete: number
+    phase1Total: number
+    phase2Total: number
+    total: number
+  }
 }
 
 type TableCounts = {
@@ -150,6 +159,21 @@ export async function enforceMaxLength(
     posts: 0,
     timeline_entries: 0,
   }
+  // バッチ横断のフェーズ別経過時間集計 (ms)
+  const phaseTotals = {
+    notifications: 0,
+    phase1Total: 0,
+    phase2Total: 0,
+    postsCount: 0,
+    postsDelete: 0,
+    timeline: 0,
+    workerTotal: 0,
+  }
+  /** worker から phaseTimings を 1 回でも受け取ったか */
+  let phaseTimingsAvailable = false
+  /** 1 バッチ中で 規定値を超えたフェーズがあれば記録 (ms) */
+  let maxBatchPhase2 = 0
+  let maxBatchPostsDelete = 0
 
   let iteration = 0
   let aborted = false
@@ -170,6 +194,21 @@ export async function enforceMaxLength(
         totalDeleted.notifications += result.deletedCounts.notifications
         totalDeleted.posts += result.deletedCounts.posts
       }
+      if (result?.phaseTimings) {
+        phaseTimingsAvailable = true
+        const pt = result.phaseTimings
+        phaseTotals.timeline += pt.timeline
+        phaseTotals.notifications += pt.notifications
+        phaseTotals.postsCount += pt.postsCount
+        phaseTotals.postsDelete += pt.postsDelete
+        phaseTotals.phase1Total += pt.phase1Total
+        phaseTotals.phase2Total += pt.phase2Total
+        phaseTotals.workerTotal += pt.total
+        if (pt.phase2Total > maxBatchPhase2) maxBatchPhase2 = pt.phase2Total
+        if (pt.postsDelete > maxBatchPostsDelete) {
+          maxBatchPostsDelete = pt.postsDelete
+        }
+      }
       if (!result?.hasMore) break
     }
     if (iteration >= MAX_BATCH_ITERATIONS) {
@@ -189,6 +228,23 @@ export async function enforceMaxLength(
       totalDeleted.posts
     const status = aborted ? 'aborted (partial)' : 'completed'
     const summary = `[cleanup] enforceMaxLength ${status} (mode=${mode}, kind=${kind}, iterations=${iteration}, elapsedMs=${elapsedMs}, deleted: timeline_entries=${totalDeleted.timeline_entries}, notifications=${totalDeleted.notifications}, posts=${totalDeleted.posts}, total=${totalCount})`
+
+    // フェーズ別経過時間サマリ (Worker 側で計測)。タイムアウト原因切り分けに使う。
+    // すべてミリ秒、全バッチの合計とバッチ単位の最大値を表示。
+    let timingsLine: string | undefined
+    if (phaseTimingsAvailable) {
+      timingsLine =
+        `[cleanup] phase timings (sum across batches, ms): ` +
+        `phase1Total=${Math.round(phaseTotals.phase1Total)}, ` +
+        `phase2Total=${Math.round(phaseTotals.phase2Total)} ` +
+        `(maxBatch=${Math.round(maxBatchPhase2)}), ` +
+        `timeline=${Math.round(phaseTotals.timeline)}, ` +
+        `notifications=${Math.round(phaseTotals.notifications)}, ` +
+        `postsCount=${Math.round(phaseTotals.postsCount)}, ` +
+        `postsDelete=${Math.round(phaseTotals.postsDelete)} ` +
+        `(maxBatch=${Math.round(maxBatchPostsDelete)}), ` +
+        `workerTotal=${Math.round(phaseTotals.workerTotal)}`
+    }
 
     // 完了/中断後のテーブル件数と前回からの変動を表示する。
     // 件数取得自体が失敗してもクリーンアップ結果ログは残す。
@@ -212,9 +268,11 @@ export async function enforceMaxLength(
 
     if (aborted) {
       console.warn(summary, abortError)
+      if (timingsLine) console.warn(timingsLine)
       if (countsLine) console.warn(countsLine)
     } else {
       console.info(summary)
+      if (timingsLine) console.info(timingsLine)
       if (countsLine) console.info(countsLine)
     }
   }

@@ -11,11 +11,13 @@ type ExecCall = { sql: string; opts?: Parameters<DbExecCompat['exec']>[1] }
 /**
  * Mock DB. selectResults はクエリの登場順に返す。
  *
+ * クエリ順 (v2.0.x — 全体合計判定):
+ *
  * Phase 1 (timeline + notifications):
- *   - timeline GROUP BY HAVING
- *   - (各 timeline グループ) SELECT changes()
- *   - notifications GROUP BY HAVING
- *   - (各 notif グループ) SELECT changes()
+ *   - SELECT COUNT(*) FROM timeline_entries
+ *   - (超過していれば) SELECT changes()
+ *   - SELECT COUNT(*) FROM notifications
+ *   - (超過していれば) SELECT changes()
  *
  * Phase 2 (posts):
  *   - SELECT COUNT(*) FROM posts
@@ -47,12 +49,12 @@ describe('handleEnforceMaxLength — batching & modes', () => {
   describe('hasMore レスポンス', () => {
     it('batchLimit を超えない削除なら hasMore=false', () => {
       const { db } = createMockDb([
-        // timeline GROUP BY: 1 グループ、超過 3 件
-        [[1, 'home', 8]],
+        // timeline COUNT — 8 件 (上限 5 を 3 件超過)
+        [[8]],
         // timeline DELETE changes()
         [[3]],
-        // notification GROUP BY: 空
-        [],
+        // notifications COUNT — 上限以内
+        [[10]],
         // posts COUNT — 上限以下 (forceCleanup=true で発火)
         [[100]],
         // posts DELETE changes()
@@ -70,11 +72,11 @@ describe('handleEnforceMaxLength — batching & modes', () => {
 
     it('timeline の超過が batchLimit を超えれば hasMore=true', () => {
       const { db } = createMockDb([
-        // timeline GROUP BY: 1 グループ、超過 15000 件 (batchLimit=10000 超)
-        [[1, 'home', 15005]],
+        // timeline COUNT — 15005 件 (超過 15000、batchLimit=10000 超)
+        [[15005]],
         // timeline DELETE changes() — 10000 件削除
         [[10000]],
-        // (notification は予算枯渇で skip)
+        // (notifications は予算枯渇で skip)
         // Phase 2: posts COUNT — needPostsFollowup=true で発火
         [[100]],
         // posts DELETE changes()
@@ -91,12 +93,12 @@ describe('handleEnforceMaxLength — batching & modes', () => {
 
     it('posts 削除がバッチ上限に達したら hasMore=true', () => {
       const { db } = createMockDb([
-        // timeline GROUP BY: 超過あり (followup を発火させる)
-        [[1, 'home', 6]],
+        // timeline COUNT — 6 件 (1 件超過 → followup を発火させる)
+        [[6]],
         // timeline DELETE changes()
         [[1]],
-        // notification GROUP BY: 空
-        [],
+        // notifications COUNT — 上限以内
+        [[10]],
         // posts COUNT — 上限以下
         [[100]],
         // posts DELETE changes() — batchLimit ちょうど
@@ -113,10 +115,10 @@ describe('handleEnforceMaxLength — batching & modes', () => {
 
     it('posts 総件数が maxPosts を超えていれば timeline 削除なしでも posts を削減する', () => {
       const { db, calls } = createMockDb([
-        // timeline GROUP BY: 空
-        [],
-        // notification GROUP BY: 空
-        [],
+        // timeline COUNT — 上限以内
+        [[100]],
+        // notifications COUNT — 上限以内
+        [[100]],
         // posts COUNT — 上限超過 (101000 - 100000 = 1000 件超過)
         [[101000]],
         // posts DELETE changes() — 1000 件削除
@@ -144,10 +146,10 @@ describe('handleEnforceMaxLength — batching & modes', () => {
 
     it('posts 上限超過分が batchLimit を超えれば hasMore=true', () => {
       const { db } = createMockDb([
-        // timeline GROUP BY: 空
-        [],
-        // notification GROUP BY: 空
-        [],
+        // timeline COUNT — 上限以内
+        [[100]],
+        // notifications COUNT — 上限以内
+        [[100]],
         // posts COUNT — 大幅超過
         [[150000]],
         // posts DELETE changes() — batchLimit ぶん
@@ -165,10 +167,10 @@ describe('handleEnforceMaxLength — batching & modes', () => {
 
     it('posts 上限以内かつ followup なしなら posts 削除はスキップされる', () => {
       const { db, calls } = createMockDb([
-        // timeline GROUP BY: 空
-        [],
-        // notification GROUP BY: 空
-        [],
+        // timeline COUNT — 上限以内
+        [[100]],
+        // notifications COUNT — 上限以内
+        [[100]],
         // posts COUNT — 上限以下
         [[5000]],
       ])
@@ -186,10 +188,10 @@ describe('handleEnforceMaxLength — batching & modes', () => {
 
     it('posts が全件参照されていて削除ゼロなら hasRemainingExcess=false でループを抜ける', () => {
       const { db } = createMockDb([
-        // timeline GROUP BY: 空
-        [],
-        // notification GROUP BY: 空
-        [],
+        // timeline COUNT — 上限以内
+        [[100]],
+        // notifications COUNT — 上限以内
+        [[100]],
         // posts COUNT — 大幅超過だが…
         [[200000]],
         // posts DELETE changes() — 全件参照されていて 0 件削除
@@ -207,13 +209,15 @@ describe('handleEnforceMaxLength — batching & modes', () => {
   })
 
   describe('emergency mode', () => {
-    it('mode=emergency はグループサイズが maxTimeline 以下でも発火する', () => {
+    it('mode=emergency は cnt が maxTimeline 以下でも発火する', () => {
       const { db, calls } = createMockDb([
-        // maxTimeline=100000 だが emergency モードなので threshold=0 で拾う
-        [[1, 'home', 1000]],
+        // maxTimeline=100000 だが emergency モードなので targetRatio=0.5 で発火
+        // timeline COUNT
+        [[1000]],
+        // timeline DELETE changes()
         [[500]],
-        // notification GROUP BY: 空
-        [],
+        // notifications COUNT — 0 件
+        [[0]],
         // posts COUNT
         [[100]],
         // posts DELETE changes()
@@ -236,12 +240,12 @@ describe('handleEnforceMaxLength — batching & modes', () => {
 
     it('mode=emergency, targetRatio=0.5 で cnt の半分を残す (1000 → 500 削除)', () => {
       const { db, calls } = createMockDb([
-        // timeline GROUP BY
-        [[1, 'home', 1000]],
+        // timeline COUNT
+        [[1000]],
         // timeline DELETE changes()
         [[500]],
-        // notification GROUP BY: 空
-        [],
+        // notifications COUNT — 0 件
+        [[0]],
         // posts COUNT
         [[100]],
         // posts DELETE changes()
@@ -264,8 +268,8 @@ describe('handleEnforceMaxLength — batching & modes', () => {
 
     it('mode=emergency で batchLimit を超える場合、バッチぶんだけ削除し hasMore=true', () => {
       const { db, calls } = createMockDb([
-        // 巨大グループ: 50000 件、emergency で excess = 25000 件
-        [[1, 'home', 50000]],
+        // timeline COUNT — 50000 件、emergency で excess = 25000 件
+        [[50000]],
         // timeline DELETE changes() — batchLimit=10000 ぶん
         [[10000]],
         // (notif は予算枯渇で skip)
@@ -291,10 +295,10 @@ describe('handleEnforceMaxLength — batching & modes', () => {
 
     it('mode=emergency は posts 総件数の cnt * targetRatio まで削減する', () => {
       const { db, calls } = createMockDb([
-        // timeline GROUP BY: 空
-        [],
-        // notification GROUP BY: 空
-        [],
+        // timeline COUNT — 0 件
+        [[0]],
+        // notifications COUNT — 0 件
+        [[0]],
         // posts COUNT — 1000 件
         [[1000]],
         // posts DELETE changes() — 500 件
@@ -317,9 +321,12 @@ describe('handleEnforceMaxLength — batching & modes', () => {
   describe('option デフォルト', () => {
     it('オプション未指定時は periodic モードとして動作する', () => {
       const { db, calls } = createMockDb([
-        [[1, 'home', 8]],
+        // timeline COUNT — 8 件 (3 件超過)
+        [[8]],
+        // timeline DELETE changes()
         [[3]],
-        [],
+        // notifications COUNT — 上限以内
+        [[10]],
         // posts COUNT
         [[100]],
         // posts DELETE changes()

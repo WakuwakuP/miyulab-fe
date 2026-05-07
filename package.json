@@ -72,7 +72,7 @@
   },
   "license": "MIT",
   "name": "miyulab-fe",
-  "packageManager": "yarn@4.13.0",
+  "packageManager": "yarn@4.14.1",
   "private": true,
   "resolutions": {
     "@types/react": "19.2.14",
