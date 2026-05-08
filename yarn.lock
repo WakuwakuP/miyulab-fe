@@ -777,6 +777,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@misskey-dev/emoji-data@npm:17.0.0":
+  version: 17.0.0
+  resolution: "@misskey-dev/emoji-data@npm:17.0.0"
+  checksum: 10c0/3e1265a3783143c3090ccd9082e7be131db0b8121b5778a9c12f57be4e11e596ca2b8ea34ae230f3ae4bedeef2697b05ddcb5380b6a9e4e26554f8ff9e8a6e2b
+  languageName: node
+  linkType: hard
+
 "@mux/mux-data-google-ima@npm:0.2.8":
   version: 0.2.8
   resolution: "@mux/mux-data-google-ima@npm:0.2.8"
@@ -2113,13 +2120,6 @@ __metadata:
     postcss: "npm:^8.5.6"
     tailwindcss: "npm:4.2.4"
   checksum: 10c0/e6abad7065558bf3c39d30f392100c934c3381a572df21d934dd5a9399e0a62e16ba3d74a51ec0b1d670b1990ae73d01dfc560db0bf0e24bad827e00be0e62c2
-  languageName: node
-  linkType: hard
-
-"@twemoji/parser@npm:16.0.0":
-  version: 16.0.0
-  resolution: "@twemoji/parser@npm:16.0.0"
-  checksum: 10c0/b1976e6ee3354ee7d021a1b97f1befa0db585adee34998f5b27f618a0ab50840e30b7cb5af384365e038f0e91e52680704c111225f8441d2b58ec1a0a6926d4d
   languageName: node
   linkType: hard
 
@@ -5060,12 +5060,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"mfm-js@npm:^0.25.0":
-  version: 0.25.0
-  resolution: "mfm-js@npm:0.25.0"
+"mfm-js@npm:^0.26.0":
+  version: 0.26.0
+  resolution: "mfm-js@npm:0.26.0"
   dependencies:
-    "@twemoji/parser": "npm:16.0.0"
-  checksum: 10c0/670d149b20e552b275f0ca3211dfe54a26e61ae881b09279fee6fdd7715dd4503cd7e1e9daf247efb90b0ac65c4ce52c554458479518f98c35bd62284963f98e
+    "@misskey-dev/emoji-data": "npm:17.0.0"
+  checksum: 10c0/ca9c64383d6f116cb5738de9d9782964e74706bd640d3963d6ba6843ebd8d595854a62a28c69bc7e5e352b6adb8842b319797382b15db104cff36bfc747eafb3
   languageName: node
   linkType: hard
 
@@ -5266,7 +5266,7 @@ __metadata:
     lint-staged: "npm:^16.4.0"
     lucide-react: "npm:^1.14.0"
     megalodon: "npm:^10.3.0"
-    mfm-js: "npm:^0.25.0"
+    mfm-js: "npm:^0.26.0"
     misskey-js: "npm:^2026.5.1"
     next: "npm:^16.2.5"
     node-emoji: "npm:^2.2.0"
