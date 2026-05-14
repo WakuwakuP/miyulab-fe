@@ -378,7 +378,7 @@ yarn build
 |------|-----------|------|
 | **megalodon** | 10.x | Mastodon/Pleroma 互換 API クライアント |
 | **misskey-js** | 2026.x-beta | Misskey 固有 API 対応 |
-| **mfm-js** | 0.25.x | MFM (Misskey Flavored Markdown) パーサー |
+| **mfm-js** | — | MFM (Misskey Flavored Markdown) パーサー |
 
 ### UI コンポーネント
 
@@ -401,7 +401,7 @@ yarn build
 | **Vitest** | 4.x | テストフレームワーク |
 | **@vitest/coverage-v8** | 4.x | コードカバレッジ |
 | **Husky** | 9.x | Git hooks 管理 |
-| **lint-staged** | 16.x | ステージファイルのリント |
+| **lint-staged** | 17.x | ステージファイルのリント |
 
 ### Next.js 設定のポイント
 
