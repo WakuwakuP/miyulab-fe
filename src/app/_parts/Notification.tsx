@@ -285,7 +285,7 @@ export const Notification = ({
                 </p>
               </div>
             </div>
-            <div className="min-w-12">
+            <div className="min-w-12  mr-2">
               {resolvedReactionUrl != null ? (
                 scrolling ? (
                   <div className="h-12 w-12 flex-none rounded-lg" />
@@ -296,7 +296,6 @@ export const Notification = ({
                     height={48}
                     src={resolvedReactionUrl}
                     title={notification.reaction?.name}
-                    width={48}
                   />
                 )
               ) : (
