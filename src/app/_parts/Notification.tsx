@@ -285,18 +285,18 @@ export const Notification = ({
                 </p>
               </div>
             </div>
-            <div className="min-w-12  mr-2">
+            <div className="min-w-12 max-w-full mr-2">
               {resolvedReactionUrl != null ? (
                 scrolling ? (
                   <div className="h-12 w-12 flex-none rounded-lg" />
                 ) : (
-                  <ProxyImage
+                  <img
                     alt="emoji"
-                    className="h-12 max-w-full flex-none rounded-lg object-contain"
-                    height={48}
+                    className="max-h-12 max-w-full w-auto rounded-lg object-contain"
+                    decoding="async"
+                    loading="lazy"
                     src={resolvedReactionUrl}
                     title={notification.reaction?.name}
-                    width={48}
                   />
                 )
               ) : (
