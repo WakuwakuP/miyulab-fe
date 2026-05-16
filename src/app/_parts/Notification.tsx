@@ -296,7 +296,6 @@ export const Notification = ({
                     height={48}
                     src={resolvedReactionUrl}
                     title={notification.reaction?.name}
-                    width={48}
                   />
                 )
               ) : (
