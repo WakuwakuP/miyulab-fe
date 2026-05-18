@@ -11,6 +11,7 @@ import type { ChangeHint } from './connection'
 import { logSlowQueryExplain } from './explainLogger'
 import { buildTimelineKey, resolveLocalAccountId } from './helpers'
 import type { TableName } from './protocol'
+import { loadSqliteWasmInitializer } from './sqliteWasmLoader'
 import type { DbHandle } from './types'
 import { resolvePostIdInternal } from './worker/handlers/statusHelpers'
 
@@ -100,7 +101,7 @@ async function initMainThreadFallback(
   const wasmResponse = await fetch(`${origin}/sqlite3.wasm`)
   const wasmBinary = await wasmResponse.arrayBuffer()
 
-  const initSqlite = (await import('@sqlite.org/sqlite-wasm')).default
+  const initSqlite = await loadSqliteWasmInitializer(origin)
   // @ts-expect-error sqlite3InitModule accepts moduleArg but types omit it
   const sqlite3 = await initSqlite({
     locateFile: (file: string) => `${origin}/${file}`,

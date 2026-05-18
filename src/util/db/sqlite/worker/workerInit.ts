@@ -5,6 +5,7 @@
  * 初期化後に PRAGMA quick_check で破損を検出し、必要に応じてバックアップから復元する。
  */
 
+import { loadSqliteWasmInitializer } from '../sqliteWasmLoader'
 import type { RecoveryResult } from './workerRecovery'
 import { setDb, setSqlite3Module } from './workerState'
 
@@ -21,7 +22,7 @@ export async function init(origin: string): Promise<InitResult> {
   const wasmResponse = await fetch(wasmUrl)
   const wasmBinary = await wasmResponse.arrayBuffer()
 
-  const initSqlite = (await import('@sqlite.org/sqlite-wasm')).default
+  const initSqlite = await loadSqliteWasmInitializer(origin)
   // @ts-expect-error sqlite3InitModule accepts moduleArg but types omit it
   const sqlite3 = await initSqlite({
     locateFile: (file: string) => `${origin}/${file}`,

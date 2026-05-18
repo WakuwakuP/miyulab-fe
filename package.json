@@ -79,10 +79,11 @@
     "@types/react-dom": "19.2.3"
   },
   "scripts": {
-    "build": "next build",
+    "build": "yarn copy:sqlite-wasm && next build",
     "check": "biome check .",
     "check:fix": "biome check --write .",
-    "dev": "next dev --experimental-https",
+    "copy:sqlite-wasm": "node scripts/copy-sqlite-wasm-assets.mjs",
+    "dev": "yarn copy:sqlite-wasm && next dev --experimental-https",
     "generate": "zen generate --lite",
     "prebuild": "zenstack generate && zenstack migrate deploy",
     "prepare": "husky install",
