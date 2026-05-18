@@ -30,4 +30,4 @@ yarn build
 
 ## maintenance
 
-SQLite WASM のバージョン更新するときは node_modules/@sqlite.org/sqlite-wasm/sqlite-wasm/jswasm/sqlite3.wasm を public/sqlite3.wasm にファイルをコピーする
+SQLite WASM のバージョン更新後は `yarn copy:sqlite-wasm` を実行し、生成された `public/sqlite3*` をコミットする
