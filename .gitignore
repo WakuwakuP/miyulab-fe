@@ -42,8 +42,4 @@ certificates
 plans/*
 !plans/.gitkeep
 
-# SQLite Wasm runtime assets generated from @sqlite.org/sqlite-wasm
-/public/sqlite3.*
-/public/sqlite3-*
-
 .env
