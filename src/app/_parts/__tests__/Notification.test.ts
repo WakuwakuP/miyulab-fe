@@ -2,19 +2,38 @@ import type { ReactNode } from 'react'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import type { NotificationAddAppIndex } from 'types/types'
+import { describe, expect, it, vi } from 'vitest'
+
+vi.mock('util/provider/AppsProvider', async () => {
+  const { createContext } = await import('react')
+  return { AppsContext: createContext([]) }
+})
+
+vi.mock('util/provider/DetailProvider', async () => {
+  const { createContext } = await import('react')
+  return { SetDetailContext: createContext(() => {}) }
+})
+
+vi.mock('util/provider/ResourceProvider', async () => {
+  const { createContext } = await import('react')
+  return {
+    EmojiCatalogContext: createContext(new Map()),
+    EmojiContext: createContext([]),
+  }
+})
+
+vi.mock('app/_parts/Status', () => ({
+  Status: () => null,
+}))
+
 import { AppsContext } from 'util/provider/AppsProvider'
 import { SetDetailContext } from 'util/provider/DetailProvider'
 import {
   EmojiCatalogContext,
   EmojiContext,
 } from 'util/provider/ResourceProvider'
-import { describe, expect, it, vi } from 'vitest'
 
 import { Notification } from '../Notification'
-
-vi.mock('app/_parts/Status', () => ({
-  Status: () => null,
-}))
 
 const withNotificationProviders = (children: ReactNode) =>
   createElement(
