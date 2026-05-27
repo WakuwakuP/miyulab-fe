@@ -18,6 +18,42 @@ const AvatarPlaceholder = () => (
   <div className="h-12 w-12 flex-none rounded-lg bg-gray-600" />
 )
 
+const ReactionDisplay = ({
+  reactionName,
+  resolvedReactionUrl,
+  scrolling,
+}: {
+  reactionName?: string
+  resolvedReactionUrl: string | null
+  scrolling: boolean
+}) => {
+  if (resolvedReactionUrl == null) {
+    return (
+      <span
+        className="text-3xl"
+        title={emoji.which(reactionName ?? '')}
+      >
+        {reactionName ?? ''}
+      </span>
+    )
+  }
+
+  if (scrolling) {
+    return <div className="h-12 w-12 flex-none rounded-lg" />
+  }
+
+  return (
+    <img
+      alt="emoji"
+      className="h-12 max-w-full flex-none rounded-lg object-contain"
+      decoding="async"
+      loading="lazy"
+      src={resolvedReactionUrl}
+      title={reactionName}
+    />
+  )
+}
+
 export const Notification = ({
   notification,
   scrolling = false,
@@ -286,27 +322,11 @@ export const Notification = ({
               </div>
             </div>
             <div className="min-w-12  mr-2">
-              {resolvedReactionUrl != null ? (
-                scrolling ? (
-                  <div className="h-12 w-12 flex-none rounded-lg" />
-                ) : (
-                  <img
-                    alt="emoji"
-                    className="h-12 max-w-full flex-none rounded-lg object-contain"
-                    decoding="async"
-                    loading="lazy"
-                    src={resolvedReactionUrl}
-                    title={notification.reaction?.name}
-                  />
-                )
-              ) : (
-                <span
-                  className="text-3xl"
-                  title={emoji.which(notification.reaction?.name ?? '')}
-                >
-                  {notification.reaction?.name ?? ''}
-                </span>
-              )}
+              <ReactionDisplay
+                reactionName={notification.reaction?.name}
+                resolvedReactionUrl={resolvedReactionUrl}
+                scrolling={scrolling}
+              />
             </div>
           </h3>
           {notification.status != null && (
