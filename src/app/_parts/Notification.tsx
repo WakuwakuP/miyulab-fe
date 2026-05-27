@@ -29,10 +29,7 @@ const ReactionDisplay = ({
 }) => {
   if (resolvedReactionUrl == null) {
     return (
-      <span
-        className="text-3xl"
-        title={emoji.which(reactionName ?? '')}
-      >
+      <span className="text-3xl" title={emoji.which(reactionName ?? '')}>
         {reactionName ?? ''}
       </span>
     )
