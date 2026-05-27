@@ -60,7 +60,7 @@
 	multiple instances, e.g. multiple Workers to the "opfs"
 	VFS or both the "opfs" and "opfs-wl" VFSes.
 	*/
-	const workerId = Math.random() * 1e7 | 0;
+	const workerId = Math.trunc(Math.random() * 1e7);
 	const isWebLocker = "opfs-wl" === urlParams.get("vfs");
 	const wPost = (type, ...args) => postMessage({
 		type,

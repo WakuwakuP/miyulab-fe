@@ -35,11 +35,10 @@
 ** Emscripten SDK: 5.0.5
 */
 async function sqlite3InitModule(moduleArg = {}) {
-	var moduleRtn;
-	var Module = moduleArg;
-	var ENVIRONMENT_IS_WEB = !!globalThis.window;
-	var ENVIRONMENT_IS_WORKER = !!globalThis.WorkerGlobalScope;
-	globalThis.process?.versions?.node && globalThis.process?.type;
+	let moduleRtn;
+	let Module = moduleArg;
+	const ENVIRONMENT_IS_WEB = !!globalThis.window;
+	const ENVIRONMENT_IS_WORKER = !!globalThis.WorkerGlobalScope;
 	/**
 	BEGIN FILE: api/pre-js.js
 	

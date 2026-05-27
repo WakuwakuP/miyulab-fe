@@ -74,6 +74,32 @@ export const Notification = ({
     emojiFallback,
   ])
 
+  const reactionVisual = useMemo(() => {
+    if (resolvedReactionUrl == null) {
+      return (
+        <span
+          className="text-3xl"
+          title={emoji.which(notification.reaction?.name ?? '')}
+        >
+          {notification.reaction?.name ?? ''}
+        </span>
+      )
+    }
+    if (scrolling) {
+      return <div className="h-12 w-12 flex-none rounded-lg" />
+    }
+    return (
+      <img
+        alt="emoji"
+        className="h-12 max-w-full flex-none rounded-lg object-contain"
+        decoding="async"
+        loading="lazy"
+        src={resolvedReactionUrl}
+        title={notification.reaction?.name}
+      />
+    )
+  }, [resolvedReactionUrl, scrolling, notification.reaction?.name])
+
   const displayName = useMemo(() => {
     if (notification.account == null) return ''
     let displayName = notification.account.display_name
@@ -285,29 +311,7 @@ export const Notification = ({
                 </p>
               </div>
             </div>
-            <div className="min-w-12  mr-2">
-              {resolvedReactionUrl != null ? (
-                scrolling ? (
-                  <div className="h-12 w-12 flex-none rounded-lg" />
-                ) : (
-                  <img
-                    alt="emoji"
-                    className="h-12 max-w-full flex-none rounded-lg object-contain"
-                    decoding="async"
-                    loading="lazy"
-                    src={resolvedReactionUrl}
-                    title={notification.reaction?.name}
-                  />
-                )
-              ) : (
-                <span
-                  className="text-3xl"
-                  title={emoji.which(notification.reaction?.name ?? '')}
-                >
-                  {notification.reaction?.name ?? ''}
-                </span>
-              )}
-            </div>
+            <div className="min-w-12  mr-2">{reactionVisual}</div>
           </h3>
           {notification.status != null && (
             <Status
