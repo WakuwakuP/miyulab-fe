@@ -66,7 +66,12 @@ export function generateId(): string {
 
   fallbackIdCounter = (fallbackIdCounter + 1) % Number.MAX_SAFE_INTEGER
 
-  return `${Date.now().toString(36)}-${Math.random()
-    .toString(36)
-    .slice(2)}-${fallbackIdCounter.toString(36)}`
+  let randomPart = fallbackIdCounter.toString(36)
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    const bytes = new Uint32Array(2)
+    crypto.getRandomValues(bytes)
+    randomPart = `${bytes[0].toString(36)}${bytes[1].toString(36)}`
+  }
+
+  return `${Date.now().toString(36)}-${randomPart}-${fallbackIdCounter.toString(36)}`
 }

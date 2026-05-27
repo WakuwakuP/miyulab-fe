@@ -23,6 +23,20 @@ type QueryEditorProps = {
   value: string
 }
 
+function getTextareaBorderClass(
+  validationError: string | null,
+  value: string,
+  isValidating: boolean,
+): string {
+  if (validationError) {
+    return 'border border-red-500'
+  }
+  if (value.trim() && !isValidating) {
+    return 'border border-green-600'
+  }
+  return ''
+}
+
 /**
  * SQL WHERE 句入力欄（補完付き）
  *
@@ -417,13 +431,7 @@ export const QueryEditor = ({
     <div className="space-y-1">
       <div className="relative">
         <textarea
-          className={`w-full rounded bg-gray-700 px-2 py-1 text-sm text-white font-mono resize-y min-h-[60px] ${
-            validationError
-              ? 'border border-red-500'
-              : value.trim() && !isValidating
-                ? 'border border-green-600'
-                : ''
-          }`}
+          className={`w-full rounded bg-gray-700 px-2 py-1 text-sm text-white font-mono resize-y min-h-[60px] ${getTextareaBorderClass(validationError, value, isValidating)}`}
           onChange={handleChange}
           onKeyDown={handleKeyDown}
           placeholder="e.g. ptt.timelineType = 'home' AND pbt.tag = 'photo'"
