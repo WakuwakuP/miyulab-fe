@@ -79,6 +79,97 @@ function makeTimelineDedupKey(message: {
   return null
 }
 
+function getQueueForKind(kind: QueueKind): QueuedRequest[] {
+  if (kind === 'priority') return priorityQueue
+  if (kind === 'other') return otherQueue
+  return timelineQueue
+}
+
+/**
+ * タイムラインキューへ重複排除付きで積む。処理済みなら true。
+ */
+function tryEnqueueTimelineDedup(
+  message: {
+    type: string
+    id: number
+    [key: string]: unknown
+  },
+  resolve: (value: unknown) => void,
+  reject: (reason: Error) => void,
+): boolean {
+  const dedupKey = makeTimelineDedupKey(message)
+  if (dedupKey == null) return false
+
+  const existing = timelineDedup.get(dedupKey)
+  if (existing) {
+    existing.resolvers.push(resolve)
+    existing.rejectors.push(reject)
+    return true
+  }
+
+  timelineDedup.set(dedupKey, {
+    rejectors: [reject],
+    resolvers: [resolve],
+  })
+  const sharedResolve = (value: unknown) => {
+    const entry = timelineDedup.get(dedupKey)
+    timelineDedup.delete(dedupKey)
+    if (entry) {
+      for (const r of entry.resolvers) r(value)
+    }
+  }
+  const sharedReject = (reason: Error) => {
+    const entry = timelineDedup.get(dedupKey)
+    timelineDedup.delete(dedupKey)
+    if (entry) {
+      for (const r of entry.rejectors) r(reason)
+    }
+  }
+  timelineQueue.push({
+    enqueuedAt: performance.now(),
+    kind: 'timeline',
+    message,
+    reject: sharedReject,
+    resolve: sharedResolve,
+  })
+  reportEnqueue('timeline')
+  evictOldestIfOverflow()
+  processQueue()
+  return true
+}
+
+/**
+ * sessionTag 一致のタイムラインキューアイテムをインプレース置換する。置換したら true。
+ */
+function tryReplaceTimelineSessionTag(
+  sessionTag: string,
+  message: {
+    type: string
+    id: number
+    [key: string]: unknown
+  },
+  resolve: (value: unknown) => void,
+  reject: (reason: Error) => void,
+): boolean {
+  const existingIndex = timelineQueue.findIndex(
+    (item) => item.sessionTag === sessionTag,
+  )
+  if (existingIndex === -1) return false
+
+  const old = timelineQueue[existingIndex]
+  old.resolve(undefined)
+  timelineQueue[existingIndex] = {
+    enqueuedAt: old.enqueuedAt,
+    kind: 'timeline',
+    message,
+    reject,
+    resolve,
+    sessionTag,
+  }
+  processQueue()
+  return true
+}
+
 // ================================================================
 // Stale キャンセル API
 // ================================================================
@@ -147,83 +238,19 @@ export function sendRequest(
   return new Promise<unknown>((resolve, reject) => {
     // タイムラインキューの重複排除（sessionTag 付きはスキップ）
     if (kind === 'timeline' && !sessionTag) {
-      const dedupKey = makeTimelineDedupKey(message)
-      if (dedupKey != null) {
-        const existing = timelineDedup.get(dedupKey)
-        if (existing) {
-          // 同じクエリが未処理なら新しく積まない — 結果を共有
-          existing.resolvers.push(resolve)
-          existing.rejectors.push(reject)
-          return
-        }
-        timelineDedup.set(dedupKey, {
-          rejectors: [reject],
-          resolvers: [resolve],
-        })
-        // ラップされた resolve/reject で全待機者に通知する
-        const sharedResolve = (value: unknown) => {
-          const entry = timelineDedup.get(dedupKey)
-          timelineDedup.delete(dedupKey)
-          if (entry) {
-            for (const r of entry.resolvers) r(value)
-          }
-        }
-        const sharedReject = (reason: Error) => {
-          const entry = timelineDedup.get(dedupKey)
-          timelineDedup.delete(dedupKey)
-          if (entry) {
-            for (const r of entry.rejectors) r(reason)
-          }
-        }
-        timelineQueue.push({
-          enqueuedAt: performance.now(),
-          kind,
-          message,
-          reject: sharedReject,
-          resolve: sharedResolve,
-        })
-        reportEnqueue('timeline')
-        evictOldestIfOverflow()
-        processQueue()
-        return
-      }
+      if (tryEnqueueTimelineDedup(message, resolve, reject)) return
     }
 
-    // sessionTag 付きタイムラインリクエスト: 同じ sessionTag のキュー内アイテムを
-    // インプレース置換する。
-    // cancelStaleRequests で削除 → 末尾に追加 のパターンでは、ストリーミング
-    // イベントが高頻度で到着するとアイテムが常に末尾に押し戻され、
-    // いつまでも処理されないスターベーション（飢餓）が発生する。
-    // インプレース置換によりキュー内の位置を保持し、確実に処理順が回ってくるようにする。
+    // sessionTag 付き: 同じ sessionTag のキュー内アイテムをインプレース置換
     if (kind === 'timeline' && sessionTag) {
-      const existingIndex = timelineQueue.findIndex(
-        (item) => item.sessionTag === sessionTag,
-      )
-      if (existingIndex !== -1) {
-        const old = timelineQueue[existingIndex]
-        // 古いアイテムの Promise を undefined で解決（キャンセル扱い）
-        old.resolve(undefined)
-        // 同じ位置に新しいアイテムを配置（末尾に押し出さない）
-        timelineQueue[existingIndex] = {
-          enqueuedAt: old.enqueuedAt,
-          kind,
-          message,
-          reject,
-          resolve,
-          sessionTag,
-        }
-        // reportEnqueue/reportDequeue は不要（キューサイズの純増減なし）
-        processQueue()
+      if (
+        tryReplaceTimelineSessionTag(sessionTag, message, resolve, reject)
+      ) {
         return
       }
     }
 
-    const queue =
-      kind === 'priority'
-        ? priorityQueue
-        : kind === 'other'
-          ? otherQueue
-          : timelineQueue
+    const queue = getQueueForKind(kind)
     const enqueuedAt = kind === 'timeline' ? performance.now() : undefined
     queue.push({ enqueuedAt, kind, message, reject, resolve, sessionTag })
     reportEnqueue(kind)

@@ -45,7 +45,6 @@ export function useVirtuosoTimelineLayout({
 
   // config 変更時に bottomExpansion をリセット
   useEffect(() => {
-    void configId
     bottomExpansionRef.current = 0
   }, [configId])
 
@@ -82,7 +81,6 @@ export function useVirtuosoTimelineLayout({
 
   // 先頭追従: enableScrollToTop && データ変更時に自動スクロール
   useEffect(() => {
-    void dataLength
     if (enableScrollToTop) {
       timer.current = setTimeout(() => {
         scrollToTop()
