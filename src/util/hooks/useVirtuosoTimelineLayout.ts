@@ -44,8 +44,8 @@ export function useVirtuosoTimelineLayout({
   const prevLengthRef = useRef(dataLength)
 
   // config 変更時に bottomExpansion をリセット
+  // biome-ignore lint/correctness/useExhaustiveDependencies: configId 変更時に Virtuoso の firstItemIndex 補正をリセット
   useEffect(() => {
-    void configId
     bottomExpansionRef.current = 0
   }, [configId])
 
@@ -81,8 +81,8 @@ export function useVirtuosoTimelineLayout({
   }, [])
 
   // 先頭追従: enableScrollToTop && データ変更時に自動スクロール
+  // biome-ignore lint/correctness/useExhaustiveDependencies: dataLength 変化時に先頭へスクロール
   useEffect(() => {
-    void dataLength
     if (enableScrollToTop) {
       timer.current = setTimeout(() => {
         scrollToTop()

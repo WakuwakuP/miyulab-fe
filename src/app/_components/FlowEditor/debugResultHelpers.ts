@@ -20,7 +20,7 @@ export function stripHtml(html: string, maxLen = 80): string {
       text += char
     }
   }
-  text = text.replace(/\s+/g, ' ').trim()
+  text = text.replaceAll(/\s+/g, ' ').trim()
   return text.length > maxLen ? `${text.slice(0, maxLen)}…` : text
 }
 
