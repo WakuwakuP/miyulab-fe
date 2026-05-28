@@ -1,7 +1,7 @@
 export const MAX_LIST_LENGTH = 8
-const MENTION_CAPTURE = '[\\.@\\-+\\w]{0,64}'
-const EMOJI_CAPTURE = '[+\\w]{0,64}'
-const TAG_CAPTURE = '[^\\s#]{0,64}'
+const MENTION_CAPTURE = String.raw`[\.@\-+\w]{0,64}`
+const EMOJI_CAPTURE = String.raw`[+\w]{0,64}`
+const TAG_CAPTURE = String.raw`[^\s#]{0,64}`
 
 export const MENTION_REG = new RegExp(`\\B@(${MENTION_CAPTURE})$`)
 export const MENTION_HIGHLIGHT_REG = new RegExp(`@(${MENTION_CAPTURE})`, 'g')
