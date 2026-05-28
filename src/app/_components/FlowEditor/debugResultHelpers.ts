@@ -5,10 +5,22 @@ import { getNodeLabelV2 } from './types'
 
 /** HTML タグを除去してプレーンテキスト化し、指定文字数で切り詰める */
 export function stripHtml(html: string, maxLen = 80): string {
-  const text = html
-    .replace(/<[^>]*>/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
+  let text = ''
+  let inTag = false
+  for (const char of html) {
+    if (char === '<') {
+      inTag = true
+      continue
+    }
+    if (char === '>' && inTag) {
+      inTag = false
+      continue
+    }
+    if (!inTag) {
+      text += char
+    }
+  }
+  text = text.replaceAll(/\s+/g, ' ').trim()
   return text.length > maxLen ? `${text.slice(0, maxLen)}…` : text
 }
 
