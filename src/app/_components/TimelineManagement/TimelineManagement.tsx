@@ -468,7 +468,7 @@ export const TimelineManagement = () => {
         keys.add(col.groupKey)
       }
     }
-    return Array.from(keys).sort()
+    return Array.from(keys).sort((a, b) => a.localeCompare(b))
   }, [columnsWithEmptyFolders])
 
   const sortableIdsWithFolders = useMemo(() => {

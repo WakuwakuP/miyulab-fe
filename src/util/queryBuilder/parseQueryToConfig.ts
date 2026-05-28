@@ -225,7 +225,10 @@ export function parseQueryToConfig(
     if (urls.length === 1) {
       result.backendFilter = { backendUrl: urls[0], mode: 'single' }
     } else if (urls.length > 1) {
-      result.backendFilter = { backendUrls: urls.sort(), mode: 'composite' }
+      result.backendFilter = {
+        backendUrls: urls.sort((a, b) => a.localeCompare(b)),
+        mode: 'composite',
+      }
     }
   }
 

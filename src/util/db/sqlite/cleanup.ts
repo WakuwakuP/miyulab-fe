@@ -115,9 +115,9 @@ async function fetchTableCounts(
   )) as number[][]
   const row = rows[0] ?? [0, 0, 0]
   return {
-    notifications: (row[1] as number) ?? 0,
-    posts: (row[2] as number) ?? 0,
-    timeline_entries: (row[0] as number) ?? 0,
+    notifications: row[1] ?? 0,
+    posts: row[2] ?? 0,
+    timeline_entries: row[0] ?? 0,
   }
 }
 
