@@ -243,9 +243,7 @@ export function sendRequest(
 
     // sessionTag 付き: 同じ sessionTag のキュー内アイテムをインプレース置換
     if (kind === 'timeline' && sessionTag) {
-      if (
-        tryReplaceTimelineSessionTag(sessionTag, message, resolve, reject)
-      ) {
+      if (tryReplaceTimelineSessionTag(sessionTag, message, resolve, reject)) {
         return
       }
     }
