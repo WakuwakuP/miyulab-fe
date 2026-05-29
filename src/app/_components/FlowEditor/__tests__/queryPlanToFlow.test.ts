@@ -625,8 +625,12 @@ describe('ラウンドトリップ（queryPlanToFlow ↔ flowToQueryPlanV2）', 
     const result = flowToQueryPlanV2(flow)
 
     // Assert — ノード ID
-    const resultIds = result.nodes.map((n) => n.id).sort()
-    const originalIds = original.nodes.map((n) => n.id).sort()
+    const resultIds = [...result.nodes.map((n) => n.id)].sort((a, b) =>
+      a.localeCompare(b),
+    )
+    const originalIds = [...original.nodes.map((n) => n.id)].sort((a, b) =>
+      a.localeCompare(b),
+    )
     expect(resultIds).toEqual(originalIds)
 
     // Assert — エッジ

@@ -335,7 +335,9 @@ describe('topoSort', () => {
 
       // Assert
       const expectedIds = plan.nodes.map((n) => n.id)
-      expect(result.sort()).toEqual(expectedIds.sort())
+      const sortedResult = result.toSorted((a, b) => a.localeCompare(b))
+      const sortedExpected = expectedIds.toSorted((a, b) => a.localeCompare(b))
+      expect(sortedResult).toEqual(sortedExpected)
     })
   })
 

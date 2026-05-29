@@ -10,10 +10,9 @@ import { extract, parse } from 'mfm-js'
  * MFM テキストを HTML に変換する。
  * mfm-js パーサーで AST を構築し、各ノードを HTML に変換する。
  */
-export function mfmToHtml(text: string, instanceHost?: string): string {
-  const host = instanceHost ?? ''
+export function mfmToHtml(text: string, instanceHost = ''): string {
   const nodes = parse(text)
-  return nodesToHtml(nodes, host)
+  return nodesToHtml(nodes, instanceHost)
 }
 
 /**
@@ -21,9 +20,8 @@ export function mfmToHtml(text: string, instanceHost?: string): string {
  */
 export function parseMentionsFromMfm(
   text: string,
-  instanceHost?: string,
+  instanceHost = '',
 ): Entity.Mention[] {
-  const host = instanceHost ?? ''
   const nodes = parse(text)
   const mentionNodes = extract(nodes, (node) => node.type === 'mention')
   return mentionNodes.map((node) => {
@@ -32,7 +30,7 @@ export function parseMentionsFromMfm(
     const { username, host: mentionHost, acct } = node.props
     const url = mentionHost
       ? `https://${mentionHost}/@${username}`
-      : `${host}/@${username}`
+      : `${instanceHost}/@${username}`
     return { acct, id: '', url, username }
   })
 }
