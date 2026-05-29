@@ -13,7 +13,7 @@ import {
 } from '../queries/statusCustomQuery'
 
 /** SQLite LIKE の ESCAPE 句に渡すバックスラッシュ（1文字） */
-const SQL_LIKE_ESCAPE = String.raw`\\`
+const SQL_LIKE_ESCAPE = '\u005c'
 
 /**
  * DB に保存されている全タグ名を取得する（補完用）
