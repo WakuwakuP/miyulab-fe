@@ -12,6 +12,9 @@ import {
   COLUMN_TABLE_OVERRIDE,
 } from '../queries/statusCustomQuery'
 
+/** SQLite LIKE の ESCAPE 句に渡すバックスラッシュ（1文字） */
+const SQL_LIKE_ESCAPE = String.raw`\\`
+
 /**
  * DB に保存されている全タグ名を取得する（補完用）
  */
@@ -97,9 +100,9 @@ export async function searchDistinctColumnValues(
   try {
     const handle = await getSqliteDb()
     // LIKE でプレフィクスフィルタ（ESCAPE でワイルドカード文字を安全にエスケープ）
-    const escaped = prefix.replace(/[%_\\]/g, (c) => `\\${c}`)
+    const escaped = prefix.replaceAll(/[%_\\]/g, (c) => `\\${c}`)
     const rows = (await handle.execAsync(
-      `SELECT DISTINCT "${realColumn}" FROM "${table}" WHERE "${realColumn}" IS NOT NULL AND "${realColumn}" != '' AND "${realColumn}" LIKE ? ESCAPE '\\' ORDER BY "${realColumn}" LIMIT ?;`,
+      `SELECT DISTINCT "${realColumn}" FROM "${table}" WHERE "${realColumn}" IS NOT NULL AND "${realColumn}" != '' AND "${realColumn}" LIKE ? ESCAPE '${SQL_LIKE_ESCAPE}' ORDER BY "${realColumn}" LIMIT ?;`,
       { bind: [`${escaped}%`, maxResults], returnValue: 'resultRows' },
     )) as string[][]
     return rows.map((r) => r[0])
@@ -124,9 +127,9 @@ export async function searchColumnValuesDirect(
 
   try {
     const handle = await getSqliteDb()
-    const escaped = prefix.replace(/[%_\\]/g, (c) => `\\${c}`)
+    const escaped = prefix.replaceAll(/[%_\\]/g, (c) => `\\${c}`)
     const rows = (await handle.execAsync(
-      `SELECT DISTINCT "${column}" FROM "${table}" WHERE "${column}" IS NOT NULL AND "${column}" != '' AND "${column}" LIKE ? ESCAPE '\\' ORDER BY "${column}" LIMIT ?;`,
+      `SELECT DISTINCT "${column}" FROM "${table}" WHERE "${column}" IS NOT NULL AND "${column}" != '' AND "${column}" LIKE ? ESCAPE '${SQL_LIKE_ESCAPE}' ORDER BY "${column}" LIMIT ?;`,
       { bind: [`${escaped}%`, maxResults], returnValue: 'resultRows' },
     )) as string[][]
     return rows.map((r) => r[0])

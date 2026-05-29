@@ -5,7 +5,12 @@
  * タイムラインデータを一括取得する。
  */
 
-import type { FetchTimelineRequest, FetchTimelineResult } from '../protocol'
+import type {
+  FetchTimelineRequest,
+  FetchTimelineResult,
+  SqliteResultRow,
+  SqliteResultRows,
+} from '../protocol'
 import { getDb } from './workerState'
 
 export function handleFetchTimeline(
@@ -18,11 +23,9 @@ export function handleFetchTimeline(
   const phase1Rows = db.exec(msg.phase1.sql, {
     bind: msg.phase1.bind,
     returnValue: 'resultRows',
-  }) as (string | number | null)[][]
+  }) as SqliteResultRows
 
-  const postIds = phase1Rows.map(
-    (row: (string | number | null)[]) => row[0] as number,
-  )
+  const postIds = phase1Rows.map((row: SqliteResultRow) => row[0] as number)
   if (postIds.length === 0) {
     return {
       batchResults: {
@@ -47,7 +50,7 @@ export function handleFetchTimeline(
   const phase2Rows = db.exec(phase2Sql, {
     bind: postIds,
     returnValue: 'resultRows',
-  }) as (string | number | null)[][]
+  }) as SqliteResultRows
 
   // reblog post_id を収集
   const reblogColIdx = msg.reblogPostIdColumnIndex ?? 25
@@ -64,7 +67,7 @@ export function handleFetchTimeline(
     db.exec(sql.replaceAll('{IDS}', allPlaceholders), {
       bind: allPostIds,
       returnValue: 'resultRows',
-    }) as (string | number | null)[][]
+    }) as SqliteResultRows
 
   const batchResults = {
     belongingTags: runBatch(msg.batchSqls.belongingTags),
