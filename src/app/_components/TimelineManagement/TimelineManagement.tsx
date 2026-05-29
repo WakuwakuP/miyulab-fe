@@ -377,14 +377,12 @@ export const TimelineManagement = () => {
         for (const col of currentColumns) {
           if (col.type === 'single') {
             newTimelines.push({ ...col.timeline, order: order++ })
+          } else if (col.members.length === 0) {
+            // 空フォルダの sortOrder を更新
+            newEmptyFolders.push({ key: col.groupKey, sortOrder: order++ })
           } else {
-            if (col.members.length === 0) {
-              // 空フォルダの sortOrder を更新
-              newEmptyFolders.push({ key: col.groupKey, sortOrder: order++ })
-            } else {
-              for (const member of col.members) {
-                newTimelines.push({ ...member, order: order++ })
-              }
+            for (const member of col.members) {
+              newTimelines.push({ ...member, order: order++ })
             }
           }
         }
