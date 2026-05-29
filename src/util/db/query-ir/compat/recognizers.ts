@@ -4,10 +4,8 @@
 
 import type { ExistsFilter, FilterNode, TableFilter } from '../nodes'
 
-const TIMELINE_SINGLE_RE =
-  /^ptt\.timeline(?:Type|_key)\s*=\s*'([^']+)'$/i
-const TIMELINE_MULTI_RE =
-  /^ptt\.timeline(?:Type|_key)\s+IN\s*\(([^)]+)\)$/i
+const TIMELINE_SINGLE_RE = /^ptt\.timeline(?:Type|_key)\s*=\s*'([^']+)'$/i
+const TIMELINE_MULTI_RE = /^ptt\.timeline(?:Type|_key)\s+IN\s*\(([^)]+)\)$/i
 const NOTIFICATION_TYPE_SINGLE_RE = /^nt\.name\s*=\s*'([^']+)'$/i
 const NOTIFICATION_TYPE_MULTI_RE = /^nt\.name\s+IN\s*\(([^)]+)\)$/i
 
