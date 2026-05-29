@@ -59,7 +59,7 @@ function installMockHandle(
       throw new Error('execAsync failed (test)')
     }
     const seq = options.countsSequence ?? [[0, 0, 0]]
-    const row = seq[countsIndex] ?? seq[seq.length - 1] ?? [0, 0, 0]
+    const row = seq[countsIndex] ?? seq.at(-1) ?? [0, 0, 0]
     countsIndex++
     return [row]
   })

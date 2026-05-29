@@ -7,17 +7,17 @@
 import type { TableName } from '../protocol'
 
 // biome-ignore lint/suspicious/noExplicitAny: sqlite-wasm types are not exact
-type RawDb = any
-
-let db: RawDb = null
+let db: any = null
 // biome-ignore lint/suspicious/noExplicitAny: sqlite-wasm module type
 let sqlite3Module: any = null
 
-export function getDb(): RawDb {
+// biome-ignore lint/suspicious/noExplicitAny: sqlite-wasm types are not exact
+export function getDb(): any {
   return db
 }
 
-export function setDb(value: RawDb): void {
+// biome-ignore lint/suspicious/noExplicitAny: sqlite-wasm types are not exact
+export function setDb(value: any): void {
   db = value
 }
 
