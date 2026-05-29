@@ -286,7 +286,7 @@ export function parseQueryToConfig(
     /(?:pbt\.tag|ht\.(?:name|normalized_name))\s*=\s*'([^']+)'/i,
   )
   const multiTagMatch = query.match(
-    /(?:pbt\.tag|ht\.(?:name|normalized_name))\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
+    /(?:pbt\.tag|ht\.(?:name|normalized_name))\s+IN\s*\(\s*([^)]+)\)/i,
   )
   const andTagMatch = query.match(
     /HAVING\s+COUNT\s*\(\s*DISTINCT\s+\w+\.(?:tag|normalized_name)\s*\)\s*=\s*(\d+)/i,

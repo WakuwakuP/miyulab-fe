@@ -16,8 +16,8 @@ export function upgradeQueryToV2(query: string): string {
   let result = query
 
   // v7→v13: p.backendUrl / p.origin_backend_url / pb.backend_url → pb.backendUrl
-  result = result.replace(/\bp\.backendUrl\b/g, 'pb.backendUrl')
-  result = result.replace(/\bp\.origin_backend_url\b/g, 'pb.backendUrl')
+  result = result.replaceAll(/\bp\.backendUrl\b/g, 'pb.backendUrl')
+  result = result.replaceAll(/\bp\.origin_backend_url\b/g, 'pb.backendUrl')
   result = result.replace(/\bpb\.backend_url\b/g, 'pb.backendUrl')
 
   // DB正規化: pbt.tag → ht.name (posts_belonging_tags → hashtags)

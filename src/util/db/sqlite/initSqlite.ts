@@ -10,12 +10,61 @@
 import type { ChangeHint } from './connection'
 import { logSlowQueryExplain } from './explainLogger'
 import { buildTimelineKey, resolveLocalAccountId } from './helpers'
-import type { TableName } from './protocol'
+import type { SendCommandPayload, TableName } from './protocol'
 import { loadSqliteWasmInitializer } from './sqliteWasmLoader'
 import type { DbHandle } from './types'
 import { resolvePostIdInternal } from './worker/handlers/statusHelpers'
 
 export type { DbHandle }
+
+const EMPTY_CHANGED_TABLES = { changedTables: [] as const }
+
+function withLocalAccountId<T>(
+  // biome-ignore lint/suspicious/noExplicitAny: sqlite-wasm Database overload compat
+  db: any,
+  backendUrl: string,
+  handler: (localAccountId: number) => T,
+): T | typeof EMPTY_CHANGED_TABLES {
+  const localAccountId = resolveLocalAccountId(db, backendUrl)
+  if (localAccountId == null) {
+    return EMPTY_CHANGED_TABLES
+  }
+  return handler(localAccountId)
+}
+
+function buildChangeHint(command: SendCommandPayload): ChangeHint | undefined {
+  switch (command.type) {
+    case 'upsertStatus':
+    case 'bulkUpsertStatuses':
+      return {
+        backendUrl: command.backendUrl,
+        tag: command.tag,
+        timelineType: command.timelineType,
+      }
+    case 'handleDeleteEvent':
+      return {
+        backendUrl: command.backendUrl,
+        tag: command.tag,
+        timelineType: command.sourceTimelineType,
+      }
+    case 'removeFromTimeline':
+      return {
+        backendUrl: command.backendUrl,
+        tag: command.tag,
+        timelineType: command.timelineType,
+      }
+    case 'updateStatus':
+    case 'updateStatusAction':
+    case 'addNotification':
+    case 'bulkAddNotifications':
+    case 'updateNotificationStatusAction':
+      return {
+        backendUrl: command.backendUrl,
+      }
+    default:
+      return undefined
+  }
+}
 
 let dbPromise: Promise<DbHandle> | null = null
 
@@ -337,21 +386,20 @@ async function initMainThreadFallback(
             command.tag,
           )
           break
-        case 'updateStatusAction': {
-          const localAccountId = resolveLocalAccountId(db, command.backendUrl)
-          if (localAccountId == null) {
-            result = { changedTables: [] }
-            break
-          }
-          result = handleUpdateStatusAction(
+        case 'updateStatusAction':
+          result = withLocalAccountId(
             db,
-            localAccountId,
-            command.statusId,
-            command.action,
-            command.value,
+            command.backendUrl,
+            (localAccountId) =>
+              handleUpdateStatusAction(
+                db,
+                localAccountId,
+                command.statusId,
+                command.action,
+                command.value,
+              ),
           )
           break
-        }
         case 'updateStatus':
           result = handleUpdateStatus(
             db,
@@ -359,41 +407,39 @@ async function initMainThreadFallback(
             command.backendUrl,
           )
           break
-        case 'handleDeleteEvent': {
-          const localAccountId = resolveLocalAccountId(db, command.backendUrl)
-          if (localAccountId == null) {
-            result = { changedTables: [] }
-            break
-          }
-          result = handleDeleteEvent(db, localAccountId, command.statusId)
-          break
-        }
-        case 'removeFromTimeline': {
-          const localAccountId = resolveLocalAccountId(db, command.backendUrl)
-          if (localAccountId == null) {
-            result = { changedTables: [] }
-            break
-          }
-          const timelineKey = buildTimelineKey(command.timelineType, {
-            tag: command.tag,
-          })
-          const postId = resolvePostIdInternal(
+        case 'handleDeleteEvent':
+          result = withLocalAccountId(
             db,
-            localAccountId,
-            command.statusId,
-          )
-          if (postId == null) {
-            result = { changedTables: [] }
-            break
-          }
-          result = handleRemoveFromTimeline(
-            db,
-            localAccountId,
-            timelineKey,
-            postId,
+            command.backendUrl,
+            (localAccountId) =>
+              handleDeleteEvent(db, localAccountId, command.statusId),
           )
           break
-        }
+        case 'removeFromTimeline':
+          result = withLocalAccountId(
+            db,
+            command.backendUrl,
+            (localAccountId) => {
+              const timelineKey = buildTimelineKey(command.timelineType, {
+                tag: command.tag,
+              })
+              const postId = resolvePostIdInternal(
+                db,
+                localAccountId,
+                command.statusId,
+              )
+              if (postId == null) {
+                return EMPTY_CHANGED_TABLES
+              }
+              return handleRemoveFromTimeline(
+                db,
+                localAccountId,
+                timelineKey,
+                postId,
+              )
+            },
+          )
+          break
         case 'addNotification':
           result = handleAddNotification(
             db,
@@ -438,21 +484,20 @@ async function initMainThreadFallback(
           )
           break
 
-        case 'toggleReaction': {
-          const localAccountId = resolveLocalAccountId(db, command.backendUrl)
-          if (localAccountId == null) {
-            result = { changedTables: [] }
-            break
-          }
-          result = handleToggleReaction(
+        case 'toggleReaction':
+          result = withLocalAccountId(
             db,
-            localAccountId,
-            command.statusId,
-            command.value,
-            command.emoji,
+            command.backendUrl,
+            (localAccountId) =>
+              handleToggleReaction(
+                db,
+                localAccountId,
+                command.statusId,
+                command.value,
+                command.emoji,
+              ),
           )
           break
-        }
 
         case 'bulkUpsertCustomEmojis':
           result = handleBulkUpsertCustomEmojis(
@@ -473,41 +518,7 @@ async function initMainThreadFallback(
       }
       // changedTables があれば notifyChange を発火（Plan B: ヒント付き）
       if (result?.changedTables) {
-        // コマンドの種類に応じてヒントを生成
-        let hint: ChangeHint | undefined
-        switch (command.type) {
-          case 'upsertStatus':
-          case 'bulkUpsertStatuses':
-            hint = {
-              backendUrl: command.backendUrl,
-              tag: command.tag,
-              timelineType: command.timelineType,
-            }
-            break
-          case 'handleDeleteEvent':
-            hint = {
-              backendUrl: command.backendUrl,
-              tag: command.tag,
-              timelineType: command.sourceTimelineType,
-            }
-            break
-          case 'removeFromTimeline':
-            hint = {
-              backendUrl: command.backendUrl,
-              tag: command.tag,
-              timelineType: command.timelineType,
-            }
-            break
-          case 'updateStatus':
-          case 'updateStatusAction':
-          case 'addNotification':
-          case 'bulkAddNotifications':
-          case 'updateNotificationStatusAction':
-            hint = {
-              backendUrl: command.backendUrl,
-            }
-            break
-        }
+        const hint = buildChangeHint(command)
         for (const table of result.changedTables as TableName[]) {
           onNotify(table, hint)
         }
