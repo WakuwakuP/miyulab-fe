@@ -1,13 +1,15 @@
 name: Trigger Cursor Automation
 
-# Fires when any check suite on a commit completes. The job re-evaluates whether
-# all merge-required checks on the PR have finished (pass or fail).
+# Re-evaluates required PR checks when CI or external commit statuses finish.
+# - check_suite: GitHub Actions and other Check Run integrations
+# - status: Vercel (and similar) commit statuses without Check Run UI
 on:
   check_suite:
     types: [completed]
+  status:
 
 concurrency:
-  group: cursor-automation-${{ github.event.check_suite.head_sha }}
+  group: cursor-automation-${{ github.event.check_suite.head_sha || github.event.sha }}
   cancel-in-progress: false
 
 permissions:
@@ -22,15 +24,75 @@ jobs:
       - name: Trigger Cursor Automation when required checks finish
         env:
           GH_TOKEN: ${{ github.token }}
-          HEAD_SHA: ${{ github.event.check_suite.head_sha }}
-          HEAD_BRANCH: ${{ github.event.check_suite.head_branch }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          CHECK_SUITE_HEAD_SHA: ${{ github.event.check_suite.head_sha }}
+          CHECK_SUITE_HEAD_BRANCH: ${{ github.event.check_suite.head_branch }}
+          STATUS_SHA: ${{ github.event.sha }}
+          STATUS_STATE: ${{ github.event.state }}
+          STATUS_CONTEXT: ${{ github.event.context }}
           CURSOR_AUTOMATION_WEBHOOK_URL: ${{ vars.CURSOR_AUTOMATION_WEBHOOK_URL }}
           CURSOR_AUTOMATION_WEBHOOK_API_KEY: ${{ secrets.CURSOR_AUTOMATION_WEBHOOK_API_KEY }}
         run: |
           set -euo pipefail
 
-          if [ -z "${HEAD_BRANCH:-}" ]; then
-            echo "No head branch on check_suite. Skipping."
+          HEAD_SHA=""
+          HEAD_BRANCH=""
+          TRIGGER_SOURCE=""
+
+          case "${GITHUB_EVENT_NAME}" in
+            check_suite)
+              HEAD_SHA="${CHECK_SUITE_HEAD_SHA:-}"
+              HEAD_BRANCH="${CHECK_SUITE_HEAD_BRANCH:-}"
+              TRIGGER_SOURCE="check_suite"
+              ;;
+            status)
+              HEAD_SHA="${STATUS_SHA:-}"
+              TRIGGER_SOURCE="status"
+
+              if [ "${STATUS_STATE:-}" = "pending" ]; then
+                echo "Commit status still pending (context: ${STATUS_CONTEXT:-unknown}). Skipping."
+                exit 0
+              fi
+
+              # Vercel uses commit statuses (e.g. "Vercel" or "Vercel – project-name"), not Check Runs.
+              CONTEXT_LOWER=$(printf '%s' "${STATUS_CONTEXT:-}" | tr '[:upper:]' '[:lower:]')
+              if ! printf '%s' "$CONTEXT_LOWER" | grep -q '^vercel'; then
+                echo "Status context '${STATUS_CONTEXT:-}' is not Vercel. Skipping."
+                exit 0
+              fi
+
+              echo "Vercel commit status finished: context='${STATUS_CONTEXT}' state='${STATUS_STATE}'"
+              ;;
+            *)
+              echo "Unsupported event: ${GITHUB_EVENT_NAME}"
+              exit 1
+              ;;
+          esac
+
+          if [ -z "${HEAD_SHA}" ]; then
+            echo "No head SHA resolved from ${TRIGGER_SOURCE} event. Skipping."
+            exit 0
+          fi
+
+          echo "Trigger source: ${TRIGGER_SOURCE} (sha=${HEAD_SHA})"
+
+          if [ -z "${HEAD_BRANCH}" ]; then
+            HEAD_BRANCH=$(gh api \
+              "/repos/${GITHUB_REPOSITORY}/commits/${HEAD_SHA}/pulls" \
+              --jq '.[0].head.ref // empty' 2>/dev/null || true)
+          fi
+
+          if [ -z "${HEAD_BRANCH}" ]; then
+            HEAD_BRANCH=$(gh pr list \
+              --repo "${GITHUB_REPOSITORY}" \
+              --state open \
+              --json headRefName,headRefOid \
+              --jq ".[] | select(.headRefOid==\"${HEAD_SHA}\") | .headRefName" \
+              | head -n1)
+          fi
+
+          if [ -z "${HEAD_BRANCH}" ]; then
+            echo "No pull request branch found for commit ${HEAD_SHA}. Skipping."
             exit 0
           fi
 
@@ -63,11 +125,6 @@ jobs:
           fi
 
           echo "Author check passed."
-
-          if [ "$IS_DRAFT" = "true" ]; then
-            echo "Pull request is a draft. Skipping."
-            exit 0
-          fi
 
           REQUIRED_COUNT=$(gh pr checks "${PR_NUMBER}" \
             --repo "${GITHUB_REPOSITORY}" \
@@ -115,6 +172,7 @@ jobs:
             --arg pr_url "$PR_URL" \
             --arg head_sha "$HEAD_SHA" \
             --arg head_branch "$HEAD_BRANCH" \
+            --arg trigger_source "$TRIGGER_SOURCE" \
             --argjson required_checks_passed "${CHECKS_PASSED}" \
             '{
               event: $event,
@@ -122,6 +180,7 @@ jobs:
               pull_request: {number: $pr_number, url: $pr_url},
               head_sha: $head_sha,
               head_branch: $head_branch,
+              trigger_source: $trigger_source,
               required_checks: {
                 completed: true,
                 passed: $required_checks_passed
