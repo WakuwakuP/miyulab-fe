@@ -29,6 +29,36 @@ const REBLOG_POST_ID_COLUMN_INDEX = 25
 /** Output ノードで受入可能なテーブル */
 const SUPPORTED_TABLES = new Set(['posts', 'notifications'])
 
+function applySortCursorAndPagination(
+  rows: NodeOutputRow[],
+  node: OutputNodeV2,
+): NodeOutputRow[] {
+  const sorted = [...rows]
+  const direction = node.sort.direction === 'ASC' ? 1 : -1
+  sorted.sort((a, b) => {
+    const fieldA = node.sort.field === 'id' ? a.id : a.createdAtMs
+    const fieldB = node.sort.field === 'id' ? b.id : b.createdAtMs
+    return direction * (fieldA - fieldB)
+  })
+
+  let filtered = sorted
+  if (node.pagination.cursor) {
+    const { field, value, direction: cursorDir } = node.pagination.cursor
+    const getField =
+      field === 'id'
+        ? (r: NodeOutputRow) => r.id
+        : (r: NodeOutputRow) => r.createdAtMs
+    filtered =
+      cursorDir === 'before'
+        ? sorted.filter((r) => getField(r) < value)
+        : sorted.filter((r) => getField(r) > value)
+  }
+
+  const offset = node.pagination.offset ?? 0
+  const limit = node.pagination.limit
+  return filtered.slice(offset, offset + limit)
+}
+
 /**
  * Output ノードを実行し、最終的な GraphExecuteResult を構築する。
  *
@@ -45,34 +75,7 @@ export function executeOutput(
 ): Omit<GraphExecuteResult, 'capturedVersions' | 'meta' | 'nodeOutputIds'> & {
   sourceType: 'post' | 'notification' | 'mixed'
 } {
-  // --- 1. sort + cursor + pagination ---
-  let rows = [...input.rows]
-
-  // sort
-  const direction = node.sort.direction === 'ASC' ? 1 : -1
-  rows.sort((a, b) => {
-    const fieldA = node.sort.field === 'id' ? a.id : a.createdAtMs
-    const fieldB = node.sort.field === 'id' ? b.id : b.createdAtMs
-    return direction * (fieldA - fieldB)
-  })
-
-  // cursor filter (sort 後、slice 前に適用)
-  if (node.pagination.cursor) {
-    const { field, value, direction: cursorDir } = node.pagination.cursor
-    const getField =
-      field === 'id'
-        ? (r: (typeof rows)[number]) => r.id
-        : (r: (typeof rows)[number]) => r.createdAtMs
-    rows =
-      cursorDir === 'before'
-        ? rows.filter((r) => getField(r) < value)
-        : rows.filter((r) => getField(r) > value)
-  }
-
-  // pagination
-  const offset = node.pagination.offset ?? 0
-  const limit = node.pagination.limit
-  rows = rows.slice(offset, offset + limit)
+  const rows = applySortCursorAndPagination(input.rows, node)
 
   // --- 2. 未対応テーブルガード ---
   const unsupported = rows.filter((r) => !SUPPORTED_TABLES.has(r.table))

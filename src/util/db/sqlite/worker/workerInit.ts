@@ -14,6 +14,114 @@ export type InitResult = {
   recovered?: 'restored' | 'reset'
 }
 
+// biome-ignore lint/suspicious/noExplicitAny: sqlite-wasm types are not exact
+type Sqlite3Module = any
+
+function applyDatabasePragmas(db: Sqlite3Module): void {
+  db.exec('PRAGMA journal_mode=WAL;')
+  db.exec('PRAGMA synchronous=NORMAL;')
+  db.exec('PRAGMA foreign_keys = ON;')
+  db.exec('PRAGMA cache_size = -8000;') // 8MB（デフォルト2MB→8MB）
+  db.exec('PRAGMA temp_store = MEMORY;') // 一時テーブルをメモリに配置
+}
+
+async function openPersistentDatabase(
+  sqlite3: Sqlite3Module,
+): Promise<{ db: Sqlite3Module; persistence: 'opfs' | 'memory' }> {
+  try {
+    const poolVfs = await sqlite3.installOpfsSAHPoolVfs({
+      directory: '/miyulab-fe',
+      name: 'opfs-sahpool',
+    })
+    const db = new poolVfs.OpfsSAHPoolDb('/miyulab-fe.sqlite3')
+    console.info('SQLite Worker: using OPFS SAH Pool persistence')
+    return { db, persistence: 'opfs' }
+  } catch (e1) {
+    console.debug(
+      'SQLite Worker: OPFS SAH Pool unavailable, trying standard OPFS',
+      e1,
+    )
+    try {
+      const db = new sqlite3.oo1.OpfsDb('/miyulab-fe.sqlite3', 'c')
+      console.info('SQLite Worker: using OPFS persistence')
+      return { db, persistence: 'opfs' }
+    } catch (e2) {
+      console.warn(
+        'SQLite Worker: OPFS not available, using in-memory database.',
+        e2,
+      )
+      const db = new sqlite3.oo1.DB(':memory:', 'c')
+      return { db, persistence: 'memory' }
+    }
+  }
+}
+
+function tryCloseDb(db: Sqlite3Module): void {
+  try {
+    db.close()
+  } catch (closeError) {
+    console.debug(
+      'SQLite Worker: ignore error closing database before fallback',
+      closeError,
+    )
+  }
+}
+
+async function createInMemoryFallback(
+  sqlite3: Sqlite3Module,
+  previousDb?: Sqlite3Module,
+): Promise<{
+  db: Sqlite3Module
+  persistence: 'memory'
+  recovered: 'reset'
+}> {
+  if (previousDb) {
+    tryCloseDb(previousDb)
+  }
+  const db = new sqlite3.oo1.DB(':memory:', 'c')
+  applyDatabasePragmas(db)
+  const { ensureSchema } = await import('../schema')
+  ensureSchema({ db })
+  return { db, persistence: 'memory', recovered: 'reset' }
+}
+
+async function recoverOpfsDatabaseIfNeeded(
+  db: Sqlite3Module,
+  sqlite3: Sqlite3Module,
+  persistence: 'opfs' | 'memory',
+): Promise<{
+  db: Sqlite3Module
+  persistence: 'opfs' | 'memory'
+  recovered?: 'restored' | 'reset'
+}> {
+  if (persistence !== 'opfs') {
+    return { db, persistence }
+  }
+
+  const { isDatabaseHealthy, recoverFromCorruption } = await import(
+    './workerRecovery'
+  )
+  if (isDatabaseHealthy(db)) {
+    return { db, persistence }
+  }
+
+  console.warn('SQLite Worker: database corruption detected at startup')
+  const result: RecoveryResult = await recoverFromCorruption(db, sqlite3)
+  if (result !== 'restored' && result !== 'reset') {
+    console.error('SQLite Worker: recovery failed, falling back to in-memory')
+    return createInMemoryFallback(sqlite3, db)
+  }
+
+  if (isDatabaseHealthy(db)) {
+    return { db, persistence, recovered: result }
+  }
+
+  console.error(
+    'SQLite Worker: recovery completed but DB still corrupt, falling back to in-memory',
+  )
+  return createInMemoryFallback(sqlite3, db)
+}
+
 export async function init(origin: string): Promise<InitResult> {
   // Turbopack が import.meta.url を無効なスキームに書き換えるため、
   // Worker 内の相対 URL 解決が失敗する。
@@ -29,103 +137,28 @@ export async function init(origin: string): Promise<InitResult> {
     wasmBinary,
   })
 
-  let persistence: 'opfs' | 'memory' = 'memory'
   setSqlite3Module(sqlite3)
 
-  // biome-ignore lint/suspicious/noExplicitAny: sqlite-wasm types are not exact
-  let db: any
+  const opened = await openPersistentDatabase(sqlite3)
+  let { db, persistence } = opened
 
-  // 1. OPFS SAH Pool VFS（最高パフォーマンス）
-  try {
-    const poolVfs = await sqlite3.installOpfsSAHPoolVfs({
-      directory: '/miyulab-fe',
-      name: 'opfs-sahpool',
-    })
-    db = new poolVfs.OpfsSAHPoolDb('/miyulab-fe.sqlite3')
-    persistence = 'opfs'
-    console.info('SQLite Worker: using OPFS SAH Pool persistence')
-  } catch (_e1) {
-    // 2. 通常の OPFS
-    try {
-      db = new sqlite3.oo1.OpfsDb('/miyulab-fe.sqlite3', 'c')
-      persistence = 'opfs'
-      console.info('SQLite Worker: using OPFS persistence')
-    } catch (_e2) {
-      // 3. インメモリ DB フォールバック
-      db = new sqlite3.oo1.DB(':memory:', 'c')
-      persistence = 'memory'
-      console.warn(
-        'SQLite Worker: OPFS not available, using in-memory database.',
-      )
-    }
-  }
+  applyDatabasePragmas(db)
 
-  // PRAGMA 設定
-  db.exec('PRAGMA journal_mode=WAL;')
-  db.exec('PRAGMA synchronous=NORMAL;')
-  db.exec('PRAGMA foreign_keys = ON;')
-  db.exec('PRAGMA cache_size = -8000;') // 8MB（デフォルト2MB→8MB）
-  db.exec('PRAGMA temp_store = MEMORY;') // 一時テーブルをメモリに配置
-
-  // スキーマ初期化
   const { ensureSchema } = await import('../schema')
   ensureSchema({ db })
 
-  // 破損検出 — OPFS 永続化の場合のみ検査（インメモリは破損しない）
-  let recovered: 'restored' | 'reset' | undefined
-  if (persistence === 'opfs') {
-    const { isDatabaseHealthy, recoverFromCorruption } = await import(
-      './workerRecovery'
-    )
-    if (!isDatabaseHealthy(db)) {
-      console.warn('SQLite Worker: database corruption detected at startup')
-      const result: RecoveryResult = await recoverFromCorruption(db, sqlite3)
-      if (result === 'restored' || result === 'reset') {
-        // リカバリ後に再検証 — VACUUM/backup で本当に破損が除去されたか確認
-        if (isDatabaseHealthy(db)) {
-          recovered = result
-        } else {
-          console.error(
-            'SQLite Worker: recovery completed but DB still corrupt, falling back to in-memory',
-          )
-          try {
-            db.close()
-          } catch {
-            /* ignore close error */
-          }
-          db = new sqlite3.oo1.DB(':memory:', 'c')
-          persistence = 'memory'
-          db.exec('PRAGMA journal_mode=WAL;')
-          db.exec('PRAGMA synchronous=NORMAL;')
-          db.exec('PRAGMA foreign_keys = ON;')
-          db.exec('PRAGMA cache_size = -8000;')
-          db.exec('PRAGMA temp_store = MEMORY;')
-          ensureSchema({ db })
-          recovered = 'reset'
-        }
-      } else {
-        console.error(
-          'SQLite Worker: recovery failed, falling back to in-memory',
-        )
-        try {
-          db.close()
-        } catch {
-          /* ignore close error */
-        }
-        db = new sqlite3.oo1.DB(':memory:', 'c')
-        persistence = 'memory'
-        db.exec('PRAGMA journal_mode=WAL;')
-        db.exec('PRAGMA synchronous=NORMAL;')
-        db.exec('PRAGMA foreign_keys = ON;')
-        db.exec('PRAGMA cache_size = -8000;')
-        db.exec('PRAGMA temp_store = MEMORY;')
-        ensureSchema({ db })
-        recovered = 'reset'
-      }
-    }
-  }
+  const recoveredState = await recoverOpfsDatabaseIfNeeded(
+    db,
+    sqlite3,
+    persistence,
+  )
+  db = recoveredState.db
+  persistence = recoveredState.persistence
 
   setDb(db)
 
-  return { persistence, recovered }
+  return {
+    persistence,
+    recovered: recoveredState.recovered,
+  }
 }
