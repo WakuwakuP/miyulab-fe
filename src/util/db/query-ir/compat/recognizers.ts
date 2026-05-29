@@ -4,6 +4,13 @@
 
 import type { ExistsFilter, FilterNode, TableFilter } from '../nodes'
 
+const TIMELINE_SINGLE_RE =
+  /^ptt\.timeline(?:Type|_key)\s*=\s*'([^']+)'$/i
+const TIMELINE_MULTI_RE =
+  /^ptt\.timeline(?:Type|_key)\s+IN\s*\(([^)]+)\)$/i
+const NOTIFICATION_TYPE_SINGLE_RE = /^nt\.name\s*=\s*'([^']+)'$/i
+const NOTIFICATION_TYPE_MULTI_RE = /^nt\.name\s+IN\s*\(([^)]+)\)$/i
+
 // ---------------------------------------------------------------------------
 // Individual recognizers
 // ---------------------------------------------------------------------------
@@ -11,7 +18,7 @@ import type { ExistsFilter, FilterNode, TableFilter } from '../nodes'
 /** ptt.timelineType = 'xxx' */
 function tryTimelineFilter(cond: string): FilterNode | null {
   // Single: ptt.timelineType = 'home'
-  const single = cond.match(/^ptt\.timeline(?:Type|_key)\s*=\s*'([^']+)'$/i)
+  const single = TIMELINE_SINGLE_RE.exec(cond)
   if (single) {
     return {
       kind: 'timeline-scope',
@@ -19,11 +26,11 @@ function tryTimelineFilter(cond: string): FilterNode | null {
     }
   }
   // Multiple: ptt.timelineType IN ('home', 'local')
-  const multi = cond.match(/^ptt\.timeline(?:Type|_key)\s+IN\s*\(([^)]+)\)$/i)
+  const multi = TIMELINE_MULTI_RE.exec(cond)
   if (multi) {
     const keys = multi[1]
       .split(',')
-      .map((s) => s.trim().replace(/'/g, ''))
+      .map((s) => s.trim().replaceAll("'", ''))
       .filter(Boolean)
     return { kind: 'timeline-scope', timelineKeys: keys }
   }
@@ -32,7 +39,7 @@ function tryTimelineFilter(cond: string): FilterNode | null {
 
 /** nt.name = 'xxx' or nt.name IN (...) */
 function tryNotificationTypeFilter(cond: string): FilterNode | null {
-  const single = cond.match(/^nt\.name\s*=\s*'([^']+)'$/i)
+  const single = NOTIFICATION_TYPE_SINGLE_RE.exec(cond)
   if (single) {
     return {
       column: 'name',
@@ -42,11 +49,11 @@ function tryNotificationTypeFilter(cond: string): FilterNode | null {
       value: [single[1]],
     }
   }
-  const multi = cond.match(/^nt\.name\s+IN\s*\(([^)]+)\)$/i)
+  const multi = NOTIFICATION_TYPE_MULTI_RE.exec(cond)
   if (multi) {
     const types = multi[1]
       .split(',')
-      .map((s) => s.trim().replace(/'/g, ''))
+      .map((s) => s.trim().replaceAll("'", ''))
       .filter(Boolean)
     return {
       column: 'name',
