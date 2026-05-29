@@ -69,6 +69,18 @@ describe('parseQueryToConfig: v2 ネイティブパターン', () => {
     expect(result?.tagConfig).toEqual({ mode: 'or', tags: ['photo'] })
   })
 
+  it('ht.name IN (...) → tagConfig (or) を認識すること', () => {
+    const result = parseQueryToConfig("ht.name IN ('photo', 'art')")
+    expect(result?.tagConfig).toEqual({ mode: 'or', tags: ['photo', 'art'] })
+  })
+
+  it('AND タグの HAVING COUNT(DISTINCT ht.name) → tagConfig (and) を認識すること', () => {
+    const result = parseQueryToConfig(
+      "ht.name IN ('photo', 'art') HAVING COUNT(DISTINCT ht.name) = 2",
+    )
+    expect(result?.tagConfig).toEqual({ mode: 'and', tags: ['photo', 'art'] })
+  })
+
   it("la.backend_url = 'X' → backendFilter を認識すること", () => {
     const result = parseQueryToConfig(
       "la.backend_url = 'https://mastodon.social'",

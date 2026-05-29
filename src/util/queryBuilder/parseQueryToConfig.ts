@@ -282,25 +282,24 @@ export function parseQueryToConfig(
   // ========================================
   // タグ条件の検出（既存ロジック、変更なし）
   // ========================================
-  const singleTagMatch = query.match(
-    /(?:pbt\.tag|ht\.(?:name|normalized_name))\s*=\s*'([^']+)'/i,
-  )
-  const multiTagMatch = query.match(
-    /(?:pbt\.tag|ht\.(?:name|normalized_name))\s+IN\s*\(\s*([^)]+)\)/i,
-  )
-  const andTagMatch = query.match(
-    /HAVING\s+COUNT\s*\(\s*DISTINCT\s+\w+\.(?:tag|normalized_name)\s*\)\s*=\s*(\d+)/i,
-  )
+  const singleTagMatch =
+    /(?:pbt\.tag|ht\.name|ht\.normalized_name)\s*=\s*'([^']+)'/i.exec(query)
+  const multiTagMatch =
+    /(?:pbt\.tag|ht\.name|ht\.normalized_name)\s+IN\s*\(([^)]+)\)/i.exec(query)
+  const andTagMatch =
+    /HAVING\s+COUNT\s*\(\s*DISTINCT\s+[a-z_][\w]*\.(?:tag|normalized_name|name)\s*\)\s*=\s*(\d+)/i.exec(
+      query,
+    )
 
   if (singleTagMatch) {
     result.tagConfig = {
       mode: 'or',
-      tags: [singleTagMatch[1].replace(/''/g, "'")],
+      tags: [singleTagMatch[1].replaceAll("''", "'")],
     }
   } else if (multiTagMatch) {
     const tags = multiTagMatch[1]
       .split(',')
-      .map((t) => t.trim().replace(/^'|'$/g, '').replace(/''/g, "'"))
+      .map((t) => t.trim().replace(/^'|'$/g, '').replaceAll("''", "'"))
       .filter(Boolean)
     const mode = andTagMatch ? 'and' : 'or'
     result.tagConfig = { mode, tags }
