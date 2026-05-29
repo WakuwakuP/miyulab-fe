@@ -26,8 +26,8 @@ import { getDb } from './initSqlite'
 import type { TableName } from './protocol'
 import type { DbHandle } from './types'
 
-export type { DbHandle, TableName }
 export { isTableName } from './protocol'
+export type { DbHandle, TableName }
 
 /** 変更通知に付与するヒント情報 */
 export type ChangeHint = {
