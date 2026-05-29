@@ -34,13 +34,14 @@ export function isDatabaseHealthy(
 /**
  * エラーが SQLITE_CORRUPT かどうかを判定する
  */
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (typeof error === 'string') return error
+  return ''
+}
+
 export function isSqliteCorruptError(error: unknown): boolean {
-  const msg =
-    error instanceof Error
-      ? error.message
-      : typeof error === 'string'
-        ? error
-        : ''
+  const msg = getErrorMessage(error)
   return (
     msg.includes('SQLITE_CORRUPT') ||
     msg.includes('database disk image is malformed') ||

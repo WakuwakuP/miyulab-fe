@@ -230,7 +230,7 @@ function normalizeReaction(
   instanceHost?: string,
 ): { name: string; url: string | null } {
   // Custom emoji: `:name@.:` (local) or `:name@host:` (remote)
-  const customMatch = name.match(/^:(.+?)@(.+?):$/)
+  const customMatch = name.match(/^:([^:]+)@([^:]+):$/)
   if (customMatch) {
     const shortcode = customMatch[1]
     const host = customMatch[2]

@@ -23,7 +23,10 @@ function dispatch(
   state: TimelineListState,
   ...events: TimelineListEvent[]
 ): TimelineListState {
-  return events.reduce(timelineListReducer, state)
+  return events.reduce(
+    (current, event) => timelineListReducer(current, event),
+    state,
+  )
 }
 
 // --------------- テスト ---------------

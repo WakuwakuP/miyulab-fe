@@ -3,6 +3,7 @@
 import { useContext, useMemo } from 'react'
 import type { BackendFilter } from 'types/types'
 import { AppsContext } from 'util/provider/AppsProvider'
+import { sortBackendUrls } from 'util/timelineConfigValidator'
 
 type BackendFilterSelectorProps = {
   onChange: (filter: BackendFilter) => void
@@ -80,10 +81,10 @@ export const BackendFilterSelector = ({
         // 1個になる場合は single に正規化
         onChange({ backendUrl: updated[0], mode: 'single' })
       } else {
-        onChange({ backendUrls: [...updated].sort(), mode: 'composite' })
+        onChange({ backendUrls: sortBackendUrls(updated), mode: 'composite' })
       }
     } else {
-      const updated = [...current, backendUrl].sort()
+      const updated = sortBackendUrls([...current, backendUrl])
       onChange({ backendUrls: updated, mode: 'composite' })
     }
   }

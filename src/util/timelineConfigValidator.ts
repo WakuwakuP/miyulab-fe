@@ -1,5 +1,10 @@
 import type { App, BackendFilter, TagConfig } from 'types/types'
 
+/** composite の backendUrls を正規化用の決定的な順序にソートする */
+export function sortBackendUrls(urls: readonly string[]): string[] {
+  return [...urls].sort((a, b) => a.localeCompare(b))
+}
+
 /**
  * BackendFilter を正規化する
  * apps に存在しない backendUrl を除外し、要素数に応じて mode を調整する
@@ -30,7 +35,7 @@ export function normalizeBackendFilter(
       if (filtered.length === 1)
         return { backendUrl: filtered[0], mode: 'single' }
       // ソートして正規化（同一の URL 組み合わせが異なる順序で保存されることを防ぐ）
-      return { backendUrls: [...filtered].sort(), mode: 'composite' }
+      return { backendUrls: sortBackendUrls(filtered), mode: 'composite' }
     }
   }
 }
