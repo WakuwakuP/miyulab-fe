@@ -63,18 +63,20 @@ function splitByTopLevel(
   let inString = false
   const splitPattern = TOP_LEVEL_SPLIT_PATTERN[delimiter]
 
-  for (let i = 0; i < where.length; i++) {
+  let i = 0
+  while (i < where.length) {
     const ch = where[i]
 
     if (ch === "'") {
       const quote = handleQuoteChar(where, i, inString, current)
       inString = quote.inString
       current = quote.current
-      i += quote.skip
+      i += 1 + quote.skip
       continue
     }
     if (inString) {
       current += ch
+      i++
       continue
     }
 
@@ -90,12 +92,13 @@ function splitByTopLevel(
       parts,
     )
     if (split.split) {
-      i = split.index
       current = split.current
+      i = split.index + 1
       continue
     }
 
     current += ch
+    i++
   }
   if (current.trim()) parts.push(current.trim())
   return parts

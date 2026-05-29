@@ -48,8 +48,8 @@ function makeKey(params: NodeCacheKey): string {
  * メインスレッドとのバージョン同期は不要。
  */
 export class WorkerNodeCache {
-  private cache = new Map<string, CacheEntry>()
-  private tableVersions = new Map<string, number>()
+  private readonly cache = new Map<string, CacheEntry>()
+  private readonly tableVersions = new Map<string, number>()
 
   /**
    * キャッシュから結果を取得する。
