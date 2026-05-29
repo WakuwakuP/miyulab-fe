@@ -76,7 +76,7 @@ export function buildInstanceBlockCondition(
     WHERE bi.instance_domain = substr(pr.acct, instr(pr.acct, '@') + 1)
   )`
   }
-  const likeEscapeChar = String.fromCharCode(92)
+  const likeEscapeChar = String.fromCodePoint(92)
   return `NOT EXISTS (
     SELECT 1 FROM blocked_instances bi
     WHERE (SELECT acct FROM profiles WHERE id = ${prefix}author_profile_id) LIKE '%@' || REPLACE(REPLACE(bi.instance_domain, '%', '${likeEscapeChar}%'), '_', '${likeEscapeChar}_') ESCAPE '${likeEscapeChar}'

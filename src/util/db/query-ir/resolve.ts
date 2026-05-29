@@ -39,6 +39,26 @@ export function determineStrategy(entry: TableRegistryEntry): JoinStrategy {
 
 // --------------- Per-node resolution ---------------
 
+function dependencyForRegistryTable(
+  table: string,
+  sourceTable: string,
+  registry: TableRegistry,
+  strategy: JoinStrategy,
+): TableDependency[] {
+  const entry = registry[table]
+  if (!entry) return []
+  const joinPath =
+    entry.joinPaths[sourceTable as keyof typeof entry.joinPaths] ?? null
+  return [
+    {
+      cardinality: entry.cardinality,
+      joinPath,
+      strategy,
+      table,
+    },
+  ]
+}
+
 /** Resolve table dependencies from a single filter node */
 export function resolveTableDependency(
   node: FilterNode,
@@ -59,79 +79,48 @@ export function resolveTableDependency(
       }
       const entry = registry[node.table]
       if (!entry) return []
-      const joinPath =
-        entry.joinPaths[sourceTable as keyof typeof entry.joinPaths] ?? null
-      return [
-        {
-          cardinality: entry.cardinality,
-          joinPath,
-          strategy: determineStrategy(entry),
-          table: node.table,
-        },
-      ]
+      return dependencyForRegistryTable(
+        node.table,
+        sourceTable,
+        registry,
+        determineStrategy(entry),
+      )
     }
 
     case 'exists-filter': {
-      const entry = registry[node.table]
-      if (!entry) return []
-      const joinPath =
-        entry.joinPaths[sourceTable as keyof typeof entry.joinPaths] ?? null
       const strategy: JoinStrategy =
         node.mode === 'not-exists' ? 'not-exists' : 'exists'
-      return [
-        {
-          cardinality: entry.cardinality,
-          joinPath,
-          strategy,
-          table: node.table,
-        },
-      ]
+      return dependencyForRegistryTable(
+        node.table,
+        sourceTable,
+        registry,
+        strategy,
+      )
     }
 
-    case 'backend-filter': {
-      const entry = registry.post_backend_ids
-      if (!entry) return []
-      const joinPath =
-        entry.joinPaths[sourceTable as keyof typeof entry.joinPaths] ?? null
-      return [
-        {
-          cardinality: entry.cardinality,
-          joinPath,
-          strategy: 'exists',
-          table: 'post_backend_ids',
-        },
-      ]
-    }
+    case 'backend-filter':
+      return dependencyForRegistryTable(
+        'post_backend_ids',
+        sourceTable,
+        registry,
+        'exists',
+      )
 
-    case 'moderation-filter': {
-      const entry = registry.profiles
-      if (!entry) return []
-      const joinPath =
-        entry.joinPaths[sourceTable as keyof typeof entry.joinPaths] ?? null
-      return [
-        {
-          cardinality: entry.cardinality,
-          joinPath,
-          strategy: 'scalar-subquery',
-          table: 'profiles',
-        },
-      ]
-    }
+    case 'moderation-filter':
+      return dependencyForRegistryTable(
+        'profiles',
+        sourceTable,
+        registry,
+        'scalar-subquery',
+      )
 
-    case 'timeline-scope': {
-      const entry = registry.timeline_entries
-      if (!entry) return []
-      const joinPath =
-        entry.joinPaths[sourceTable as keyof typeof entry.joinPaths] ?? null
-      return [
-        {
-          cardinality: entry.cardinality,
-          joinPath,
-          strategy: 'inner-join',
-          table: 'timeline_entries',
-        },
-      ]
-    }
+    case 'timeline-scope':
+      return dependencyForRegistryTable(
+        'timeline_entries',
+        sourceTable,
+        registry,
+        'inner-join',
+      )
 
     case 'raw-sql-filter': {
       const tables = node.referencedTables ?? []

@@ -30,6 +30,34 @@ export function formatTime(ms: number): string {
   return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
+function buildPostDebugItem(
+  id: number,
+  row: (string | number | null)[],
+): DebugResultItem {
+  return {
+    acct: (row[14] as string) ?? '',
+    contentPreview: stripHtml((row[5] as string) ?? ''),
+    createdAt: formatTime(row[3] as number),
+    id,
+    isReblog: (row[11] as number) === 1,
+    table: 'posts',
+  }
+}
+
+function buildNotificationDebugItem(
+  id: number,
+  row: (string | number | null)[],
+): DebugResultItem {
+  return {
+    actorAcct: (row[6] as string) ?? '',
+    createdAt: formatTime(row[2] as number),
+    id,
+    notificationType: (row[3] as string) ?? '',
+    relatedContentPreview: stripHtml((row[15] as string) ?? ''),
+    table: 'notifications',
+  }
+}
+
 /**
  * GraphExecuteResult の生データからノード別の DebugNodeResult[] を構築する。
  *
@@ -76,25 +104,11 @@ export function buildDebugResultsByNode(
       if (entry.table === 'posts') {
         const row = postMap.get(entry.id)
         if (!row) continue
-        items.push({
-          acct: (row[14] as string) ?? '',
-          contentPreview: stripHtml((row[5] as string) ?? ''),
-          createdAt: formatTime(row[3] as number),
-          id: entry.id,
-          isReblog: (row[11] as number) === 1,
-          table: 'posts',
-        })
+        items.push(buildPostDebugItem(entry.id, row))
       } else {
         const row = notifMap.get(entry.id)
         if (!row) continue
-        items.push({
-          actorAcct: (row[6] as string) ?? '',
-          createdAt: formatTime(row[2] as number),
-          id: entry.id,
-          notificationType: (row[3] as string) ?? '',
-          relatedContentPreview: stripHtml((row[15] as string) ?? ''),
-          table: 'notifications',
-        })
+        items.push(buildNotificationDebugItem(entry.id, row))
       }
     }
 

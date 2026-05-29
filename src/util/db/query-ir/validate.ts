@@ -48,6 +48,14 @@ function validateValueType(
     }
   }
 
+  validateScalarValuesAgainstColumn(value, colMeta, errors)
+}
+
+function validateScalarValuesAgainstColumn(
+  value: FilterValue | undefined,
+  colMeta: ColumnMeta,
+  errors: string[],
+): void {
   const values = Array.isArray(value) ? value : [value]
   for (const v of values) {
     if (v === null || v === undefined) continue
@@ -135,6 +143,26 @@ function validateExistsFilter(
   }
 }
 
+function validateOrGroupNode(
+  node: Extract<FilterNode, { kind: 'or-group' }>,
+  sourceTable: string,
+  registry: TableRegistry,
+  errors: string[],
+  warnings: string[],
+): void {
+  if (node.branches.length === 0) {
+    warnings.push('OrGroup has no branches')
+  }
+  for (const branch of node.branches) {
+    if (branch.length === 0) {
+      warnings.push('OrGroup has an empty branch')
+    }
+    for (const filter of branch) {
+      validateNode(filter, sourceTable, registry, errors, warnings)
+    }
+  }
+}
+
 // --------------- Core validation ---------------
 
 function validateNode(
@@ -169,17 +197,7 @@ function validateNode(
     case 'timeline-scope':
       break
     case 'or-group':
-      if (node.branches.length === 0) {
-        warnings.push('OrGroup has no branches')
-      }
-      for (const branch of node.branches) {
-        if (branch.length === 0) {
-          warnings.push('OrGroup has an empty branch')
-        }
-        for (const filter of branch) {
-          validateNode(filter, sourceTable, registry, errors, warnings)
-        }
-      }
+      validateOrGroupNode(node, sourceTable, registry, errors, warnings)
       break
     case 'raw-sql-filter':
       if (FORBIDDEN_SQL_RE.test(node.where)) {

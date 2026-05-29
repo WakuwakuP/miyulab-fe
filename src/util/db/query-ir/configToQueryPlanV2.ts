@@ -251,26 +251,30 @@ function buildGetIdsNode(
 
 // --------------- コンテンツフィルタ ---------------
 
-function addContentFilters(
+function addMediaContentFilters(
   config: TimelineConfigV2,
   filters: GetIdsFilter[],
-  _table: string,
 ): void {
-  // メディアフィルタ
   if (config.minMediaCount != null && config.minMediaCount > 0) {
     filters.push({
       countValue: config.minMediaCount,
       mode: 'count-gte',
       table: 'post_media',
     } satisfies ExistsCondition)
-  } else if (config.onlyMedia) {
+    return
+  }
+  if (config.onlyMedia) {
     filters.push({
       mode: 'exists',
       table: 'post_media',
     } satisfies ExistsCondition)
   }
+}
 
-  // 公開範囲フィルタ
+function addPostShapeContentFilters(
+  config: TimelineConfigV2,
+  filters: GetIdsFilter[],
+): void {
   if (
     config.visibilityFilter &&
     config.visibilityFilter.length > 0 &&
@@ -302,7 +306,6 @@ function addContentFilters(
     } satisfies FilterCondition)
   }
 
-  // ブースト除外
   if (config.excludeReblogs) {
     filters.push({
       column: 'reblog_of_post_id',
@@ -311,7 +314,6 @@ function addContentFilters(
     } satisfies FilterCondition)
   }
 
-  // リプライ除外
   if (config.excludeReplies) {
     filters.push({
       column: 'in_reply_to_uri',
@@ -320,7 +322,6 @@ function addContentFilters(
     } satisfies FilterCondition)
   }
 
-  // CW 除外
   if (config.excludeSpoiler) {
     filters.push({
       column: 'spoiler_text',
@@ -330,7 +331,6 @@ function addContentFilters(
     } satisfies FilterCondition)
   }
 
-  // センシティブ除外
   if (config.excludeSensitive) {
     filters.push({
       column: 'is_sensitive',
@@ -339,6 +339,15 @@ function addContentFilters(
       value: 0,
     } satisfies FilterCondition)
   }
+}
+
+function addContentFilters(
+  config: TimelineConfigV2,
+  filters: GetIdsFilter[],
+  _table: string,
+): void {
+  addMediaContentFilters(config, filters)
+  addPostShapeContentFilters(config, filters)
 
   // アカウントフィルタ
   if (config.accountFilter && config.accountFilter.accts.length > 0) {
