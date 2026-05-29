@@ -47,17 +47,23 @@ jobs:
           fi
 
           PR_NUMBER=$(echo "$PR_JSON" | jq -r '.[0].number')
-          PR_AUTHOR=$(echo "$PR_JSON" | jq -r '.[0].author.login')
+          PR_AUTHOR_LOGIN=$(echo "$PR_JSON" | jq -r '.[0].author.login')
+          PR_AUTHOR_TYPE=$(echo "$PR_JSON" | jq -r '.[0].author.type')
           PR_URL=$(echo "$PR_JSON" | jq -r '.[0].url')
           IS_DRAFT=$(echo "$PR_JSON" | jq -r '.[0].isDraft')
+          EXPECTED_AUTHOR="cursor[bot]"
 
           echo "PR #${PR_NUMBER} (${PR_URL})"
-          echo "Author: ${PR_AUTHOR}, draft: ${IS_DRAFT}"
+          echo "PR author login: '${PR_AUTHOR_LOGIN}' (type: ${PR_AUTHOR_TYPE})"
+          echo "Expected author login for trigger: '${EXPECTED_AUTHOR}'"
+          echo "Draft: ${IS_DRAFT}"
 
-          if [ "$PR_AUTHOR" != "cursor[bot]" ]; then
-            echo "Pull request was not created by cursor[bot]. Skipping."
+          if [ "$PR_AUTHOR_LOGIN" != "$EXPECTED_AUTHOR" ]; then
+            echo "Author check failed: login '${PR_AUTHOR_LOGIN}' != '${EXPECTED_AUTHOR}'. Skipping."
             exit 0
           fi
+
+          echo "Author check passed."
 
           if [ "$IS_DRAFT" = "true" ]; then
             echo "Pull request is a draft. Skipping."
