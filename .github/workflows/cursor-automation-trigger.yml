@@ -51,6 +51,7 @@ jobs:
           PR_AUTHOR_TYPE=$(echo "$PR_JSON" | jq -r '.[0].author.type')
           PR_URL=$(echo "$PR_JSON" | jq -r '.[0].url')
           IS_DRAFT=$(echo "$PR_JSON" | jq -r '.[0].isDraft')
+
           echo "PR #${PR_NUMBER} (${PR_URL})"
           echo "PR author login: '${PR_AUTHOR_LOGIN}' (type: ${PR_AUTHOR_TYPE})"
           echo "Expected author login for trigger: 'app/cursor' (legacy: 'cursor[bot]')"
