@@ -1,6 +1,9 @@
 import type { DebugNodeResult, DebugResultItem, FlowNode } from './types'
 import { getNodeLabelV2 } from './types'
 
+type DebugSqlRow = (string | number | null)[]
+type NodeOutputEntry = { table: 'posts' | 'notifications'; id: number }
+
 // --------------- デバッグ結果の抽出 ---------------
 
 /** HTML タグを除去してプレーンテキスト化し、指定文字数で切り詰める */
@@ -30,10 +33,7 @@ export function formatTime(ms: number): string {
   return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 }
 
-function buildPostDebugItem(
-  id: number,
-  row: (string | number | null)[],
-): DebugResultItem {
+function buildPostDebugItem(id: number, row: DebugSqlRow): DebugResultItem {
   return {
     acct: (row[14] as string) ?? '',
     contentPreview: stripHtml((row[5] as string) ?? ''),
@@ -46,7 +46,7 @@ function buildPostDebugItem(
 
 function buildNotificationDebugItem(
   id: number,
-  row: (string | number | null)[],
+  row: DebugSqlRow,
 ): DebugResultItem {
   return {
     actorAcct: (row[6] as string) ?? '',
@@ -56,6 +56,26 @@ function buildNotificationDebugItem(
     relatedContentPreview: stripHtml((row[15] as string) ?? ''),
     table: 'notifications',
   }
+}
+
+function buildDebugItemsForEntries(
+  entries: NodeOutputEntry[],
+  postMap: Map<number, DebugSqlRow>,
+  notifMap: Map<number, DebugSqlRow>,
+): DebugResultItem[] {
+  const items: DebugResultItem[] = []
+  for (const entry of entries) {
+    if (entry.table === 'posts') {
+      const row = postMap.get(entry.id)
+      if (!row) continue
+      items.push(buildPostDebugItem(entry.id, row))
+    } else {
+      const row = notifMap.get(entry.id)
+      if (!row) continue
+      items.push(buildNotificationDebugItem(entry.id, row))
+    }
+  }
+  return items
 }
 
 /**
@@ -70,18 +90,15 @@ function buildNotificationDebugItem(
  *   [6] actor_acct, [15] rp_content
  */
 export function buildDebugResultsByNode(
-  nodeOutputIds: Record<
-    string,
-    { table: 'posts' | 'notifications'; id: number }[]
-  >,
-  postRows: (string | number | null)[][],
-  notifRows: (string | number | null)[][],
+  nodeOutputIds: Record<string, NodeOutputEntry[]>,
+  postRows: DebugSqlRow[],
+  notifRows: DebugSqlRow[],
   flowNodes: FlowNode[],
 ): DebugNodeResult[] {
-  const postMap = new Map<number, (string | number | null)[]>()
+  const postMap = new Map<number, DebugSqlRow>()
   for (const row of postRows) postMap.set(row[0] as number, row)
 
-  const notifMap = new Map<number, (string | number | null)[]>()
+  const notifMap = new Map<number, DebugSqlRow>()
   for (const row of notifRows) notifMap.set(row[0] as number, row)
 
   // ReactFlow node ID → label のマップ
@@ -98,20 +115,7 @@ export function buildDebugResultsByNode(
     if (flowNode.data.nodeType === 'output-v2') continue
 
     const label = getNodeLabelV2(flowNode.data)
-    const items: DebugResultItem[] = []
-
-    for (const entry of entries) {
-      if (entry.table === 'posts') {
-        const row = postMap.get(entry.id)
-        if (!row) continue
-        items.push(buildPostDebugItem(entry.id, row))
-      } else {
-        const row = notifMap.get(entry.id)
-        if (!row) continue
-        items.push(buildNotificationDebugItem(entry.id, row))
-      }
-    }
-
+    const items = buildDebugItemsForEntries(entries, postMap, notifMap)
     results.push({ items, nodeId, nodeLabel: label })
   }
 

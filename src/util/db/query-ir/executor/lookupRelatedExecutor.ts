@@ -55,6 +55,133 @@ export function executeLookupRelated(
 
 // --------------- JOIN ベース（per-row 相関） ---------------
 
+function buildJoinOnsAndExtraJoins(
+  node: LookupRelatedNode,
+  src: string,
+  lt: string,
+): { extraJoinStrs: string[]; joinOns: string[] } {
+  const extraJoinStrs: string[] = []
+  const joinOns: string[] = []
+  let riIdx = 0
+  for (const jc of node.joinConditions) {
+    if (jc.resolveIdentity) {
+      const inputCol =
+        jc.inputColumn && jc.inputColumn !== 'id' ? jc.inputColumn : 'id'
+      const pSrc = `_p_src${riIdx}`
+      const pLt = `_p_lt${riIdx}`
+      extraJoinStrs.push(
+        `JOIN profiles ${pLt} ON ${lt}.${jc.lookupColumn} = ${pLt}.id`,
+      )
+      extraJoinStrs.push(
+        `JOIN profiles ${pSrc} ON ${pLt}.canonical_acct = ${pSrc}.canonical_acct`,
+      )
+      joinOns.push(`${src}.${inputCol} = ${pSrc}.id`)
+      riIdx++
+    } else if (jc.inputColumn && jc.inputColumn !== 'id') {
+      joinOns.push(`${src}.${jc.inputColumn} = ${lt}.${jc.lookupColumn}`)
+    } else {
+      joinOns.push(`${src}.id = ${lt}.${jc.lookupColumn}`)
+    }
+  }
+  return { extraJoinStrs, joinOns }
+}
+
+function appendTimeWindowConditions(
+  tc: NonNullable<LookupRelatedNode['timeCondition']>,
+  src: string,
+  lt: string,
+  conditions: string[],
+): void {
+  if (tc.afterInput) {
+    conditions.push(
+      `${lt}.${tc.lookupTimeColumn} >= ${src}.${tc.inputTimeColumn}`,
+    )
+    conditions.push(
+      `${lt}.${tc.lookupTimeColumn} <= ${src}.${tc.inputTimeColumn} + ${tc.windowMs}`,
+    )
+    return
+  }
+  conditions.push(`${lt}.${tc.lookupTimeColumn} < ${src}.${tc.inputTimeColumn}`)
+  conditions.push(
+    `${lt}.${tc.lookupTimeColumn} >= ${src}.${tc.inputTimeColumn} - ${tc.windowMs}`,
+  )
+}
+
+function buildLookupSelectExpr(
+  node: LookupRelatedNode,
+  lt: string,
+): { groupByStr: string; selectExpr: string } {
+  if (node.aggregate) {
+    return {
+      groupByStr: `GROUP BY ${lt}.id`,
+      selectExpr: `${lt}.id AS id, ${node.aggregate.function}(${lt}.${node.aggregate.column}) AS created_at_ms`,
+    }
+  }
+  const defaultTimeCol = getDefaultTimeColumn(node.lookupTable)
+  const selectExpr = defaultTimeCol
+    ? `${lt}.id AS id, ${lt}.${defaultTimeCol} AS created_at_ms`
+    : `${lt}.id AS id, 0 AS created_at_ms`
+  return { groupByStr: '', selectExpr }
+}
+
+function buildJoinLookupSql(
+  node: LookupRelatedNode,
+  input: NodeOutput,
+  parts: {
+    conditions: string[]
+    extraJoinStrs: string[]
+    groupByStr: string
+    joinOns: string[]
+    lt: string
+    selectExpr: string
+    src: string
+    tc: NonNullable<LookupRelatedNode['timeCondition']>
+  },
+): string {
+  const {
+    conditions,
+    extraJoinStrs,
+    groupByStr,
+    joinOns,
+    lt,
+    selectExpr,
+    src,
+    tc,
+  } = parts
+  const joinStr = `JOIN ${input.sourceTable} ${src} ON ${joinOns.join(' AND ')}`
+  const whereStr = `WHERE ${conditions.join(' AND ')}`
+  const usePerRowLimit = node.perLimit != null && !node.aggregate
+
+  if (usePerRowLimit) {
+    const isNearest = node.perLimitOrder === 'nearest'
+    const partitionOrder = isNearest === tc.afterInput ? 'ASC' : 'DESC'
+    const innerSql = [
+      `SELECT ${selectExpr}, ${src}.id AS _src_id,`,
+      `ROW_NUMBER() OVER (PARTITION BY ${src}.id ORDER BY ${lt}.${tc.lookupTimeColumn} ${partitionOrder}) AS _rn`,
+      `FROM ${node.lookupTable} ${lt}`,
+      ...extraJoinStrs,
+      joinStr,
+      whereStr,
+      groupByStr,
+    ]
+      .filter(Boolean)
+      .join(' ')
+    return `SELECT DISTINCT id, created_at_ms FROM (${innerSql}) WHERE _rn <= ${node.perLimit} ORDER BY created_at_ms DESC`
+  }
+
+  return [
+    `SELECT DISTINCT ${selectExpr}`,
+    `FROM ${node.lookupTable} ${lt}`,
+    ...extraJoinStrs,
+    joinStr,
+    whereStr,
+    groupByStr,
+    `ORDER BY created_at_ms DESC`,
+  ]
+    .filter(Boolean)
+    .join(' ')
+}
+
 /**
  * JOIN ベースの実行。
  * 上流テーブルと lookup テーブルを JOIN し、
@@ -86,115 +213,25 @@ function executeWithJoin(
   const hasIdentityResolve = node.joinConditions.some(
     (jc) => jc.resolveIdentity,
   )
-
-  // --- Identity resolution: profiles テーブル JOIN ---
-  const extraJoinStrs: string[] = []
-
   if (hasIdentityResolve) {
     dependentTables.push('profiles')
   }
 
-  // --- JOIN ON 条件 ---
-  const joinOns: string[] = []
-  let riIdx = 0
-  for (const jc of node.joinConditions) {
-    if (jc.resolveIdentity) {
-      const inputCol =
-        jc.inputColumn && jc.inputColumn !== 'id' ? jc.inputColumn : 'id'
-      const pSrc = `_p_src${riIdx}`
-      const pLt = `_p_lt${riIdx}`
-      // lookup 側 profile JOIN
-      extraJoinStrs.push(
-        `JOIN profiles ${pLt} ON ${lt}.${jc.lookupColumn} = ${pLt}.id`,
-      )
-      // src 側 profile JOIN (canonical_acct で照合)
-      extraJoinStrs.push(
-        `JOIN profiles ${pSrc} ON ${pLt}.canonical_acct = ${pSrc}.canonical_acct`,
-      )
-      joinOns.push(`${src}.${inputCol} = ${pSrc}.id`)
-      riIdx++
-    } else if (jc.inputColumn && jc.inputColumn !== 'id') {
-      joinOns.push(`${src}.${jc.inputColumn} = ${lt}.${jc.lookupColumn}`)
-    } else {
-      joinOns.push(`${src}.id = ${lt}.${jc.lookupColumn}`)
-    }
-  }
-
-  // --- WHERE 条件 ---
-  const conditions: string[] = []
-  conditions.push(`${src}.id IN (${placeholders})`)
+  const { extraJoinStrs, joinOns } = buildJoinOnsAndExtraJoins(node, src, lt)
+  const conditions: string[] = [`${src}.id IN (${placeholders})`]
   binds.push(...ids)
-
-  // per-row 時間条件
-  if (tc.afterInput) {
-    conditions.push(
-      `${lt}.${tc.lookupTimeColumn} >= ${src}.${tc.inputTimeColumn}`,
-    )
-    conditions.push(
-      `${lt}.${tc.lookupTimeColumn} <= ${src}.${tc.inputTimeColumn} + ${tc.windowMs}`,
-    )
-  } else {
-    conditions.push(
-      `${lt}.${tc.lookupTimeColumn} < ${src}.${tc.inputTimeColumn}`,
-    )
-    conditions.push(
-      `${lt}.${tc.lookupTimeColumn} >= ${src}.${tc.inputTimeColumn} - ${tc.windowMs}`,
-    )
-  }
-
-  // --- SELECT 句構築 ---
-  let selectExpr: string
-  let groupByStr = ''
-
-  if (node.aggregate) {
-    selectExpr = `${lt}.id AS id, ${node.aggregate.function}(${lt}.${node.aggregate.column}) AS created_at_ms`
-    groupByStr = `GROUP BY ${lt}.id`
-  } else {
-    const defaultTimeCol = getDefaultTimeColumn(node.lookupTable)
-    selectExpr = defaultTimeCol
-      ? `${lt}.id AS id, ${lt}.${defaultTimeCol} AS created_at_ms`
-      : `${lt}.id AS id, 0 AS created_at_ms`
-  }
-
-  const joinStr = `JOIN ${input.sourceTable} ${src} ON ${joinOns.join(' AND ')}`
-  const whereStr = `WHERE ${conditions.join(' AND ')}`
-
-  // Per-row limit: ROW_NUMBER PARTITION BY src.id で各入力行あたり N 件に制限
-  const usePerRowLimit = node.perLimit != null && !node.aggregate
-
-  let sql: string
-  if (usePerRowLimit) {
-    // nearest + afterInput → ASC (時間が小さい=入力に近い),
-    // nearest + !afterInput → DESC (時間が大きい=入力に近い), etc.
-    const isNearest = node.perLimitOrder === 'nearest'
-    const partitionOrder = isNearest === tc.afterInput ? 'ASC' : 'DESC'
-
-    const innerSql = [
-      `SELECT ${selectExpr}, ${src}.id AS _src_id,`,
-      `ROW_NUMBER() OVER (PARTITION BY ${src}.id ORDER BY ${lt}.${tc.lookupTimeColumn} ${partitionOrder}) AS _rn`,
-      `FROM ${node.lookupTable} ${lt}`,
-      ...extraJoinStrs,
-      joinStr,
-      whereStr,
-      groupByStr,
-    ]
-      .filter(Boolean)
-      .join(' ')
-
-    sql = `SELECT DISTINCT id, created_at_ms FROM (${innerSql}) WHERE _rn <= ${node.perLimit} ORDER BY created_at_ms DESC`
-  } else {
-    sql = [
-      `SELECT DISTINCT ${selectExpr}`,
-      `FROM ${node.lookupTable} ${lt}`,
-      ...extraJoinStrs,
-      joinStr,
-      whereStr,
-      groupByStr,
-      `ORDER BY created_at_ms DESC`,
-    ]
-      .filter(Boolean)
-      .join(' ')
-  }
+  appendTimeWindowConditions(tc, src, lt, conditions)
+  const { groupByStr, selectExpr } = buildLookupSelectExpr(node, lt)
+  const sql = buildJoinLookupSql(node, input, {
+    conditions,
+    extraJoinStrs,
+    groupByStr,
+    joinOns,
+    lt,
+    selectExpr,
+    src,
+    tc,
+  })
 
   const rawRows = db.exec(sql, {
     bind: binds.length > 0 ? binds : undefined,

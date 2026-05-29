@@ -16,14 +16,78 @@ import {
 
 export type TimelineItemFromGraph = StatusAddAppIndex | NotificationAddAppIndex
 
+type BackendApp = { backendUrl: string }
+
 /**
  * appIndex を解決する
  */
-function resolveAppIndex(
-  backendUrl: string,
-  apps: { backendUrl: string }[],
-): number {
+function resolveAppIndex(backendUrl: string, apps: BackendApp[]): number {
   return apps.findIndex((app) => app.backendUrl === backendUrl)
+}
+
+function buildPostMapFromGraphResult(
+  result: GraphExecuteResult,
+  apps: BackendApp[],
+  targetBackendUrls: string[],
+): Map<number, StatusAddAppIndex> | undefined {
+  if (result.posts.detailRows.length === 0) return undefined
+
+  const maps = buildBatchMapsFromResults(
+    result.posts.batchResults as Parameters<
+      typeof buildBatchMapsFromResults
+    >[0],
+  )
+  const fallbackAppIndex =
+    targetBackendUrls.length > 0
+      ? resolveAppIndex(targetBackendUrls[0], apps)
+      : -1
+  const postMap = new Map<number, StatusAddAppIndex>()
+  for (const row of result.posts.detailRows) {
+    const status = assembleStatusFromBatch(row, maps)
+    let appIndex = resolveAppIndex(status.backendUrl, apps)
+    if (appIndex < 0 && status.backendUrl === '' && fallbackAppIndex >= 0) {
+      appIndex = fallbackAppIndex
+      status.backendUrl = targetBackendUrls[0]
+    }
+    if (appIndex < 0) continue
+    postMap.set(status.post_id, { ...status, appIndex })
+  }
+  return postMap
+}
+
+function buildNotifMapFromGraphResult(
+  result: GraphExecuteResult,
+  apps: BackendApp[],
+): Map<number, NotificationAddAppIndex> | undefined {
+  if (result.notifications.detailRows.length === 0) return undefined
+
+  const notifMap = new Map<number, NotificationAddAppIndex>()
+  for (const row of result.notifications.detailRows) {
+    const backendUrl = (row[1] as string) || ''
+    const appIndex = resolveAppIndex(backendUrl, apps)
+    if (appIndex < 0) continue
+    const stored = rowToStoredNotification(row)
+    notifMap.set(stored.notification_id, { ...stored, appIndex })
+  }
+  return notifMap
+}
+
+function collectItemsFromDisplayOrder(
+  displayOrder: GraphExecuteResult['displayOrder'],
+  postMap: Map<number, StatusAddAppIndex> | undefined,
+  notifMap: Map<number, NotificationAddAppIndex> | undefined,
+): TimelineItemFromGraph[] {
+  const items: TimelineItemFromGraph[] = []
+  for (const entry of displayOrder) {
+    if (entry.table === 'posts' && postMap) {
+      const status = postMap.get(entry.id)
+      if (status) items.push(status)
+    } else if (entry.table === 'notifications' && notifMap) {
+      const notif = notifMap.get(entry.id)
+      if (notif) items.push(notif)
+    }
+  }
+  return items
 }
 
 /**
@@ -36,58 +100,10 @@ function resolveAppIndex(
  */
 export function buildTimelineItemsFromGraphResult(
   result: GraphExecuteResult,
-  apps: { backendUrl: string }[],
+  apps: BackendApp[],
   targetBackendUrls: string[],
 ): TimelineItemFromGraph[] {
-  // --- posts の変換 ---
-  let postMap: Map<number, StatusAddAppIndex> | undefined
-  if (result.posts.detailRows.length > 0) {
-    const maps = buildBatchMapsFromResults(
-      result.posts.batchResults as Parameters<
-        typeof buildBatchMapsFromResults
-      >[0],
-    )
-    const fallbackAppIndex =
-      targetBackendUrls.length > 0
-        ? resolveAppIndex(targetBackendUrls[0], apps)
-        : -1
-    postMap = new Map()
-    for (const row of result.posts.detailRows) {
-      const status = assembleStatusFromBatch(row, maps)
-      let appIndex = resolveAppIndex(status.backendUrl, apps)
-      if (appIndex < 0 && status.backendUrl === '' && fallbackAppIndex >= 0) {
-        appIndex = fallbackAppIndex
-        status.backendUrl = targetBackendUrls[0]
-      }
-      if (appIndex < 0) continue
-      postMap.set(status.post_id, { ...status, appIndex })
-    }
-  }
-
-  // --- notifications の変換 ---
-  let notifMap: Map<number, NotificationAddAppIndex> | undefined
-  if (result.notifications.detailRows.length > 0) {
-    notifMap = new Map()
-    for (const row of result.notifications.detailRows) {
-      const backendUrl = (row[1] as string) || ''
-      const appIndex = resolveAppIndex(backendUrl, apps)
-      if (appIndex < 0) continue
-      const stored = rowToStoredNotification(row)
-      notifMap.set(stored.notification_id, { ...stored, appIndex })
-    }
-  }
-
-  // --- displayOrder に基づいて結果を組み立て ---
-  const items: TimelineItemFromGraph[] = []
-  for (const entry of result.displayOrder) {
-    if (entry.table === 'posts' && postMap) {
-      const status = postMap.get(entry.id)
-      if (status) items.push(status)
-    } else if (entry.table === 'notifications' && notifMap) {
-      const notif = notifMap.get(entry.id)
-      if (notif) items.push(notif)
-    }
-  }
-
-  return items
+  const postMap = buildPostMapFromGraphResult(result, apps, targetBackendUrls)
+  const notifMap = buildNotifMapFromGraphResult(result, apps)
+  return collectItemsFromDisplayOrder(result.displayOrder, postMap, notifMap)
 }

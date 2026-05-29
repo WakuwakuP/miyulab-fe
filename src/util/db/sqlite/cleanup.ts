@@ -130,6 +130,135 @@ function formatDelta(current: number, previous: number | undefined): string {
   return '±0'
 }
 
+type DeletedCountTotals = {
+  timeline_entries: number
+  notifications: number
+  posts: number
+}
+
+type PhaseTimingTotals = {
+  notifications: number
+  phase1Total: number
+  phase2Total: number
+  postsCount: number
+  postsDelete: number
+  timeline: number
+  workerTotal: number
+}
+
+function mergeDeletedCounts(
+  total: DeletedCountTotals,
+  deleted?: EnforceMaxLengthResponse['deletedCounts'],
+): void {
+  if (!deleted) return
+  total.timeline_entries += deleted.timeline_entries
+  total.notifications += deleted.notifications
+  total.posts += deleted.posts
+}
+
+function mergePhaseTimings(
+  phaseTotals: PhaseTimingTotals,
+  pt: NonNullable<EnforceMaxLengthResponse['phaseTimings']>,
+  maxBatch: { phase2: number; postsDelete: number },
+): void {
+  phaseTotals.timeline += pt.timeline
+  phaseTotals.notifications += pt.notifications
+  phaseTotals.postsCount += pt.postsCount
+  phaseTotals.postsDelete += pt.postsDelete
+  phaseTotals.phase1Total += pt.phase1Total
+  phaseTotals.phase2Total += pt.phase2Total
+  phaseTotals.workerTotal += pt.total
+  if (pt.phase2Total > maxBatch.phase2) maxBatch.phase2 = pt.phase2Total
+  if (pt.postsDelete > maxBatch.postsDelete) {
+    maxBatch.postsDelete = pt.postsDelete
+  }
+}
+
+function formatPhaseTimingsLine(
+  phaseTotals: PhaseTimingTotals,
+  maxBatch: { phase2: number; postsDelete: number },
+): string {
+  return (
+    `[cleanup] phase timings (sum across batches, ms): ` +
+    `phase1Total=${Math.round(phaseTotals.phase1Total)}, ` +
+    `phase2Total=${Math.round(phaseTotals.phase2Total)} ` +
+    `(maxBatch=${Math.round(maxBatch.phase2)}), ` +
+    `timeline=${Math.round(phaseTotals.timeline)}, ` +
+    `notifications=${Math.round(phaseTotals.notifications)}, ` +
+    `postsCount=${Math.round(phaseTotals.postsCount)}, ` +
+    `postsDelete=${Math.round(phaseTotals.postsDelete)} ` +
+    `(maxBatch=${Math.round(maxBatch.postsDelete)}), ` +
+    `workerTotal=${Math.round(phaseTotals.workerTotal)}`
+  )
+}
+
+async function logEnforceMaxLengthCompletion(
+  handle: Awaited<ReturnType<typeof getSqliteDb>>,
+  options: {
+    aborted: boolean
+    abortError: unknown
+    elapsedMs: number
+    iteration: number
+    kind: 'priority' | 'other'
+    maxBatch: { phase2: number; postsDelete: number }
+    mode: 'periodic' | 'emergency'
+    phaseTimingsAvailable: boolean
+    phaseTotals: PhaseTimingTotals
+    totalDeleted: DeletedCountTotals
+  },
+): Promise<void> {
+  const {
+    aborted,
+    abortError,
+    elapsedMs,
+    iteration,
+    kind,
+    maxBatch,
+    mode,
+    phaseTimingsAvailable,
+    phaseTotals,
+    totalDeleted,
+  } = options
+  const totalCount =
+    totalDeleted.timeline_entries +
+    totalDeleted.notifications +
+    totalDeleted.posts
+  const status = aborted ? 'aborted (partial)' : 'completed'
+  const summary = `[cleanup] enforceMaxLength ${status} (mode=${mode}, kind=${kind}, iterations=${iteration}, elapsedMs=${elapsedMs}, deleted: timeline_entries=${totalDeleted.timeline_entries}, notifications=${totalDeleted.notifications}, posts=${totalDeleted.posts}, total=${totalCount})`
+
+  const timingsLine = phaseTimingsAvailable
+    ? formatPhaseTimingsLine(phaseTotals, maxBatch)
+    : undefined
+
+  let countsLine: string | undefined
+  try {
+    const current = await fetchTableCounts(handle)
+    const teDelta = formatDelta(
+      current.timeline_entries,
+      lastTableCounts?.timeline_entries,
+    )
+    const nDelta = formatDelta(
+      current.notifications,
+      lastTableCounts?.notifications,
+    )
+    const pDelta = formatDelta(current.posts, lastTableCounts?.posts)
+    countsLine = `[cleanup] table counts after ${status}: timeline_entries=${current.timeline_entries} (${teDelta}), notifications=${current.notifications} (${nDelta}), posts=${current.posts} (${pDelta})`
+    lastTableCounts = current
+  } catch (countErr) {
+    countsLine = `[cleanup] table counts unavailable: ${String(countErr)}`
+  }
+
+  if (aborted) {
+    console.warn(summary, abortError)
+    if (timingsLine) console.warn(timingsLine)
+    if (countsLine) console.warn(countsLine)
+  } else {
+    console.info(summary)
+    if (timingsLine) console.info(timingsLine)
+    if (countsLine) console.info(countsLine)
+  }
+}
+
 // ================================================================
 // enforceMaxLength (公開 API)
 // ================================================================
@@ -154,13 +283,12 @@ export async function enforceMaxLength(
   const kind = options?.kind ?? 'priority'
 
   const startedAt = Date.now()
-  const totalDeleted = {
+  const totalDeleted: DeletedCountTotals = {
     notifications: 0,
     posts: 0,
     timeline_entries: 0,
   }
-  // バッチ横断のフェーズ別経過時間集計 (ms)
-  const phaseTotals = {
+  const phaseTotals: PhaseTimingTotals = {
     notifications: 0,
     phase1Total: 0,
     phase2Total: 0,
@@ -169,11 +297,8 @@ export async function enforceMaxLength(
     timeline: 0,
     workerTotal: 0,
   }
-  /** worker から phaseTimings を 1 回でも受け取ったか */
   let phaseTimingsAvailable = false
-  /** 1 バッチ中で 規定値を超えたフェーズがあれば記録 (ms) */
-  let maxBatchPhase2 = 0
-  let maxBatchPostsDelete = 0
+  const maxBatch = { phase2: 0, postsDelete: 0 }
 
   let iteration = 0
   let aborted = false
@@ -189,25 +314,10 @@ export async function enforceMaxLength(
         },
         { kind },
       )) as EnforceMaxLengthResponse | undefined
-      if (result?.deletedCounts) {
-        totalDeleted.timeline_entries += result.deletedCounts.timeline_entries
-        totalDeleted.notifications += result.deletedCounts.notifications
-        totalDeleted.posts += result.deletedCounts.posts
-      }
+      mergeDeletedCounts(totalDeleted, result?.deletedCounts)
       if (result?.phaseTimings) {
         phaseTimingsAvailable = true
-        const pt = result.phaseTimings
-        phaseTotals.timeline += pt.timeline
-        phaseTotals.notifications += pt.notifications
-        phaseTotals.postsCount += pt.postsCount
-        phaseTotals.postsDelete += pt.postsDelete
-        phaseTotals.phase1Total += pt.phase1Total
-        phaseTotals.phase2Total += pt.phase2Total
-        phaseTotals.workerTotal += pt.total
-        if (pt.phase2Total > maxBatchPhase2) maxBatchPhase2 = pt.phase2Total
-        if (pt.postsDelete > maxBatchPostsDelete) {
-          maxBatchPostsDelete = pt.postsDelete
-        }
+        mergePhaseTimings(phaseTotals, result.phaseTimings, maxBatch)
       }
       if (!result?.hasMore) break
     }
@@ -221,60 +331,18 @@ export async function enforceMaxLength(
     abortError = error
     throw error
   } finally {
-    const elapsedMs = Date.now() - startedAt
-    const totalCount =
-      totalDeleted.timeline_entries +
-      totalDeleted.notifications +
-      totalDeleted.posts
-    const status = aborted ? 'aborted (partial)' : 'completed'
-    const summary = `[cleanup] enforceMaxLength ${status} (mode=${mode}, kind=${kind}, iterations=${iteration}, elapsedMs=${elapsedMs}, deleted: timeline_entries=${totalDeleted.timeline_entries}, notifications=${totalDeleted.notifications}, posts=${totalDeleted.posts}, total=${totalCount})`
-
-    // フェーズ別経過時間サマリ (Worker 側で計測)。タイムアウト原因切り分けに使う。
-    // すべてミリ秒、全バッチの合計とバッチ単位の最大値を表示。
-    let timingsLine: string | undefined
-    if (phaseTimingsAvailable) {
-      timingsLine =
-        `[cleanup] phase timings (sum across batches, ms): ` +
-        `phase1Total=${Math.round(phaseTotals.phase1Total)}, ` +
-        `phase2Total=${Math.round(phaseTotals.phase2Total)} ` +
-        `(maxBatch=${Math.round(maxBatchPhase2)}), ` +
-        `timeline=${Math.round(phaseTotals.timeline)}, ` +
-        `notifications=${Math.round(phaseTotals.notifications)}, ` +
-        `postsCount=${Math.round(phaseTotals.postsCount)}, ` +
-        `postsDelete=${Math.round(phaseTotals.postsDelete)} ` +
-        `(maxBatch=${Math.round(maxBatchPostsDelete)}), ` +
-        `workerTotal=${Math.round(phaseTotals.workerTotal)}`
-    }
-
-    // 完了/中断後のテーブル件数と前回からの変動を表示する。
-    // 件数取得自体が失敗してもクリーンアップ結果ログは残す。
-    let countsLine: string | undefined
-    try {
-      const current = await fetchTableCounts(handle)
-      const teDelta = formatDelta(
-        current.timeline_entries,
-        lastTableCounts?.timeline_entries,
-      )
-      const nDelta = formatDelta(
-        current.notifications,
-        lastTableCounts?.notifications,
-      )
-      const pDelta = formatDelta(current.posts, lastTableCounts?.posts)
-      countsLine = `[cleanup] table counts after ${status}: timeline_entries=${current.timeline_entries} (${teDelta}), notifications=${current.notifications} (${nDelta}), posts=${current.posts} (${pDelta})`
-      lastTableCounts = current
-    } catch (countErr) {
-      countsLine = `[cleanup] table counts unavailable: ${String(countErr)}`
-    }
-
-    if (aborted) {
-      console.warn(summary, abortError)
-      if (timingsLine) console.warn(timingsLine)
-      if (countsLine) console.warn(countsLine)
-    } else {
-      console.info(summary)
-      if (timingsLine) console.info(timingsLine)
-      if (countsLine) console.info(countsLine)
-    }
+    await logEnforceMaxLengthCompletion(handle, {
+      abortError,
+      aborted,
+      elapsedMs: Date.now() - startedAt,
+      iteration,
+      kind,
+      maxBatch,
+      mode,
+      phaseTimingsAvailable,
+      phaseTotals,
+      totalDeleted,
+    })
   }
 }
 
