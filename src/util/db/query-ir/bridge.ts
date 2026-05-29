@@ -176,21 +176,10 @@ export function transformQueryPlanResult(result: QueryPlanResult): {
   // BatchEnrichResult → BatchMaps
   const maps = buildBatchMapsFromEnrichResult(batchResult)
 
-  // Phase1 の id-collect は { id, createdAtMs } のみ返すため backendUrl は未収集。
-  // detail-fetch 結果の assembleStatusFromBatch で設定される。
-  const backendUrlMap = new Map<number, string>()
-
-  // Detail rows → SqliteStoredStatus[]
-  const statuses = detailResult.rows.map((row) => {
-    const status = assembleStatusFromBatch(row, maps)
-    const postId = row[0] as number
-    // Phase1 で取得した backendUrl で上書き
-    const overrideUrl = backendUrlMap.get(postId)
-    if (overrideUrl) {
-      status.backendUrl = overrideUrl
-    }
-    return status
-  })
+  // Detail rows → SqliteStoredStatus[] (backendUrl は assembleStatusFromBatch で設定)
+  const statuses = detailResult.rows.map((row) =>
+    assembleStatusFromBatch(row, maps),
+  )
 
   return { statuses, totalDurationMs: result.totalDurationMs }
 }
