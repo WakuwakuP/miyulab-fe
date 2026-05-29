@@ -449,7 +449,7 @@ export function queryPlanV2LookupTables(plan: QueryPlanV2): Set<string> {
   const tables = new Set<string>()
   for (const entry of plan.nodes) {
     if (entry.node.kind === 'lookup-related') {
-      tables.add((entry.node as LookupRelatedNode).lookupTable)
+      tables.add(entry.node.lookupTable)
     }
   }
   return tables
