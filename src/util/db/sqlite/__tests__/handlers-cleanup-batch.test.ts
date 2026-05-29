@@ -36,7 +36,7 @@ function createMockDb(selectResults: unknown[][] = []): {
       if (opts?.returnValue === 'resultRows') {
         const result = selectResults[selectIndex]
         selectIndex++
-        return result !== undefined ? result : []
+        return result ?? []
       }
       return undefined
     }),

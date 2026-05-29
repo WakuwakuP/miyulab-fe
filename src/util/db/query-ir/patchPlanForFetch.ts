@@ -54,6 +54,19 @@ function applyFkToPostsCursorPushDown(
   }
 }
 
+function resolveGetIdsCursorColumn(
+  node: GetIdsNode,
+  cursor: PaginationCursor,
+): string | undefined {
+  if (cursor.field === 'id') {
+    return node.outputIdColumn ?? 'id'
+  }
+  if (node.outputTimeColumn === null) {
+    return undefined
+  }
+  return node.outputTimeColumn ?? getDefaultTimeColumn(node.table) ?? undefined
+}
+
 export function patchPlanForFetch(
   plan: QueryPlanV2,
   limit: number,
@@ -84,15 +97,7 @@ export function patchPlanForFetch(
       // get-ids: カーソル条件を WHERE に push down
       if (entry.node.kind === 'get-ids' && cursor) {
         const node = entry.node
-        // カーソルフィールドを実カラム名に変換
-        const col =
-          cursor.field === 'id'
-            ? (node.outputIdColumn ?? 'id')
-            : node.outputTimeColumn !== null
-              ? (node.outputTimeColumn ??
-                getDefaultTimeColumn(node.table) ??
-                undefined)
-              : undefined
+        const col = resolveGetIdsCursorColumn(node, cursor)
 
         if (col) {
           return {

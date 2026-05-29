@@ -51,9 +51,10 @@ describe('WrittenTableCollector', () => {
 
   it('should support add/has/spread operations', () => {
     const collector: WrittenTableCollector = new Set<TableName>()
-    collector.add('posts')
-    collector.add('post_media')
-    collector.add('posts') // duplicate
+    const tables: TableName[] = ['posts', 'post_media', 'posts']
+    for (const table of tables) {
+      collector.add(table)
+    }
     const arr = [...collector] as TableName[]
     expect(arr).toHaveLength(2)
     expect(arr).toContain('posts')
