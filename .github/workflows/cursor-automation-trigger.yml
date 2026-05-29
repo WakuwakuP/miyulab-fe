@@ -1,7 +1,7 @@
 name: Trigger Cursor Automation
 
 # Fires when any check suite on a commit completes. The job re-evaluates whether
-# all merge-required checks on the PR have finished (pass or fail).
+# all merge-required checks on the PR have finished (pass or fail), including draft PRs.
 on:
   check_suite:
     types: [completed]
@@ -63,11 +63,6 @@ jobs:
           fi
 
           echo "Author check passed."
-
-          if [ "$IS_DRAFT" = "true" ]; then
-            echo "Pull request is a draft. Skipping."
-            exit 0
-          fi
 
           REQUIRED_COUNT=$(gh pr checks "${PR_NUMBER}" \
             --repo "${GITHUB_REPOSITORY}" \
