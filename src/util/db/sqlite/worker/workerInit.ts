@@ -15,9 +15,7 @@ export type InitResult = {
 }
 
 // biome-ignore lint/suspicious/noExplicitAny: sqlite-wasm types are not exact
-type Sqlite3Module = any
-
-function applyDatabasePragmas(db: Sqlite3Module): void {
+function applyDatabasePragmas(db: any): void {
   db.exec('PRAGMA journal_mode=WAL;')
   db.exec('PRAGMA synchronous=NORMAL;')
   db.exec('PRAGMA foreign_keys = ON;')
@@ -25,9 +23,10 @@ function applyDatabasePragmas(db: Sqlite3Module): void {
   db.exec('PRAGMA temp_store = MEMORY;') // 一時テーブルをメモリに配置
 }
 
+// biome-ignore lint/suspicious/noExplicitAny: sqlite-wasm types are not exact
 async function openPersistentDatabase(
-  sqlite3: Sqlite3Module,
-): Promise<{ db: Sqlite3Module; persistence: 'opfs' | 'memory' }> {
+  sqlite3: any,
+): Promise<{ db: any; persistence: 'opfs' | 'memory' }> {
   try {
     const poolVfs = await sqlite3.installOpfsSAHPoolVfs({
       directory: '/miyulab-fe',
@@ -36,19 +35,19 @@ async function openPersistentDatabase(
     const db = new poolVfs.OpfsSAHPoolDb('/miyulab-fe.sqlite3')
     console.info('SQLite Worker: using OPFS SAH Pool persistence')
     return { db, persistence: 'opfs' }
-  } catch (e1) {
+  } catch (error_) {
     console.debug(
       'SQLite Worker: OPFS SAH Pool unavailable, trying standard OPFS',
-      e1,
+      error_,
     )
     try {
       const db = new sqlite3.oo1.OpfsDb('/miyulab-fe.sqlite3', 'c')
       console.info('SQLite Worker: using OPFS persistence')
       return { db, persistence: 'opfs' }
-    } catch (e2) {
+    } catch (error_) {
       console.warn(
         'SQLite Worker: OPFS not available, using in-memory database.',
-        e2,
+        error_,
       )
       const db = new sqlite3.oo1.DB(':memory:', 'c')
       return { db, persistence: 'memory' }
@@ -56,7 +55,8 @@ async function openPersistentDatabase(
   }
 }
 
-function tryCloseDb(db: Sqlite3Module): void {
+// biome-ignore lint/suspicious/noExplicitAny: sqlite-wasm types are not exact
+function tryCloseDb(db: any): void {
   try {
     db.close()
   } catch (closeError) {
@@ -67,11 +67,12 @@ function tryCloseDb(db: Sqlite3Module): void {
   }
 }
 
+// biome-ignore lint/suspicious/noExplicitAny: sqlite-wasm types are not exact
 async function createInMemoryFallback(
-  sqlite3: Sqlite3Module,
-  previousDb?: Sqlite3Module,
+  sqlite3: any,
+  previousDb?: any,
 ): Promise<{
-  db: Sqlite3Module
+  db: any
   persistence: 'memory'
   recovered: 'reset'
 }> {
@@ -85,12 +86,13 @@ async function createInMemoryFallback(
   return { db, persistence: 'memory', recovered: 'reset' }
 }
 
+// biome-ignore lint/suspicious/noExplicitAny: sqlite-wasm types are not exact
 async function recoverOpfsDatabaseIfNeeded(
-  db: Sqlite3Module,
-  sqlite3: Sqlite3Module,
+  db: any,
+  sqlite3: any,
   persistence: 'opfs' | 'memory',
 ): Promise<{
-  db: Sqlite3Module
+  db: any
   persistence: 'opfs' | 'memory'
   recovered?: 'restored' | 'reset'
 }> {
