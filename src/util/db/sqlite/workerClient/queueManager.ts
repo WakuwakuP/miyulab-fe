@@ -277,8 +277,7 @@ function processQueue(): void {
     )
     if (
       otherQueue.length > 0 &&
-      (timelineQueue.length === 0 ||
-        getConsecutiveOther() < maxConsecutive)
+      (timelineQueue.length === 0 || getConsecutiveOther() < maxConsecutive)
     ) {
       next = otherQueue.shift()
       setConsecutiveOther(getConsecutiveOther() + 1)
