@@ -569,9 +569,11 @@ describe('ラウンドトリップ（queryPlanToFlow ↔ flowToQueryPlanV2）', 
     const result = flowToQueryPlanV2(flow)
 
     // Assert
-    const resultIds = result.nodes.map((n) => n.id).sort()
-    const originalIds = original.nodes.map((n) => n.id).sort()
-    expect(resultIds).toEqual(originalIds)
+    const sortNodeIds = (ids: string[]) =>
+      [...ids].sort((a, b) => a.localeCompare(b))
+    expect(sortNodeIds(result.nodes.map((n) => n.id))).toEqual(
+      sortNodeIds(original.nodes.map((n) => n.id)),
+    )
   })
 
   it('V2プラン → Flow → V2プランの変換で、元のエッジが保持されること', () => {
