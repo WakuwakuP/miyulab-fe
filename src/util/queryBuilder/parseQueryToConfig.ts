@@ -283,11 +283,11 @@ export function parseQueryToConfig(
   // タグ条件の検出（既存ロジック、変更なし）
   // ========================================
   const singleTagMatch =
-    /(?:pbt\.tag|ht\.name|ht\.normalized_name)\s+=\s+'([^']+)'/i.exec(query)
+    /(?:pbt\.tag|ht\.name|ht\.normalized_name)\s*=\s*'([^']+)'/i.exec(query)
   const multiTagMatch =
-    /(?:pbt\.tag|ht\.name|ht\.normalized_name)\s+IN\s+\(([^)]+)\)/i.exec(query)
+    /(?:pbt\.tag|ht\.name|ht\.normalized_name)\s+IN\s*\(([^)]+)\)/i.exec(query)
   const andTagMatch =
-    /HAVING\s+COUNT\s+\(\s+DISTINCT\s+[a-z_][\w]*\.(?:tag|normalized_name)\s+\)\s+=\s+(\d+)/i.exec(
+    /HAVING\s+COUNT\s*\(\s*DISTINCT\s+[a-z_][\w]*\.(?:tag|normalized_name|name)\s*\)\s*=\s*(\d+)/i.exec(
       query,
     )
 
