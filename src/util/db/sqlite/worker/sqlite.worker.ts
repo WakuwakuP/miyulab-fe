@@ -434,12 +434,14 @@ async function performRuntimeRecovery(): Promise<void> {
     // 全テーブルのバージョンをバンプしてキャッシュを無効化
     bumpTableVersions([...ALL_TABLE_NAMES])
 
-    const reason =
-      result === 'restored'
-        ? 'Restored from backup'
-        : result === 'reset'
-          ? 'Reset to empty database'
-          : 'Recovery failed'
+    let reason: string
+    if (result === 'restored') {
+      reason = 'Restored from backup'
+    } else if (result === 'reset') {
+      reason = 'Reset to empty database'
+    } else {
+      reason = 'Recovery failed'
+    }
 
     const msg: WorkerMessage = {
       method: result,

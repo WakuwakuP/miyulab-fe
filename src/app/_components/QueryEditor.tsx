@@ -23,6 +23,15 @@ type QueryEditorProps = {
   value: string
 }
 
+/** ReDoS を避けるため量詞に上限を設けた補完用正規表現 */
+const COLUMN_VALUE_COMPLETION_RE =
+  /(\w{1,64})\.(\w{1,64})\s*(?:=|!=|<>|(?:NOT\s+)?IN\s*\([^)]{0,2000})\s*'([^']{0,500})$/i
+const LOGICAL_OPERATOR_COMPLETION_RE =
+  /(?:'[^']{0,500}'|\d{1,20}|IS\s+(?:NOT\s+)?NULL|\))\s+(\w{0,50})$/i
+const COMPARISON_OPERATOR_COMPLETION_RE =
+  /(\w{1,64})\.(\w{1,64})\s+([A-Za-z!><=]{0,20})$/
+const WORD_SUFFIX_COMPLETION_RE = /[\w.]{0,200}$/
+
 function getTextareaBorderClass(
   validationError: string | null,
   value: string,
@@ -161,9 +170,7 @@ export const QueryEditor = ({
 
       // 汎用カラム値補完: alias.column = '...' or alias.column IN ('...', '...' の後
       // すべてのエイリアス・カラムの組み合わせで動的 DB 検索を実行
-      const columnValueMatch = beforeCursor.match(
-        /(\w+)\.(\w+)\s*(?:=|!=|<>|IN\s*\((?:'[^']*',\s*)*|NOT\s+IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
-      )
+      const columnValueMatch = beforeCursor.match(COLUMN_VALUE_COMPLETION_RE)
       if (columnValueMatch) {
         const alias = columnValueMatch[1]
         const column = columnValueMatch[2]
@@ -186,9 +193,7 @@ export const QueryEditor = ({
       }
 
       // 論理演算子補完: 完全な条件式の後（閉じクォート、数値、IS NULL/IS NOT NULL、閉じ括弧の後のスペース）
-      const logicalMatch = beforeCursor.match(
-        /(?:'[^']*'|\d+|IS\s+(?:NOT\s+)?NULL|\))\s+(\w*)$/i,
-      )
+      const logicalMatch = beforeCursor.match(LOGICAL_OPERATOR_COMPLETION_RE)
       if (logicalMatch) {
         const partial = logicalMatch[1]
         // 入力がない場合（スペースのみ）、またはANDやORの入力中
@@ -217,7 +222,7 @@ export const QueryEditor = ({
 
       // 比較演算子補完: alias.column の後のスペース
       const operatorMatch = beforeCursor.match(
-        /(\w+)\.(\w+)\s+([A-Za-z!><=]*)$/,
+        COMPARISON_OPERATOR_COMPLETION_RE,
       )
       if (operatorMatch) {
         const alias = operatorMatch[1]
@@ -241,7 +246,7 @@ export const QueryEditor = ({
         }
       }
 
-      const match = beforeCursor.match(/[\w.]*$/)
+      const match = beforeCursor.match(WORD_SUFFIX_COMPLETION_RE)
       const currentWord = match ? match[0] : ''
 
       if (currentWord.length < 1) {
@@ -279,7 +284,7 @@ export const QueryEditor = ({
 
       // 汎用カラム値補完の場合
       const genericColumnValueMatch = beforeCursor.match(
-        /(\w+)\.(\w+)\s*(?:=|!=|<>|IN\s*\((?:'[^']*',\s*)*|NOT\s+IN\s*\((?:'[^']*',\s*)*)\s*'([^']*)$/i,
+        COLUMN_VALUE_COMPLETION_RE,
       )
       if (genericColumnValueMatch) {
         const matchedPartial = genericColumnValueMatch[3]
@@ -299,7 +304,7 @@ export const QueryEditor = ({
 
       // 比較演算子補完の場合: alias.column の後のスペース + 部分入力
       const operatorMatch = beforeCursor.match(
-        /(\w+)\.(\w+)\s+([A-Za-z!><=]*)$/,
+        COMPARISON_OPERATOR_COMPLETION_RE,
       )
       if (
         operatorMatch &&
@@ -323,9 +328,7 @@ export const QueryEditor = ({
       }
 
       // 論理演算子補完の場合: 完全条件式の後
-      const logicalMatch = beforeCursor.match(
-        /(?:'[^']*'|\d+|IS\s+(?:NOT\s+)?NULL|\))\s+(\w*)$/i,
-      )
+      const logicalMatch = beforeCursor.match(LOGICAL_OPERATOR_COMPLETION_RE)
       if (
         logicalMatch &&
         logicalOperators.some((op) =>
@@ -348,7 +351,7 @@ export const QueryEditor = ({
       }
 
       // 通常の補完
-      const match = beforeCursor.match(/[\w.]*$/)
+      const match = beforeCursor.match(WORD_SUFFIX_COMPLETION_RE)
       const currentWordLen = match ? match[0].length : 0
       const newBeforeCursor = beforeCursor.slice(
         0,

@@ -15,8 +15,9 @@ import {
   reportEnqueue,
 } from '../../dbQueue'
 import {
-  activeRequest,
-  consecutiveOther,
+  getActiveRequest,
+  getConsecutiveOther,
+  getWorker,
   otherQueue,
   pending,
   priorityQueue,
@@ -26,7 +27,6 @@ import {
   TIMEOUT_MS,
   timelineDedup,
   timelineQueue,
-  worker,
 } from './state'
 import type { QueuedRequest } from './types'
 
@@ -231,7 +231,7 @@ export function sendRequest(
   kind: QueueKind = 'other',
   sessionTag?: string,
 ): Promise<unknown> {
-  if (!worker) {
+  if (!getWorker()) {
     return Promise.reject(new Error('Worker not initialized'))
   }
 
@@ -260,7 +260,8 @@ export function sendRequest(
 }
 
 function processQueue(): void {
-  if (activeRequest || !worker) return
+  const worker = getWorker()
+  if (getActiveRequest() || !worker) return
 
   // priority キューは常に最優先で処理する（maxConsecutiveOther の制約外）
   let next: QueuedRequest | undefined
@@ -276,10 +277,10 @@ function processQueue(): void {
     )
     if (
       otherQueue.length > 0 &&
-      (timelineQueue.length === 0 || consecutiveOther < maxConsecutive)
+      (timelineQueue.length === 0 || getConsecutiveOther() < maxConsecutive)
     ) {
       next = otherQueue.shift()
-      setConsecutiveOther(consecutiveOther + 1)
+      setConsecutiveOther(getConsecutiveOther() + 1)
     } else if (timelineQueue.length > 0) {
       next = timelineQueue.shift()
       setConsecutiveOther(0)

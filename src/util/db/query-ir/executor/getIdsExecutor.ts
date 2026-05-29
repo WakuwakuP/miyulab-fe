@@ -83,11 +83,12 @@ export function compileGetIds(
   // effectiveTimeCol: 完全修飾の時刻カラム式 (alias.column 形式)
   // - timeSourceJoin あり: '_time_src.created_at_ms' 等
   // - なし: 'p.created_at_ms' 等 (ローカルカラム)
-  const effectiveTimeCol: string | null = tsjAlias
-    ? `${tsjAlias}.${tsj?.timeColumn}`
-    : timeCol !== null && timeCol !== undefined
-      ? `${alias}.${timeCol}`
-      : null
+  let effectiveTimeCol: string | null = null
+  if (tsjAlias) {
+    effectiveTimeCol = `${tsjAlias}.${tsj?.timeColumn}`
+  } else if (timeCol != null) {
+    effectiveTimeCol = `${alias}.${timeCol}`
+  }
 
   const whereConditions: string[] = []
   const allBinds: BindValue[] = []

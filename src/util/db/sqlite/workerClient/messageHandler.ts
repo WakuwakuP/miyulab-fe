@@ -10,16 +10,16 @@ import type { SlowQueryLogEntry, WorkerMessage } from '../protocol'
 import { ALL_TABLE_NAMES, isTableName } from '../protocol'
 import {
   durationForId,
-  initReject,
-  initResolve,
-  initTimer,
-  notifyChangeCallback,
+  getInitReject,
+  getInitResolve,
+  getInitTimer,
+  getNotifyChangeCallback,
+  getSlowQueryLogCallback,
   pending,
   setInitReject,
   setInitResolve,
   setInitTimer,
   setSlowQueryLogCallback,
-  slowQueryLogCallback,
 } from './state'
 
 export function handleMessage(event: MessageEvent<WorkerMessage>): void {
@@ -27,6 +27,7 @@ export function handleMessage(event: MessageEvent<WorkerMessage>): void {
 
   switch (msg.type) {
     case 'init': {
+      const initResolve = getInitResolve()
       if (initResolve) {
         // 初期化成功 — スナップショット記録を開始
         startSnapshotRecording()
@@ -38,6 +39,7 @@ export function handleMessage(event: MessageEvent<WorkerMessage>): void {
         initResolve(msg.persistence)
         setInitResolve(null)
         setInitReject(null)
+        const initTimer = getInitTimer()
         if (initTimer != null) {
           clearTimeout(initTimer)
           setInitTimer(null)
@@ -57,7 +59,7 @@ export function handleMessage(event: MessageEvent<WorkerMessage>): void {
             changedTables: msg.changedTables,
           }
           for (const table of msg.changedTables) {
-            notifyChangeCallback?.(table, enrichedHint)
+            getNotifyChangeCallback()?.(table, enrichedHint)
           }
         }
         if (msg.durationMs != null) {
@@ -70,10 +72,12 @@ export function handleMessage(event: MessageEvent<WorkerMessage>): void {
 
     case 'error': {
       // Worker 初期化エラー (id === -1) をハンドリング
+      const initReject = getInitReject()
       if (msg.id === -1 && initReject) {
         initReject(new Error(msg.error))
         setInitReject(null)
         setInitResolve(null)
+        const initTimer = getInitTimer()
         if (initTimer != null) {
           clearTimeout(initTimer)
           setInitTimer(null)
@@ -89,7 +93,7 @@ export function handleMessage(event: MessageEvent<WorkerMessage>): void {
     }
 
     case 'slowQueryLogs': {
-      slowQueryLogCallback?.(msg.logs)
+      getSlowQueryLogCallback()?.(msg.logs)
       break
     }
 
@@ -100,7 +104,7 @@ export function handleMessage(event: MessageEvent<WorkerMessage>): void {
       // 全テーブルの変更通知を発火 → 全サブスクライバーが再クエリ
       for (const table of ALL_TABLE_NAMES) {
         if (isTableName(table)) {
-          notifyChangeCallback?.(table)
+          getNotifyChangeCallback()?.(table)
         }
       }
       break
