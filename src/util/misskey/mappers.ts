@@ -224,16 +224,33 @@ export function mapUserDetailedToAccount(
  * Misskey custom emoji reactions use `:name@.:` for local emoji.
  * This strips the `@.` suffix and looks up the URL in reactionEmojis.
  */
+/** `:shortcode@host:` 形式のカスタム絵文字名を線形時間で解析する（ReDoS 回避）。 */
+function parseCustomEmojiWithHost(
+  name: string,
+): { shortcode: string; host: string } | null {
+  if (!name.startsWith(':') || !name.endsWith(':') || name.length < 5) {
+    return null
+  }
+  const inner = name.slice(1, -1)
+  const atIndex = inner.indexOf('@')
+  if (atIndex <= 0 || atIndex === inner.length - 1) {
+    return null
+  }
+  return {
+    shortcode: inner.slice(0, atIndex),
+    host: inner.slice(atIndex + 1),
+  }
+}
+
 function normalizeReaction(
   name: string,
   reactionEmojis?: Record<string, string>,
   instanceHost?: string,
 ): { name: string; url: string | null } {
   // Custom emoji: `:name@.:` (local) or `:name@host:` (remote)
-  const customMatch = name.match(/^:([^:]+)@([^:]+):$/)
-  if (customMatch) {
-    const shortcode = customMatch[1]
-    const host = customMatch[2]
+  const customEmoji = parseCustomEmojiWithHost(name)
+  if (customEmoji) {
+    const { shortcode, host } = customEmoji
     const url =
       reactionEmojis?.[shortcode] ??
       reactionEmojis?.[`${shortcode}@${host}`] ??

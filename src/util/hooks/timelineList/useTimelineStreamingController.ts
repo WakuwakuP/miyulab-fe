@@ -109,12 +109,12 @@ export function useTimelineStreamingController({
       // コアレッシング: フェッチ実行中なら変更テーブルを蓄積して待機
       if (pendingFetch) {
         tlDebug('[TL] onMatched: coalesced (fetch in progress)')
-        if (!coalescedChangedTables) {
-          coalescedChangedTables = new Set(changedTables)
-        } else {
+        if (coalescedChangedTables) {
           for (const t of changedTables) {
             coalescedChangedTables.add(t)
           }
+        } else {
+          coalescedChangedTables = new Set(changedTables)
         }
         return
       }

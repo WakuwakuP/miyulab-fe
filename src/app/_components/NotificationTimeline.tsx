@@ -53,7 +53,7 @@ export const NotificationTimeline = ({
       renderItem={(item, scrolling) => (
         <Notification
           key={item.id}
-          notification={item as NotificationAddAppIndex}
+          notification={item}
           scrolling={scrolling}
         />
       )}
