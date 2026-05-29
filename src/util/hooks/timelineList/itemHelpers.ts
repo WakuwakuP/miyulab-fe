@@ -5,8 +5,6 @@
  * 単体テスト可能な形で、アイテムの一意キー生成とタイムスタンプ取得を提供する。
  */
 
-import type { NotificationAddAppIndex, StatusAddAppIndex } from 'types/types'
-
 import type { TimelineItem } from 'util/hooks/useTimelineDataSource'
 
 /** 差分取得の安全マージン (同一 ms に複数アイテムがある場合の取りこぼし防止) */
@@ -26,10 +24,10 @@ export const TYPES_WITH_STATUS = new Set([
 
 /** アイテムの一意キーを生成 */
 export function itemKey(item: TimelineItem): string {
-  if ('post_id' in item)
-    return `p:${(item as StatusAddAppIndex & { post_id: number }).post_id}`
-  if ('notification_id' in item)
-    return `n:${(item as NotificationAddAppIndex & { notification_id: number }).notification_id}`
+  if ('post_id' in item && typeof item.post_id === 'number')
+    return `p:${item.post_id}`
+  if ('notification_id' in item && typeof item.notification_id === 'number')
+    return `n:${item.notification_id}`
   return `u:${item.id}`
 }
 
@@ -45,11 +43,9 @@ export function itemTimestamp(item: TimelineItem): number {
 
 /** アイテムの数値 ID を取得 (post_id or notification_id → parseInt(id) フォールバック) */
 export function itemNumericId(item: TimelineItem): number {
-  if ('post_id' in item)
-    return (item as StatusAddAppIndex & { post_id: number }).post_id
-  if ('notification_id' in item)
-    return (item as NotificationAddAppIndex & { notification_id: number })
-      .notification_id
+  if ('post_id' in item && typeof item.post_id === 'number') return item.post_id
+  if ('notification_id' in item && typeof item.notification_id === 'number')
+    return item.notification_id
   const parsed = Number.parseInt(item.id, 10)
   return Number.isNaN(parsed) ? 0 : parsed
 }

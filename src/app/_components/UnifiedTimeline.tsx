@@ -2,12 +2,19 @@
 
 import { Status } from 'app/_parts/Status'
 import { useMemo } from 'react'
-import type { TimelineViewModel } from 'types/timelineViewModel'
+import type {
+  TimelineItem,
+  TimelineViewModel,
+} from 'types/timelineViewModel'
 import type { StatusAddAppIndex, TimelineConfigV2 } from 'types/types'
 import { useOtherQueueProgress } from 'util/hooks/useOtherQueueProgress'
 import { useTimelineData } from 'util/hooks/useTimelineData'
 import { getDefaultTimelineName } from 'util/timelineDisplayName'
 import { TimelinePresenter } from './TimelinePresenter'
+
+function isStatusTimelineItem(item: TimelineItem): item is StatusAddAppIndex {
+  return 'uri' in item
+}
 
 /**
  * 統合タイムラインコンポーネント (Container)
@@ -51,13 +58,10 @@ export const UnifiedTimeline = ({
   return (
     <TimelinePresenter
       headerOffset={headerOffset}
-      renderItem={(item, scrolling) => (
-        <Status
-          key={item.id}
-          scrolling={scrolling}
-          status={item as StatusAddAppIndex}
-        />
-      )}
+      renderItem={(item, scrolling) => {
+        if (!isStatusTimelineItem(item)) return null
+        return <Status key={item.id} scrolling={scrolling} status={item} />
+      }}
       viewModel={viewModel}
     />
   )

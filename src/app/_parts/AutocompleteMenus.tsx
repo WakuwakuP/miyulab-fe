@@ -4,6 +4,17 @@
 import { ProxyImage } from 'app/_parts/ProxyImage'
 import type { Entity } from 'megalodon'
 import * as Emoji from 'node-emoji'
+import type { KeyboardEvent } from 'react'
+
+function selectAutocompleteItem(
+  event: KeyboardEvent<HTMLButtonElement>,
+  index: number,
+  complete: (index: number) => void,
+) {
+  if (event.key !== 'Enter' && event.key !== ' ') return
+  event.preventDefault()
+  complete(index)
+}
 
 export const MentionMenu = ({
   chars,
@@ -30,19 +41,28 @@ export const MentionMenu = ({
       }}
     >
       {chars.map((char, i) => (
-        <div
+        <button
           key={char.id}
+          onKeyDown={(e) => {
+            selectAutocompleteItem(e, i, complete)
+          }}
           onMouseDown={(e) => {
             e.preventDefault()
             complete(i)
           }}
           style={{
+            border: 'none',
+            cursor: 'pointer',
+            display: 'block',
             padding: '4px',
+            textAlign: 'left',
+            width: '100%',
             ...(index === i && {
               backgroundColor: 'blue',
               color: 'white',
             }),
           }}
+          type="button"
         >
           <ProxyImage
             alt={char.display_name}
@@ -52,7 +72,7 @@ export const MentionMenu = ({
             width={32}
           />
           <span>{`@${char.acct}`}</span>
-        </div>
+        </button>
       ))}
     </div>
   )
@@ -83,20 +103,28 @@ export const EmojiMenu = ({
       }}
     >
       {chars.map((char, i) => (
-        <div
+        <button
           key={char.shortcode}
+          onKeyDown={(e) => {
+            selectAutocompleteItem(e, i, complete)
+          }}
           onMouseDown={(e) => {
             e.preventDefault()
             complete(i)
           }}
           style={{
+            border: 'none',
+            cursor: 'pointer',
             display: 'flex',
             padding: '4px',
+            textAlign: 'left',
+            width: '100%',
             ...(index === i && {
               backgroundColor: 'blue',
               color: 'white',
             }),
           }}
+          type="button"
         >
           {char.url === '' ? (
             <div>{Emoji.emojify(`:${char.shortcode}:`)}</div>
@@ -109,7 +137,7 @@ export const EmojiMenu = ({
             />
           )}
           <div>:{char.shortcode}:</div>
-        </div>
+        </button>
       ))}
     </div>
   )
@@ -140,22 +168,31 @@ export const TagMenu = ({
       }}
     >
       {chars.map((char, i) => (
-        <div
+        <button
           key={char}
+          onKeyDown={(e) => {
+            selectAutocompleteItem(e, i, complete)
+          }}
           onMouseDown={(e) => {
             e.preventDefault()
             complete(i)
           }}
           style={{
+            border: 'none',
+            cursor: 'pointer',
+            display: 'block',
             padding: '4px',
+            textAlign: 'left',
+            width: '100%',
             ...(index === i && {
               backgroundColor: 'blue',
               color: 'white',
             }),
           }}
+          type="button"
         >
           {char}
-        </div>
+        </button>
       ))}
     </div>
   )
