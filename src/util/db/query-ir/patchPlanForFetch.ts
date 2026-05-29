@@ -64,11 +64,7 @@ function resolveGetIdsCursorColumn(
   if (node.outputTimeColumn === null) {
     return undefined
   }
-  return (
-    node.outputTimeColumn ??
-    getDefaultTimeColumn(node.table) ??
-    undefined
-  )
+  return node.outputTimeColumn ?? getDefaultTimeColumn(node.table) ?? undefined
 }
 
 export function patchPlanForFetch(
