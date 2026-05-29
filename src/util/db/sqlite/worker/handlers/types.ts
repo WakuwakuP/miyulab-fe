@@ -1,4 +1,4 @@
-import type { TableName, WrittenTableCollector } from '../../protocol'
+import type { TableName } from '../../protocol'
 
 // ================================================================
 // 内部型（Worker / フォールバック共通）
@@ -17,4 +17,4 @@ export type DbExec = {
 
 export type HandlerResult = { changedTables: TableName[] }
 
-export type { WrittenTableCollector }
+export type { WrittenTableCollector } from '../../protocol'

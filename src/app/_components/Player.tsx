@@ -56,7 +56,7 @@ function shouldIgnorePlayerKeydown(
   ) {
     return true
   }
-  if (playerRoot == null || !playerRoot.contains(target)) return true
+  if (!playerRoot?.contains(target)) return true
   // Space はフォーカス中のボタンに任せる（二重トグル防止）
   if (event.code === 'Space' && target instanceof HTMLButtonElement) return true
   return false

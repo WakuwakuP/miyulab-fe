@@ -40,7 +40,7 @@ export async function handleExportDatabase(): Promise<void> {
     create: true,
   })
   const writable = await fileHandle.createWritable()
-  await writable.write(copy.buffer as ArrayBuffer)
+  await writable.write(copy)
   await writable.close()
 
   console.info(
