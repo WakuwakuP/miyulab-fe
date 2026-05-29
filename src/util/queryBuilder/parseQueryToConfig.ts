@@ -69,7 +69,7 @@ export function parseQueryToConfig(
   const mediaCountMatch = query.match(/p\.media_count\s*>=\s*(\d+)/i)
   const mediaCountResult = mediaCountMatchV2 ?? mediaCountMatch
   if (mediaCountResult) {
-    const count = parseInt(mediaCountResult[1], 10)
+    const count = Number.parseInt(mediaCountResult[1], 10)
     if (count > 1) {
       result.minMediaCount = count
       // minMediaCount が設定されている場合は onlyMedia は不要

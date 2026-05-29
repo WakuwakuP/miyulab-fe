@@ -111,6 +111,15 @@ export function parseInlinePoll(json: string): Entity.Poll {
   }
 }
 
+function isPollExpired(
+  expired: number | null,
+  expiresAt: string | null,
+): boolean {
+  if (expired != null) return expired === 1
+  if (expiresAt) return new Date(expiresAt) < new Date()
+  return false
+}
+
 /**
  * バッチクエリ用 poll パーサー（BATCH_POLLS_SQL から取得した poll_json 用）
  *
@@ -148,12 +157,7 @@ export function parseBatchPoll(json: string): Entity.Poll {
   }
 
   return {
-    expired:
-      p.expired != null
-        ? p.expired === 1
-        : p.expires_at
-          ? new Date(p.expires_at) < new Date()
-          : false,
+    expired: isPollExpired(p.expired, p.expires_at),
     expires_at: p.expires_at,
     id: String(p.id),
     multiple: p.multiple === 1,
