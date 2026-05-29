@@ -12,6 +12,21 @@ function makeNode(overrides: Partial<GetIdsNode> = {}): GetIdsNode {
   }
 }
 
+/** SQL の WHERE 句（ORDER BY 直前）を取り出す（ReDoS 回避のため正規表現を使わない） */
+function extractWhereClause(sql: string): string {
+  const whereMarker = 'WHERE '
+  const orderMarker = ' ORDER'
+  const whereIdx = sql.indexOf(whereMarker)
+  if (whereIdx < 0) {
+    throw new Error(`Expected WHERE in SQL: ${sql}`)
+  }
+  const orderIdx = sql.indexOf(orderMarker, whereIdx + whereMarker.length)
+  if (orderIdx < 0) {
+    throw new Error(`Expected ORDER after WHERE in SQL: ${sql}`)
+  }
+  return sql.slice(whereIdx + whereMarker.length, orderIdx)
+}
+
 describe('compileGetIds', () => {
   describe('outputTimeColumn のデフォルト動作', () => {
     it('省略時は created_at_ms を時刻カラムとして使用する', () => {
@@ -245,9 +260,7 @@ describe('compileGetIds', () => {
       expect(sql).toContain('WHERE')
       expect(sql).toContain('p.is_sensitive = ?')
       expect(sql).toContain('p.id IN (?, ?)')
-      const whereMatch = sql.match(/WHERE\s+(.+?)\s+ORDER/)
-      expect(whereMatch).not.toBeNull()
-      expect(whereMatch?.[1]).toContain(' AND ')
+      expect(extractWhereClause(sql)).toContain(' AND ')
     })
 
     it('通常の静的フィルタとupstreamフィルタが混在する時、binds配列に両方の値が含まれること', () => {
@@ -369,8 +382,7 @@ describe('compileGetIds', () => {
 
       expect(sql).toContain('p.is_sensitive = ?')
       expect(sql).toContain('p.created_at_ms < ?')
-      const whereMatch = sql.match(/WHERE\s+(.+?)\s+ORDER/)
-      expect(whereMatch?.[1]).toContain(' AND ')
+      expect(extractWhereClause(sql)).toContain(' AND ')
       expect(binds).toEqual([0, 5000])
     })
 
@@ -539,8 +551,7 @@ describe('compileGetIds', () => {
       expect(sql).toContain('WHERE')
       expect(sql).toContain('p.hashtag_id IN (?, ?)')
       expect(sql).toContain('_time_src.created_at_ms < ?')
-      const whereMatch = sql.match(/WHERE\s+(.+?)\s+ORDER/)
-      expect(whereMatch?.[1]).toContain(' AND ')
+      expect(extractWhereClause(sql)).toContain(' AND ')
       expect(binds).toEqual([1, 2, 5000])
     })
 
