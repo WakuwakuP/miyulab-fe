@@ -6,13 +6,7 @@ import { Panel } from 'app/_parts/Panel'
 import { StatusRichTextarea } from 'app/_parts/StatusRichTextarea'
 import { UserInfo } from 'app/_parts/UserInfo'
 import type { Entity } from 'megalodon'
-import {
-  useCallback,
-  useContext,
-  useEffect,
-  useEffectEvent,
-  useState,
-} from 'react'
+import { useCallback, useContext, useEffect, useState } from 'react'
 import { RiCloseCircleLine, RiPlayFill } from 'react-icons/ri'
 import { GetClient } from 'util/GetClient'
 import { canPlay } from 'util/PlayerUtils'
@@ -151,14 +145,9 @@ export const MainPanel = () => {
     return () => window.removeEventListener('keydown', handler)
   }, [accounts, setSelectedAppIndex])
 
-  const onCheckMediaLink = useEffectEvent(() => {
+  useEffect(() => {
     if (mediaLink === '') return
     setIsPlay(canPlay(mediaLink))
-  })
-
-  useEffect(() => {
-    void mediaLink // 明示的に依存があることを示す
-    onCheckMediaLink()
   }, [mediaLink])
 
   const onPlay = useCallback(() => {

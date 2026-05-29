@@ -65,7 +65,7 @@ export const ProxyImage = ({
       a.download = originalSrc.split('/').pop() || 'image'
       document.body.appendChild(a)
       a.click()
-      document.body.removeChild(a)
+      a.remove()
       URL.revokeObjectURL(url)
     } catch (error) {
       console.error('Failed to download image:', error)

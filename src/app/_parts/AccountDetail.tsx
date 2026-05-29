@@ -100,8 +100,8 @@ export const AccountDetail = ({ account }: { account: AccountAddAppIndex }) => {
     }
   }
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: account.id 変更時にリストをリセット
   useEffect(() => {
-    void account.id // 明示的に依存があることを示す
     setToots([])
     setMedia([])
   }, [account.id])
