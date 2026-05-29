@@ -386,47 +386,34 @@ function nowMs(): number {
   return Date.now()
 }
 
-/**
- * MAX_LENGTH を超えるデータを 1 バッチ削除する。
- *
- * 優先順: (a) timeline_entries → (b) notifications → (c) posts (上限超過 + 孤立掃除)。
- * `batchLimit` を超える作業が残っている場合 `hasMore: true` を返し、
- * 呼び出し側は `hasMore === false` になるまで繰り返し呼び出す。
- *
- * 後方互換: `options` を省略すると従来の periodic モード相当で動作する。
- */
-export function handleEnforceMaxLength(
-  db: DbExec,
-  maxTimeline: number = DEFAULT_MAX_TIMELINE_ENTRIES,
-  maxNotifications: number = DEFAULT_MAX_NOTIFICATIONS,
-  maxPosts: number = DEFAULT_MAX_POSTS,
-  options: EnforceMaxLengthOptions = {},
-): EnforceMaxLengthHandlerResult {
-  const mode = options.mode ?? 'periodic'
-  const targetRatio = options.targetRatio ?? 0.5
-  const batchLimit = options.batchLimit ?? DEFAULT_BATCH_LIMIT
+type EnforceMaxLengthPhase1Result = {
+  changedTables: TableName[]
+  deletedCounts: Pick<
+    EnforceMaxLengthHandlerResult['deletedCounts'],
+    'timeline_entries' | 'notifications'
+  >
+  hasMore: boolean
+  needPostsFollowup: boolean
+  phaseTimings: Pick<
+    CleanupPhaseTimings,
+    'timeline' | 'notifications' | 'phase1Total'
+  >
+}
 
+function runEnforceMaxLengthPhase1(
+  db: DbExec,
+  maxTimeline: number,
+  maxNotifications: number,
+  mode: 'periodic' | 'emergency',
+  targetRatio: number,
+  batchLimit: number,
+): EnforceMaxLengthPhase1Result {
   const changedTables: TableName[] = []
-  const deletedCounts = {
-    notifications: 0,
-    posts: 0,
-    timeline_entries: 0,
-  }
+  const deletedCounts = { notifications: 0, timeline_entries: 0 }
   let hasMore = false
   let needPostsFollowup = false
+  const phaseTimings = { notifications: 0, phase1Total: 0, timeline: 0 }
 
-  const totalStartedAt = nowMs()
-  const phaseTimings: CleanupPhaseTimings = {
-    notifications: 0,
-    phase1Total: 0,
-    phase2Total: 0,
-    postsCount: 0,
-    postsDelete: 0,
-    timeline: 0,
-    total: 0,
-  }
-
-  // Phase 1: timeline_entries + notifications を 1 トランザクションで処理
   const phase1StartedAt = nowMs()
   db.exec('BEGIN;')
   try {
@@ -470,7 +457,6 @@ export function handleEnforceMaxLength(
         hasMore = true
       }
     } else {
-      // 予算枯渇: notifications は次回回し
       hasMore = true
     }
 
@@ -479,21 +465,40 @@ export function handleEnforceMaxLength(
   } catch (e) {
     db.exec('ROLLBACK;')
     phaseTimings.phase1Total = nowMs() - phase1StartedAt
-    phaseTimings.total = nowMs() - totalStartedAt
     throw e
   }
 
-  // Phase 2: posts 上限超過分 / 孤立 posts を 1 バッチ削除（短いトランザクション）
-  //
-  // 実行条件:
-  //   (a) timeline_entries / notifications で削除があった (needPostsFollowup) — 旧 Phase 2 と同等
-  //   (b) posts 総件数が maxPosts を超過している (mode=periodic) または常時超過扱い (mode=emergency)
-  //
-  // どちらの場合も「孤立 (どこからも参照されていない) かつ古い順」で削除する。
-  // 上限チェック自体は processPostsBatch 内で行う。
-  //
-  // reblog/quote 自己参照 FK のため、参照元がある posts は削除されない。
-  // 参照元 (reblog post 子) が先に消えれば次バッチで親も孤立化して削除可能になる。
+  return {
+    changedTables,
+    deletedCounts,
+    hasMore,
+    needPostsFollowup,
+    phaseTimings,
+  }
+}
+
+type EnforceMaxLengthPhase2Result = {
+  changedTables: TableName[]
+  deletedPosts: number
+  hasMore: boolean
+  phaseTimings: Pick<
+    CleanupPhaseTimings,
+    'postsCount' | 'postsDelete' | 'phase2Total'
+  >
+}
+
+function runEnforceMaxLengthPhase2(
+  db: DbExec,
+  maxPosts: number,
+  mode: 'periodic' | 'emergency',
+  targetRatio: number,
+  batchLimit: number,
+  needPostsFollowup: boolean,
+  changedTables: TableName[],
+): EnforceMaxLengthPhase2Result {
+  let hasMore = false
+  const phaseTimings = { phase2Total: 0, postsCount: 0, postsDelete: 0 }
+
   const phase2StartedAt = nowMs()
   db.exec('BEGIN;')
   try {
@@ -505,14 +510,11 @@ export function handleEnforceMaxLength(
       batchLimit,
       needPostsFollowup,
     )
-    deletedCounts.posts = postsResult.deleted
+    const deletedPosts = postsResult.deleted
     phaseTimings.postsCount = postsResult.countElapsedMs
     phaseTimings.postsDelete = postsResult.deleteElapsedMs
 
     if (needPostsFollowup || postsResult.issuedDelete) {
-      // DELETE を発行した時点で posts テーブル変更として扱う（後方互換）。
-      // needPostsFollowup のときは旧実装も常に 'posts' を changedTables に
-      // 含めていたため、その挙動を維持する。
       if (!changedTables.includes('posts')) {
         changedTables.push('posts')
       }
@@ -521,7 +523,6 @@ export function handleEnforceMaxLength(
     if (postsResult.hasRemainingExcess) {
       hasMore = true
     }
-    // バッチ上限いっぱいまで削除した場合、まだ作業が残っている可能性あり
     if (postsResult.deleted >= batchLimit) {
       hasMore = true
     }
@@ -531,10 +532,78 @@ export function handleEnforceMaxLength(
   } catch (e) {
     db.exec('ROLLBACK;')
     phaseTimings.phase2Total = nowMs() - phase2StartedAt
-    phaseTimings.total = nowMs() - totalStartedAt
     throw e
   }
 
-  phaseTimings.total = nowMs() - totalStartedAt
-  return { changedTables, deletedCounts, hasMore, phaseTimings }
+  return {
+    changedTables,
+    deletedPosts,
+    hasMore,
+    phaseTimings,
+  }
+}
+
+/**
+ * MAX_LENGTH を超えるデータを 1 バッチ削除する。
+ *
+ * 優先順: (a) timeline_entries → (b) notifications → (c) posts (上限超過 + 孤立掃除)。
+ * `batchLimit` を超える作業が残っている場合 `hasMore: true` を返し、
+ * 呼び出し側は `hasMore === false` になるまで繰り返し呼び出す。
+ *
+ * 後方互換: `options` を省略すると従来の periodic モード相当で動作する。
+ */
+export function handleEnforceMaxLength(
+  db: DbExec,
+  maxTimeline: number = DEFAULT_MAX_TIMELINE_ENTRIES,
+  maxNotifications: number = DEFAULT_MAX_NOTIFICATIONS,
+  maxPosts: number = DEFAULT_MAX_POSTS,
+  options: EnforceMaxLengthOptions = {},
+): EnforceMaxLengthHandlerResult {
+  const mode = options.mode ?? 'periodic'
+  const targetRatio = options.targetRatio ?? 0.5
+  const batchLimit = options.batchLimit ?? DEFAULT_BATCH_LIMIT
+
+  const totalStartedAt = nowMs()
+
+  const phase1 = runEnforceMaxLengthPhase1(
+    db,
+    maxTimeline,
+    maxNotifications,
+    mode,
+    targetRatio,
+    batchLimit,
+  )
+
+  let hasMore = phase1.hasMore
+  const changedTables = [...phase1.changedTables]
+
+  const phase2 = runEnforceMaxLengthPhase2(
+    db,
+    maxPosts,
+    mode,
+    targetRatio,
+    batchLimit,
+    phase1.needPostsFollowup,
+    changedTables,
+  )
+
+  if (phase2.hasMore) {
+    hasMore = true
+  }
+
+  const phaseTimings: CleanupPhaseTimings = {
+    ...phase1.phaseTimings,
+    ...phase2.phaseTimings,
+    total: nowMs() - totalStartedAt,
+  }
+
+  return {
+    changedTables: phase2.changedTables,
+    deletedCounts: {
+      ...phase1.deletedCounts,
+      posts: phase2.deletedPosts,
+    },
+    hasMore,
+    phaseTimings,
+  }
 }
