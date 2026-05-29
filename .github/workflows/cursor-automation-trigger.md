@@ -5,7 +5,11 @@
 ## 実行条件
 
 - 対象ブランチに紐づく **オープンな PR** がある
+<<<<<<< HEAD
+- PR の作成者ログインが **`app/cursor`**（GitHub App。旧形式の `cursor[bot]` も可）。`author.login` を Actions ログに出力
+=======
 - PR の作成者ログインが **`cursor[bot]`** と完全一致（`author.login`。Actions ログに実際の login / type を出力）
+>>>>>>> origin/main
 - PR が **ドラフトではない**
 - **マージ必須のチェックがすべて実行完了**（`gh pr checks --required` で pending がないこと。失敗していても可）
 
