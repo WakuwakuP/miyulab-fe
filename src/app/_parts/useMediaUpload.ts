@@ -54,8 +54,7 @@ export const useMediaUpload = ({
         e.preventDefault()
         const files = e.clipboardData.files
         if (files.length > 0) {
-          for (let i = 0; i < files.length; i++) {
-            const file = files[i]
+          for (const file of files) {
             setUploading((prev) => prev + 1)
             if (file.type.startsWith('image/')) {
               imageCompression(file, {

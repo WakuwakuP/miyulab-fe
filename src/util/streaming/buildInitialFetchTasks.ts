@@ -6,6 +6,42 @@ import {
 } from 'util/timelineConfigValidator'
 import { fetchInitialData } from 'util/timelineFetcher'
 
+function appendTagFetchTasks(
+  apps: App[],
+  config: TimelineConfigV2,
+  fetchedKeys: Set<string>,
+  tasks: (() => Promise<void>)[],
+): void {
+  const filter = normalizeBackendFilter(config.backendFilter, apps)
+  const targetUrls = resolveBackendUrls(filter, apps)
+
+  for (const url of targetUrls) {
+    const newTags = config.tagConfig!.tags.filter((tag) => {
+      const key = `tag|${tag}|${url}`
+      if (fetchedKeys.has(key)) return false
+      fetchedKeys.add(key)
+      return true
+    })
+    if (newTags.length === 0) continue
+
+    const app = apps.find((a) => a.backendUrl === url)
+    if (!app) continue
+
+    const tagFetchConfig: TimelineConfigV2 = {
+      ...config,
+      tagConfig: { ...config.tagConfig!, tags: newTags },
+      type: 'tag',
+    }
+
+    const client = GetClient(app)
+    tasks.push(() =>
+      fetchInitialData(client, tagFetchConfig, url).catch((error) => {
+        console.error(`Failed to fetch initial data for tag (${url}):`, error)
+      }),
+    )
+  }
+}
+
 /**
  * apps と timelineSettings から初期データ取得タスク配列を構築する。
  *
@@ -54,37 +90,7 @@ export function buildInitialFetchTasks(
   // 同一 tag × backendUrl の組み合わせは重複フェッチを防止する
   for (const config of timelines) {
     if (!config.tagConfig || config.tagConfig.tags.length === 0) continue
-
-    const filter = normalizeBackendFilter(config.backendFilter, apps)
-    const targetUrls = resolveBackendUrls(filter, apps)
-
-    for (const url of targetUrls) {
-      // 未フェッチのタグのみ抽出
-      const newTags = config.tagConfig.tags.filter((tag) => {
-        const key = `tag|${tag}|${url}`
-        if (fetchedKeys.has(key)) return false
-        fetchedKeys.add(key)
-        return true
-      })
-      if (newTags.length === 0) continue
-
-      const app = apps.find((a) => a.backendUrl === url)
-      if (!app) continue
-
-      // fetchInitialData は config.type で分岐するため、type を 'tag' に強制する
-      const tagFetchConfig: TimelineConfigV2 = {
-        ...config,
-        tagConfig: { ...config.tagConfig, tags: newTags },
-        type: 'tag',
-      }
-
-      const client = GetClient(app)
-      tasks.push(() =>
-        fetchInitialData(client, tagFetchConfig, url).catch((error) => {
-          console.error(`Failed to fetch initial data for tag (${url}):`, error)
-        }),
-      )
-    }
+    appendTagFetchTasks(apps, config, fetchedKeys, tasks)
   }
 
   return tasks

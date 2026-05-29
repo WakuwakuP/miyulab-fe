@@ -181,16 +181,9 @@ export function transformQueryPlanResult(result: QueryPlanResult): {
   // BatchEnrichResult → BatchMaps
   const maps = buildBatchMapsFromEnrichResult(batchResult)
 
-  // Phase1 から backendUrl / timelineTypes マップを構築
-  // compile.ts の Phase1 は id + created_at_ms のみ SELECT するため、
-  // backendUrl と timelineTypes は detail-fetch の結果から取得する
+  // Phase1 の id-collect は { id, createdAtMs } のみ返すため backendUrl は未収集。
+  // detail-fetch 結果の assembleStatusFromBatch で設定される。
   const backendUrlMap = new Map<number, string>()
-  for (const idResult of idCollectResults) {
-    for (const row of idResult.rows) {
-      // row は { id, createdAtMs } の構造化型 — 追加カラムは含まない
-      void row
-    }
-  }
 
   // Detail rows → SqliteStoredStatus[]
   const statuses = detailResult.rows.map((row) => {

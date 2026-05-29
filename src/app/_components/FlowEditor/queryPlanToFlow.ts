@@ -106,7 +106,7 @@ function queryPlanV2ToFlow(plan: QueryPlanV2): FlowGraphState {
 
   const nodes: FlowNode[] = []
   for (const [d, ids] of [...byDepth.entries()].sort((a, b) => a[0] - b[0])) {
-    ids.sort()
+    ids.sort((a, b) => a.localeCompare(b))
     ids.forEach((id, idx) => {
       const entry = plan.nodes.find((n) => n.id === id)
       if (!entry) return
