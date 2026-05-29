@@ -140,9 +140,9 @@ export async function validateCustomQuery(
   }
 
   const sanitized = whereClause
-    .replace(/;/g, '')
-    .replace(/\bLIMIT\b\s+\d+/gi, '')
-    .replace(/\bOFFSET\b\s+\d+/gi, '')
+    .replaceAll(';', '')
+    .replaceAll(/\bLIMIT\b\s+\d+/gi, '')
+    .replaceAll(/\bOFFSET\b\s+\d+/gi, '')
     .trim()
 
   if (!sanitized) return null
