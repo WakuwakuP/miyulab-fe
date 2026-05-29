@@ -11,6 +11,44 @@ const TOP_LEVEL_SPLIT_PATTERN: Record<TopLevelDelimiter, RegExp> = {
   OR: /^\s+OR\s+/i,
 }
 
+function handleQuoteChar(
+  where: string,
+  index: number,
+  inString: boolean,
+  current: string,
+): { inString: boolean; current: string; skip: number } {
+  if (!inString) {
+    return { current: `${current}'`, inString: true, skip: 0 }
+  }
+  if (index + 1 < where.length && where[index + 1] === "'") {
+    return { current: `${current}''`, inString: true, skip: 1 }
+  }
+  return { current: `${current}'`, inString: false, skip: 0 }
+}
+
+function trySplitAtDelimiter(
+  where: string,
+  index: number,
+  depth: number,
+  current: string,
+  splitPattern: RegExp,
+  parts: string[],
+): { index: number; current: string; split: boolean } {
+  if (depth !== 0) {
+    return { current, index, split: false }
+  }
+  const match = splitPattern.exec(where.slice(index))
+  if (!match) {
+    return { current, index, split: false }
+  }
+  parts.push(current.trim())
+  return {
+    current: '',
+    index: index + match[0].length - 1,
+    split: true,
+  }
+}
+
 /**
  * 括弧のネストレベルを追跡して、トップレベルの区切り文字で分割する。
  * 文字列リテラル内の区切りは無視する。
@@ -28,19 +66,11 @@ function splitByTopLevel(
   for (let i = 0; i < where.length; i++) {
     const ch = where[i]
 
-    if (ch === "'" && !inString) {
-      inString = true
-      current += ch
-      continue
-    }
-    if (ch === "'" && inString) {
-      if (i + 1 < where.length && where[i + 1] === "'") {
-        current += "''"
-        i++
-        continue
-      }
-      inString = false
-      current += ch
+    if (ch === "'") {
+      const quote = handleQuoteChar(where, i, inString, current)
+      inString = quote.inString
+      current = quote.current
+      i += quote.skip
       continue
     }
     if (inString) {
@@ -51,15 +81,18 @@ function splitByTopLevel(
     if (ch === '(') depth++
     if (ch === ')') depth--
 
-    if (depth === 0) {
-      const rest = where.slice(i)
-      const match = rest.match(splitPattern)
-      if (match) {
-        parts.push(current.trim())
-        i += match[0].length - 1
-        current = ''
-        continue
-      }
+    const split = trySplitAtDelimiter(
+      where,
+      i,
+      depth,
+      current,
+      splitPattern,
+      parts,
+    )
+    if (split.split) {
+      i = split.index
+      current = split.current
+      continue
     }
 
     current += ch
