@@ -9,8 +9,9 @@ import { useTimelineData } from 'util/hooks/useTimelineData'
 import { getDefaultTimelineName } from 'util/timelineDisplayName'
 import { TimelinePresenter } from './TimelinePresenter'
 
+/** MixedTimeline と同様、通知は top-level の `type` で判別する */
 function isStatusTimelineItem(item: TimelineItem): item is StatusAddAppIndex {
-  return 'uri' in item
+  return !('type' in item) && 'uri' in item
 }
 
 /**
@@ -41,9 +42,11 @@ export const UnifiedTimeline = ({
     return getDefaultTimelineName(config)
   }, [config])
 
+  const statusData = useMemo(() => data.filter(isStatusTimelineItem), [data])
+
   const viewModel: TimelineViewModel = {
     configId: config.id,
-    data,
+    data: statusData,
     displayName,
     hasMoreOlder,
     initializing,

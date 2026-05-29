@@ -10,6 +10,16 @@ import type { TimelineItem } from 'util/hooks/useTimelineDataSource'
 /** 差分取得の安全マージン (同一 ms に複数アイテムがある場合の取りこぼし防止) */
 export const CURSOR_MARGIN_MS = 1
 
+/** post_id / notification_id を数値として解釈する（itemKey と itemNumericId で共通） */
+function timelineNumericField(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string') {
+    const parsed = Number.parseInt(value, 10)
+    if (!Number.isNaN(parsed)) return parsed
+  }
+  return null
+}
+
 /** status を持つべき通知タイプ */
 export const TYPES_WITH_STATUS = new Set([
   'emoji_reaction',
@@ -24,10 +34,14 @@ export const TYPES_WITH_STATUS = new Set([
 
 /** アイテムの一意キーを生成 */
 export function itemKey(item: TimelineItem): string {
-  if ('post_id' in item && typeof item.post_id === 'number')
-    return `p:${item.post_id}`
-  if ('notification_id' in item && typeof item.notification_id === 'number')
-    return `n:${item.notification_id}`
+  if ('post_id' in item) {
+    const postId = timelineNumericField(item.post_id)
+    if (postId != null) return `p:${postId}`
+  }
+  if ('notification_id' in item) {
+    const notificationId = timelineNumericField(item.notification_id)
+    if (notificationId != null) return `n:${notificationId}`
+  }
   return `u:${item.id}`
 }
 
@@ -43,9 +57,14 @@ export function itemTimestamp(item: TimelineItem): number {
 
 /** アイテムの数値 ID を取得 (post_id or notification_id → parseInt(id) フォールバック) */
 export function itemNumericId(item: TimelineItem): number {
-  if ('post_id' in item && typeof item.post_id === 'number') return item.post_id
-  if ('notification_id' in item && typeof item.notification_id === 'number')
-    return item.notification_id
+  if ('post_id' in item) {
+    const postId = timelineNumericField(item.post_id)
+    if (postId != null) return postId
+  }
+  if ('notification_id' in item) {
+    const notificationId = timelineNumericField(item.notification_id)
+    if (notificationId != null) return notificationId
+  }
   const parsed = Number.parseInt(item.id, 10)
   return Number.isNaN(parsed) ? 0 : parsed
 }

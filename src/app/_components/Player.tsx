@@ -43,6 +43,25 @@ function isEditableKeyboardTarget(target: EventTarget | null): boolean {
   )
 }
 
+function shouldIgnorePlayerKeydown(
+  event: KeyboardEvent,
+  playerRoot: HTMLElement | null,
+): boolean {
+  const target = event.target
+  if (!(target instanceof Node)) return true
+  if (isEditableKeyboardTarget(target)) return true
+  if (
+    target instanceof HTMLElement &&
+    target.closest('[data-autocomplete-menu]') != null
+  ) {
+    return true
+  }
+  if (playerRoot == null || !playerRoot.contains(target)) return true
+  // Space はフォーカス中のボタンに任せる（二重トグル防止）
+  if (event.code === 'Space' && target instanceof HTMLButtonElement) return true
+  return false
+}
+
 function seekPlayed(
   player: React.RefObject<HTMLVideoElement | null>,
   delta: number,
@@ -157,6 +176,7 @@ const PlayerController = () => {
   const { playerSize } = useContext(SettingContext)
 
   const player = useRef<HTMLVideoElement>(null)
+  const playerRootRef = useRef<HTMLDivElement>(null)
   const [playing, setPlaying] = useState<boolean>(false)
   const [played, setPlayed] = useState<number>(0)
   const [seeking, setSeeking] = useState<boolean>(false)
@@ -194,7 +214,12 @@ const PlayerController = () => {
   }
 
   const onKeyDown = useEffectEvent((e: KeyboardEvent) => {
-    if (isEditableKeyboardTarget(e.target)) return
+    if (shouldIgnorePlayerKeydown(e, playerRootRef.current)) return
+
+    const canSeekNativePlayer =
+      currentAttachment != null &&
+      playableTypes.includes(currentAttachment.type) &&
+      (!isExternalVideo(currentUrl) || externalEmbedFailed)
 
     switch (e.code) {
       case 'Space':
@@ -202,10 +227,12 @@ const PlayerController = () => {
         setPlaying((prev) => !prev)
         break
       case 'ArrowLeft':
+        if (!canSeekNativePlayer) break
         e.preventDefault()
         seekPlayed(player, -0.1, setPlayed)
         break
       case 'ArrowRight':
+        if (!canSeekNativePlayer) break
         e.preventDefault()
         seekPlayed(player, 0.1, setPlayed)
         break
@@ -275,6 +302,10 @@ const PlayerController = () => {
 
   if (currentAttachment == null) return null
 
+  const canSeekNativePlayer =
+    playableTypes.includes(currentAttachment.type) &&
+    (!isExternalVideo(currentUrl) || externalEmbedFailed)
+
   const playableMedia = renderPlayableMedia({
     attachment: currentAttachment,
     classNamePlayerSize,
@@ -296,6 +327,8 @@ const PlayerController = () => {
         'fixed bottom-0 right-0 z-40 max-w-full',
         classNamePlayerSize.w,
       ].join(' ')}
+      data-player
+      ref={playerRootRef}
     >
       <div className=" bg-black" onClick={onClickPlay}>
         {playableMedia}
@@ -336,6 +369,7 @@ const PlayerController = () => {
         <div className="flex h-12 w-full shrink bg-gray-800">
           <input
             className="w-full"
+            disabled={!canSeekNativePlayer}
             max="0.9999999"
             min="0"
             onChange={handleSeekChange}

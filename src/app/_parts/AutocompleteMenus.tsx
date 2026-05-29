@@ -13,6 +13,7 @@ function selectAutocompleteItem(
 ) {
   if (event.key !== 'Enter' && event.key !== ' ') return
   event.preventDefault()
+  event.stopPropagation()
   complete(index)
 }
 
@@ -59,6 +60,8 @@ export const MentionMenu = ({
 }) => {
   return (
     <div
+      data-autocomplete-menu
+      role="listbox"
       style={{
         backgroundColor: 'white',
         border: '1px solid black',
@@ -70,6 +73,7 @@ export const MentionMenu = ({
     >
       {chars.map((char, i) => (
         <button
+          aria-selected={index === i}
           key={char.id}
           onKeyDown={(e) => {
             selectAutocompleteItem(e, i, complete)
@@ -78,12 +82,14 @@ export const MentionMenu = ({
             e.preventDefault()
             complete(i)
           }}
+          role="option"
           style={autocompleteMenuItemStyle(index === i, 'block')}
           type="button"
         >
           <ProxyImage
             alt={char.display_name}
             className="mr-2 inline-block h-8 w-8 rounded-full"
+            disableContextMenu
             height={32}
             src={char.avatar}
             width={32}
@@ -110,6 +116,8 @@ export const EmojiMenu = ({
 }) => {
   return (
     <div
+      data-autocomplete-menu
+      role="listbox"
       style={{
         backgroundColor: 'white',
         border: '1px solid black',
@@ -121,6 +129,7 @@ export const EmojiMenu = ({
     >
       {chars.map((char, i) => (
         <button
+          aria-selected={index === i}
           key={char.shortcode}
           onKeyDown={(e) => {
             selectAutocompleteItem(e, i, complete)
@@ -129,6 +138,7 @@ export const EmojiMenu = ({
             e.preventDefault()
             complete(i)
           }}
+          role="option"
           style={autocompleteMenuItemStyle(index === i, 'flex')}
           type="button"
         >
@@ -164,6 +174,8 @@ export const TagMenu = ({
 }) => {
   return (
     <div
+      data-autocomplete-menu
+      role="listbox"
       style={{
         backgroundColor: 'white',
         border: '1px solid black',
@@ -175,6 +187,7 @@ export const TagMenu = ({
     >
       {chars.map((char, i) => (
         <button
+          aria-selected={index === i}
           key={char}
           onKeyDown={(e) => {
             selectAutocompleteItem(e, i, complete)
@@ -183,6 +196,7 @@ export const TagMenu = ({
             e.preventDefault()
             complete(i)
           }}
+          role="option"
           style={autocompleteMenuItemStyle(index === i, 'block')}
           type="button"
         >
