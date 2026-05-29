@@ -166,13 +166,13 @@ export function injectProfileIdHint(whereClause: string): string {
     // acct 比較が存在するか確認:
     // <profileAlias>.acct = COALESCE(pr_c.acct, '')
     const acctPattern = new RegExp(
-      `\\b${profileAlias}\\.acct\\s*=\\s*COALESCE\\(pr_c\\.acct,\\s*''\\)`,
+      String.raw`\b${profileAlias}\.acct\s*=\s*COALESCE\(pr_c\.acct,\s*''\)`,
       'i',
     )
 
     // 既にヒントが存在しないか確認
     const hintPattern = new RegExp(
-      `\\b${sourceAlias}\\.actor_profile_id\\s*=\\s*p\\.author_profile_id\\b`,
+      String.raw`\b${sourceAlias}\.actor_profile_id\s*=\s*p\.author_profile_id\b`,
       'i',
     )
 

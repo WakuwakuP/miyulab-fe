@@ -20,6 +20,7 @@ import {
 } from '../../query-ir/idCollectCache'
 import type { ChangeHint } from '../connection'
 import type {
+  BindValue,
   ExecBatchRequest,
   ExecRequest,
   FetchTimelineRequest,
@@ -142,7 +143,7 @@ export function initWorker(
 export function execAsync(
   sql: string,
   opts?: {
-    bind?: (string | number | null)[]
+    bind?: BindValue[]
     returnValue?: 'resultRows'
     kind?: QueueKind
     sessionTag?: string
@@ -166,7 +167,7 @@ export function execAsync(
 export async function execAsyncTimed(
   sql: string,
   opts?: {
-    bind?: (string | number | null)[]
+    bind?: BindValue[]
     returnValue?: 'resultRows'
     kind?: QueueKind
     sessionTag?: string
@@ -196,7 +197,7 @@ export async function execAsyncTimed(
 export function execBatch(
   statements: {
     sql: string
-    bind?: (string | number | null)[]
+    bind?: BindValue[]
     returnValue?: 'resultRows'
   }[],
   opts?: {

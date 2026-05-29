@@ -2,7 +2,7 @@ import type { BackendFilter, TimelineConfigV2 } from 'types/types'
 import { resolveBackendUrlFromAccountId } from 'util/accountResolver'
 import type { ConfigToNodesContext } from 'util/db/query-ir/compat/configToNodes'
 import { configToQueryPlan } from 'util/db/query-ir/compat/configToNodes'
-import type { QueryPlanV2 } from 'util/db/query-ir/nodes'
+import type { GetIdsFilter, QueryPlanV2 } from 'util/db/query-ir/nodes'
 import { isQueryPlanV2 } from 'util/db/query-ir/nodes'
 import { migrateQueryPlanV1ToV2 } from 'util/db/query-ir/v2/migrateV1ToV2'
 
@@ -72,6 +72,21 @@ export function extractBackendFilter(plan: QueryPlanV2): BackendFilter {
   return { mode: 'all' }
 }
 
+function moderationFlagsFromNotExistsFilters(filters: GetIdsFilter[]): {
+  hasBlock: boolean
+  hasMute: boolean
+} {
+  let hasMute = false
+  let hasBlock = false
+  for (const f of filters) {
+    if ('mode' in f && f.mode === 'not-exists') {
+      if (f.table === 'muted_accounts') hasMute = true
+      if (f.table === 'blocked_instances') hasBlock = true
+    }
+  }
+  return { hasBlock, hasMute }
+}
+
 /** V2 plan から moderation (mute/block) 設定を検出する */
 export function extractModeration(plan: QueryPlanV2): {
   applyBlock: boolean
@@ -81,12 +96,9 @@ export function extractModeration(plan: QueryPlanV2): {
   let hasBlock = false
   for (const n of plan.nodes) {
     if (n.node.kind !== 'get-ids') continue
-    for (const f of n.node.filters) {
-      if ('mode' in f && f.mode === 'not-exists') {
-        if (f.table === 'muted_accounts') hasMute = true
-        if (f.table === 'blocked_instances') hasBlock = true
-      }
-    }
+    const flags = moderationFlagsFromNotExistsFilters(n.node.filters)
+    if (flags.hasMute) hasMute = true
+    if (flags.hasBlock) hasBlock = true
   }
   return { applyBlock: hasBlock, applyMute: hasMute }
 }
