@@ -203,7 +203,7 @@ export function extractNotificationTypeCodes(
 ): string[] | null {
   // IN 句: ntt.code IN (...) or ntt.name IN (...)
   const inMatch = whereClause.match(
-    /\b(?:ntt?|notification_types?)\.(?:code|name)\s+IN\s*\(\s*([^)]+)\s*\)/i,
+    /\b(?:ntt?|notification_types?)\.(?:code|name)\s+IN\s*\(\s*([^)]{1,2000})\s*\)/i,
   )
   if (inMatch) {
     const codes = inMatch[1]

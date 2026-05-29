@@ -29,8 +29,8 @@ export const TIMEOUT_BY_TYPE: Readonly<Record<string, number>> = {
 // 内部状態
 // ================================================================
 
-export let worker: Worker | null = null
-export let nextId = 0
+let worker: Worker | null = null
+let nextId = 0
 export const pending = new Map<number, PendingRequest>()
 
 /** priority キュー（最優先 — 緊急クリーンアップ等） */
@@ -48,25 +48,58 @@ export const timelineDedup = new Map<
   { resolvers: ((v: unknown) => void)[]; rejectors: ((e: Error) => void)[] }
 >()
 
-export let activeRequest = false
+let activeRequest = false
 /** other キューを連続処理した回数（timeline 飢餓防止用） */
-export let consecutiveOther = 0
-export let notifyChangeCallback:
+let consecutiveOther = 0
+let notifyChangeCallback:
   | ((table: TableName, hint?: ChangeHint) => void)
   | null = null
-export let initResolve: ((persistence: 'opfs' | 'memory') => void) | null = null
-export let initReject: ((reason: Error) => void) | null = null
-export let initPromise: Promise<'opfs' | 'memory'> | null = null
-export let initTimer: ReturnType<typeof setTimeout> | null = null
+let initResolve: ((persistence: 'opfs' | 'memory') => void) | null = null
+let initReject: ((reason: Error) => void) | null = null
+let initPromise: Promise<'opfs' | 'memory'> | null = null
+let initTimer: ReturnType<typeof setTimeout> | null = null
 export const durationForId = new Map<number, number>()
 
 /** スロークエリログのコールバック */
-export let slowQueryLogCallback: ((logs: SlowQueryLogEntry[]) => void) | null =
-  null
+let slowQueryLogCallback: ((logs: SlowQueryLogEntry[]) => void) | null = null
 
 // ================================================================
-// let 変数の setter（外部モジュールから再代入するため）
+// let 変数の getter / setter（外部モジュールから参照・再代入するため）
 // ================================================================
+
+export function getWorker(): Worker | null {
+  return worker
+}
+export function getActiveRequest(): boolean {
+  return activeRequest
+}
+export function getConsecutiveOther(): number {
+  return consecutiveOther
+}
+export function getNotifyChangeCallback():
+  | ((table: TableName, hint?: ChangeHint) => void)
+  | null {
+  return notifyChangeCallback
+}
+export function getInitResolve():
+  | ((persistence: 'opfs' | 'memory') => void)
+  | null {
+  return initResolve
+}
+export function getInitReject(): ((reason: Error) => void) | null {
+  return initReject
+}
+export function getInitPromise(): Promise<'opfs' | 'memory'> | null {
+  return initPromise
+}
+export function getInitTimer(): ReturnType<typeof setTimeout> | null {
+  return initTimer
+}
+export function getSlowQueryLogCallback():
+  | ((logs: SlowQueryLogEntry[]) => void)
+  | null {
+  return slowQueryLogCallback
+}
 
 export function setWorker(w: Worker | null): void {
   worker = w

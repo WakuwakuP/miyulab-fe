@@ -34,11 +34,12 @@ import { handleMessage } from './messageHandler'
 import { sendRequest } from './queueManager'
 import {
   durationForId,
+  getInitPromise,
+  getInitReject,
+  getInitTimer,
+  getWorker,
   INIT_TIMEOUT_MS,
   incrementNextId,
-  initPromise,
-  initReject,
-  initTimer,
   otherQueue,
   pending,
   priorityQueue,
@@ -54,7 +55,6 @@ import {
   setWorker,
   timelineDedup,
   timelineQueue,
-  worker,
 } from './state'
 
 // ================================================================
@@ -70,7 +70,8 @@ import {
 export function initWorker(
   onNotify: (table: TableName, hint?: ChangeHint) => void,
 ): Promise<'opfs' | 'memory'> {
-  if (initPromise) return initPromise
+  const existingPromise = getInitPromise()
+  if (existingPromise) return existingPromise
 
   setNotifyChangeCallback(onNotify)
 
@@ -81,6 +82,7 @@ export function initWorker(
     // Worker 初期化タイムアウト — init メッセージが来ない場合にフォールバックを有効にする
     setInitTimer(
       setTimeout(() => {
+        const initReject = getInitReject()
         if (initReject) {
           stopSnapshotRecording()
           initReject(
@@ -107,11 +109,13 @@ export function initWorker(
       w.postMessage({ origin: globalThis.location.origin, type: '__init' })
       w.onerror = (e) => {
         console.error('SQLite Worker error:', e)
+        const initReject = getInitReject()
         if (initReject) {
           stopSnapshotRecording()
           initReject(new Error(`Worker initialization failed: ${e.message}`))
           setInitReject(null)
           setInitResolve(null)
+          const initTimer = getInitTimer()
           if (initTimer != null) {
             clearTimeout(initTimer)
             setInitTimer(null)
@@ -370,7 +374,7 @@ export function sendCommand(
  * Worker を終了する。
  */
 export function terminateWorker(): void {
-  worker?.terminate()
+  getWorker()?.terminate()
   setWorker(null)
   // 実行中 (in-flight) のリクエストを拒否してクリア
   for (const req of pending.values()) {
