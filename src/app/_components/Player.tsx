@@ -210,9 +210,7 @@ const PlayerController = () => {
           <iframe
             allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
             allowFullScreen
-            className={['aspect-video w-full', classNamePlayerSize.h].join(
-              ' ',
-            )}
+            className={['aspect-video w-full', classNamePlayerSize.h].join(' ')}
             // @ts-expect-error -- credentialless is a valid HTML attribute but not yet in React's type definitions
             credentialless=""
             onError={() => {

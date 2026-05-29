@@ -237,8 +237,8 @@ function parseCustomEmojiWithHost(
     return null
   }
   return {
-    shortcode: inner.slice(0, atIndex),
     host: inner.slice(atIndex + 1),
+    shortcode: inner.slice(0, atIndex),
   }
 }
 
