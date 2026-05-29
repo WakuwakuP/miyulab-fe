@@ -16,6 +16,12 @@ export type { ExecuteFlatFetchRequest, ExecuteGraphPlanRequest }
 
 export type BindValue = string | number | null
 
+/** SQLite `returnValue: 'resultRows'` の1行 */
+export type SqliteResultRow = BindValue[]
+
+/** SQLite `returnValue: 'resultRows'` の結果セット */
+export type SqliteResultRows = SqliteResultRow[]
+
 export type TableName =
   | 'cards'
   | 'hashtags'

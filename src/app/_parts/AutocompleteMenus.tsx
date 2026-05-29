@@ -63,11 +63,11 @@ function AutocompleteMenuList({
   top,
   left,
   children,
-}: {
+}: Readonly<{
   top: number
   left: number
   children: ReactNode
-}) {
+}>) {
   return (
     <ul data-autocomplete-menu style={autocompleteMenuListStyle(top, left)}>
       {children}
@@ -81,13 +81,13 @@ function AutocompleteMenuItem({
   itemIndex,
   complete,
   children,
-}: {
+}: Readonly<{
   selected: boolean
   layout: 'block' | 'flex'
   itemIndex: number
   complete: (index: number) => void
   children: ReactNode
-}) {
+}>) {
   return (
     <li>
       <button
