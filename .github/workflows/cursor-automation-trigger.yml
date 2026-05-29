@@ -1,7 +1,7 @@
 name: Trigger Cursor Automation
 
 # Fires when any check suite on a commit completes. The job re-evaluates whether
-# all merge-required checks on the PR are satisfied (mergeStateStatus == CLEAN).
+# all merge-required checks on the PR have finished (pass or fail).
 on:
   check_suite:
     types: [completed]
@@ -16,10 +16,10 @@ permissions:
   checks: read
 
 jobs:
-  trigger-on-required-checks-passed:
+  trigger-on-required-checks-completed:
     runs-on: ubuntu-latest
     steps:
-      - name: Trigger Cursor Automation when merge checks pass
+      - name: Trigger Cursor Automation when required checks finish
         env:
           GH_TOKEN: ${{ github.token }}
           HEAD_SHA: ${{ github.event.check_suite.head_sha }}
@@ -38,7 +38,7 @@ jobs:
             --repo "${GITHUB_REPOSITORY}" \
             --head "${HEAD_BRANCH}" \
             --state open \
-            --json number,author,isDraft,url,mergeStateStatus \
+            --json number,author,isDraft,url \
             --limit 1)
 
           if [ "$(echo "$PR_JSON" | jq 'length')" -eq 0 ]; then
@@ -50,10 +50,9 @@ jobs:
           PR_AUTHOR=$(echo "$PR_JSON" | jq -r '.[0].author.login')
           PR_URL=$(echo "$PR_JSON" | jq -r '.[0].url')
           IS_DRAFT=$(echo "$PR_JSON" | jq -r '.[0].isDraft')
-          MERGE_STATE=$(echo "$PR_JSON" | jq -r '.[0].mergeStateStatus')
 
           echo "PR #${PR_NUMBER} (${PR_URL})"
-          echo "Author: ${PR_AUTHOR}, draft: ${IS_DRAFT}, mergeStateStatus: ${MERGE_STATE}"
+          echo "Author: ${PR_AUTHOR}, draft: ${IS_DRAFT}"
 
           if [ "$PR_AUTHOR" != "cursor[bot]" ]; then
             echo "Pull request was not created by cursor[bot]. Skipping."
@@ -65,10 +64,39 @@ jobs:
             exit 0
           fi
 
-          if [ "$MERGE_STATE" != "CLEAN" ]; then
-            echo "Merge-required checks are not all satisfied yet. Skipping."
+          REQUIRED_COUNT=$(gh pr checks "${PR_NUMBER}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --required \
+            --json name \
+            -q 'length')
+
+          if [ "${REQUIRED_COUNT}" -eq 0 ]; then
+            echo "No required checks configured for this PR. Skipping."
             exit 0
           fi
+
+          set +e
+          gh pr checks "${PR_NUMBER}" --repo "${GITHUB_REPOSITORY}" --required
+          CHECKS_EXIT=$?
+          set -e
+
+          # gh pr checks: 0 = all passed, 1 = some failed (completed), 8 = still pending
+          if [ "${CHECKS_EXIT}" -eq 8 ]; then
+            echo "Required checks are still in progress. Skipping."
+            exit 0
+          fi
+
+          if [ "${CHECKS_EXIT}" -ne 0 ] && [ "${CHECKS_EXIT}" -ne 1 ]; then
+            echo "Unexpected gh pr checks exit code: ${CHECKS_EXIT}"
+            exit 1
+          fi
+
+          CHECKS_PASSED="false"
+          if [ "${CHECKS_EXIT}" -eq 0 ]; then
+            CHECKS_PASSED="true"
+          fi
+
+          echo "All ${REQUIRED_COUNT} required check(s) completed (passed=${CHECKS_PASSED})"
 
           if [ -z "${CURSOR_AUTOMATION_WEBHOOK_URL:-}" ] || [ -z "${CURSOR_AUTOMATION_WEBHOOK_API_KEY:-}" ]; then
             echo "CURSOR_AUTOMATION_WEBHOOK_URL or CURSOR_AUTOMATION_WEBHOOK_API_KEY is not configured. Skipping."
@@ -82,12 +110,17 @@ jobs:
             --arg pr_url "$PR_URL" \
             --arg head_sha "$HEAD_SHA" \
             --arg head_branch "$HEAD_BRANCH" \
+            --argjson required_checks_passed "${CHECKS_PASSED}" \
             '{
               event: $event,
               repository: $repository,
               pull_request: {number: $pr_number, url: $pr_url},
               head_sha: $head_sha,
-              head_branch: $head_branch
+              head_branch: $head_branch,
+              required_checks: {
+                completed: true,
+                passed: $required_checks_passed
+              }
             }')
 
           HTTP_CODE=$(curl -sS -o /tmp/cursor-automation-response.json -w "%{http_code}" \
