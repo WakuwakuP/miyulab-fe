@@ -10,7 +10,6 @@
 import type {
   BatchEnrichResult,
   DetailFetchResult,
-  IdCollectResult,
   QueryPlanResult,
   SerializedExecutionPlan,
   SerializedStep,
@@ -156,15 +155,11 @@ export function transformQueryPlanResult(result: QueryPlanResult): {
   totalDurationMs: number
 } {
   // Step 結果からタイプ別に抽出
-  const idCollectResults: IdCollectResult[] = []
   let detailResult: DetailFetchResult | undefined
   let batchResult: BatchEnrichResult | undefined
 
   for (const sr of result.stepResults) {
     switch (sr.type) {
-      case 'id-collect':
-        idCollectResults.push(sr)
-        break
       case 'detail-fetch':
         detailResult = sr
         break
