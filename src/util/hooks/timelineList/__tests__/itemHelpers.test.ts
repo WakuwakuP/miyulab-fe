@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   itemKey,
+  itemNumericId,
   itemTimestamp,
   mergeItemsIntoMap,
   sortItemsDesc,
@@ -30,6 +31,81 @@ describe('itemKey', () => {
   it('それ以外は u:{id} を返す', () => {
     const item = { created_at_ms: 300, id: 'abc' } as unknown as TimelineItem
     expect(itemKey(item)).toBe('u:abc')
+  })
+
+  it('post_id が数値文字列なら p:{id} を返す', () => {
+    const item = {
+      created_at_ms: 100,
+      id: '99',
+      post_id: '42',
+    } as unknown as TimelineItem
+    expect(itemKey(item)).toBe('p:42')
+  })
+
+  it('post_id が数値でなければ u:{id} を返す', () => {
+    const item = {
+      created_at_ms: 100,
+      id: '123',
+      post_id: 'not-a-number',
+    } as unknown as TimelineItem
+    expect(itemKey(item)).toBe('u:123')
+  })
+})
+
+describe('itemNumericId', () => {
+  it('post_id が数値ならその値を返す', () => {
+    const item = {
+      created_at_ms: 100,
+      id: '99',
+      post_id: 42,
+    } as unknown as TimelineItem
+    expect(itemNumericId(item)).toBe(42)
+  })
+
+  it('notification_id が数値ならその値を返す', () => {
+    const item = {
+      created_at_ms: 200,
+      id: '88',
+      notification_id: 7,
+    } as unknown as TimelineItem
+    expect(itemNumericId(item)).toBe(7)
+  })
+
+  it('post_id が数値文字列ならその値を返す', () => {
+    const item = {
+      created_at_ms: 100,
+      id: '99',
+      post_id: '42',
+    } as unknown as TimelineItem
+    expect(itemNumericId(item)).toBe(42)
+  })
+
+  it('post_id が数値でなければ id を parseInt する', () => {
+    const item = {
+      created_at_ms: 100,
+      id: '123',
+      post_id: 'not-a-number',
+    } as unknown as TimelineItem
+    expect(itemNumericId(item)).toBe(123)
+  })
+
+  it('notification_id が数値でなければ id を parseInt する', () => {
+    const item = {
+      created_at_ms: 200,
+      id: '456',
+      notification_id: null,
+    } as unknown as TimelineItem
+    expect(itemNumericId(item)).toBe(456)
+  })
+
+  it('ID フィールドがなければ id を parseInt する', () => {
+    const item = { created_at_ms: 300, id: '789' } as unknown as TimelineItem
+    expect(itemNumericId(item)).toBe(789)
+  })
+
+  it('id が数値にパースできなければ 0 を返す', () => {
+    const item = { created_at_ms: 300, id: 'abc' } as unknown as TimelineItem
+    expect(itemNumericId(item)).toBe(0)
   })
 })
 

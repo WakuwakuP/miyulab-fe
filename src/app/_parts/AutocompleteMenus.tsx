@@ -4,6 +4,46 @@
 import { ProxyImage } from 'app/_parts/ProxyImage'
 import type { Entity } from 'megalodon'
 import * as Emoji from 'node-emoji'
+import type { CSSProperties, KeyboardEvent } from 'react'
+
+function selectAutocompleteItem(
+  event: KeyboardEvent<HTMLButtonElement>,
+  index: number,
+  complete: (index: number) => void,
+) {
+  if (event.key !== 'Enter' && event.key !== ' ') return
+  event.preventDefault()
+  event.stopPropagation()
+  complete(index)
+}
+
+/** Reset native button appearance so rows match the previous div-based list. */
+const autocompleteMenuItemBaseStyle = {
+  background: 'transparent',
+  border: 'none',
+  color: 'inherit',
+  cursor: 'pointer',
+  font: 'inherit',
+  fontFamily: 'inherit',
+  margin: 0,
+  padding: '4px',
+  textAlign: 'left' as const,
+  width: '100%',
+}
+
+function autocompleteMenuItemStyle(
+  selected: boolean,
+  layout: 'block' | 'flex',
+): CSSProperties {
+  return {
+    ...autocompleteMenuItemBaseStyle,
+    display: layout,
+    ...(selected && {
+      backgroundColor: 'blue',
+      color: 'white',
+    }),
+  }
+}
 
 export const MentionMenu = ({
   chars,
@@ -20,6 +60,8 @@ export const MentionMenu = ({
 }) => {
   return (
     <div
+      data-autocomplete-menu
+      role="listbox"
       style={{
         backgroundColor: 'white',
         border: '1px solid black',
@@ -30,29 +72,30 @@ export const MentionMenu = ({
       }}
     >
       {chars.map((char, i) => (
-        <div
+        <button
+          aria-selected={index === i}
           key={char.id}
+          onKeyDown={(e) => {
+            selectAutocompleteItem(e, i, complete)
+          }}
           onMouseDown={(e) => {
             e.preventDefault()
             complete(i)
           }}
-          style={{
-            padding: '4px',
-            ...(index === i && {
-              backgroundColor: 'blue',
-              color: 'white',
-            }),
-          }}
+          role="option"
+          style={autocompleteMenuItemStyle(index === i, 'block')}
+          type="button"
         >
           <ProxyImage
             alt={char.display_name}
             className="mr-2 inline-block h-8 w-8 rounded-full"
+            disableContextMenu
             height={32}
             src={char.avatar}
             width={32}
           />
           <span>{`@${char.acct}`}</span>
-        </div>
+        </button>
       ))}
     </div>
   )
@@ -73,6 +116,8 @@ export const EmojiMenu = ({
 }) => {
   return (
     <div
+      data-autocomplete-menu
+      role="listbox"
       style={{
         backgroundColor: 'white',
         border: '1px solid black',
@@ -83,20 +128,19 @@ export const EmojiMenu = ({
       }}
     >
       {chars.map((char, i) => (
-        <div
+        <button
+          aria-selected={index === i}
           key={char.shortcode}
+          onKeyDown={(e) => {
+            selectAutocompleteItem(e, i, complete)
+          }}
           onMouseDown={(e) => {
             e.preventDefault()
             complete(i)
           }}
-          style={{
-            display: 'flex',
-            padding: '4px',
-            ...(index === i && {
-              backgroundColor: 'blue',
-              color: 'white',
-            }),
-          }}
+          role="option"
+          style={autocompleteMenuItemStyle(index === i, 'flex')}
+          type="button"
         >
           {char.url === '' ? (
             <div>{Emoji.emojify(`:${char.shortcode}:`)}</div>
@@ -109,7 +153,7 @@ export const EmojiMenu = ({
             />
           )}
           <div>:{char.shortcode}:</div>
-        </div>
+        </button>
       ))}
     </div>
   )
@@ -130,6 +174,8 @@ export const TagMenu = ({
 }) => {
   return (
     <div
+      data-autocomplete-menu
+      role="listbox"
       style={{
         backgroundColor: 'white',
         border: '1px solid black',
@@ -140,22 +186,22 @@ export const TagMenu = ({
       }}
     >
       {chars.map((char, i) => (
-        <div
+        <button
+          aria-selected={index === i}
           key={char}
+          onKeyDown={(e) => {
+            selectAutocompleteItem(e, i, complete)
+          }}
           onMouseDown={(e) => {
             e.preventDefault()
             complete(i)
           }}
-          style={{
-            padding: '4px',
-            ...(index === i && {
-              backgroundColor: 'blue',
-              color: 'white',
-            }),
-          }}
+          role="option"
+          style={autocompleteMenuItemStyle(index === i, 'block')}
+          type="button"
         >
           {char}
-        </div>
+        </button>
       ))}
     </div>
   )

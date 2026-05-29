@@ -14,11 +14,14 @@ import { useMemo, useRef } from 'react'
 type ProxyImageProps = Omit<ComponentProps<typeof Image>, 'src'> & {
   /** オリジナルの画像URL（https://から始まる完全なURL） */
   src: string
+  /** true のときコンテキストメニューを出さない（例: autocomplete 内の行ボタン） */
+  disableContextMenu?: boolean
 }
 
 export const ProxyImage = ({
   src: originalSrc,
   className,
+  disableContextMenu = false,
   ...props
 }: ProxyImageProps) => {
   const imgRef = useRef<HTMLImageElement>(null)
@@ -69,17 +72,23 @@ export const ProxyImage = ({
     }
   }
 
+  const image = (
+    <Image
+      className={className}
+      ref={imgRef}
+      src={proxySrc}
+      {...props}
+      unoptimized
+    />
+  )
+
+  if (disableContextMenu) {
+    return image
+  }
+
   return (
     <ContextMenu>
-      <ContextMenuTrigger asChild>
-        <Image
-          className={className}
-          ref={imgRef}
-          src={proxySrc}
-          {...props}
-          unoptimized
-        />
-      </ContextMenuTrigger>
+      <ContextMenuTrigger asChild>{image}</ContextMenuTrigger>
       <ContextMenuContent>
         <ContextMenuItem onClick={handleOpenInNewTab}>
           新しいタブで開く

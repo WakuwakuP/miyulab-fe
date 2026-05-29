@@ -22,12 +22,12 @@ export function TimelinePresenter({
   headerOffset,
   renderItem,
   viewModel,
-}: {
+}: Readonly<{
   viewModel: TimelineViewModel
   headerOffset?: string
   /** 各アイテムの描画関数。isScrolling は Virtuoso のスクロール中フラグ。 */
   renderItem: (item: TimelineItem, isScrolling: boolean) => ReactNode
-}) {
+}>) {
   const {
     configId,
     data,

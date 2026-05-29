@@ -35,6 +35,139 @@ const playableTypes = ['audio', 'video', 'gifv'] as Readonly<
   Entity.Attachment['type'][]
 >
 
+function isEditableKeyboardTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLSelectElement ||
+    target instanceof HTMLTextAreaElement
+  )
+}
+
+function shouldIgnorePlayerKeydown(
+  event: KeyboardEvent,
+  playerRoot: HTMLElement | null,
+): boolean {
+  const target = event.target
+  if (!(target instanceof Node)) return true
+  if (isEditableKeyboardTarget(target)) return true
+  if (
+    target instanceof HTMLElement &&
+    target.closest('[data-autocomplete-menu]') != null
+  ) {
+    return true
+  }
+  if (playerRoot == null || !playerRoot.contains(target)) return true
+  // Space はフォーカス中のボタンに任せる（二重トグル防止）
+  if (event.code === 'Space' && target instanceof HTMLButtonElement) return true
+  return false
+}
+
+function seekPlayed(
+  player: React.RefObject<HTMLVideoElement | null>,
+  delta: number,
+  setPlayed: React.Dispatch<React.SetStateAction<number>>,
+) {
+  setPlayed((prev) => {
+    const seekToPlayed =
+      delta < 0 ? Math.max(0, prev + delta) : Math.min(0.9999999, prev + delta)
+    if (player.current != null && player.current.duration > 0) {
+      player.current.currentTime = seekToPlayed * player.current.duration
+    }
+    return seekToPlayed
+  })
+}
+
+type PlayerSizeClasses = { h: string; w: string }
+
+function renderPlayableMedia({
+  attachment,
+  classNamePlayerSize,
+  currentUrl,
+  currentYouTubeVideoId,
+  externalEmbedFailed,
+  handleProgress,
+  onExternalEmbedError,
+  player,
+  playing,
+  volume,
+}: {
+  attachment: Entity.Attachment
+  classNamePlayerSize: PlayerSizeClasses
+  currentUrl: string
+  currentYouTubeVideoId: string | null
+  externalEmbedFailed: boolean
+  handleProgress: (event: React.SyntheticEvent<HTMLVideoElement>) => void
+  onExternalEmbedError: () => void
+  player: React.RefObject<HTMLVideoElement | null>
+  playing: boolean
+  volume: number
+}): React.ReactNode {
+  if (!playableTypes.includes(attachment.type)) {
+    return null
+  }
+
+  if (!isExternalVideo(currentUrl)) {
+    return (
+      <ReactPlayer
+        className="aspect-video"
+        height={attachment.type === 'audio' ? 0 : classNamePlayerSize.h}
+        loop
+        onTimeUpdate={handleProgress}
+        playing={playing}
+        ref={player}
+        src={currentUrl}
+        volume={volume}
+        width={'100%'}
+      />
+    )
+  }
+
+  if (externalEmbedFailed) {
+    return (
+      <div
+        className={['relative aspect-video w-full', classNamePlayerSize.h].join(
+          ' ',
+        )}
+      >
+        {currentYouTubeVideoId == null ? (
+          <div className="h-full w-full bg-black" />
+        ) : (
+          <img
+            alt="YouTube thumbnail"
+            className="h-full w-full object-contain"
+            src={`https://img.youtube.com/vi/${currentYouTubeVideoId}/hqdefault.jpg`}
+          />
+        )}
+        <a
+          className="absolute inset-0 flex items-center justify-center bg-black/35 text-sm font-medium text-white underline"
+          href={currentUrl}
+          onClick={(event) => {
+            event.stopPropagation()
+          }}
+          rel="noopener noreferrer"
+          target="_blank"
+        >
+          Open externally
+        </a>
+      </div>
+    )
+  }
+
+  return (
+    <iframe
+      allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
+      allowFullScreen
+      className={['aspect-video w-full', classNamePlayerSize.h].join(' ')}
+      // @ts-expect-error -- credentialless is a valid HTML attribute but not yet in React's type definitions
+      credentialless=""
+      onError={onExternalEmbedError}
+      src={getDirectEmbedUrl(currentUrl) ?? currentUrl}
+      style={{ border: 'none' }}
+      title="Video player"
+    />
+  )
+}
+
 const PlayerController = () => {
   const { attachment, index } = useContext(PlayerContext)
   const setAttachment = useContext(SetPlayerContext)
@@ -43,6 +176,7 @@ const PlayerController = () => {
   const { playerSize } = useContext(SettingContext)
 
   const player = useRef<HTMLVideoElement>(null)
+  const playerRootRef = useRef<HTMLDivElement>(null)
   const [playing, setPlaying] = useState<boolean>(false)
   const [played, setPlayed] = useState<number>(0)
   const [seeking, setSeeking] = useState<boolean>(false)
@@ -80,44 +214,40 @@ const PlayerController = () => {
   }
 
   const onKeyDown = useEffectEvent((e: KeyboardEvent) => {
-    if (e.target instanceof HTMLInputElement) return
-    if (e.target instanceof HTMLSelectElement) return
-    if (e.target instanceof HTMLTextAreaElement) return
-    if (e.code === 'Space') {
-      e.preventDefault()
-      setPlaying((prev) => !prev)
-    }
-    if (e.code === 'ArrowLeft') {
-      e.preventDefault()
-      setPlayed((prev) => {
-        const seekToPlayed = Math.max(0, prev - 0.1)
-        if (player.current != null && player.current.duration > 0) {
-          player.current.currentTime = seekToPlayed * player.current.duration
-        }
-        return seekToPlayed
-      })
-    }
-    if (e.code === 'ArrowRight') {
-      e.preventDefault()
-      setPlayed((prev) => {
-        const seekToPlayed = Math.min(0.9999999, prev + 0.1)
-        if (player.current != null && player.current.duration > 0) {
-          player.current.currentTime = seekToPlayed * player.current.duration
-        }
-        return seekToPlayed
-      })
-    }
-    if (e.code === 'ArrowUp') {
-      e.preventDefault()
-      setPlayerSetting((prev) => ({
-        volume: Math.min(1, prev.volume + 0.05),
-      }))
-    }
-    if (e.code === 'ArrowDown') {
-      e.preventDefault()
-      setPlayerSetting((prev) => ({
-        volume: Math.max(0, prev.volume - 0.05),
-      }))
+    if (shouldIgnorePlayerKeydown(e, playerRootRef.current)) return
+
+    const canSeekNativePlayer =
+      currentAttachment != null &&
+      playableTypes.includes(currentAttachment.type) &&
+      (!isExternalVideo(currentUrl) || externalEmbedFailed)
+
+    switch (e.code) {
+      case 'Space':
+        e.preventDefault()
+        setPlaying((prev) => !prev)
+        break
+      case 'ArrowLeft':
+        if (!canSeekNativePlayer) break
+        e.preventDefault()
+        seekPlayed(player, -0.1, setPlayed)
+        break
+      case 'ArrowRight':
+        if (!canSeekNativePlayer) break
+        e.preventDefault()
+        seekPlayed(player, 0.1, setPlayed)
+        break
+      case 'ArrowUp':
+        e.preventDefault()
+        setPlayerSetting((prev) => ({
+          volume: Math.min(1, prev.volume + 0.05),
+        }))
+        break
+      case 'ArrowDown':
+        e.preventDefault()
+        setPlayerSetting((prev) => ({
+          volume: Math.max(0, prev.volume - 0.05),
+        }))
+        break
     }
   })
 
@@ -172,74 +302,24 @@ const PlayerController = () => {
 
   if (currentAttachment == null) return null
 
-  let playableMedia: React.ReactNode = null
-  if (playableTypes.includes(currentAttachment.type)) {
-    if (isExternalVideo(currentUrl)) {
-      if (externalEmbedFailed) {
-        playableMedia = (
-          <div
-            className={[
-              'relative aspect-video w-full',
-              classNamePlayerSize.h,
-            ].join(' ')}
-          >
-            {currentYouTubeVideoId == null ? (
-              <div className="h-full w-full bg-black" />
-            ) : (
-              <img
-                alt="YouTube thumbnail"
-                className="h-full w-full object-contain"
-                src={`https://img.youtube.com/vi/${currentYouTubeVideoId}/hqdefault.jpg`}
-              />
-            )}
-            <a
-              className="absolute inset-0 flex items-center justify-center bg-black/35 text-sm font-medium text-white underline"
-              href={currentUrl}
-              onClick={(event) => {
-                event.stopPropagation()
-              }}
-              rel="noopener noreferrer"
-              target="_blank"
-            >
-              Open externally
-            </a>
-          </div>
-        )
-      } else {
-        playableMedia = (
-          <iframe
-            allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
-            allowFullScreen
-            className={['aspect-video w-full', classNamePlayerSize.h].join(' ')}
-            // @ts-expect-error -- credentialless is a valid HTML attribute but not yet in React's type definitions
-            credentialless=""
-            onError={() => {
-              setExternalEmbedFailed(true)
-            }}
-            src={getDirectEmbedUrl(currentUrl) ?? currentUrl}
-            style={{ border: 'none' }}
-            title="Video player"
-          />
-        )
-      }
-    } else {
-      playableMedia = (
-        <ReactPlayer
-          className="aspect-video"
-          height={
-            currentAttachment.type === 'audio' ? 0 : classNamePlayerSize.h
-          }
-          loop
-          onTimeUpdate={handleProgress}
-          playing={playing}
-          ref={player}
-          src={currentUrl}
-          volume={volume}
-          width={'100%'}
-        />
-      )
-    }
-  }
+  const canSeekNativePlayer =
+    playableTypes.includes(currentAttachment.type) &&
+    (!isExternalVideo(currentUrl) || externalEmbedFailed)
+
+  const playableMedia = renderPlayableMedia({
+    attachment: currentAttachment,
+    classNamePlayerSize,
+    currentUrl,
+    currentYouTubeVideoId,
+    externalEmbedFailed,
+    handleProgress,
+    onExternalEmbedError: () => {
+      setExternalEmbedFailed(true)
+    },
+    player,
+    playing,
+    volume,
+  })
 
   return (
     <div
@@ -247,6 +327,8 @@ const PlayerController = () => {
         'fixed bottom-0 right-0 z-40 max-w-full',
         classNamePlayerSize.w,
       ].join(' ')}
+      data-player
+      ref={playerRootRef}
     >
       <div className=" bg-black" onClick={onClickPlay}>
         {playableMedia}
@@ -287,6 +369,7 @@ const PlayerController = () => {
         <div className="flex h-12 w-full shrink bg-gray-800">
           <input
             className="w-full"
+            disabled={!canSeekNativePlayer}
             max="0.9999999"
             min="0"
             onChange={handleSeekChange}

@@ -2,12 +2,17 @@
 
 import { Status } from 'app/_parts/Status'
 import { useMemo } from 'react'
-import type { TimelineViewModel } from 'types/timelineViewModel'
+import type { TimelineItem, TimelineViewModel } from 'types/timelineViewModel'
 import type { StatusAddAppIndex, TimelineConfigV2 } from 'types/types'
 import { useOtherQueueProgress } from 'util/hooks/useOtherQueueProgress'
 import { useTimelineData } from 'util/hooks/useTimelineData'
 import { getDefaultTimelineName } from 'util/timelineDisplayName'
 import { TimelinePresenter } from './TimelinePresenter'
+
+/** MixedTimeline と同様、通知は top-level の `type` で判別する */
+function isStatusTimelineItem(item: TimelineItem): item is StatusAddAppIndex {
+  return !('type' in item) && 'uri' in item
+}
 
 /**
  * 統合タイムラインコンポーネント (Container)
@@ -37,9 +42,11 @@ export const UnifiedTimeline = ({
     return getDefaultTimelineName(config)
   }, [config])
 
+  const statusData = useMemo(() => data.filter(isStatusTimelineItem), [data])
+
   const viewModel: TimelineViewModel = {
     configId: config.id,
-    data,
+    data: statusData,
     displayName,
     hasMoreOlder,
     initializing,
@@ -51,13 +58,10 @@ export const UnifiedTimeline = ({
   return (
     <TimelinePresenter
       headerOffset={headerOffset}
-      renderItem={(item, scrolling) => (
-        <Status
-          key={item.id}
-          scrolling={scrolling}
-          status={item as StatusAddAppIndex}
-        />
-      )}
+      renderItem={(item, scrolling) => {
+        if (!isStatusTimelineItem(item)) return null
+        return <Status key={item.id} scrolling={scrolling} status={item} />
+      }}
       viewModel={viewModel}
     />
   )
