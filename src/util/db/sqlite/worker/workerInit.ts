@@ -5,6 +5,7 @@
  * 初期化後に PRAGMA quick_check で破損を検出し、必要に応じてバックアップから復元する。
  */
 
+// biome-ignore-all lint/suspicious/noExplicitAny: sqlite-wasm types are not exact
 import { loadSqliteWasmInitializer } from '../sqliteWasmLoader'
 import type { RecoveryResult } from './workerRecovery'
 import { setDb, setSqlite3Module } from './workerState'
@@ -14,7 +15,6 @@ export type InitResult = {
   recovered?: 'restored' | 'reset'
 }
 
-// biome-ignore lint/suspicious/noExplicitAny: sqlite-wasm types are not exact
 function applyDatabasePragmas(db: any): void {
   db.exec('PRAGMA journal_mode=WAL;')
   db.exec('PRAGMA synchronous=NORMAL;')
@@ -23,7 +23,6 @@ function applyDatabasePragmas(db: any): void {
   db.exec('PRAGMA temp_store = MEMORY;') // 一時テーブルをメモリに配置
 }
 
-// biome-ignore lint/suspicious/noExplicitAny: sqlite-wasm types are not exact
 async function openPersistentDatabase(
   sqlite3: any,
 ): Promise<{ db: any; persistence: 'opfs' | 'memory' }> {
@@ -55,7 +54,6 @@ async function openPersistentDatabase(
   }
 }
 
-// biome-ignore lint/suspicious/noExplicitAny: sqlite-wasm types are not exact
 function tryCloseDb(db: any): void {
   try {
     db.close()
@@ -67,7 +65,6 @@ function tryCloseDb(db: any): void {
   }
 }
 
-// biome-ignore lint/suspicious/noExplicitAny: sqlite-wasm types are not exact
 async function createInMemoryFallback(
   sqlite3: any,
   previousDb?: any,
@@ -86,7 +83,6 @@ async function createInMemoryFallback(
   return { db, persistence: 'memory', recovered: 'reset' }
 }
 
-// biome-ignore lint/suspicious/noExplicitAny: sqlite-wasm types are not exact
 async function recoverOpfsDatabaseIfNeeded(
   db: any,
   sqlite3: any,

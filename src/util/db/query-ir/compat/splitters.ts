@@ -18,12 +18,12 @@ function handleQuoteChar(
   current: string,
 ): { inString: boolean; current: string; skip: number } {
   if (!inString) {
-    return { inString: true, current: current + "'", skip: 0 }
+    return { current: `${current}'`, inString: true, skip: 0 }
   }
   if (index + 1 < where.length && where[index + 1] === "'") {
-    return { inString: true, current: current + "''", skip: 1 }
+    return { current: `${current}''`, inString: true, skip: 1 }
   }
-  return { inString: false, current: current + "'", skip: 0 }
+  return { current: `${current}'`, inString: false, skip: 0 }
 }
 
 function trySplitAtDelimiter(
@@ -35,16 +35,16 @@ function trySplitAtDelimiter(
   parts: string[],
 ): { index: number; current: string; split: boolean } {
   if (depth !== 0) {
-    return { index, current, split: false }
+    return { current, index, split: false }
   }
   const match = splitPattern.exec(where.slice(index))
   if (!match) {
-    return { index, current, split: false }
+    return { current, index, split: false }
   }
   parts.push(current.trim())
   return {
-    index: index + match[0].length - 1,
     current: '',
+    index: index + match[0].length - 1,
     split: true,
   }
 }
