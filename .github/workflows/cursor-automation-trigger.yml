@@ -1,0 +1,105 @@
+name: Trigger Cursor Automation
+
+# Fires when any check suite on a commit completes. The job re-evaluates whether
+# all merge-required checks on the PR are satisfied (mergeStateStatus == CLEAN).
+on:
+  check_suite:
+    types: [completed]
+
+concurrency:
+  group: cursor-automation-${{ github.event.check_suite.head_sha }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pull-requests: read
+  checks: read
+
+jobs:
+  trigger-on-required-checks-passed:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Cursor Automation when merge checks pass
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.check_suite.head_sha }}
+          HEAD_BRANCH: ${{ github.event.check_suite.head_branch }}
+          CURSOR_AUTOMATION_WEBHOOK_URL: ${{ vars.CURSOR_AUTOMATION_WEBHOOK_URL }}
+          CURSOR_AUTOMATION_WEBHOOK_API_KEY: ${{ secrets.CURSOR_AUTOMATION_WEBHOOK_API_KEY }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${HEAD_BRANCH:-}" ]; then
+            echo "No head branch on check_suite. Skipping."
+            exit 0
+          fi
+
+          PR_JSON=$(gh pr list \
+            --repo "${GITHUB_REPOSITORY}" \
+            --head "${HEAD_BRANCH}" \
+            --state open \
+            --json number,author,isDraft,url,mergeStateStatus \
+            --limit 1)
+
+          if [ "$(echo "$PR_JSON" | jq 'length')" -eq 0 ]; then
+            echo "No open pull request for branch ${HEAD_BRANCH}. Skipping."
+            exit 0
+          fi
+
+          PR_NUMBER=$(echo "$PR_JSON" | jq -r '.[0].number')
+          PR_AUTHOR=$(echo "$PR_JSON" | jq -r '.[0].author.login')
+          PR_URL=$(echo "$PR_JSON" | jq -r '.[0].url')
+          IS_DRAFT=$(echo "$PR_JSON" | jq -r '.[0].isDraft')
+          MERGE_STATE=$(echo "$PR_JSON" | jq -r '.[0].mergeStateStatus')
+
+          echo "PR #${PR_NUMBER} (${PR_URL})"
+          echo "Author: ${PR_AUTHOR}, draft: ${IS_DRAFT}, mergeStateStatus: ${MERGE_STATE}"
+
+          if [ "$PR_AUTHOR" != "cursor[bot]" ]; then
+            echo "Pull request was not created by cursor[bot]. Skipping."
+            exit 0
+          fi
+
+          if [ "$IS_DRAFT" = "true" ]; then
+            echo "Pull request is a draft. Skipping."
+            exit 0
+          fi
+
+          if [ "$MERGE_STATE" != "CLEAN" ]; then
+            echo "Merge-required checks are not all satisfied yet. Skipping."
+            exit 0
+          fi
+
+          if [ -z "${CURSOR_AUTOMATION_WEBHOOK_URL:-}" ] || [ -z "${CURSOR_AUTOMATION_WEBHOOK_API_KEY:-}" ]; then
+            echo "CURSOR_AUTOMATION_WEBHOOK_URL or CURSOR_AUTOMATION_WEBHOOK_API_KEY is not configured. Skipping."
+            exit 0
+          fi
+
+          PAYLOAD=$(jq -n \
+            --arg event "github.required_checks.completed" \
+            --arg repository "${GITHUB_REPOSITORY}" \
+            --argjson pr_number "$PR_NUMBER" \
+            --arg pr_url "$PR_URL" \
+            --arg head_sha "$HEAD_SHA" \
+            --arg head_branch "$HEAD_BRANCH" \
+            '{
+              event: $event,
+              repository: $repository,
+              pull_request: {number: $pr_number, url: $pr_url},
+              head_sha: $head_sha,
+              head_branch: $head_branch
+            }')
+
+          HTTP_CODE=$(curl -sS -o /tmp/cursor-automation-response.json -w "%{http_code}" \
+            -X POST "${CURSOR_AUTOMATION_WEBHOOK_URL}" \
+            -H "Authorization: Bearer ${CURSOR_AUTOMATION_WEBHOOK_API_KEY}" \
+            -H "Content-Type: application/json" \
+            -d "${PAYLOAD}")
+
+          if [ "$HTTP_CODE" -lt 200 ] || [ "$HTTP_CODE" -ge 300 ]; then
+            echo "Cursor Automation webhook failed (HTTP ${HTTP_CODE})"
+            cat /tmp/cursor-automation-response.json
+            exit 1
+          fi
+
+          echo "Cursor Automation triggered successfully (HTTP ${HTTP_CODE})"
