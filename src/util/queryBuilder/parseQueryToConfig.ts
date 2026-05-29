@@ -1,4 +1,5 @@
 import type { StatusTimelineType, TimelineConfigV2 } from 'types/types'
+import { sortBackendUrls } from 'util/timelineConfigValidator'
 import { buildQueryFromConfig } from './buildQueryFromConfig'
 
 // ================================================================
@@ -226,7 +227,7 @@ export function parseQueryToConfig(
       result.backendFilter = { backendUrl: urls[0], mode: 'single' }
     } else if (urls.length > 1) {
       result.backendFilter = {
-        backendUrls: urls.sort((a, b) => a.localeCompare(b)),
+        backendUrls: sortBackendUrls(urls),
         mode: 'composite',
       }
     }
