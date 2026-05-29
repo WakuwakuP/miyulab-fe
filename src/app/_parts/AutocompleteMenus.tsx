@@ -4,7 +4,7 @@
 import { ProxyImage } from 'app/_parts/ProxyImage'
 import type { Entity } from 'megalodon'
 import * as Emoji from 'node-emoji'
-import type { KeyboardEvent } from 'react'
+import type { CSSProperties, KeyboardEvent } from 'react'
 
 function selectAutocompleteItem(
   event: KeyboardEvent<HTMLButtonElement>,
@@ -14,6 +14,34 @@ function selectAutocompleteItem(
   if (event.key !== 'Enter' && event.key !== ' ') return
   event.preventDefault()
   complete(index)
+}
+
+/** Reset native button appearance so rows match the previous div-based list. */
+const autocompleteMenuItemBaseStyle = {
+  background: 'transparent',
+  border: 'none',
+  color: 'inherit',
+  cursor: 'pointer',
+  font: 'inherit',
+  fontFamily: 'inherit',
+  margin: 0,
+  padding: '4px',
+  textAlign: 'left' as const,
+  width: '100%',
+}
+
+function autocompleteMenuItemStyle(
+  selected: boolean,
+  layout: 'block' | 'flex',
+): CSSProperties {
+  return {
+    ...autocompleteMenuItemBaseStyle,
+    display: layout,
+    ...(selected && {
+      backgroundColor: 'blue',
+      color: 'white',
+    }),
+  }
 }
 
 export const MentionMenu = ({
@@ -50,18 +78,7 @@ export const MentionMenu = ({
             e.preventDefault()
             complete(i)
           }}
-          style={{
-            border: 'none',
-            cursor: 'pointer',
-            display: 'block',
-            padding: '4px',
-            textAlign: 'left',
-            width: '100%',
-            ...(index === i && {
-              backgroundColor: 'blue',
-              color: 'white',
-            }),
-          }}
+          style={autocompleteMenuItemStyle(index === i, 'block')}
           type="button"
         >
           <ProxyImage
@@ -112,18 +129,7 @@ export const EmojiMenu = ({
             e.preventDefault()
             complete(i)
           }}
-          style={{
-            border: 'none',
-            cursor: 'pointer',
-            display: 'flex',
-            padding: '4px',
-            textAlign: 'left',
-            width: '100%',
-            ...(index === i && {
-              backgroundColor: 'blue',
-              color: 'white',
-            }),
-          }}
+          style={autocompleteMenuItemStyle(index === i, 'flex')}
           type="button"
         >
           {char.url === '' ? (
@@ -177,18 +183,7 @@ export const TagMenu = ({
             e.preventDefault()
             complete(i)
           }}
-          style={{
-            border: 'none',
-            cursor: 'pointer',
-            display: 'block',
-            padding: '4px',
-            textAlign: 'left',
-            width: '100%',
-            ...(index === i && {
-              backgroundColor: 'blue',
-              color: 'white',
-            }),
-          }}
+          style={autocompleteMenuItemStyle(index === i, 'block')}
           type="button"
         >
           {char}
