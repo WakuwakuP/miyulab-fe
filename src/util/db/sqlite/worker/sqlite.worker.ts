@@ -68,6 +68,282 @@ let recoveryInProgress = false
 // メッセージルーター
 // ================================================================
 
+function dispatchWorkerRequest(
+  db: ReturnType<typeof getDb>,
+  msg: WorkerRequest,
+): void {
+  switch (msg.type) {
+    // ---- 汎用 ----
+    case 'exec': {
+      const { result, durationMs } = handleExec(
+        msg.sql,
+        msg.bind,
+        msg.returnValue,
+      )
+      sendResponse(msg.id, result, undefined, durationMs)
+      break
+    }
+
+    case 'execBatch': {
+      const result = handleExecBatch(
+        msg.statements,
+        msg.rollbackOnError,
+        msg.returnIndices,
+      )
+      sendResponse(msg.id, result)
+      break
+    }
+
+    case 'ready': {
+      sendResponse(msg.id, true)
+      break
+    }
+
+    // ---- Status 専用ハンドラ ----
+    case 'upsertStatus': {
+      const r = handleUpsertStatus(
+        db,
+        msg.statusJson,
+        msg.backendUrl,
+        msg.timelineType,
+        msg.tag,
+      )
+      sendResponse(msg.id, { ok: true }, r.changedTables, undefined, {
+        backendUrl: msg.backendUrl,
+        tag: msg.tag,
+        timelineType: msg.timelineType,
+      })
+      break
+    }
+
+    case 'bulkUpsertStatuses': {
+      const r = handleBulkUpsertStatuses(
+        db,
+        msg.statusesJson,
+        msg.backendUrl,
+        msg.timelineType,
+        msg.tag,
+        msg.skipProfileUpdate,
+      )
+      sendResponse(msg.id, { ok: true }, r.changedTables, undefined, {
+        backendUrl: msg.backendUrl,
+        tag: msg.tag,
+        timelineType: msg.timelineType,
+      })
+      break
+    }
+
+    case 'updateStatusAction': {
+      const localAccountId = resolveLocalAccountId(db, msg.backendUrl)
+      if (localAccountId == null) {
+        sendResponse(msg.id, { ok: true }, [])
+        break
+      }
+      const r = handleUpdateStatusAction(
+        db,
+        localAccountId,
+        msg.statusId,
+        msg.action,
+        msg.value,
+      )
+      sendResponse(msg.id, { ok: true }, r.changedTables, undefined, {
+        backendUrl: msg.backendUrl,
+      })
+      break
+    }
+
+    case 'updateStatus': {
+      const r = handleUpdateStatus(db, msg.statusJson, msg.backendUrl)
+      sendResponse(msg.id, { ok: true }, r.changedTables, undefined, {
+        backendUrl: msg.backendUrl,
+      })
+      break
+    }
+
+    case 'handleDeleteEvent': {
+      const localAccountId = resolveLocalAccountId(db, msg.backendUrl)
+      if (localAccountId == null) {
+        sendResponse(msg.id, { ok: true }, [])
+        break
+      }
+      const r = handleDeleteEvent(db, localAccountId, msg.statusId)
+      sendResponse(msg.id, { ok: true }, r.changedTables, undefined, {
+        backendUrl: msg.backendUrl,
+        tag: msg.tag,
+        timelineType: msg.sourceTimelineType,
+      })
+      break
+    }
+
+    case 'removeFromTimeline': {
+      const localAccountId = resolveLocalAccountId(db, msg.backendUrl)
+      if (localAccountId == null) {
+        sendResponse(msg.id, { ok: true }, [])
+        break
+      }
+      const timelineKey = buildTimelineKey(msg.timelineType, { tag: msg.tag })
+      const postId = resolvePostIdInternal(db, localAccountId, msg.statusId)
+      if (postId == null) {
+        sendResponse(msg.id, { ok: true }, [])
+        break
+      }
+      const r = handleRemoveFromTimeline(
+        db,
+        localAccountId,
+        timelineKey,
+        postId,
+      )
+      sendResponse(msg.id, { ok: true }, r.changedTables, undefined, {
+        backendUrl: msg.backendUrl,
+        tag: msg.tag,
+        timelineType: msg.timelineType,
+      })
+      break
+    }
+
+    // ---- Notification 専用ハンドラ ----
+    case 'addNotification': {
+      const r = handleAddNotification(db, msg.notificationJson, msg.backendUrl)
+      sendResponse(msg.id, { ok: true }, r.changedTables, undefined, {
+        backendUrl: msg.backendUrl,
+      })
+      break
+    }
+
+    case 'bulkAddNotifications': {
+      const r = handleBulkAddNotifications(
+        db,
+        msg.notificationsJson,
+        msg.backendUrl,
+      )
+      sendResponse(msg.id, { ok: true }, r.changedTables, undefined, {
+        backendUrl: msg.backendUrl,
+      })
+      break
+    }
+
+    case 'updateNotificationStatusAction': {
+      const r = handleUpdateNotificationStatusAction(
+        db,
+        msg.backendUrl,
+        msg.statusId,
+        msg.action,
+        msg.value,
+      )
+      sendResponse(msg.id, { ok: true }, r.changedTables, undefined, {
+        backendUrl: msg.backendUrl,
+      })
+      break
+    }
+
+    // ---- Cleanup ----
+    case 'enforceMaxLength': {
+      const r = handleEnforceMaxLength(
+        db,
+        DEFAULT_MAX_TIMELINE_ENTRIES,
+        DEFAULT_MAX_NOTIFICATIONS,
+        DEFAULT_MAX_POSTS,
+        {
+          batchLimit: msg.batchLimit,
+          mode: msg.mode,
+          targetRatio: msg.targetRatio,
+        },
+      )
+      sendResponse(
+        msg.id,
+        {
+          deletedCounts: r.deletedCounts,
+          hasMore: r.hasMore,
+          ok: true,
+          phaseTimings: r.phaseTimings,
+        },
+        r.changedTables,
+      )
+      break
+    }
+
+    // ---- Local Account ----
+    case 'ensureLocalAccount': {
+      const r = handleEnsureLocalAccount(db, msg.backendUrl, msg.accountJson)
+      sendResponse(msg.id, { ok: true }, r.changedTables)
+      break
+    }
+
+    // ---- Reaction ----
+    case 'toggleReaction': {
+      const localAccountId = resolveLocalAccountId(db, msg.backendUrl)
+      if (localAccountId == null) {
+        sendResponse(msg.id, { ok: true }, [])
+        break
+      }
+      const r = handleToggleReaction(
+        db,
+        localAccountId,
+        msg.statusId,
+        msg.value,
+        msg.emoji,
+      )
+      sendResponse(msg.id, { ok: true }, r.changedTables)
+      break
+    }
+
+    // ---- Custom Emoji Catalog ----
+    case 'bulkUpsertCustomEmojis': {
+      const r = handleBulkUpsertCustomEmojis(db, msg.backendUrl, msg.emojisJson)
+      sendResponse(msg.id, { ok: true }, r.changedTables)
+      break
+    }
+
+    // ---- ExecutionPlan 汎用実行 ----
+    case 'executeQueryPlan': {
+      const result = runQueryPlan(db, msg.plan)
+      const resultWithVersions = {
+        ...result,
+        capturedVersions: captureTableVersions(),
+      }
+      sendResponse(
+        msg.id,
+        resultWithVersions,
+        undefined,
+        result.totalDurationMs,
+      )
+      break
+    }
+
+    // ---- GraphPlan 実行 (V2 グラフエンジン) ----
+    case 'executeGraphPlan': {
+      syncGraphCacheVersions(getTableVersionsMap())
+      const result = runGraphPlan(
+        db,
+        msg.plan,
+        msg.options,
+        captureTableVersions,
+      )
+      sendResponse(msg.id, result, undefined, result.meta.totalDurationMs)
+      break
+    }
+
+    // ---- FlatFetch 実行（フロー実行で事前フィルタ済み ID → Entity 組み立て）----
+    case 'executeFlatFetch': {
+      const result = runFlatFetch(db, msg.request)
+      sendResponse(msg.id, result, undefined, result.meta.totalDurationMs)
+      break
+    }
+
+    // ---- Timeline 一括取得 ----
+    case 'fetchTimeline': {
+      const result = handleFetchTimeline(msg)
+      sendResponse(msg.id, result)
+      break
+    }
+
+    default: {
+      const unknownMsg = msg as { id: number; type: string }
+      sendError(unknownMsg.id, `Unknown message type: ${unknownMsg.type}`)
+    }
+  }
+}
+
 self.onmessage = (
   event: MessageEvent<WorkerRequest | { type: '__init'; origin: string }>,
 ) => {
@@ -114,284 +390,7 @@ self.onmessage = (
   const db = getDb()
 
   try {
-    switch (msg.type) {
-      // ---- 汎用 ----
-      case 'exec': {
-        const { result, durationMs } = handleExec(
-          msg.sql,
-          msg.bind,
-          msg.returnValue,
-        )
-        sendResponse(msg.id, result, undefined, durationMs)
-        break
-      }
-
-      case 'execBatch': {
-        const result = handleExecBatch(
-          msg.statements,
-          msg.rollbackOnError,
-          msg.returnIndices,
-        )
-        sendResponse(msg.id, result)
-        break
-      }
-
-      case 'ready': {
-        sendResponse(msg.id, true)
-        break
-      }
-
-      // ---- Status 専用ハンドラ ----
-      case 'upsertStatus': {
-        const r = handleUpsertStatus(
-          db,
-          msg.statusJson,
-          msg.backendUrl,
-          msg.timelineType,
-          msg.tag,
-        )
-        sendResponse(msg.id, { ok: true }, r.changedTables, undefined, {
-          backendUrl: msg.backendUrl,
-          tag: msg.tag,
-          timelineType: msg.timelineType,
-        })
-        break
-      }
-
-      case 'bulkUpsertStatuses': {
-        const r = handleBulkUpsertStatuses(
-          db,
-          msg.statusesJson,
-          msg.backendUrl,
-          msg.timelineType,
-          msg.tag,
-          msg.skipProfileUpdate,
-        )
-        sendResponse(msg.id, { ok: true }, r.changedTables, undefined, {
-          backendUrl: msg.backendUrl,
-          tag: msg.tag,
-          timelineType: msg.timelineType,
-        })
-        break
-      }
-
-      case 'updateStatusAction': {
-        const localAccountId = resolveLocalAccountId(db, msg.backendUrl)
-        if (localAccountId == null) {
-          sendResponse(msg.id, { ok: true }, [])
-          break
-        }
-        const r = handleUpdateStatusAction(
-          db,
-          localAccountId,
-          msg.statusId,
-          msg.action,
-          msg.value,
-        )
-        sendResponse(msg.id, { ok: true }, r.changedTables, undefined, {
-          backendUrl: msg.backendUrl,
-        })
-        break
-      }
-
-      case 'updateStatus': {
-        const r = handleUpdateStatus(db, msg.statusJson, msg.backendUrl)
-        sendResponse(msg.id, { ok: true }, r.changedTables, undefined, {
-          backendUrl: msg.backendUrl,
-        })
-        break
-      }
-
-      case 'handleDeleteEvent': {
-        const localAccountId = resolveLocalAccountId(db, msg.backendUrl)
-        if (localAccountId == null) {
-          sendResponse(msg.id, { ok: true }, [])
-          break
-        }
-        const r = handleDeleteEvent(db, localAccountId, msg.statusId)
-        sendResponse(msg.id, { ok: true }, r.changedTables, undefined, {
-          backendUrl: msg.backendUrl,
-          tag: msg.tag,
-          timelineType: msg.sourceTimelineType,
-        })
-        break
-      }
-
-      case 'removeFromTimeline': {
-        const localAccountId = resolveLocalAccountId(db, msg.backendUrl)
-        if (localAccountId == null) {
-          sendResponse(msg.id, { ok: true }, [])
-          break
-        }
-        const timelineKey = buildTimelineKey(msg.timelineType, { tag: msg.tag })
-        const postId = resolvePostIdInternal(db, localAccountId, msg.statusId)
-        if (postId == null) {
-          sendResponse(msg.id, { ok: true }, [])
-          break
-        }
-        const r = handleRemoveFromTimeline(
-          db,
-          localAccountId,
-          timelineKey,
-          postId,
-        )
-        sendResponse(msg.id, { ok: true }, r.changedTables, undefined, {
-          backendUrl: msg.backendUrl,
-          tag: msg.tag,
-          timelineType: msg.timelineType,
-        })
-        break
-      }
-
-      // ---- Notification 専用ハンドラ ----
-      case 'addNotification': {
-        const r = handleAddNotification(
-          db,
-          msg.notificationJson,
-          msg.backendUrl,
-        )
-        sendResponse(msg.id, { ok: true }, r.changedTables, undefined, {
-          backendUrl: msg.backendUrl,
-        })
-        break
-      }
-
-      case 'bulkAddNotifications': {
-        const r = handleBulkAddNotifications(
-          db,
-          msg.notificationsJson,
-          msg.backendUrl,
-        )
-        sendResponse(msg.id, { ok: true }, r.changedTables, undefined, {
-          backendUrl: msg.backendUrl,
-        })
-        break
-      }
-
-      case 'updateNotificationStatusAction': {
-        const r = handleUpdateNotificationStatusAction(
-          db,
-          msg.backendUrl,
-          msg.statusId,
-          msg.action,
-          msg.value,
-        )
-        sendResponse(msg.id, { ok: true }, r.changedTables, undefined, {
-          backendUrl: msg.backendUrl,
-        })
-        break
-      }
-
-      // ---- Cleanup ----
-      case 'enforceMaxLength': {
-        const r = handleEnforceMaxLength(
-          db,
-          DEFAULT_MAX_TIMELINE_ENTRIES,
-          DEFAULT_MAX_NOTIFICATIONS,
-          DEFAULT_MAX_POSTS,
-          {
-            batchLimit: msg.batchLimit,
-            mode: msg.mode,
-            targetRatio: msg.targetRatio,
-          },
-        )
-        sendResponse(
-          msg.id,
-          {
-            deletedCounts: r.deletedCounts,
-            hasMore: r.hasMore,
-            ok: true,
-            phaseTimings: r.phaseTimings,
-          },
-          r.changedTables,
-        )
-        break
-      }
-
-      // ---- Local Account ----
-      case 'ensureLocalAccount': {
-        const r = handleEnsureLocalAccount(db, msg.backendUrl, msg.accountJson)
-        sendResponse(msg.id, { ok: true }, r.changedTables)
-        break
-      }
-
-      // ---- Reaction ----
-      case 'toggleReaction': {
-        const localAccountId = resolveLocalAccountId(db, msg.backendUrl)
-        if (localAccountId == null) {
-          sendResponse(msg.id, { ok: true }, [])
-          break
-        }
-        const r = handleToggleReaction(
-          db,
-          localAccountId,
-          msg.statusId,
-          msg.value,
-          msg.emoji,
-        )
-        sendResponse(msg.id, { ok: true }, r.changedTables)
-        break
-      }
-
-      // ---- Custom Emoji Catalog ----
-      case 'bulkUpsertCustomEmojis': {
-        const r = handleBulkUpsertCustomEmojis(
-          db,
-          msg.backendUrl,
-          msg.emojisJson,
-        )
-        sendResponse(msg.id, { ok: true }, r.changedTables)
-        break
-      }
-
-      // ---- ExecutionPlan 汎用実行 ----
-      case 'executeQueryPlan': {
-        const result = runQueryPlan(db, msg.plan)
-        const resultWithVersions = {
-          ...result,
-          capturedVersions: captureTableVersions(),
-        }
-        sendResponse(
-          msg.id,
-          resultWithVersions,
-          undefined,
-          result.totalDurationMs,
-        )
-        break
-      }
-
-      // ---- GraphPlan 実行 (V2 グラフエンジン) ----
-      case 'executeGraphPlan': {
-        syncGraphCacheVersions(getTableVersionsMap())
-        const result = runGraphPlan(
-          db,
-          msg.plan,
-          msg.options,
-          captureTableVersions,
-        )
-        sendResponse(msg.id, result, undefined, result.meta.totalDurationMs)
-        break
-      }
-
-      // ---- FlatFetch 実行（フロー実行で事前フィルタ済み ID → Entity 組み立て）----
-      case 'executeFlatFetch': {
-        const result = runFlatFetch(db, msg.request)
-        sendResponse(msg.id, result, undefined, result.meta.totalDurationMs)
-        break
-      }
-
-      // ---- Timeline 一括取得 ----
-      case 'fetchTimeline': {
-        const result = handleFetchTimeline(msg)
-        sendResponse(msg.id, result)
-        break
-      }
-
-      default: {
-        const unknownMsg = msg as { id: number; type: string }
-        sendError(unknownMsg.id, `Unknown message type: ${unknownMsg.type}`)
-      }
-    }
+    dispatchWorkerRequest(db, msg)
   } catch (e) {
     sendError(msg.id, e)
 

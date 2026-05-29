@@ -223,11 +223,9 @@ export function execBatch(
  * ヒット分は precomputedResults として Worker に渡して DB 実行をスキップさせる。
  * 実行後は capturedVersions でキャッシュを更新する。
  */
-export async function executeQueryPlan(
+function collectPrecomputedIdCollectResults(
   plan: SerializedExecutionPlan,
-  sessionTag?: string,
-): Promise<QueryPlanResult> {
-  // キャッシュヒットした id-collect ステップをキャッシュから集める
+): Record<number, IdCollectResult> {
   const precomputedResults: Record<number, IdCollectResult> = {}
   for (let i = 0; i < plan.steps.length; i++) {
     const step = plan.steps[i]
@@ -237,6 +235,47 @@ export async function executeQueryPlan(
       precomputedResults[i] = { rows: cached, type: 'id-collect' }
     }
   }
+  return precomputedResults
+}
+
+function cacheExecutedIdCollectSteps(
+  plan: SerializedExecutionPlan,
+  result: QueryPlanResult,
+  precomputedResults: Record<number, IdCollectResult>,
+): void {
+  if (!result.capturedVersions) return
+
+  syncTableVersions(result.capturedVersions)
+
+  for (let i = 0; i < plan.steps.length; i++) {
+    const step = plan.steps[i]
+    if (step.type !== 'id-collect') continue
+    // Worker で実際に実行されたステップのみキャッシュ保存（precomputed は除外）
+    if (precomputedResults[i]) continue
+    const stepResult = result.stepResults[i]
+    if (stepResult?.type === 'id-collect') {
+      // Legacy path — rows lack 'table' field, add it from step.source
+      const rowsWithTable = stepResult.rows.map(
+        (r: { id: number; createdAtMs: number }) => ({
+          ...r,
+          table: step.source,
+        }),
+      )
+      setCachedIdCollect(
+        { binds: step.binds, sql: step.sql },
+        rowsWithTable,
+        result.capturedVersions,
+        step.source,
+      )
+    }
+  }
+}
+
+export async function executeQueryPlan(
+  plan: SerializedExecutionPlan,
+  sessionTag?: string,
+): Promise<QueryPlanResult> {
+  const precomputedResults = collectPrecomputedIdCollectResults(plan)
 
   const planWithCache: SerializedExecutionPlan =
     Object.keys(precomputedResults).length > 0
@@ -255,33 +294,7 @@ export async function executeQueryPlan(
     sessionTag,
   )) as QueryPlanResult
 
-  // capturedVersions でローカルバージョンを同期し、新規実行分をキャッシュに保存
-  if (result.capturedVersions) {
-    syncTableVersions(result.capturedVersions)
-
-    for (let i = 0; i < plan.steps.length; i++) {
-      const step = plan.steps[i]
-      if (step.type !== 'id-collect') continue
-      // Worker で実際に実行されたステップのみキャッシュ保存（precomputed は除外）
-      if (precomputedResults[i]) continue
-      const stepResult = result.stepResults[i]
-      if (stepResult?.type === 'id-collect') {
-        // Legacy path — rows lack 'table' field, add it from step.source
-        const rowsWithTable = stepResult.rows.map(
-          (r: { id: number; createdAtMs: number }) => ({
-            ...r,
-            table: step.source,
-          }),
-        )
-        setCachedIdCollect(
-          { binds: step.binds, sql: step.sql },
-          rowsWithTable,
-          result.capturedVersions,
-          step.source,
-        )
-      }
-    }
-  }
+  cacheExecutedIdCollectSteps(plan, result, precomputedResults)
 
   return result
 }
