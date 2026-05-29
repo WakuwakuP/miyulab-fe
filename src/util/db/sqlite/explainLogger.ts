@@ -69,7 +69,7 @@ function sanitizeSql(sql: string): string {
   // Bearer トークンや長い文字列リテラルをマスクする
   const masked = normalized
     // e.g. "Authorization: Bearer abcdef..." のようなパターン
-    .replace(/\bBearer\s+[A-Za-z0-9\-._~+/]+=*/gi, 'Bearer [REDACTED]')
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/=-]+=*/gi, 'Bearer [REDACTED]')
     // シングルクォートで囲まれた不自然に長いリテラル
     .replace(/'[^']{50,}'/g, "'[REDACTED]'")
     // ダブルクォートで囲まれた不自然に長いリテラル

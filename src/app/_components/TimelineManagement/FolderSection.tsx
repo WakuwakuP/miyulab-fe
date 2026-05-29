@@ -32,7 +32,7 @@ export const FolderSection = ({
   collapsedFolders: Set<string>
   dragAttributes?: React.HTMLAttributes<HTMLElement>
   // biome-ignore lint/complexity/noBannedTypes: matches @dnd-kit SyntheticListenerMap type
-  dragListeners?: Record<string, Function> | undefined
+  dragListeners?: Record<string, Function>
   groupKey: string
   isDragging?: boolean
   isDropTarget?: boolean

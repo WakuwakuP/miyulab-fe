@@ -287,7 +287,7 @@ export function compileMergeNode(mergeNode: MergeNode): ExecutionPlan {
 
 export function compileQueryPlan(plan: QueryPlan): ExecutionPlan {
   const mergeNode = plan.composites.find((c) => c.kind === 'merge')
-  if (mergeNode && mergeNode.kind === 'merge') {
+  if (mergeNode?.kind === 'merge') {
     return compileMergeNode(mergeNode)
   }
   return compileSingleSource(plan)
