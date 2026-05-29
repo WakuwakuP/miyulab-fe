@@ -51,15 +51,13 @@ jobs:
           PR_AUTHOR_TYPE=$(echo "$PR_JSON" | jq -r '.[0].author.type')
           PR_URL=$(echo "$PR_JSON" | jq -r '.[0].url')
           IS_DRAFT=$(echo "$PR_JSON" | jq -r '.[0].isDraft')
-          EXPECTED_AUTHOR="cursor[bot]"
-
           echo "PR #${PR_NUMBER} (${PR_URL})"
           echo "PR author login: '${PR_AUTHOR_LOGIN}' (type: ${PR_AUTHOR_TYPE})"
-          echo "Expected author login for trigger: '${EXPECTED_AUTHOR}'"
+          echo "Expected author login for trigger: 'app/cursor' (legacy: 'cursor[bot]')"
           echo "Draft: ${IS_DRAFT}"
 
-          if [ "$PR_AUTHOR_LOGIN" != "$EXPECTED_AUTHOR" ]; then
-            echo "Author check failed: login '${PR_AUTHOR_LOGIN}' != '${EXPECTED_AUTHOR}'. Skipping."
+          if [ "$PR_AUTHOR_LOGIN" != "app/cursor" ] && [ "$PR_AUTHOR_LOGIN" != "cursor[bot]" ]; then
+            echo "Author check failed: login '${PR_AUTHOR_LOGIN}' is not an allowed Cursor author. Skipping."
             exit 0
           fi
 
