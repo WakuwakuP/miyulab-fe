@@ -50,13 +50,18 @@ export const NotificationTimeline = ({
   return (
     <TimelinePresenter
       headerOffset={headerOffset}
-      renderItem={(item, scrolling) => (
-        <Notification
-          key={item.id}
-          notification={item as NotificationAddAppIndex}
-          scrolling={scrolling}
-        />
-      )}
+      renderItem={(item, scrolling) => {
+        if (!('type' in item)) {
+          return null
+        }
+        return (
+          <Notification
+            key={item.id}
+            notification={item}
+            scrolling={scrolling}
+          />
+        )
+      }}
       viewModel={viewModel}
     />
   )

@@ -172,6 +172,75 @@ const PlayerController = () => {
 
   if (currentAttachment == null) return null
 
+  let playableMedia: React.ReactNode = null
+  if (playableTypes.includes(currentAttachment.type)) {
+    if (isExternalVideo(currentUrl)) {
+      if (externalEmbedFailed) {
+        playableMedia = (
+          <div
+            className={[
+              'relative aspect-video w-full',
+              classNamePlayerSize.h,
+            ].join(' ')}
+          >
+            {currentYouTubeVideoId == null ? (
+              <div className="h-full w-full bg-black" />
+            ) : (
+              <img
+                alt="YouTube thumbnail"
+                className="h-full w-full object-contain"
+                src={`https://img.youtube.com/vi/${currentYouTubeVideoId}/hqdefault.jpg`}
+              />
+            )}
+            <a
+              className="absolute inset-0 flex items-center justify-center bg-black/35 text-sm font-medium text-white underline"
+              href={currentUrl}
+              onClick={(event) => {
+                event.stopPropagation()
+              }}
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              Open externally
+            </a>
+          </div>
+        )
+      } else {
+        playableMedia = (
+          <iframe
+            allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
+            allowFullScreen
+            className={['aspect-video w-full', classNamePlayerSize.h].join(' ')}
+            // @ts-expect-error -- credentialless is a valid HTML attribute but not yet in React's type definitions
+            credentialless=""
+            onError={() => {
+              setExternalEmbedFailed(true)
+            }}
+            src={getDirectEmbedUrl(currentUrl) ?? currentUrl}
+            style={{ border: 'none' }}
+            title="Video player"
+          />
+        )
+      }
+    } else {
+      playableMedia = (
+        <ReactPlayer
+          className="aspect-video"
+          height={
+            currentAttachment.type === 'audio' ? 0 : classNamePlayerSize.h
+          }
+          loop
+          onTimeUpdate={handleProgress}
+          playing={playing}
+          ref={player}
+          src={currentUrl}
+          volume={volume}
+          width={'100%'}
+        />
+      )
+    }
+  }
+
   return (
     <div
       className={[
@@ -180,68 +249,7 @@ const PlayerController = () => {
       ].join(' ')}
     >
       <div className=" bg-black" onClick={onClickPlay}>
-        {playableTypes.includes(currentAttachment.type) &&
-          (isExternalVideo(currentUrl) ? (
-            externalEmbedFailed ? (
-              <div
-                className={[
-                  'relative aspect-video w-full',
-                  classNamePlayerSize.h,
-                ].join(' ')}
-              >
-                {currentYouTubeVideoId != null ? (
-                  <img
-                    alt="YouTube thumbnail"
-                    className="h-full w-full object-contain"
-                    src={`https://img.youtube.com/vi/${currentYouTubeVideoId}/hqdefault.jpg`}
-                  />
-                ) : (
-                  <div className="h-full w-full bg-black" />
-                )}
-                <a
-                  className="absolute inset-0 flex items-center justify-center bg-black/35 text-sm font-medium text-white underline"
-                  href={currentUrl}
-                  onClick={(event) => {
-                    event.stopPropagation()
-                  }}
-                  rel="noopener noreferrer"
-                  target="_blank"
-                >
-                  Open externally
-                </a>
-              </div>
-            ) : (
-              <iframe
-                allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
-                allowFullScreen
-                className={['aspect-video w-full', classNamePlayerSize.h].join(
-                  ' ',
-                )}
-                // @ts-expect-error -- credentialless is a valid HTML attribute but not yet in React's type definitions
-                credentialless=""
-                onError={() => {
-                  setExternalEmbedFailed(true)
-                }}
-                src={getDirectEmbedUrl(currentUrl) ?? currentUrl}
-                style={{ border: 'none' }}
-                title="Video player"
-              />
-            )
-          ) : (
-            <ReactPlayer
-              className="aspect-video"
-              height={
-                currentAttachment.type === 'audio' ? 0 : classNamePlayerSize.h
-              }
-              loop
-              onTimeUpdate={handleProgress}
-              playing={playing}
-              ref={player}
-              src={currentUrl}
-              volume={volume}
-              width={'100%'}
-            />
-          ))}
+        {playableMedia}
         {'image' === currentAttachment.type && (
           <img
             alt={currentAttachment.description ?? ''}

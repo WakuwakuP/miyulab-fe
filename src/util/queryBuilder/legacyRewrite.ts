@@ -198,19 +198,52 @@ export function injectProfileIdHint(whereClause: string): string {
  * @param whereClause WHERE 句
  * @returns 抽出された通知タイプコードの配列、または null
  */
+const NOTIFICATION_TYPE_IN_PREFIX =
+  /\b(?:ntt?|notification_types?)\.(?:code|name)\s+IN\s*\(/i
+
+/** IN (...) の括弧内を線形時間で抽出する（ReDoS 回避）。 */
+function extractParenthesizedValues(
+  whereClause: string,
+  openParenIndex: number,
+  maxLength = 2000,
+): string | null {
+  let depth = 1
+  let index = openParenIndex + 1
+  while (index < whereClause.length && depth > 0) {
+    if (index - openParenIndex > maxLength) {
+      return null
+    }
+    const char = whereClause[index]
+    if (char === '(') {
+      depth += 1
+    } else if (char === ')') {
+      depth -= 1
+    }
+    index += 1
+  }
+  if (depth !== 0) {
+    return null
+  }
+  return whereClause.slice(openParenIndex + 1, index - 1)
+}
+
 export function extractNotificationTypeCodes(
   whereClause: string,
 ): string[] | null {
   // IN 句: ntt.code IN (...) or ntt.name IN (...)
-  const inMatch = whereClause.match(
-    /\b(?:ntt?|notification_types?)\.(?:code|name)\s+IN\s*\(\s*([^)]{1,2000})\s*\)/i,
-  )
-  if (inMatch) {
-    const codes = inMatch[1]
-      .split(',')
-      .map((s) => s.trim().replace(/^'|'$/g, ''))
-      .filter(Boolean)
-    return codes.length > 0 ? codes : null
+  const inPrefixMatch = NOTIFICATION_TYPE_IN_PREFIX.exec(whereClause)
+  if (inPrefixMatch) {
+    const values = extractParenthesizedValues(
+      whereClause,
+      inPrefixMatch.index + inPrefixMatch[0].length - 1,
+    )
+    if (values) {
+      const codes = values
+        .split(',')
+        .map((s) => s.trim().replace(/^'|'$/g, ''))
+        .filter(Boolean)
+      return codes.length > 0 ? codes : null
+    }
   }
 
   // 単一値: ntt.code = 'favourite' or ntt.name = 'favourite'
