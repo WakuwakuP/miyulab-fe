@@ -9,6 +9,7 @@ import { fetchInitialData } from 'util/timelineFetcher'
 function appendTagFetchTasks(
   apps: App[],
   config: TimelineConfigV2,
+  tagConfig: NonNullable<TimelineConfigV2['tagConfig']>,
   fetchedKeys: Set<string>,
   tasks: (() => Promise<void>)[],
 ): void {
@@ -16,7 +17,7 @@ function appendTagFetchTasks(
   const targetUrls = resolveBackendUrls(filter, apps)
 
   for (const url of targetUrls) {
-    const newTags = config.tagConfig!.tags.filter((tag) => {
+    const newTags = tagConfig.tags.filter((tag) => {
       const key = `tag|${tag}|${url}`
       if (fetchedKeys.has(key)) return false
       fetchedKeys.add(key)
@@ -29,7 +30,7 @@ function appendTagFetchTasks(
 
     const tagFetchConfig: TimelineConfigV2 = {
       ...config,
-      tagConfig: { ...config.tagConfig!, tags: newTags },
+      tagConfig: { ...tagConfig, tags: newTags },
       type: 'tag',
     }
 
@@ -90,7 +91,7 @@ export function buildInitialFetchTasks(
   // 同一 tag × backendUrl の組み合わせは重複フェッチを防止する
   for (const config of timelines) {
     if (!config.tagConfig || config.tagConfig.tags.length === 0) continue
-    appendTagFetchTasks(apps, config, fetchedKeys, tasks)
+    appendTagFetchTasks(apps, config, config.tagConfig, fetchedKeys, tasks)
   }
 
   return tasks
