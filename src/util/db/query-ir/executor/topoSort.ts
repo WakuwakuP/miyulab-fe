@@ -7,6 +7,22 @@
 
 import type { SerializedGraphPlan } from './types'
 
+function moveOutputNodeToEnd(
+  sorted: string[],
+  nodeMap: Map<string, SerializedGraphPlan['nodes'][number]>,
+): void {
+  const outputIndex = sorted.findIndex(
+    (id) => nodeMap.get(id)?.node.kind === 'output-v2',
+  )
+  if (outputIndex === -1) {
+    throw new Error('Output ノードが見つかりません')
+  }
+  if (outputIndex === sorted.length - 1) return
+
+  const [outputId] = sorted.splice(outputIndex, 1)
+  sorted.push(outputId)
+}
+
 /**
  * DAG をトポロジカルソートし、ノード ID の実行順序を返す。
  *
@@ -55,16 +71,7 @@ export function topoSort(plan: SerializedGraphPlan): string[] {
   // Output ノードが最後に来るように安定化
   // (Kahn's は入次数0のノードから処理するため、通常 output は最後になるが明示的に保証)
   const nodeMap = new Map(plan.nodes.map((n) => [n.id, n]))
-  const outputIndex = sorted.findIndex(
-    (id) => nodeMap.get(id)?.node.kind === 'output-v2',
-  )
-  if (outputIndex === -1) {
-    throw new Error('Output ノードが見つかりません')
-  }
-  if (outputIndex !== sorted.length - 1) {
-    const [outputId] = sorted.splice(outputIndex, 1)
-    sorted.push(outputId)
-  }
+  moveOutputNodeToEnd(sorted, nodeMap)
 
   return sorted
 }

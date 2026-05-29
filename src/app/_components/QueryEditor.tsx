@@ -170,7 +170,7 @@ export const QueryEditor = ({
 
       // 汎用カラム値補完: alias.column = '...' or alias.column IN ('...', '...' の後
       // すべてのエイリアス・カラムの組み合わせで動的 DB 検索を実行
-      const columnValueMatch = beforeCursor.match(COLUMN_VALUE_COMPLETION_RE)
+      const columnValueMatch = COLUMN_VALUE_COMPLETION_RE.exec(beforeCursor)
       if (columnValueMatch) {
         const alias = columnValueMatch[1]
         const column = columnValueMatch[2]
@@ -193,7 +193,7 @@ export const QueryEditor = ({
       }
 
       // 論理演算子補完: 完全な条件式の後（閉じクォート、数値、IS NULL/IS NOT NULL、閉じ括弧の後のスペース）
-      const logicalMatch = beforeCursor.match(LOGICAL_OPERATOR_COMPLETION_RE)
+      const logicalMatch = LOGICAL_OPERATOR_COMPLETION_RE.exec(beforeCursor)
       if (logicalMatch) {
         const partial = logicalMatch[1]
         // 入力がない場合（スペースのみ）、またはANDやORの入力中
@@ -221,9 +221,7 @@ export const QueryEditor = ({
       }
 
       // 比較演算子補完: alias.column の後のスペース
-      const operatorMatch = beforeCursor.match(
-        COMPARISON_OPERATOR_COMPLETION_RE,
-      )
+      const operatorMatch = COMPARISON_OPERATOR_COMPLETION_RE.exec(beforeCursor)
       if (operatorMatch) {
         const alias = operatorMatch[1]
         const column = operatorMatch[2]
@@ -246,7 +244,7 @@ export const QueryEditor = ({
         }
       }
 
-      const match = beforeCursor.match(WORD_SUFFIX_COMPLETION_RE)
+      const match = WORD_SUFFIX_COMPLETION_RE.exec(beforeCursor)
       const currentWord = match ? match[0] : ''
 
       if (currentWord.length < 1) {
@@ -328,7 +326,7 @@ export const QueryEditor = ({
       }
 
       // 論理演算子補完の場合: 完全条件式の後
-      const logicalMatch = beforeCursor.match(LOGICAL_OPERATOR_COMPLETION_RE)
+      const logicalMatch = LOGICAL_OPERATOR_COMPLETION_RE.exec(beforeCursor)
       if (
         logicalMatch &&
         logicalOperators.some((op) =>
@@ -351,7 +349,7 @@ export const QueryEditor = ({
       }
 
       // 通常の補完
-      const match = beforeCursor.match(WORD_SUFFIX_COMPLETION_RE)
+      const match = WORD_SUFFIX_COMPLETION_RE.exec(beforeCursor)
       const currentWordLen = match ? match[0].length : 0
       const newBeforeCursor = beforeCursor.slice(
         0,

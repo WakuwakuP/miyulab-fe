@@ -10,7 +10,6 @@
 import type {
   BatchEnrichResult,
   DetailFetchResult,
-  IdCollectResult,
   QueryPlanResult,
   SerializedExecutionPlan,
   SerializedStep,
@@ -156,15 +155,11 @@ export function transformQueryPlanResult(result: QueryPlanResult): {
   totalDurationMs: number
 } {
   // Step 結果からタイプ別に抽出
-  const idCollectResults: IdCollectResult[] = []
   let detailResult: DetailFetchResult | undefined
   let batchResult: BatchEnrichResult | undefined
 
   for (const sr of result.stepResults) {
     switch (sr.type) {
-      case 'id-collect':
-        idCollectResults.push(sr)
-        break
       case 'detail-fetch':
         detailResult = sr
         break
@@ -181,28 +176,10 @@ export function transformQueryPlanResult(result: QueryPlanResult): {
   // BatchEnrichResult → BatchMaps
   const maps = buildBatchMapsFromEnrichResult(batchResult)
 
-  // Phase1 から backendUrl / timelineTypes マップを構築
-  // compile.ts の Phase1 は id + created_at_ms のみ SELECT するため、
-  // backendUrl と timelineTypes は detail-fetch の結果から取得する
-  const backendUrlMap = new Map<number, string>()
-  for (const idResult of idCollectResults) {
-    for (const row of idResult.rows) {
-      // row は { id, createdAtMs } の構造化型 — 追加カラムは含まない
-      void row
-    }
-  }
-
-  // Detail rows → SqliteStoredStatus[]
-  const statuses = detailResult.rows.map((row) => {
-    const status = assembleStatusFromBatch(row, maps)
-    const postId = row[0] as number
-    // Phase1 で取得した backendUrl で上書き
-    const overrideUrl = backendUrlMap.get(postId)
-    if (overrideUrl) {
-      status.backendUrl = overrideUrl
-    }
-    return status
-  })
+  // Detail rows → SqliteStoredStatus[] (backendUrl は assembleStatusFromBatch で設定)
+  const statuses = detailResult.rows.map((row) =>
+    assembleStatusFromBatch(row, maps),
+  )
 
   return { statuses, totalDurationMs: result.totalDurationMs }
 }
