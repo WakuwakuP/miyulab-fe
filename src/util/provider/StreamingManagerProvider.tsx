@@ -32,6 +32,63 @@ import { AppsContext } from './AppsProvider'
 import { StartupCoordinatorContext } from './StartupCoordinator'
 import { TimelineContext } from './TimelineProvider'
 
+function disconnectUnusedStreams(
+  registry: StreamRegistry,
+  requiredKeys: Set<string>,
+): void {
+  for (const [key, entry] of registry) {
+    if (!requiredKeys.has(key)) {
+      if (entry.stream) {
+        stopStream(entry.stream)
+      }
+      if (entry.retryTimer != null) {
+        clearTimeout(entry.retryTimer)
+      }
+      registry.delete(key)
+    }
+  }
+}
+
+function connectMissingStreams(
+  registry: StreamRegistry,
+  requiredKeys: Set<string>,
+  apps: Parameters<typeof deriveRequiredStreams>[1],
+  boundInitializeStream: (
+    key: string,
+    type: StreamType,
+    backendUrl: string,
+    app: Parameters<typeof initializeStream>[3],
+    options?: { tag?: string; backend?: Backend },
+    initId?: number,
+  ) => Promise<void>,
+  initIdCounterRef: { current: number },
+): void {
+  for (const key of requiredKeys) {
+    if (!registry.has(key)) {
+      const { backendUrl, tag, type } = parseStreamKey(key)
+      const app = apps.find((a) => a.backendUrl === backendUrl)
+      if (app) {
+        const initId = ++initIdCounterRef.current
+        registry.set(key, {
+          initId,
+          retryCount: 0,
+          retryTimer: null,
+          status: 'connecting',
+          stream: null,
+        })
+        void boundInitializeStream(
+          key,
+          type,
+          backendUrl,
+          app,
+          { backend: app.backend, tag },
+          initId,
+        )
+      }
+    }
+  }
+}
+
 // ========================================
 // Context 型定義
 // ========================================
@@ -224,44 +281,16 @@ export const StreamingManagerProvider = ({
     }
 
     // 不要なストリームを切断
-    for (const [key, entry] of registry) {
-      if (!requiredKeys.has(key)) {
-        if (entry.stream) {
-          stopStream(entry.stream)
-        }
-        if (entry.retryTimer != null) {
-          clearTimeout(entry.retryTimer)
-        }
-        registry.delete(key)
-      }
-    }
+    disconnectUnusedStreams(registry, requiredKeys)
 
     // 必要なストリームを接続（未接続のもののみ）
-    for (const key of requiredKeys) {
-      if (!registry.has(key)) {
-        const { backendUrl, tag, type } = parseStreamKey(key)
-        const app = apps.find((a) => a.backendUrl === backendUrl)
-        if (app) {
-          const initId = ++initIdCounterRef.current
-          // プレースホルダーエントリを先に登録（重複接続防止）
-          registry.set(key, {
-            initId,
-            retryCount: 0,
-            retryTimer: null,
-            status: 'connecting',
-            stream: null,
-          })
-          boundInitializeStream(
-            key,
-            type,
-            backendUrl,
-            app,
-            { backend: app.backend, tag },
-            initId,
-          )
-        }
-      }
-    }
+    connectMissingStreams(
+      registry,
+      requiredKeys,
+      apps,
+      boundInitializeStream,
+      initIdCounterRef,
+    )
   })
 
   // =============================================
