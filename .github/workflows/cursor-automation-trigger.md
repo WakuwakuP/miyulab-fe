@@ -5,7 +5,7 @@
 ## 実行条件
 
 - 対象ブランチに紐づく **オープンな PR** がある
-- PR の作成者が **`cursor[bot]`**（Cursor Cloud Agent が作成した PR）
+- PR の作成者ログインが **`cursor[bot]`** と完全一致（`author.login`。Actions ログに実際の login / type を出力）
 - PR が **ドラフトではない**
 - **マージ必須のチェックがすべて実行完了**（`gh pr checks --required` で pending がないこと。失敗していても可）
 
