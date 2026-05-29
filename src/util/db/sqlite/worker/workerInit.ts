@@ -108,9 +108,7 @@ async function recoverOpfsDatabaseIfNeeded(
   console.warn('SQLite Worker: database corruption detected at startup')
   const result: RecoveryResult = await recoverFromCorruption(db, sqlite3)
   if (result !== 'restored' && result !== 'reset') {
-    console.error(
-      'SQLite Worker: recovery failed, falling back to in-memory',
-    )
+    console.error('SQLite Worker: recovery failed, falling back to in-memory')
     return createInMemoryFallback(sqlite3, db)
   }
 

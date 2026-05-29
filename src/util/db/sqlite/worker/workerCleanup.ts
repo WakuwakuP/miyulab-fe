@@ -497,6 +497,7 @@ function runEnforceMaxLengthPhase2(
   changedTables: TableName[],
 ): EnforceMaxLengthPhase2Result {
   let hasMore = false
+  let deletedPosts = 0
   const phaseTimings = { phase2Total: 0, postsCount: 0, postsDelete: 0 }
 
   const phase2StartedAt = nowMs()
@@ -510,7 +511,7 @@ function runEnforceMaxLengthPhase2(
       batchLimit,
       needPostsFollowup,
     )
-    const deletedPosts = postsResult.deleted
+    deletedPosts = postsResult.deleted
     phaseTimings.postsCount = postsResult.countElapsedMs
     phaseTimings.postsDelete = postsResult.deleteElapsedMs
 

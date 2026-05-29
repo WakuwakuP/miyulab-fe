@@ -15,7 +15,10 @@ const TOP_LEVEL_SPLIT_PATTERN: Record<TopLevelDelimiter, RegExp> = {
  * 括弧のネストレベルを追跡して、トップレベルの区切り文字で分割する。
  * 文字列リテラル内の区切りは無視する。
  */
-function splitByTopLevel(where: string, delimiter: TopLevelDelimiter): string[] {
+function splitByTopLevel(
+  where: string,
+  delimiter: TopLevelDelimiter,
+): string[] {
   const parts: string[] = []
   let depth = 0
   let current = ''
