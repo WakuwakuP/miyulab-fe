@@ -349,6 +349,31 @@ async function connectUserStreamForApp(
   }
 }
 
+type StatusInteractionField = 'favourited' | 'reblogged' | 'bookmarked'
+
+async function updateStatusInteractionField(
+  backendUrl: string,
+  statusId: string,
+  field: StatusInteractionField,
+  value: boolean,
+): Promise<void> {
+  await updateStatusAction(backendUrl, statusId, field, value)
+  await updateNotificationStatusAction(backendUrl, statusId, field, value)
+}
+
+function createStatusInteractionUpdater(field: StatusInteractionField) {
+  return async (
+    backendUrl: string,
+    statusId: string,
+    value: boolean,
+  ): Promise<void> =>
+    updateStatusInteractionField(backendUrl, statusId, field, value)
+}
+
+const setFavouritedAction = createStatusInteractionUpdater('favourited')
+const setRebloggedAction = createStatusInteractionUpdater('reblogged')
+const setBookmarkedAction = createStatusInteractionUpdater('bookmarked')
+
 // ストア操作の型定義
 type StatusStoreActions = {
   /** お気に入り状態を更新 */
@@ -395,44 +420,9 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
   const setTagsEvent = useEffectEvent(setTags)
 
   // アクション更新関数
-  const setFavourited = useCallback(
-    async (backendUrl: string, statusId: string, value: boolean) => {
-      await updateStatusAction(backendUrl, statusId, 'favourited', value)
-      await updateNotificationStatusAction(
-        backendUrl,
-        statusId,
-        'favourited',
-        value,
-      )
-    },
-    [],
-  )
-
-  const setReblogged = useCallback(
-    async (backendUrl: string, statusId: string, value: boolean) => {
-      await updateStatusAction(backendUrl, statusId, 'reblogged', value)
-      await updateNotificationStatusAction(
-        backendUrl,
-        statusId,
-        'reblogged',
-        value,
-      )
-    },
-    [],
-  )
-
-  const setBookmarked = useCallback(
-    async (backendUrl: string, statusId: string, value: boolean) => {
-      await updateStatusAction(backendUrl, statusId, 'bookmarked', value)
-      await updateNotificationStatusAction(
-        backendUrl,
-        statusId,
-        'bookmarked',
-        value,
-      )
-    },
-    [],
-  )
+  const setFavourited = useCallback(setFavouritedAction, [])
+  const setReblogged = useCallback(setRebloggedAction, [])
+  const setBookmarked = useCallback(setBookmarkedAction, [])
 
   // WebSocketストリームハンドラの作成
   const createStreamHandlers = useEffectEvent((app: App, _appIndex: number) =>
