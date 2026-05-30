@@ -279,8 +279,7 @@ export const GettingStarted = () => {
         ) : (
           <>
             {apps.map((app, index) => (
-              // biome-ignore lint/suspicious/noArrayIndexKey: App には index で key を付ける
-              <Fragment key={index}>
+              <Fragment key={app.backendUrl}>
                 <div className="flex w-full items-center space-x-2 border-b px-4 py-2 text-xl">
                   {app.tokenData == null && (
                     <button
