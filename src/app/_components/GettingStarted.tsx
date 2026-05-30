@@ -31,6 +31,14 @@ import { AppsContext } from 'util/provider/AppsProvider'
 
 import { AccountsPanel } from './AccountsPanel'
 
+const conversationWithAppIndex = (
+  conversation: Entity.Conversation,
+  appIndex: number,
+) => ({
+  ...conversation,
+  appIndex,
+})
+
 export const GettingStarted = () => {
   const apps = useContext(AppsContext)
   const route = usePanelRoute()
@@ -197,12 +205,9 @@ export const GettingStarted = () => {
           ...prev,
           [appIndex]: [
             ...prev[appIndex],
-            ...res.data.map((conversation) => {
-              return {
-                ...conversation,
-                appIndex: appIndex,
-              }
-            }),
+            ...res.data.map((conversation) =>
+              conversationWithAppIndex(conversation, appIndex),
+            ),
           ],
         }))
       })
