@@ -212,7 +212,7 @@ const CarouselItem = React.forwardRef<
   return (
     <div
       ref={ref}
-      role="group"
+      role="group" // NOSONAR typescript:S6819 - W3C carousel slide pattern
       aria-roledescription="slide"
       className={cn(
         'min-w-0 shrink-0 grow-0 basis-full',
