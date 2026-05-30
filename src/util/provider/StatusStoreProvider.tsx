@@ -151,6 +151,153 @@ async function fetchRestDataForApp(
   }
 }
 
+type SetTagsFn = (updater: (prev: string[]) => string[]) => void
+type SetUsersFn = (updater: (prev: UserSummary[]) => UserSummary[]) => void
+type StreamRetryState = { count: number }
+
+function scheduleStreamReconnect(
+  stream: WebSocketInterface,
+  retryCount: number,
+  delay: number,
+): void {
+  setTimeout(() => {
+    // 再接続能力を復元してから start()
+    restartStream(stream)
+    console.info(
+      `reconnecting userStreaming (retry ${retryCount}/${MAX_RETRY_COUNT}, delay ${delay}ms)`,
+    )
+  }, delay)
+}
+
+function createUserStreamErrorHandler(
+  stream: WebSocketInterface,
+  retryState: StreamRetryState,
+): (err: Error | undefined) => void {
+  return (err: Error | undefined) => {
+    console.warn('userStreaming error:', err?.message ?? 'unknown error')
+    // megalodon のゴースト再接続を防止しつつ停止
+    stopStream(stream)
+
+    retryState.count += 1
+
+    if (retryState.count > MAX_RETRY_COUNT) {
+      console.warn(
+        `userStreaming: max retry count (${MAX_RETRY_COUNT}) exceeded. Giving up.`,
+      )
+      return
+    }
+
+    scheduleStreamReconnect(
+      stream,
+      retryState.count,
+      getRetryDelay(retryState.count - 1),
+    )
+  }
+}
+
+function buildStreamHandlers(
+  app: App,
+  setUsersEvent: SetUsersFn,
+  setTagsEvent: SetTagsFn,
+) {
+  const { backendUrl } = app
+  const retryState: StreamRetryState = { count: 0 }
+
+  const onUpdate = async (status: Entity.Status) => {
+    // Raw data capture (stream)
+    if (isRawDataCaptureEnabled()) {
+      captureStreamEvent({
+        backend: app.backend,
+        backendUrl,
+        eventType: 'update',
+        origin: app.backend === 'misskey' ? 'misskey-js' : 'megalodon',
+        rawData: status,
+        streamType: 'home',
+      })
+    }
+
+    // タグを収集
+    const tagNames = status.tags.map((tag) => tag.name)
+    setTagsEvent((prev) => Array.from(new Set([...prev, ...tagNames])))
+
+    // ユーザー情報を収集
+    const account = status.reblog?.account ?? status.account
+    setUsersEvent((prev) =>
+      dedupeUsersByAcct([accountToUserSummary(account), ...prev]),
+    )
+
+    // IndexedDBに保存（appIndex は永続化しない）
+    await upsertStatus(status, backendUrl, 'home')
+  }
+
+  const onStatusUpdate = async (status: Entity.Status) => {
+    if (isRawDataCaptureEnabled()) {
+      captureStreamEvent({
+        backend: app.backend,
+        backendUrl,
+        eventType: 'status_update',
+        origin: app.backend === 'misskey' ? 'misskey-js' : 'megalodon',
+        rawData: status,
+        streamType: 'home',
+      })
+    }
+    await updateStatus(status, backendUrl)
+  }
+
+  const onNotification = async (notification: Entity.Notification) => {
+    if (isRawDataCaptureEnabled()) {
+      captureStreamEvent({
+        backend: app.backend,
+        backendUrl,
+        eventType: 'notification',
+        origin: app.backend === 'misskey' ? 'misskey-js' : 'megalodon',
+        rawData: notification,
+        streamType: 'home',
+      })
+    }
+    await addNotification(notification, backendUrl)
+
+    const account = notification.account
+    if (account) {
+      setUsersEvent((prev) =>
+        dedupeUsersByAcct([accountToUserSummary(account), ...prev]),
+      )
+    }
+  }
+
+  // deleteイベント: homeストリームからの受信なので 'home' のみ除外
+  const onDelete = async (id: string) => {
+    if (isRawDataCaptureEnabled()) {
+      captureStreamEvent({
+        backend: app.backend,
+        backendUrl,
+        eventType: 'delete',
+        origin: app.backend === 'misskey' ? 'misskey-js' : 'megalodon',
+        rawData: id,
+        streamType: 'home',
+      })
+    }
+    await handleDeleteEvent(backendUrl, id, 'home')
+  }
+
+  const onError = (stream: WebSocketInterface) =>
+    createUserStreamErrorHandler(stream, retryState)
+
+  const onConnect = () => {
+    retryState.count = 0
+    console.info('connected userStreaming')
+  }
+
+  return {
+    onConnect,
+    onDelete,
+    onError,
+    onNotification,
+    onStatusUpdate,
+    onUpdate,
+  }
+}
+
 // ストア操作の型定義
 type StatusStoreActions = {
   /** お気に入り状態を更新 */
@@ -237,151 +384,9 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
   )
 
   // WebSocketストリームハンドラの作成
-  const createStreamHandlers = useEffectEvent((app: App, _appIndex: number) => {
-    const { backendUrl } = app
-
-    const onUpdate = async (status: Entity.Status) => {
-      // Raw data capture (stream)
-      if (isRawDataCaptureEnabled()) {
-        captureStreamEvent({
-          backend: app.backend,
-          backendUrl,
-          eventType: 'update',
-          origin: app.backend === 'misskey' ? 'misskey-js' : 'megalodon',
-          rawData: status,
-          streamType: 'home',
-        })
-      }
-
-      // タグを収集
-      const tagNames = status.tags.map((tag) => tag.name)
-      setTagsEvent((prev) => Array.from(new Set([...prev, ...tagNames])))
-
-      // ユーザー情報を収集
-      const account = status.reblog?.account ?? status.account
-      setUsersEvent((prev) =>
-        dedupeUsersByAcct([
-          {
-            acct: account.acct,
-            avatar: account.avatar,
-            display_name: account.display_name,
-            id: account.id,
-          },
-          ...prev,
-        ]),
-      )
-
-      // IndexedDBに保存（appIndex は永続化しない）
-      await upsertStatus(status, backendUrl, 'home')
-    }
-
-    const onStatusUpdate = async (status: Entity.Status) => {
-      if (isRawDataCaptureEnabled()) {
-        captureStreamEvent({
-          backend: app.backend,
-          backendUrl,
-          eventType: 'status_update',
-          origin: app.backend === 'misskey' ? 'misskey-js' : 'megalodon',
-          rawData: status,
-          streamType: 'home',
-        })
-      }
-      await updateStatus(status, backendUrl)
-    }
-
-    const onNotification = async (notification: Entity.Notification) => {
-      if (isRawDataCaptureEnabled()) {
-        captureStreamEvent({
-          backend: app.backend,
-          backendUrl,
-          eventType: 'notification',
-          origin: app.backend === 'misskey' ? 'misskey-js' : 'megalodon',
-          rawData: notification,
-          streamType: 'home',
-        })
-      }
-      await addNotification(notification, backendUrl)
-
-      const account = notification.account
-      if (account) {
-        const newUser: UserSummary = {
-          acct: account.acct,
-          avatar: account.avatar,
-          display_name: account.display_name,
-          id: account.id,
-        }
-        setUsersEvent((prev) => dedupeUsersByAcct([newUser, ...prev]))
-      }
-    }
-
-    // deleteイベント: homeストリームからの受信なので 'home' のみ除外
-    const onDelete = async (id: string) => {
-      if (isRawDataCaptureEnabled()) {
-        captureStreamEvent({
-          backend: app.backend,
-          backendUrl,
-          eventType: 'delete',
-          origin: app.backend === 'misskey' ? 'misskey-js' : 'megalodon',
-          rawData: id,
-          streamType: 'home',
-        })
-      }
-      await handleDeleteEvent(backendUrl, id, 'home')
-    }
-
-    const retryState = { count: 0 }
-
-    const scheduleStreamReconnect = (
-      stream: WebSocketInterface,
-      retryCount: number,
-      delay: number,
-    ) => {
-      setTimeout(() => {
-        // 再接続能力を復元してから start()
-        restartStream(stream)
-        console.info(
-          `reconnecting userStreaming (retry ${retryCount}/${MAX_RETRY_COUNT}, delay ${delay}ms)`,
-        )
-      }, delay)
-    }
-
-    const onError = (stream: WebSocketInterface) => {
-      return (err: Error | undefined) => {
-        console.warn('userStreaming error:', err?.message ?? 'unknown error')
-        // megalodon のゴースト再接続を防止しつつ停止
-        stopStream(stream)
-
-        retryState.count += 1
-
-        if (retryState.count > MAX_RETRY_COUNT) {
-          console.warn(
-            `userStreaming: max retry count (${MAX_RETRY_COUNT}) exceeded. Giving up.`,
-          )
-          return
-        }
-
-        scheduleStreamReconnect(
-          stream,
-          retryState.count,
-          getRetryDelay(retryState.count - 1),
-        )
-      }
-    }
-
-    const onConnect = () => {
-      retryState.count = 0
-      console.info('connected userStreaming')
-    }
-
-    return {
-      onConnect,
-      onDelete,
-      onError,
-      onNotification,
-      onStatusUpdate,
-      onUpdate,
-    }
-  })
+  const createStreamHandlers = useEffectEvent((app: App, _appIndex: number) =>
+    buildStreamHandlers(app, setUsersEvent, setTagsEvent),
+  )
 
   // =========================================================================
   // Effect 1: 即時処理（フェーズ不問）
