@@ -142,9 +142,8 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
       }
 
       // タグを収集
-      setTagsEvent((prev) =>
-        Array.from(new Set([...prev, ...status.tags.map((tag) => tag.name)])),
-      )
+      const tagNames = status.tags.map((tag) => tag.name)
+      setTagsEvent((prev) => Array.from(new Set([...prev, ...tagNames])))
 
       // ユーザー情報を収集
       const account = status.reblog?.account ?? status.account
