@@ -49,23 +49,23 @@ export function MergePanelV2({ node, onUpdate }: MergePanelV2Props) {
         </Select>
       </div>
       <div>
-        <label className="text-xs font-semibold text-gray-300 block mb-1">
+        <span className="text-xs font-semibold text-gray-300 block mb-1">
           limit
-          <input
-            className="w-full rounded bg-gray-700 px-2 py-1.5 text-sm text-white border border-gray-600"
-            onChange={(e) =>
-              onUpdate(node.id, {
-                ...data,
-                config: {
-                  ...data.config,
-                  limit: Number(e.target.value),
-                },
-              })
-            }
-            type="number"
-            value={data.config.limit}
-          />
-        </label>
+        </span>
+        <input
+          className="w-full rounded bg-gray-700 px-2 py-1.5 text-sm text-white border border-gray-600"
+          onChange={(e) =>
+            onUpdate(node.id, {
+              ...data,
+              config: {
+                ...data.config,
+                limit: Number(e.target.value),
+              },
+            })
+          }
+          type="number"
+          value={data.config.limit}
+        />
       </div>
     </div>
   )
