@@ -39,6 +39,16 @@ const conversationWithAppIndex = (
   appIndex,
 })
 
+function BookmarkVirtuosoItem({
+  isScrolling,
+  status,
+}: Readonly<{
+  isScrolling: boolean
+  status: StatusAddAppIndex
+}>) {
+  return <Status key={status.id} scrolling={isScrolling} status={status} />
+}
+
 export const GettingStarted = () => {
   const apps = useContext(AppsContext)
   const route = usePanelRoute()
@@ -212,6 +222,13 @@ export const GettingStarted = () => {
       })
   }, [appIndex, apps, conversations])
 
+  const bookmarkItemContent = useCallback(
+    (_: number, status: StatusAddAppIndex) => (
+      <BookmarkVirtuosoItem isScrolling={isScrolling} status={status} />
+    ),
+    [isScrolling],
+  )
+
   return (
     <Panel name={title}>
       <div className="box-border">
@@ -307,13 +324,7 @@ export const GettingStarted = () => {
                     data={bookmarks[index]}
                     endReached={moreBookmarks}
                     isScrolling={setIsScrolling}
-                    itemContent={(_, status) => (
-                      <Status
-                        key={status.id}
-                        scrolling={isScrolling}
-                        status={status}
-                      />
-                    )}
+                    itemContent={bookmarkItemContent}
                   />
                 </div>
               )}
