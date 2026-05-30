@@ -3,7 +3,14 @@
 // ============================================================
 
 import { getDefaultTimeColumn } from './completion'
-import type { BindValue, MergeNode, QueryPlan, TagCombination } from './nodes'
+import type {
+  BindValue,
+  CompositeNode,
+  FilterNode,
+  MergeNode,
+  QueryPlan,
+  TagCombination,
+} from './nodes'
 import type {
   BatchEnrichStep,
   CompiledFilter,
@@ -84,55 +91,89 @@ export function compileTagCombination(
 
 // --------------- Single source compilation ---------------
 
-export function compileSingleSource(plan: QueryPlan): ExecutionPlan {
-  const { alias, from, orderBy } = translateSource(plan.source)
-  const sourceTable = plan.source.table
+type FilterCompilation = {
+  binds: BindValue[]
+  joins: JoinClause[]
+  whereConditions: string[]
+}
 
+function compilePlanFilters(
+  filters: FilterNode[],
+  sourceTable: string,
+  alias: string,
+): FilterCompilation {
   const whereConditions: string[] = []
-  const allBinds: BindValue[] = []
-  const allJoins: JoinClause[] = []
+  const binds: BindValue[] = []
+  const joins: JoinClause[] = []
 
-  for (const filter of plan.filters) {
+  for (const filter of filters) {
     const compiled = compileFilterNode(filter, sourceTable, alias)
     if (compiled.sql && compiled.sql !== '1=1') {
       whereConditions.push(compiled.sql)
     }
-    allBinds.push(...compiled.binds)
-    allJoins.push(...compiled.joins)
+    binds.push(...compiled.binds)
+    joins.push(...compiled.joins)
   }
 
-  // Handle TagCombination composites
+  return { binds, joins, whereConditions }
+}
+
+type TagCompositeCompilation = FilterCompilation & {
+  groupByNeeded: boolean
+  havingClause: string
+}
+
+function applyTagComposites(
+  composites: CompositeNode[],
+  alias: string,
+): TagCompositeCompilation {
+  const whereConditions: string[] = []
+  const binds: BindValue[] = []
+  const joins: JoinClause[] = []
   let groupByNeeded = false
   let havingClause = ''
-  for (const composite of plan.composites) {
-    if (composite.kind === 'tag-combination') {
-      const tagResult = compileTagCombination(composite, alias)
-      allJoins.push(...tagResult.joins)
-      if (tagResult.sql) {
-        whereConditions.push(tagResult.sql)
-      }
-      allBinds.push(...tagResult.binds)
-      if (tagResult.having) {
-        havingClause = tagResult.having
-        groupByNeeded = true
-      }
+
+  for (const composite of composites) {
+    if (composite.kind !== 'tag-combination') {
+      continue
+    }
+    const tagResult = compileTagCombination(composite, alias)
+    joins.push(...tagResult.joins)
+    if (tagResult.sql) {
+      whereConditions.push(tagResult.sql)
+    }
+    binds.push(...tagResult.binds)
+    if (tagResult.having) {
+      havingClause = tagResult.having
+      groupByNeeded = true
     }
   }
 
-  // GROUP BY is needed when we have INNER JOINs on 1:N tables
-  if (!groupByNeeded && allJoins.some((j) => j.type === 'inner')) {
-    groupByNeeded = true
-  }
+  return { binds, groupByNeeded, havingClause, joins, whereConditions }
+}
 
-  // Deduplicate joins by alias
+function deduplicateJoins(joins: JoinClause[]): JoinClause[] {
   const seenAliases = new Set<string>()
-  const uniqueJoins = allJoins.filter((j) => {
-    if (seenAliases.has(j.alias)) return false
+  return joins.filter((j) => {
+    if (seenAliases.has(j.alias)) {
+      return false
+    }
     seenAliases.add(j.alias)
     return true
   })
+}
 
-  // Build Phase 1 SQL
+function buildIdCollectSql(
+  plan: QueryPlan,
+  alias: string,
+  from: string,
+  orderBy: string,
+  sourceTable: string,
+  uniqueJoins: JoinClause[],
+  whereConditions: string[],
+  groupByNeeded: boolean,
+  havingClause: string,
+): string {
   const joinStr = buildJoinString(uniqueJoins)
   const whereStr =
     whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : ''
@@ -150,7 +191,7 @@ export function compileSingleSource(plan: QueryPlan): ExecutionPlan {
     plan.source.timeColumn ?? getDefaultTimeColumn(sourceTable)
   const timeCol = timeColName ? `${alias}.${timeColName}` : '0'
 
-  const sql = [
+  return [
     `SELECT ${idCol} AS id, ${timeCol} AS created_at_ms`,
     `FROM ${from}`,
     joinStr,
@@ -163,27 +204,28 @@ export function compileSingleSource(plan: QueryPlan): ExecutionPlan {
   ]
     .filter(Boolean)
     .join(' ')
+}
 
-  const sourceType = sourceTable === 'notifications' ? 'notification' : 'post'
-  const steps: ExecutionStep[] = []
+function buildSingleSourceSteps(
+  sourceTable: string,
+  sql: string,
+  binds: BindValue[],
+  sourceType: 'notification' | 'post',
+): ExecutionStep[] {
+  const steps: ExecutionStep[] = [
+    {
+      binds,
+      source: sourceTable,
+      sql,
+      type: 'id-collect',
+    } satisfies IdCollectStep,
+    {
+      sqlTemplate: '{DETAIL_QUERY}',
+      target: sourceType === 'notification' ? 'notifications' : 'posts',
+      type: 'detail-fetch',
+    } satisfies DetailFetchStep,
+  ]
 
-  // Phase 1: IdCollectStep
-  steps.push({
-    binds: allBinds,
-    source: sourceTable,
-    sql,
-    type: 'id-collect',
-  } satisfies IdCollectStep)
-
-  // Phase 2: DetailFetchStep
-  const target = sourceType === 'notification' ? 'notifications' : 'posts'
-  steps.push({
-    sqlTemplate: '{DETAIL_QUERY}',
-    target,
-    type: 'detail-fetch',
-  } satisfies DetailFetchStep)
-
-  // Phase 3: BatchEnrichStep for posts
   if (sourceType === 'post') {
     steps.push({
       queries: POST_BATCH_QUERIES,
@@ -191,13 +233,47 @@ export function compileSingleSource(plan: QueryPlan): ExecutionPlan {
     } satisfies BatchEnrichStep)
   }
 
+  return steps
+}
+
+export function compileSingleSource(plan: QueryPlan): ExecutionPlan {
+  const { alias, from, orderBy } = translateSource(plan.source)
+  const sourceTable = plan.source.table
+
+  const filters = compilePlanFilters(plan.filters, sourceTable, alias)
+  const composites = applyTagComposites(plan.composites, alias)
+
+  const whereConditions = [
+    ...filters.whereConditions,
+    ...composites.whereConditions,
+  ]
+  const allBinds = [...filters.binds, ...composites.binds]
+  const allJoins = [...filters.joins, ...composites.joins]
+
+  const groupByNeeded =
+    composites.groupByNeeded || allJoins.some((j) => j.type === 'inner')
+
+  const sql = buildIdCollectSql(
+    plan,
+    alias,
+    from,
+    orderBy,
+    sourceTable,
+    deduplicateJoins(allJoins),
+    whereConditions,
+    groupByNeeded,
+    composites.havingClause,
+  )
+
+  const sourceType = sourceTable === 'notifications' ? 'notification' : 'post'
+
   return {
     meta: {
       batchKeys: sourceType === 'post' ? POST_BATCH_KEYS : [],
       requiresReblogExpansion: sourceType === 'post',
       sourceType,
     },
-    steps,
+    steps: buildSingleSourceSteps(sourceTable, sql, allBinds, sourceType),
   }
 }
 
