@@ -238,6 +238,21 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
 
     const retryState = { count: 0 }
 
+    const scheduleStreamReconnect = (
+      stream: WebSocketInterface,
+      retryCount: number,
+      delay: number,
+    ) => {
+      const timeout = setTimeout(() => {
+        // 再接続能力を復元してから start()
+        restartStream(stream)
+        console.info(
+          `reconnecting userStreaming (retry ${retryCount}/${MAX_RETRY_COUNT}, delay ${delay}ms)`,
+        )
+        clearTimeout(timeout)
+      }, delay)
+    }
+
     const onError = (stream: WebSocketInterface) => {
       return (err: Error | undefined) => {
         console.warn('userStreaming error:', err?.message ?? 'unknown error')
@@ -253,15 +268,11 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
           return
         }
 
-        const delay = getRetryDelay(retryState.count - 1)
-        const timeout = setTimeout(() => {
-          // 再接続能力を復元してから start()
-          restartStream(stream)
-          console.info(
-            `reconnecting userStreaming (retry ${retryState.count}/${MAX_RETRY_COUNT}, delay ${delay}ms)`,
-          )
-          clearTimeout(timeout)
-        }, delay)
+        scheduleStreamReconnect(
+          stream,
+          retryState.count,
+          getRetryDelay(retryState.count - 1),
+        )
       }
     }
 
