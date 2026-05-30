@@ -109,126 +109,142 @@ function nodeToHtml(node: MfmNode, host: string): string {
 // MFM Function ($[fn ...]) → HTML
 // ========================================
 
+type MfmFnArgs = MfmFn['props']['args']
+type FnHtmlRenderer = (
+  args: MfmFnArgs,
+  children: string,
+  name: string,
+) => string
+
 function fnToHtml(node: MfmFn, host: string): string {
   const { name, args } = node.props
   const children = childrenToHtml(node, host)
+  const renderer = fnHtmlRenderers[name]
+  return renderer ? renderer(args, children, name) : children
+}
 
-  switch (name) {
-    // --- Animations ---
-    case 'tada':
-    case 'jelly':
-    case 'twitch':
-    case 'shake':
-    case 'jump':
-    case 'bounce': {
-      const speed = sanitizeDuration(args.speed)
-      const delay = sanitizeDuration(args.delay)
-      const style = buildStyleAttr({
-        animationDelay: delay,
-        animationDuration: speed,
-      })
-      return `<span class="mfm-${name}"${style}>${children}</span>`
-    }
+function renderAnimationFn(
+  args: MfmFnArgs,
+  children: string,
+  name: string,
+): string {
+  const speed = sanitizeDuration(args.speed)
+  const delay = sanitizeDuration(args.delay)
+  const style = buildStyleAttr({
+    animationDelay: delay,
+    animationDuration: speed,
+  })
+  return `<span class="mfm-${name}"${style}>${children}</span>`
+}
 
-    case 'spin': {
-      const speed = sanitizeDuration(args.speed) ?? '1.5s'
-      const direction = args.alternate != null ? 'alternate' : 'normal'
-      const axis = args.x != null ? 'x' : args.y != null ? 'y' : ''
-      const cls = axis ? `mfm-spin-${axis}` : 'mfm-spin'
-      return `<span class="${cls}" style="animation-duration:${speed};animation-direction:${direction}">${children}</span>`
-    }
+function renderSpinFn(args: MfmFnArgs, children: string): string {
+  const speed = sanitizeDuration(args.speed) ?? '1.5s'
+  const direction = args.alternate != null ? 'alternate' : 'normal'
+  const axis = getSpinAxis(args)
+  const cls = axis ? `mfm-spin-${axis}` : 'mfm-spin'
+  return `<span class="${cls}" style="animation-duration:${speed};animation-direction:${direction}">${children}</span>`
+}
 
-    // --- Visual Transforms ---
-    case 'flip': {
-      const transforms: string[] = []
-      if (args.h != null) transforms.push('scaleX(-1)')
-      if (args.v != null) transforms.push('scaleY(-1)')
-      if (transforms.length === 0) transforms.push('scaleX(-1)')
-      return `<span style="display:inline-block;transform:${transforms.join(' ')}">${children}</span>`
-    }
+function getSpinAxis(args: MfmFnArgs): 'x' | 'y' | '' {
+  if (args.x != null) return 'x'
+  if (args.y != null) return 'y'
+  return ''
+}
 
-    case 'x2':
-      return `<span class="mfm-x2">${children}</span>`
-    case 'x3':
-      return `<span class="mfm-x3">${children}</span>`
-    case 'x4':
-      return `<span class="mfm-x4">${children}</span>`
+function renderFlipFn(args: MfmFnArgs, children: string): string {
+  const transforms: string[] = []
+  if (args.h != null) transforms.push('scaleX(-1)')
+  if (args.v != null) transforms.push('scaleY(-1)')
+  if (transforms.length === 0) transforms.push('scaleX(-1)')
+  return `<span style="display:inline-block;transform:${transforms.join(' ')}">${children}</span>`
+}
 
-    case 'font': {
-      const family =
-        args.serif != null
-          ? 'serif'
-          : args.monospace != null
-            ? 'monospace'
-            : args.cursive != null
-              ? 'cursive'
-              : args.fantasy != null
-                ? 'fantasy'
-                : args.math != null
-                  ? 'math'
-                  : null
-      if (family) {
-        return `<span style="font-family:${family}">${children}</span>`
-      }
-      return children
-    }
+function renderScaleClassFn(
+  className: string,
+  _args: MfmFnArgs,
+  children: string,
+): string {
+  return `<span class="${className}">${children}</span>`
+}
 
-    case 'blur':
-      return `<span class="mfm-blur">${children}</span>`
+function getFontFamily(args: MfmFnArgs): string | null {
+  if (args.serif != null) return 'serif'
+  if (args.monospace != null) return 'monospace'
+  if (args.cursive != null) return 'cursive'
+  if (args.fantasy != null) return 'fantasy'
+  if (args.math != null) return 'math'
+  return null
+}
 
-    case 'rainbow': {
-      const speed = sanitizeDuration(args.speed) ?? '1s'
-      return `<span class="mfm-rainbow" style="animation-duration:${speed}">${children}</span>`
-    }
+function renderFontFn(args: MfmFnArgs, children: string): string {
+  const family = getFontFamily(args)
+  if (!family) return children
+  return `<span style="font-family:${family}">${children}</span>`
+}
 
-    case 'sparkle':
-      return `<span class="mfm-sparkle">${children}</span>`
+function renderRainbowFn(args: MfmFnArgs, children: string): string {
+  const speed = sanitizeDuration(args.speed) ?? '1s'
+  return `<span class="mfm-rainbow" style="animation-duration:${speed}">${children}</span>`
+}
 
-    case 'rotate': {
-      const deg = sanitizeNumber(args.deg) ?? '90'
-      return `<span style="display:inline-block;transform:rotate(${deg}deg);transform-origin:center center">${children}</span>`
-    }
+function renderRotateFn(args: MfmFnArgs, children: string): string {
+  const deg = sanitizeNumber(args.deg) ?? '90'
+  return `<span style="display:inline-block;transform:rotate(${deg}deg);transform-origin:center center">${children}</span>`
+}
 
-    case 'position': {
-      const x = sanitizeNumber(args.x) ?? '0'
-      const y = sanitizeNumber(args.y) ?? '0'
-      return `<span style="display:inline-block;transform:translate(${x}em,${y}em)">${children}</span>`
-    }
+function renderPositionFn(args: MfmFnArgs, children: string): string {
+  const x = sanitizeNumber(args.x) ?? '0'
+  const y = sanitizeNumber(args.y) ?? '0'
+  return `<span style="display:inline-block;transform:translate(${x}em,${y}em)">${children}</span>`
+}
 
-    case 'scale': {
-      const x = sanitizeNumber(args.x) ?? '1'
-      const y = sanitizeNumber(args.y) ?? '1'
-      return `<span style="display:inline-block;transform:scale(${x},${y})">${children}</span>`
-    }
+function renderScaleFn(args: MfmFnArgs, children: string): string {
+  const x = sanitizeNumber(args.x) ?? '1'
+  const y = sanitizeNumber(args.y) ?? '1'
+  return `<span style="display:inline-block;transform:scale(${x},${y})">${children}</span>`
+}
 
-    case 'fg': {
-      const color = sanitizeColor(args.color)
-      if (color) {
-        return `<span style="color:${color}">${children}</span>`
-      }
-      return children
-    }
+function renderColorSpanFn(
+  styleProperty: 'color' | 'background-color',
+  args: MfmFnArgs,
+  children: string,
+): string {
+  const color = sanitizeColor(args.color)
+  if (!color) return children
+  return `<span style="${styleProperty}:${color}">${children}</span>`
+}
 
-    case 'bg': {
-      const color = sanitizeColor(args.color)
-      if (color) {
-        return `<span style="background-color:${color}">${children}</span>`
-      }
-      return children
-    }
+function renderBorderFn(args: MfmFnArgs, children: string): string {
+  const style = sanitizeBorderStyle(args.style) ?? 'solid'
+  const width = sanitizeNumber(args.width) ?? '1'
+  const radius = sanitizeNumber(args.radius) ?? '0'
+  const color = sanitizeColor(args.color) ?? 'currentColor'
+  const noclip = args.noclip != null
+  return `<span style="display:inline-block;border:${width}px ${style} ${color};border-radius:${radius}px;${noclip ? '' : 'overflow:hidden;'}padding:4px">${children}</span>`
+}
 
-    case 'border': {
-      const style = sanitizeBorderStyle(args.style) ?? 'solid'
-      const width = sanitizeNumber(args.width) ?? '1'
-      const radius = sanitizeNumber(args.radius) ?? '0'
-      const color = sanitizeColor(args.color) ?? 'currentColor'
-      const noclip = args.noclip != null
-      return `<span style="display:inline-block;border:${width}px ${style} ${color};border-radius:${radius}px;${noclip ? '' : 'overflow:hidden;'}padding:4px">${children}</span>`
-    }
-
-    default:
-      return children
-  }
+const fnHtmlRenderers: Partial<Record<string, FnHtmlRenderer>> = {
+  bg: (args, children) => renderColorSpanFn('background-color', args, children),
+  blur: (_args, children) => `<span class="mfm-blur">${children}</span>`,
+  border: renderBorderFn,
+  bounce: renderAnimationFn,
+  fg: (args, children) => renderColorSpanFn('color', args, children),
+  flip: renderFlipFn,
+  font: renderFontFn,
+  jelly: renderAnimationFn,
+  jump: renderAnimationFn,
+  position: renderPositionFn,
+  rainbow: renderRainbowFn,
+  rotate: renderRotateFn,
+  scale: renderScaleFn,
+  shake: renderAnimationFn,
+  sparkle: (_args, children) => `<span class="mfm-sparkle">${children}</span>`,
+  spin: renderSpinFn,
+  tada: renderAnimationFn,
+  twitch: renderAnimationFn,
+  x2: (args, children) => renderScaleClassFn('mfm-x2', args, children),
+  x3: (args, children) => renderScaleClassFn('mfm-x3', args, children),
+  x4: (args, children) => renderScaleClassFn('mfm-x4', args, children),
 }
 
 // ========================================
