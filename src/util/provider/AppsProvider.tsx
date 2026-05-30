@@ -115,36 +115,34 @@ export const AppsProvider = ({
       apps.forEach(async (app) => {
         if (app.tokenData == null || app.tokenData?.refresh_token == null) {
           return
-        } else {
-          if (
-            app.tokenData.expires_in != null &&
-            app.tokenData.created_at != null
-          ) {
-            const expires =
-              app.tokenData.created_at * 1000 + app.tokenData.expires_in
+        } else if (
+          app.tokenData.expires_in != null &&
+          app.tokenData.created_at != null
+        ) {
+          const expires =
+            app.tokenData.created_at * 1000 + app.tokenData.expires_in
 
-            if (expires < now) {
-              app.tokenData = null
-              return
-            }
+          if (expires < now) {
+            app.tokenData = null
+            return
+          }
 
-            if (expires - now < 1000 * 60 * 60 * 24) {
-              if (app.backend === 'misskey') return // Misskey はリフレッシュトークン非対応
-              const client = generator(app.backend, app.backendUrl)
-              await client
-                .refreshToken(
-                  app.appData.client_id,
-                  app.appData.client_secret,
-                  app.tokenData?.refresh_token,
-                )
-                .then((tokenData) => {
-                  app.tokenData = tokenData
-                })
-                .catch((e) => {
-                  console.error('Failed to refresh token:', e)
-                })
-              return
-            }
+          if (expires - now < 1000 * 60 * 60 * 24) {
+            if (app.backend === 'misskey') return // Misskey はリフレッシュトークン非対応
+            const client = generator(app.backend, app.backendUrl)
+            await client
+              .refreshToken(
+                app.appData.client_id,
+                app.appData.client_secret,
+                app.tokenData?.refresh_token,
+              )
+              .then((tokenData) => {
+                app.tokenData = tokenData
+              })
+              .catch((e) => {
+                console.error('Failed to refresh token:', e)
+              })
+            return
           }
         }
       })
