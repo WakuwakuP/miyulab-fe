@@ -111,13 +111,14 @@ export const Media = ({
           }}
         >
           <audio className="w-full" controls key={media.id} src={media.url} />
-          <div
-            className="absolute left-0 top-0 z-1 h-full w-full"
+          <button
+            className="absolute left-0 top-0 z-1 h-full w-full border-0 bg-transparent p-0"
             onClick={(e) => {
               e.preventDefault()
               e.stopPropagation()
               if (onClick != null) onClick()
             }}
+            type="button"
           />
         </div>
       )
