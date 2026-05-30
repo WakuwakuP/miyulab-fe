@@ -188,6 +188,18 @@ const loadSearchUserDetail = (
   }
 }
 
+function DetailPanelStatusItem({
+  status,
+}: Readonly<{
+  status: StatusAddAppIndex
+}>) {
+  return <Status key={status.id} status={status} />
+}
+
+function detailPanelStatusItemContent(_: number, status: StatusAddAppIndex) {
+  return <DetailPanelStatusItem status={status} />
+}
+
 export const DetailPanel = () => {
   const apps = useContext(AppsContext)
   const detail = useContext(DetailContext)
@@ -247,12 +259,7 @@ export const DetailPanel = () => {
       </div>
       {detail.type === 'Status' && (
         <div className="h-[calc(100%-32px)]">
-          <Virtuoso
-            data={context}
-            itemContent={(_, status) => (
-              <Status key={status.id} status={status} />
-            )}
-          />
+          <Virtuoso data={context} itemContent={detailPanelStatusItemContent} />
         </div>
       )}
 
