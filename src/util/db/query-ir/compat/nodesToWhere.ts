@@ -9,6 +9,7 @@ import type {
   AerialReplyFilter,
   ExistsFilter,
   FilterNode,
+  OrGroup,
   RawSQLFilter,
   TableFilter,
   TimelineScope,
@@ -166,6 +167,43 @@ function aerialReplyFilterToSql(node: AerialReplyFilter): string {
 // Public API
 // ---------------------------------------------------------------------------
 
+function orGroupToWhereSql(node: OrGroup): string | undefined {
+  const branchSqls: string[] = []
+  for (const branch of node.branches) {
+    const branchWhere = nodesToWhere(branch)
+    if (branchWhere) {
+      branchSqls.push(branch.length > 1 ? `(${branchWhere})` : branchWhere)
+    }
+  }
+  if (branchSqls.length === 0) return undefined
+  return branchSqls.length === 1
+    ? branchSqls[0]
+    : `(${branchSqls.join(' OR ')})`
+}
+
+function filterNodeToWhereCondition(node: FilterNode): string | undefined {
+  switch (node.kind) {
+    case 'timeline-scope':
+      return timelineScopeToSql(node)
+    case 'table-filter':
+      return tableFilterToSql(node)
+    case 'exists-filter':
+      return existsFilterToSql(node)
+    case 'raw-sql-filter':
+      return rawSqlFilterToSql(node)
+    case 'aerial-reply-filter':
+      return aerialReplyFilterToSql(node)
+    case 'or-group':
+      return orGroupToWhereSql(node)
+    case 'backend-filter':
+      // BackendFilter はユーザーが書くフィルタではないためスキップ
+      return undefined
+    case 'moderation-filter':
+      // ModerationFilter は内部フィルタのためスキップ
+      return undefined
+  }
+}
+
 /**
  * FilterNode の配列を WHERE 句テキストに変換する。
  * 各ノードは AND で結合される。
@@ -174,47 +212,9 @@ export function nodesToWhere(nodes: FilterNode[]): string {
   const conditions: string[] = []
 
   for (const node of nodes) {
-    switch (node.kind) {
-      case 'timeline-scope':
-        conditions.push(timelineScopeToSql(node))
-        break
-      case 'table-filter':
-        conditions.push(tableFilterToSql(node))
-        break
-      case 'exists-filter':
-        conditions.push(existsFilterToSql(node))
-        break
-      case 'raw-sql-filter':
-        conditions.push(rawSqlFilterToSql(node))
-        break
-      case 'aerial-reply-filter':
-        conditions.push(aerialReplyFilterToSql(node))
-        break
-      case 'or-group': {
-        const branchSqls: string[] = []
-        for (const branch of node.branches) {
-          const branchWhere = nodesToWhere(branch)
-          if (branchWhere) {
-            branchSqls.push(
-              branch.length > 1 ? `(${branchWhere})` : branchWhere,
-            )
-          }
-        }
-        if (branchSqls.length > 0) {
-          conditions.push(
-            branchSqls.length === 1
-              ? branchSqls[0]
-              : `(${branchSqls.join(' OR ')})`,
-          )
-        }
-        break
-      }
-      case 'backend-filter':
-        // BackendFilter はユーザーが書くフィルタではないためスキップ
-        break
-      case 'moderation-filter':
-        // ModerationFilter は内部フィルタのためスキップ
-        break
+    const condition = filterNodeToWhereCondition(node)
+    if (condition) {
+      conditions.push(condition)
     }
   }
 
