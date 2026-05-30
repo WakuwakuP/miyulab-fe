@@ -199,14 +199,12 @@ export const GettingStarted = () => {
         max_id: conversations[appIndex][conversations[appIndex].length - 1].id,
       })
       .then((res) => {
+        const newItems = res.data.map((conversation) =>
+          conversationWithAppIndex(conversation, appIndex),
+        )
         setConversations((prev) => ({
           ...prev,
-          [appIndex]: [
-            ...prev[appIndex],
-            ...res.data.map((conversation) =>
-              conversationWithAppIndex(conversation, appIndex),
-            ),
-          ],
+          [appIndex]: [...prev[appIndex], ...newItems],
         }))
       })
       .catch((error) => {
