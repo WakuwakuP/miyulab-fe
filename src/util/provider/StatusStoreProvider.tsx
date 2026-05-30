@@ -222,8 +222,12 @@ function prependUserToUsersList(
   return dedupeUsersByAcct([accountToUserSummary(account), ...prev])
 }
 
+function mergeTagNameList(prev: string[], tagNames: string[]): string[] {
+  return Array.from(new Set([...prev, ...tagNames]))
+}
+
 function mergeTagNamesIntoState(setTags: SetTagsFn, tagNames: string[]): void {
-  setTags((prev) => Array.from(new Set([...prev, ...tagNames])))
+  setTags((prev) => mergeTagNameList(prev, tagNames))
 }
 
 function prependUserToUsersState(
@@ -298,21 +302,45 @@ function buildStreamHandlers(
   const { backendUrl } = app
   const retryState: StreamRetryState = { count: 0 }
 
+  function onConnect(): void {
+    handleStreamConnect(retryState)
+  }
+
+  function onDelete(id: string): void {
+    void handleStreamDelete(app, backendUrl, id)
+  }
+
+  function onError(stream: WebSocketInterface) {
+    return createUserStreamErrorHandler(stream, retryState)
+  }
+
+  function onNotification(notification: Entity.Notification): void {
+    void handleStreamNotification(app, backendUrl, notification, setUsersEvent)
+  }
+
+  function onStatusUpdate(status: Entity.Status): void {
+    void handleStreamStatusUpdate(app, backendUrl, status)
+  }
+
+  function onUpdate(status: Entity.Status): void {
+    void handleStreamUpdate(
+      app,
+      backendUrl,
+      status,
+      setUsersEvent,
+      setTagsEvent,
+    )
+  }
+
   return {
-    onConnect: () => handleStreamConnect(retryState),
-    onDelete: (id: string) => handleStreamDelete(app, backendUrl, id),
-    onError: (stream: WebSocketInterface) =>
-      createUserStreamErrorHandler(stream, retryState),
-    onNotification: (notification: Entity.Notification) =>
-      handleStreamNotification(app, backendUrl, notification, setUsersEvent),
-    onStatusUpdate: (status: Entity.Status) =>
-      handleStreamStatusUpdate(app, backendUrl, status),
-    onUpdate: (status: Entity.Status) =>
-      handleStreamUpdate(app, backendUrl, status, setUsersEvent, setTagsEvent),
+    onConnect,
+    onDelete,
+    onError,
+    onNotification,
+    onStatusUpdate,
+    onUpdate,
   }
 }
-
-type StreamHandlers = ReturnType<typeof buildStreamHandlers>
 
 async function fetchRestDataForAllApps(
   apps: App[],
@@ -335,8 +363,8 @@ async function fetchRestDataForAllApps(
 
 async function connectUserStreamForApp(
   app: App,
-  appIndex: number,
-  createStreamHandlers: (app: App, appIndex: number) => StreamHandlers,
+  setUsersEvent: SetUsersFn,
+  setTagsEvent: SetTagsFn,
   streams: Map<string, WebSocketInterface>,
 ): Promise<void> {
   const client = GetClient(app)
@@ -344,7 +372,7 @@ async function connectUserStreamForApp(
 
   try {
     const stream = await client.userStreaming()
-    const handlers = createStreamHandlers(app, appIndex)
+    const handlers = buildStreamHandlers(app, setUsersEvent, setTagsEvent)
 
     // エラーハンドラを最初に登録して "Unhandled error" を防止する
     stream.on('error', handlers.onError(stream))
@@ -430,11 +458,6 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
   const setUsersEvent = useEffectEvent(setUsers)
   const setTagsEvent = useEffectEvent(setTags)
 
-  // WebSocketストリームハンドラの作成
-  const createStreamHandlers = useEffectEvent((app: App, _appIndex: number) =>
-    buildStreamHandlers(app, setUsersEvent, setTagsEvent),
-  )
-
   // =========================================================================
   // Effect 1: 即時処理（フェーズ不問）
   // 定期クリーンアップと定期エクスポートのみ。DB 初期化は StartupCoordinator
@@ -463,7 +486,7 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
   // =========================================================================
   const timelineDisplayed = isPhaseReached('timeline-displayed')
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: advanceTo is stable; createStreamHandlers is useEffectEvent
+  // biome-ignore lint/correctness/useExhaustiveDependencies: advanceTo is stable; setUsersEvent is useEffectEvent
   useEffect(() => {
     if (process.env.NODE_ENV === 'development' && refFirstRestRef.current) {
       refFirstRestRef.current = false
@@ -498,11 +521,11 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
 
     console.info('[Startup] Phase 4 開始: userStreaming 接続')
 
-    for (const [index, app] of apps.entries()) {
+    for (const [_index, app] of apps.entries()) {
       void connectUserStreamForApp(
         app,
-        index,
-        createStreamHandlers,
+        setUsersEvent,
+        setTagsEvent,
         streamsRef.current,
       )
     }
