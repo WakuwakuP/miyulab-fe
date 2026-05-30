@@ -30,11 +30,12 @@ export function parseQueryToConfig(
   // ========================================
   // timelineTypes の検出
   // ========================================
-  const timelineTypeInMatch = query.match(
-    /ptt\.timelineType\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
-  )
-  const timelineTypeSingleMatch = query.match(
-    /ptt\.timelineType\s*=\s*'([^']+)'/i,
+  const timelineTypeInMatch =
+    /ptt\.timelineType\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i.exec(
+      query,
+    )
+  const timelineTypeSingleMatch = /ptt\.timelineType\s*=\s*'([^']+)'/i.exec(
+    query,
   )
 
   if (timelineTypeInMatch) {
@@ -215,7 +216,7 @@ export function parseQueryToConfig(
 
   if (backendSingleMatch) {
     result.backendFilter = {
-      backendUrl: backendSingleMatch[1].replace(/''/g, "'"),
+      backendUrl: backendSingleMatch[1].replaceAll("''", "'"),
       mode: 'single',
     }
   } else if (backendInMatch) {
@@ -332,7 +333,8 @@ export function canParseQuery(
   })
 
   // 正規化して比較（スペースを統一）
-  const normalize = (q: string) => q.replace(/\s+/g, ' ').trim().toLowerCase()
+  const normalize = (q: string) =>
+    q.replaceAll(/\s+/g, ' ').trim().toLowerCase()
 
   return normalize(rebuiltQuery) === normalize(query)
 }
