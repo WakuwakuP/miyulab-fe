@@ -34,8 +34,9 @@ export function parseQueryToConfig(
     /ptt\.timelineType\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i.exec(
       query,
     )
-  const timelineTypeSingleMatch =
-    /ptt\.timelineType\s*=\s*'([^']+)'/i.exec(query)
+  const timelineTypeSingleMatch = /ptt\.timelineType\s*=\s*'([^']+)'/i.exec(
+    query,
+  )
 
   if (timelineTypeInMatch) {
     const types = timelineTypeInMatch[1]
