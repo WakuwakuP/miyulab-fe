@@ -197,6 +197,99 @@ function createUserStreamErrorHandler(
   }
 }
 
+function captureHomeStreamEventIfEnabled(
+  app: App,
+  backendUrl: string,
+  eventType: string,
+  rawData: unknown,
+): void {
+  if (!isRawDataCaptureEnabled()) return
+
+  captureStreamEvent({
+    backend: app.backend,
+    backendUrl,
+    eventType,
+    origin: app.backend === 'misskey' ? 'misskey-js' : 'megalodon',
+    rawData,
+    streamType: 'home',
+  })
+}
+
+function prependUserToUsersList(
+  prev: UserSummary[],
+  account: Entity.Account,
+): UserSummary[] {
+  return dedupeUsersByAcct([accountToUserSummary(account), ...prev])
+}
+
+function mergeTagNamesIntoState(setTags: SetTagsFn, tagNames: string[]): void {
+  setTags((prev) => Array.from(new Set([...prev, ...tagNames])))
+}
+
+function prependUserToUsersState(
+  setUsers: SetUsersFn,
+  account: Entity.Account,
+): void {
+  setUsers((prev) => prependUserToUsersList(prev, account))
+}
+
+async function handleStreamUpdate(
+  app: App,
+  backendUrl: string,
+  status: Entity.Status,
+  setUsersEvent: SetUsersFn,
+  setTagsEvent: SetTagsFn,
+): Promise<void> {
+  captureHomeStreamEventIfEnabled(app, backendUrl, 'update', status)
+
+  const tagNames = status.tags.map((tag) => tag.name)
+  mergeTagNamesIntoState(setTagsEvent, tagNames)
+
+  const account = status.reblog?.account ?? status.account
+  prependUserToUsersState(setUsersEvent, account)
+
+  await upsertStatus(status, backendUrl, 'home')
+}
+
+async function handleStreamStatusUpdate(
+  app: App,
+  backendUrl: string,
+  status: Entity.Status,
+): Promise<void> {
+  captureHomeStreamEventIfEnabled(app, backendUrl, 'status_update', status)
+  await updateStatus(status, backendUrl)
+}
+
+async function handleStreamNotification(
+  app: App,
+  backendUrl: string,
+  notification: Entity.Notification,
+  setUsersEvent: SetUsersFn,
+): Promise<void> {
+  captureHomeStreamEventIfEnabled(app, backendUrl, 'notification', notification)
+  await addNotification(notification, backendUrl)
+
+  const account = notification.account
+  if (account) {
+    prependUserToUsersState(setUsersEvent, account)
+  }
+}
+
+// deleteイベント: homeストリームからの受信なので 'home' のみ除外
+async function handleStreamDelete(
+  app: App,
+  backendUrl: string,
+  id: string,
+): Promise<void> {
+  captureHomeStreamEventIfEnabled(app, backendUrl, 'delete', id)
+  await handleDeleteEvent(backendUrl, id, 'home')
+}
+
+function handleStreamConnect(retryState: StreamRetryState): void {
+  retryState.count = 0
+  console.info('connected userStreaming')
+}
+
 function buildStreamHandlers(
   app: App,
   setUsersEvent: SetUsersFn,
@@ -205,98 +298,17 @@ function buildStreamHandlers(
   const { backendUrl } = app
   const retryState: StreamRetryState = { count: 0 }
 
-  const onUpdate = async (status: Entity.Status) => {
-    // Raw data capture (stream)
-    if (isRawDataCaptureEnabled()) {
-      captureStreamEvent({
-        backend: app.backend,
-        backendUrl,
-        eventType: 'update',
-        origin: app.backend === 'misskey' ? 'misskey-js' : 'megalodon',
-        rawData: status,
-        streamType: 'home',
-      })
-    }
-
-    // タグを収集
-    const tagNames = status.tags.map((tag) => tag.name)
-    setTagsEvent((prev) => Array.from(new Set([...prev, ...tagNames])))
-
-    // ユーザー情報を収集
-    const account = status.reblog?.account ?? status.account
-    setUsersEvent((prev) =>
-      dedupeUsersByAcct([accountToUserSummary(account), ...prev]),
-    )
-
-    // IndexedDBに保存（appIndex は永続化しない）
-    await upsertStatus(status, backendUrl, 'home')
-  }
-
-  const onStatusUpdate = async (status: Entity.Status) => {
-    if (isRawDataCaptureEnabled()) {
-      captureStreamEvent({
-        backend: app.backend,
-        backendUrl,
-        eventType: 'status_update',
-        origin: app.backend === 'misskey' ? 'misskey-js' : 'megalodon',
-        rawData: status,
-        streamType: 'home',
-      })
-    }
-    await updateStatus(status, backendUrl)
-  }
-
-  const onNotification = async (notification: Entity.Notification) => {
-    if (isRawDataCaptureEnabled()) {
-      captureStreamEvent({
-        backend: app.backend,
-        backendUrl,
-        eventType: 'notification',
-        origin: app.backend === 'misskey' ? 'misskey-js' : 'megalodon',
-        rawData: notification,
-        streamType: 'home',
-      })
-    }
-    await addNotification(notification, backendUrl)
-
-    const account = notification.account
-    if (account) {
-      setUsersEvent((prev) =>
-        dedupeUsersByAcct([accountToUserSummary(account), ...prev]),
-      )
-    }
-  }
-
-  // deleteイベント: homeストリームからの受信なので 'home' のみ除外
-  const onDelete = async (id: string) => {
-    if (isRawDataCaptureEnabled()) {
-      captureStreamEvent({
-        backend: app.backend,
-        backendUrl,
-        eventType: 'delete',
-        origin: app.backend === 'misskey' ? 'misskey-js' : 'megalodon',
-        rawData: id,
-        streamType: 'home',
-      })
-    }
-    await handleDeleteEvent(backendUrl, id, 'home')
-  }
-
-  const onError = (stream: WebSocketInterface) =>
-    createUserStreamErrorHandler(stream, retryState)
-
-  const onConnect = () => {
-    retryState.count = 0
-    console.info('connected userStreaming')
-  }
-
   return {
-    onConnect,
-    onDelete,
-    onError,
-    onNotification,
-    onStatusUpdate,
-    onUpdate,
+    onConnect: () => handleStreamConnect(retryState),
+    onDelete: (id: string) => handleStreamDelete(app, backendUrl, id),
+    onError: (stream: WebSocketInterface) =>
+      createUserStreamErrorHandler(stream, retryState),
+    onNotification: (notification: Entity.Notification) =>
+      handleStreamNotification(app, backendUrl, notification, setUsersEvent),
+    onStatusUpdate: (status: Entity.Status) =>
+      handleStreamStatusUpdate(app, backendUrl, status),
+    onUpdate: (status: Entity.Status) =>
+      handleStreamUpdate(app, backendUrl, status, setUsersEvent, setTagsEvent),
   }
 }
 
