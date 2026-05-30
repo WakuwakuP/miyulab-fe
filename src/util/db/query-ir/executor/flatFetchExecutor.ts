@@ -141,8 +141,12 @@ export function executeFlatFetch(
   // ── 10. Source type ──
   const hasPost = postIds.length > 0
   const hasNotif = notificationIds.length > 0
-  const sourceType: 'post' | 'notification' | 'mixed' =
-    hasPost && hasNotif ? 'mixed' : hasNotif ? 'notification' : 'post'
+  let sourceType: 'post' | 'notification' | 'mixed' = 'post'
+  if (hasPost && hasNotif) {
+    sourceType = 'mixed'
+  } else if (hasNotif) {
+    sourceType = 'notification'
+  }
 
   return {
     displayOrder,

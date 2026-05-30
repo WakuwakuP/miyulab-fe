@@ -39,6 +39,23 @@ import { AppsContext } from './AppsProvider'
 import { SetTagsContext, SetUsersContext } from './ResourceProvider'
 import { StartupCoordinatorContext } from './StartupCoordinator'
 
+type UserSummary = Pick<
+  Entity.Account,
+  'id' | 'acct' | 'avatar' | 'display_name'
+>
+
+/** acct で重複を除く（先頭のエントリを優先） */
+function dedupeUsersByAcct(users: UserSummary[]): UserSummary[] {
+  const seen = new Set<string>()
+  const result: UserSummary[] = []
+  for (const user of users) {
+    if (seen.has(user.acct)) continue
+    seen.add(user.acct)
+    result.push(user)
+  }
+  return result
+}
+
 // ストア操作の型定義
 type StatusStoreActions = {
   /** お気に入り状態を更新 */
@@ -142,14 +159,13 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
       }
 
       // タグを収集
-      setTagsEvent((prev) =>
-        Array.from(new Set([...prev, ...status.tags.map((tag) => tag.name)])),
-      )
+      const tagNames = status.tags.map((tag) => tag.name)
+      setTagsEvent((prev) => Array.from(new Set([...prev, ...tagNames])))
 
       // ユーザー情報を収集
       const account = status.reblog?.account ?? status.account
       setUsersEvent((prev) =>
-        [
+        dedupeUsersByAcct([
           {
             acct: account.acct,
             avatar: account.avatar,
@@ -157,10 +173,7 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
             id: account.id,
           },
           ...prev,
-        ].filter(
-          (element, idx, self) =>
-            self.findIndex((e) => e.acct === element.acct) === idx,
-        ),
+        ]),
       )
 
       // IndexedDBに保存（appIndex は永続化しない）
@@ -196,20 +209,13 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
 
       const account = notification.account
       if (account) {
-        setUsersEvent((prev) =>
-          [
-            {
-              acct: account.acct,
-              avatar: account.avatar,
-              display_name: account.display_name,
-              id: account.id,
-            },
-            ...prev,
-          ].filter(
-            (element, idx, self) =>
-              self.findIndex((e) => e.acct === element.acct) === idx,
-          ),
-        )
+        const newUser: UserSummary = {
+          acct: account.acct,
+          avatar: account.avatar,
+          display_name: account.display_name,
+          id: account.id,
+        }
+        setUsersEvent((prev) => dedupeUsersByAcct([newUser, ...prev]))
       }
     }
 
@@ -230,6 +236,20 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
 
     const retryState = { count: 0 }
 
+    const scheduleStreamReconnect = (
+      stream: WebSocketInterface,
+      retryCount: number,
+      delay: number,
+    ) => {
+      setTimeout(() => {
+        // 再接続能力を復元してから start()
+        restartStream(stream)
+        console.info(
+          `reconnecting userStreaming (retry ${retryCount}/${MAX_RETRY_COUNT}, delay ${delay}ms)`,
+        )
+      }, delay)
+    }
+
     const onError = (stream: WebSocketInterface) => {
       return (err: Error | undefined) => {
         console.warn('userStreaming error:', err?.message ?? 'unknown error')
@@ -245,15 +265,11 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
           return
         }
 
-        const delay = getRetryDelay(retryState.count - 1)
-        const timeout = setTimeout(() => {
-          // 再接続能力を復元してから start()
-          restartStream(stream)
-          console.info(
-            `reconnecting userStreaming (retry ${retryState.count}/${MAX_RETRY_COUNT}, delay ${delay}ms)`,
-          )
-          clearTimeout(timeout)
-        }, delay)
+        scheduleStreamReconnect(
+          stream,
+          retryState.count,
+          getRetryDelay(retryState.count - 1),
+        )
       }
     }
 
@@ -370,12 +386,7 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
               display_name: account.display_name,
               id: account.id,
             }))
-          setUsersEvent((prev) =>
-            [...users, ...prev].filter(
-              (element, idx, self) =>
-                self.findIndex((e) => e.acct === element.acct) === idx,
-            ),
-          )
+          setUsersEvent((prev) => dedupeUsersByAcct([...users, ...prev]))
 
           await bulkAddNotifications(notifRes.data, backendUrl)
 
@@ -394,12 +405,7 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
               display_name: n.account.display_name,
               id: n.account.id,
             }))
-          setUsersEvent((prev) =>
-            [...prev, ...notifUsers].filter(
-              (element, idx, self) =>
-                self.findIndex((e) => e.acct === element.acct) === idx,
-            ),
-          )
+          setUsersEvent((prev) => dedupeUsersByAcct([...prev, ...notifUsers]))
         } catch (error) {
           console.error(`Failed to initialize for ${backendUrl}:`, error)
         }

@@ -139,14 +139,13 @@ export const GettingStarted = () => {
         client
           .getConversationTimeline()
           .then((res) => {
+            const conversationItems = res.data.map((conversation) => ({
+              ...conversation,
+              appIndex: appIndex,
+            }))
             setConversations((prev) => ({
               ...prev,
-              [appIndex]: res.data.map((conversation) => {
-                return {
-                  ...conversation,
-                  appIndex: appIndex,
-                }
-              }),
+              [appIndex]: conversationItems,
             }))
           })
           .catch((error) => {
