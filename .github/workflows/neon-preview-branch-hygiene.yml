@@ -3,7 +3,8 @@ name: Neon Preview Branch Hygiene
 # Vercel preview deploys provision a Neon branch named preview/<git-branch>.
 # When the Neon branch limit is reached, provisioning fails before the build
 # starts (~0ms). This workflow deletes preview/* branches for closed PRs so
-# active PRs can provision successfully.
+# active PRs can provision successfully, then triggers a follow-up push so
+# Vercel deploys after capacity is available (avoids racing the first push).
 on:
   pull_request:
     types: [opened, synchronize, reopened, closed]
@@ -12,8 +13,11 @@ on:
 jobs:
   reconcile-neon-preview-branches:
     runs-on: ubuntu-latest
+    outputs:
+      deleted_count: ${{ steps.hygiene.outputs.deleted_count }}
     steps:
       - name: Reconcile Neon preview branches with open PRs
+        id: hygiene
         env:
           GH_TOKEN: ${{ github.token }}
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
@@ -23,6 +27,7 @@ jobs:
 
           if [ -z "$NEON_API_KEY" ] || [ -z "$NEON_PROJECT_ID" ]; then
             echo "Neon API credentials are not configured. Skipping preview branch hygiene."
+            echo "deleted_count=0" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -34,6 +39,7 @@ jobs:
           if [ "$LIST_HTTP_CODE" != "200" ]; then
             echo "Failed to fetch Neon branch list (HTTP $LIST_HTTP_CODE)"
             cat /tmp/branches.json
+            echo "deleted_count=0" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -47,6 +53,7 @@ jobs:
 
           if [ "${#PREVIEW_BRANCHES[@]}" -eq 0 ]; then
             echo "No preview/* Neon branches found."
+            echo "deleted_count=0" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -78,3 +85,31 @@ jobs:
           done
 
           echo "Neon preview branch hygiene complete (kept=$kept deleted=$deleted)"
+          echo "deleted_count=$deleted" >> "$GITHUB_OUTPUT"
+
+  redeploy-vercel-preview-after-hygiene:
+    needs: reconcile-neon-preview-branches
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.action != 'closed' &&
+      !contains(join(github.event.commits.*.message, ' '), 'chore(ci): redeploy preview after Neon branch hygiene')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Trigger Vercel preview redeploy
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit --allow-empty \
+            -m "chore(ci): redeploy preview after Neon branch hygiene"
+          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
