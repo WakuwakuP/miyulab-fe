@@ -147,10 +147,9 @@ export const GettingStarted = () => {
         client
           .getConversationTimeline()
           .then((res) => {
-            const conversationItems = res.data.map((conversation) => ({
-              ...conversation,
-              appIndex: appIndex,
-            }))
+            const conversationItems = res.data.map((conversation) =>
+              conversationWithAppIndex(conversation, appIndex),
+            )
             setConversations((prev) => ({
               ...prev,
               [appIndex]: conversationItems,
