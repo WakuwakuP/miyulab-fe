@@ -1,0 +1,80 @@
+name: Neon Preview Branch Hygiene
+
+# Vercel preview deploys provision a Neon branch named preview/<git-branch>.
+# When the Neon branch limit is reached, provisioning fails before the build
+# starts (~0ms). This workflow deletes preview/* branches for closed PRs so
+# active PRs can provision successfully.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+  workflow_dispatch:
+
+jobs:
+  reconcile-neon-preview-branches:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reconcile Neon preview branches with open PRs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$NEON_API_KEY" ] || [ -z "$NEON_PROJECT_ID" ]; then
+            echo "Neon API credentials are not configured. Skipping preview branch hygiene."
+            exit 0
+          fi
+
+          echo "Fetching Neon branches..."
+          LIST_HTTP_CODE=$(curl -sL -w "%{http_code}" -o /tmp/branches.json \
+            -H "Authorization: Bearer $NEON_API_KEY" \
+            -H "Content-Type: application/json" \
+            "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches")
+          if [ "$LIST_HTTP_CODE" != "200" ]; then
+            echo "Failed to fetch Neon branch list (HTTP $LIST_HTTP_CODE)"
+            cat /tmp/branches.json
+            exit 0
+          fi
+
+          echo "Fetching open PR head branches..."
+          gh pr list --repo "$GITHUB_REPOSITORY" --state open --json headRefName \
+            --jq '.[].headRefName' > /tmp/open-pr-branches.txt
+
+          mapfile -t PREVIEW_BRANCHES < <(
+            jq -r '.branches[] | select(.name | startswith("preview/")) | .id + "\t" + .name' /tmp/branches.json
+          )
+
+          if [ "${#PREVIEW_BRANCHES[@]}" -eq 0 ]; then
+            echo "No preview/* Neon branches found."
+            exit 0
+          fi
+
+          deleted=0
+          kept=0
+          for entry in "${PREVIEW_BRANCHES[@]}"; do
+            branch_id="${entry%%$'\t'*}"
+            branch_name="${entry#*$'\t'}"
+            git_branch="${branch_name#preview/}"
+
+            if grep -Fxq "$git_branch" /tmp/open-pr-branches.txt; then
+              echo "Keep $branch_name (open PR branch: $git_branch)"
+              kept=$((kept + 1))
+              continue
+            fi
+
+            echo "Delete stale Neon branch $branch_name (id=$branch_id)"
+            DELETE_HTTP_CODE=$(curl -sL -w "%{http_code}" -o /tmp/delete-response.json \
+              -X DELETE \
+              -H "Authorization: Bearer $NEON_API_KEY" \
+              -H "Content-Type: application/json" \
+              "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches/$branch_id")
+            if [ "$DELETE_HTTP_CODE" = "200" ]; then
+              deleted=$((deleted + 1))
+            else
+              echo "Warning: failed to delete $branch_name (HTTP $DELETE_HTTP_CODE)"
+              cat /tmp/delete-response.json
+            fi
+          done
+
+          echo "Neon preview branch hygiene complete (kept=$kept deleted=$deleted)"
