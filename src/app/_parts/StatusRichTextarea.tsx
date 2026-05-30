@@ -93,6 +93,37 @@ type AutocompleteKeyDownHandlers = {
   >
 }
 
+const applyAutocompleteNavigation = (
+  direction: 'prev' | 'next',
+  index: number,
+  setIndex: Dispatch<SetStateAction<number>>,
+  isMention: boolean,
+  isEmoji: boolean,
+  isTag: boolean,
+  mentionFilteredLength: number,
+  emojiFilteredLength: number,
+  tagFilteredLength: number,
+): void => {
+  const wrap = direction === 'prev' ? wrapIndexPrev : wrapIndexNext
+  if (isMention) setIndex(wrap(index, mentionFilteredLength))
+  if (isEmoji) setIndex(wrap(index, emojiFilteredLength))
+  if (isTag) setIndex(wrap(index, tagFilteredLength))
+}
+
+const applyAutocompleteSelection = (
+  index: number,
+  isMention: boolean,
+  isEmoji: boolean,
+  isTag: boolean,
+  mentionComplete: (index: number) => void,
+  emojiComplete: (index: number) => void,
+  tagComplete: (index: number) => void,
+): void => {
+  if (isMention) mentionComplete(index)
+  if (isEmoji) emojiComplete(index)
+  if (isTag) tagComplete(index)
+}
+
 const handleAutocompleteKeyDown = (
   e: KeyboardEvent<HTMLTextAreaElement>,
   handlers: AutocompleteKeyDownHandlers,
@@ -114,23 +145,32 @@ const handleAutocompleteKeyDown = (
 
   switch (e.code) {
     case 'ArrowUp':
-      e.preventDefault()
-      if (isMention) setIndex(wrapIndexPrev(index, mentionFilteredLength))
-      if (isEmoji) setIndex(wrapIndexPrev(index, emojiFilteredLength))
-      if (isTag) setIndex(wrapIndexPrev(index, tagFilteredLength))
-      break
     case 'ArrowDown':
       e.preventDefault()
-      if (isMention) setIndex(wrapIndexNext(index, mentionFilteredLength))
-      if (isEmoji) setIndex(wrapIndexNext(index, emojiFilteredLength))
-      if (isTag) setIndex(wrapIndexNext(index, tagFilteredLength))
+      applyAutocompleteNavigation(
+        e.code === 'ArrowUp' ? 'prev' : 'next',
+        index,
+        setIndex,
+        isMention,
+        isEmoji,
+        isTag,
+        mentionFilteredLength,
+        emojiFilteredLength,
+        tagFilteredLength,
+      )
       break
     case 'Enter':
     case 'Tab':
       e.preventDefault()
-      if (isMention) mentionComplete(index)
-      if (isEmoji) emojiComplete(index)
-      if (isTag) tagComplete(index)
+      applyAutocompleteSelection(
+        index,
+        isMention,
+        isEmoji,
+        isTag,
+        mentionComplete,
+        emojiComplete,
+        tagComplete,
+      )
       break
     case 'Quote':
       e.preventDefault()
