@@ -39,17 +39,11 @@ import {
 } from './statusHelpers'
 import type { DbExec, HandlerResult, WrittenTableCollector } from './types'
 
-export function handleUpdateStatus(
+function resolveUpdateTargetPostId(
   db: DbExec,
-  statusJson: string,
+  status: Entity.Status,
   backendUrl: string,
-): HandlerResult {
-  const status = JSON.parse(statusJson) as Entity.Status
-  const now = Date.now()
-  const cols = extractPostColumns(status)
-
-  // handleUpsertStatus と同様に URI → post_backend_ids の順で検索
-  let postId: number | null = null
+): number | null {
   const normalizedUri = status.uri?.trim() || ''
   if (normalizedUri) {
     const existingRows = db.exec('SELECT id FROM posts WHERE object_uri = ?;', {
@@ -57,179 +51,184 @@ export function handleUpdateStatus(
       returnValue: 'resultRows',
     }) as number[][]
     if (existingRows.length > 0) {
-      postId = existingRows[0][0]
+      return existingRows[0][0]
     }
   }
-  if (postId === null) {
-    const localAccountIdForLookup = resolveLocalAccountId(db, backendUrl)
-    if (localAccountIdForLookup !== null) {
-      postId =
-        resolvePostIdInternal(db, localAccountIdForLookup, status.id) ?? null
-    }
+
+  const localAccountIdForLookup = resolveLocalAccountId(db, backendUrl)
+  if (localAccountIdForLookup !== null) {
+    return resolvePostIdInternal(db, localAccountIdForLookup, status.id) ?? null
   }
-  if (postId === null) return { changedTables: [] }
+  return null
+}
+
+function resolveExistingPostIdForUpdate(
+  db: DbExec,
+  status: Entity.Status,
+  backendUrl: string,
+): number | null {
+  const postId = resolveUpdateTargetPostId(db, status, backendUrl)
+  if (postId === null) return null
 
   const existing = db.exec('SELECT id FROM posts WHERE id = ?;', {
     bind: [postId],
     returnValue: 'resultRows',
   }) as number[][]
+  if (existing.length === 0) return null
 
-  if (existing.length === 0) return { changedTables: [] }
+  return postId
+}
+
+/** サーバーから返されたフラグをDBに反映する。 */
+function syncStatusInteractions(
+  db: DbExec,
+  postId: number,
+  localAccountId: number,
+  status: Entity.Status,
+  collector: WrittenTableCollector,
+): void {
+  if (status.favourited === true) {
+    updateInteraction(db, postId, localAccountId, 'favourite', true, collector)
+  } else if (status.favourited === false) {
+    updateInteraction(db, postId, localAccountId, 'favourite', false, collector)
+  }
+  if (status.reblogged === true) {
+    updateInteraction(db, postId, localAccountId, 'reblog', true, collector)
+  } else if (status.reblogged === false) {
+    updateInteraction(db, postId, localAccountId, 'reblog', false, collector)
+  }
+  if (status.bookmarked === true) {
+    updateInteraction(db, postId, localAccountId, 'bookmark', true, collector)
+  } else if (status.bookmarked === false) {
+    updateInteraction(db, postId, localAccountId, 'bookmark', false, collector)
+  }
+}
+
+function applyStatusUpdate(
+  db: DbExec,
+  postId: number,
+  status: Entity.Status,
+  backendUrl: string,
+  now: number,
+  collector: WrittenTableCollector,
+): void {
+  const cols = extractPostColumns(status)
+  const host = new URL(backendUrl).host
+  const serverId = ensureServer(db, host, collector)
+  const visibilityId = resolveVisibilityId(db, cols.visibility_id.toString())
+  const profileId = ensureProfile(db, status.account, serverId, collector)
+  if (status.account.emojis.length > 0) {
+    syncProfileCustomEmojis(
+      db,
+      profileId,
+      serverId,
+      status.account.emojis,
+      collector,
+    )
+  }
+
+  const isReblog = status.reblog != null ? 1 : 0
+  const reblogOfUri = status.reblog?.uri ?? null
+  const reblogOfPostId =
+    isReblog === 1 ? resolveRepostOfPostId(db, reblogOfUri) : null
+
+  // object_uri / created_at_ms / author_profile_id は編集で変わらないため更新しない
+  // author_profile_id: ActivityPub では著者は不変。クロスバックエンド到着時の
+  // profile_id 不整合を防ぐため INSERT 時にのみ設定する。
+  db.exec(
+    `UPDATE posts SET
+       last_fetched_at        = ?,
+       visibility_id          = ?,
+       language               = ?,
+       content_html           = ?,
+       spoiler_text           = ?,
+       canonical_url          = ?,
+       is_reblog              = ?,
+       is_sensitive           = ?,
+       in_reply_to_uri        = ?,
+       in_reply_to_account_acct = ?,
+       edited_at_ms           = ?,
+       plain_content          = ?,
+       quote_state            = ?,
+       is_local_only          = ?,
+       application_name       = ?,
+       reblog_of_post_id      = ?,
+       quote_of_post_id       = ?
+     WHERE id = ?;`,
+    {
+      bind: [
+        now,
+        visibilityId ?? cols.visibility_id,
+        cols.language,
+        cols.content_html,
+        cols.spoiler_text,
+        cols.canonical_url,
+        isReblog,
+        cols.is_sensitive,
+        cols.in_reply_to_uri,
+        cols.in_reply_to_account_acct,
+        cols.edited_at_ms,
+        cols.plain_content,
+        cols.quote_state,
+        cols.is_local_only,
+        cols.application_name,
+        reblogOfPostId,
+        null, // quote_of_post_id: 将来拡張用
+        postId,
+      ],
+    },
+  )
+  collector.add('posts')
+
+  upsertMentionsInternal(db, postId, status.mentions, collector)
+  syncPostMedia(db, postId, status.media_attachments, collector)
+  syncPostStats(db, postId, status, collector)
+
+  const localAccountId = resolveLocalAccountId(db, backendUrl)
+  if (localAccountId !== null) {
+    syncStatusInteractions(db, postId, localAccountId, status, collector)
+  }
+
+  syncPostCustomEmojis(
+    db,
+    postId,
+    serverId,
+    [...(status.emojis ?? []), ...(status.account?.emojis ?? [])],
+    collector,
+  )
+  syncPostHashtags(db, postId, status.tags, collector)
+  syncPollData(db, postId, status.poll, collector)
+  syncLinkCard(db, postId, status.card, collector)
+
+  if (isReblog === 1 && status.reblog) {
+    ensureReblogOriginalPost(
+      db,
+      status.reblog,
+      backendUrl,
+      serverId,
+      now,
+      localAccountId,
+      collector,
+    )
+  }
+}
+
+export function handleUpdateStatus(
+  db: DbExec,
+  statusJson: string,
+  backendUrl: string,
+): HandlerResult {
+  const status = JSON.parse(statusJson) as Entity.Status
+  const now = Date.now()
+
+  const postId = resolveExistingPostIdForUpdate(db, status, backendUrl)
+  if (postId === null) return { changedTables: [] }
 
   const collector: WrittenTableCollector = new Set()
 
   db.exec('BEGIN;')
   try {
-    const host = new URL(backendUrl).host
-    const serverId = ensureServer(db, host, collector)
-    const visibilityId = resolveVisibilityId(db, cols.visibility_id.toString())
-    const profileId = ensureProfile(db, status.account, serverId, collector)
-    if (status.account.emojis.length > 0) {
-      syncProfileCustomEmojis(
-        db,
-        profileId,
-        serverId,
-        status.account.emojis,
-        collector,
-      )
-    }
-
-    const isReblog = status.reblog != null ? 1 : 0
-    const reblogOfUri = status.reblog?.uri ?? null
-    const reblogOfPostId =
-      isReblog === 1 ? resolveRepostOfPostId(db, reblogOfUri) : null
-
-    // object_uri / created_at_ms / author_profile_id は編集で変わらないため更新しない
-    // author_profile_id: ActivityPub では著者は不変。クロスバックエンド到着時の
-    // profile_id 不整合を防ぐため INSERT 時にのみ設定する。
-    db.exec(
-      `UPDATE posts SET
-         last_fetched_at        = ?,
-         visibility_id          = ?,
-         language               = ?,
-         content_html           = ?,
-         spoiler_text           = ?,
-         canonical_url          = ?,
-         is_reblog              = ?,
-         is_sensitive           = ?,
-         in_reply_to_uri        = ?,
-         in_reply_to_account_acct = ?,
-         edited_at_ms           = ?,
-         plain_content          = ?,
-         quote_state            = ?,
-         is_local_only          = ?,
-         application_name       = ?,
-         reblog_of_post_id      = ?,
-         quote_of_post_id       = ?
-       WHERE id = ?;`,
-      {
-        bind: [
-          now,
-          visibilityId ?? cols.visibility_id,
-          cols.language,
-          cols.content_html,
-          cols.spoiler_text,
-          cols.canonical_url,
-          isReblog,
-          cols.is_sensitive,
-          cols.in_reply_to_uri,
-          cols.in_reply_to_account_acct,
-          cols.edited_at_ms,
-          cols.plain_content,
-          cols.quote_state,
-          cols.is_local_only,
-          cols.application_name,
-          reblogOfPostId,
-          null, // quote_of_post_id: 将来拡張用
-          postId,
-        ],
-      },
-    )
-    collector.add('posts')
-
-    upsertMentionsInternal(db, postId, status.mentions, collector)
-    syncPostMedia(db, postId, status.media_attachments, collector)
-    syncPostStats(db, postId, status, collector)
-
-    // エンゲージメント同期（サーバーから返されたフラグをDBに反映）
-    const localAccountId = resolveLocalAccountId(db, backendUrl)
-    if (localAccountId !== null) {
-      if (status.favourited === true) {
-        updateInteraction(
-          db,
-          postId,
-          localAccountId,
-          'favourite',
-          true,
-          collector,
-        )
-      } else if (status.favourited === false) {
-        updateInteraction(
-          db,
-          postId,
-          localAccountId,
-          'favourite',
-          false,
-          collector,
-        )
-      }
-      if (status.reblogged === true) {
-        updateInteraction(db, postId, localAccountId, 'reblog', true, collector)
-      } else if (status.reblogged === false) {
-        updateInteraction(
-          db,
-          postId,
-          localAccountId,
-          'reblog',
-          false,
-          collector,
-        )
-      }
-      if (status.bookmarked === true) {
-        updateInteraction(
-          db,
-          postId,
-          localAccountId,
-          'bookmark',
-          true,
-          collector,
-        )
-      } else if (status.bookmarked === false) {
-        updateInteraction(
-          db,
-          postId,
-          localAccountId,
-          'bookmark',
-          false,
-          collector,
-        )
-      }
-    }
-
-    syncPostCustomEmojis(
-      db,
-      postId,
-      serverId,
-      [...(status.emojis ?? []), ...(status.account?.emojis ?? [])],
-      collector,
-    )
-    syncPostHashtags(db, postId, status.tags, collector)
-    syncPollData(db, postId, status.poll, collector)
-    syncLinkCard(db, postId, status.card, collector)
-
-    // リブログの場合、元投稿も更新する
-    if (isReblog === 1 && status.reblog) {
-      ensureReblogOriginalPost(
-        db,
-        status.reblog,
-        backendUrl,
-        serverId,
-        now,
-        localAccountId,
-        collector,
-      )
-    }
-
+    applyStatusUpdate(db, postId, status, backendUrl, now, collector)
     db.exec('COMMIT;')
   } catch (e) {
     db.exec('ROLLBACK;')
