@@ -30,12 +30,12 @@ export function parseQueryToConfig(
   // ========================================
   // timelineTypes の検出
   // ========================================
-  const timelineTypeInMatch = query.match(
-    /ptt\.timelineType\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
-  )
-  const timelineTypeSingleMatch = query.match(
-    /ptt\.timelineType\s*=\s*'([^']+)'/i,
-  )
+  const timelineTypeInMatch =
+    /ptt\.timelineType\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i.exec(
+      query,
+    )
+  const timelineTypeSingleMatch =
+    /ptt\.timelineType\s*=\s*'([^']+)'/i.exec(query)
 
   if (timelineTypeInMatch) {
     const types = timelineTypeInMatch[1]
@@ -215,7 +215,7 @@ export function parseQueryToConfig(
 
   if (backendSingleMatch) {
     result.backendFilter = {
-      backendUrl: backendSingleMatch[1].replace(/''/g, "'"),
+      backendUrl: backendSingleMatch[1].replaceAll("''", "'"),
       mode: 'single',
     }
   } else if (backendInMatch) {
@@ -287,7 +287,7 @@ export function parseQueryToConfig(
   const multiTagMatch =
     /(?:pbt\.tag|ht\.name|ht\.normalized_name)\s+IN\s*\(([^)]+)\)/i.exec(query)
   const andTagMatch =
-    /HAVING\s+COUNT\s*\(\s*DISTINCT\s+[a-z_][\w]*\.(?:tag|normalized_name|name)\s*\)\s*=\s*(\d+)/i.exec(
+    /HAVING\s+COUNT\s*\(\s*DISTINCT\s+[a-z_]\w*\.(?:tag|normalized_name|name)\s*\)\s*=\s*(\d+)/i.exec(
       query,
     )
 
@@ -299,7 +299,7 @@ export function parseQueryToConfig(
   } else if (multiTagMatch) {
     const tags = multiTagMatch[1]
       .split(',')
-      .map((t) => t.trim().replace(/^'|'$/g, '').replaceAll("''", "'"))
+      .map((t) => t.trim().replaceAll(/^'|'$/g, '').replaceAll("''", "'"))
       .filter(Boolean)
     const mode = andTagMatch ? 'and' : 'or'
     result.tagConfig = { mode, tags }
@@ -332,7 +332,8 @@ export function canParseQuery(
   })
 
   // 正規化して比較（スペースを統一）
-  const normalize = (q: string) => q.replace(/\s+/g, ' ').trim().toLowerCase()
+  const normalize = (q: string) =>
+    q.replaceAll(/\s+/g, ' ').trim().toLowerCase()
 
   return normalize(rebuiltQuery) === normalize(query)
 }
