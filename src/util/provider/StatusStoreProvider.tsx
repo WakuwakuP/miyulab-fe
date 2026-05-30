@@ -37,7 +37,10 @@ import { getRetryDelay, MAX_RETRY_COUNT } from 'util/streaming/constants'
 import { restartStream, stopStream } from 'util/streaming/stopStream'
 import { AppsContext } from './AppsProvider'
 import { SetTagsContext, SetUsersContext } from './ResourceProvider'
-import { StartupCoordinatorContext } from './StartupCoordinator'
+import {
+  StartupCoordinatorContext,
+  type StartupPhase,
+} from './StartupCoordinator'
 
 type UserSummary = Pick<
   Entity.Account,
@@ -298,6 +301,54 @@ function buildStreamHandlers(
   }
 }
 
+type StreamHandlers = ReturnType<typeof buildStreamHandlers>
+
+async function fetchRestDataForAllApps(
+  apps: App[],
+  isCancelled: () => boolean,
+  setUsers: SetUsersFn,
+  advanceTo: (target: StartupPhase) => void,
+): Promise<void> {
+  console.info('[Startup] Phase 3 開始: REST API 取得 + DB 書き込み')
+  const promises = apps.map((app) =>
+    fetchRestDataForApp(app, isCancelled, setUsers),
+  )
+
+  await Promise.all(promises)
+
+  if (!isCancelled()) {
+    console.info('[Startup] Phase 3 完了: REST API 取得 + DB 書き込み')
+    advanceTo('rest-fetched')
+  }
+}
+
+async function connectUserStreamForApp(
+  app: App,
+  appIndex: number,
+  createStreamHandlers: (app: App, appIndex: number) => StreamHandlers,
+  streams: Map<string, WebSocketInterface>,
+): Promise<void> {
+  const client = GetClient(app)
+  const { backendUrl } = app
+
+  try {
+    const stream = await client.userStreaming()
+    const handlers = createStreamHandlers(app, appIndex)
+
+    // エラーハンドラを最初に登録して "Unhandled error" を防止する
+    stream.on('error', handlers.onError(stream))
+    stream.on('connect', handlers.onConnect)
+    stream.on('update', handlers.onUpdate)
+    stream.on('status_update', handlers.onStatusUpdate)
+    stream.on('notification', handlers.onNotification)
+    stream.on('delete', handlers.onDelete)
+
+    streams.set(backendUrl, stream)
+  } catch (error) {
+    console.error(`Failed to start streaming for ${backendUrl}:`, error)
+  }
+}
+
 // ストア操作の型定義
 type StatusStoreActions = {
   /** お気に入り状態を更新 */
@@ -426,23 +477,9 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
     if (apps.length <= 0) return
 
     let cancelled = false
+    const isCancelled = () => cancelled
 
-    const fetchAll = async () => {
-      console.info('[Startup] Phase 3 開始: REST API 取得 + DB 書き込み')
-      const isCancelled = () => cancelled
-      const promises = apps.map((app) =>
-        fetchRestDataForApp(app, isCancelled, setUsersEvent),
-      )
-
-      await Promise.all(promises)
-
-      if (!cancelled) {
-        console.info('[Startup] Phase 3 完了: REST API 取得 + DB 書き込み')
-        advanceTo('rest-fetched')
-      }
-    }
-
-    fetchAll()
+    void fetchRestDataForAllApps(apps, isCancelled, setUsersEvent, advanceTo)
 
     return () => {
       cancelled = true
@@ -465,29 +502,14 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
 
     console.info('[Startup] Phase 4 開始: userStreaming 接続')
 
-    apps.forEach(async (app, index) => {
-      const client = GetClient(app)
-      const { backendUrl } = app
-
-      client
-        .userStreaming()
-        .then((stream) => {
-          const handlers = createStreamHandlers(app, index)
-
-          // エラーハンドラを最初に登録して "Unhandled error" を防止する
-          stream.on('error', handlers.onError(stream))
-          stream.on('connect', handlers.onConnect)
-          stream.on('update', handlers.onUpdate)
-          stream.on('status_update', handlers.onStatusUpdate)
-          stream.on('notification', handlers.onNotification)
-          stream.on('delete', handlers.onDelete)
-
-          streamsRef.current.set(backendUrl, stream)
-        })
-        .catch((error) => {
-          console.error(`Failed to start streaming for ${backendUrl}:`, error)
-        })
-    })
+    for (const [index, app] of apps.entries()) {
+      void connectUserStreamForApp(
+        app,
+        index,
+        createStreamHandlers,
+        streamsRef.current,
+      )
+    }
 
     return () => {
       for (const stream of streamsRef.current.values()) {
