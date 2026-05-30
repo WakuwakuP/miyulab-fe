@@ -42,14 +42,15 @@ export const MediaAttachments = ({
     <div className="relative flex flex-wrap">
       {sensitive &&
         (!isShowSensitive ? (
-          <div
+          <button
             className="absolute z-10 flex h-full w-full cursor-pointer items-center justify-center bg-gray-800/50 p-2 text-gray-400 backdrop-blur-lg"
             onClick={() => {
               setIsShowSensitive(true)
             }}
+            type="button"
           >
             <div>Contents Warning</div>
-          </div>
+          </button>
         ) : (
           <button
             className="absolute left-2 top-2 z-10 rounded-md bg-gray-500/50 px-1 py-0.5"
