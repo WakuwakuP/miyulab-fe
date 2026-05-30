@@ -51,107 +51,37 @@ export function executeFlatFetch(
   const startMs = performance.now()
   const { backendUrls, displayOrder, notificationIds, postIds } = request
 
-  // ── 1. Core post fetch ──
-  const postCoreRows =
-    postIds.length > 0
-      ? fetchCoreRows(db, buildPostFlatQuery(backendUrls, postIds))
-      : []
+  const postCoreRows = fetchPostCoreRowsIfAny(db, backendUrls, postIds)
 
-  // ── 2. Reblog parent expansion ──
   const fetchedPostIds = new Set(postIds)
-  const parentIds: number[] = []
-  for (const row of postCoreRows) {
-    const reblogId = row[POST_REBLOG_OF_COL] as number | null
-    if (reblogId != null && !fetchedPostIds.has(reblogId)) {
-      parentIds.push(reblogId)
-      fetchedPostIds.add(reblogId)
-    }
-  }
-  const parentCoreRows =
-    parentIds.length > 0
-      ? fetchCoreRows(db, buildPostFlatQuery(backendUrls, parentIds))
-      : []
+  const parentCoreRows = expandReblogParents(
+    db,
+    backendUrls,
+    postCoreRows,
+    fetchedPostIds,
+  )
 
-  // ── 3. Core notification fetch ──
-  const notifCoreRows =
-    notificationIds.length > 0
-      ? fetchCoreRows(db, buildNotificationFlatQuery(notificationIds))
-      : []
+  const notifCoreRows = fetchNotificationCoreRowsIfAny(db, notificationIds)
 
-  // ── 4. Notification related post expansion ──
-  const relatedPostIds: number[] = []
-  for (const row of notifCoreRows) {
-    const relatedId = row[NOTIF_RELATED_POST_ID_COL] as number | null
-    if (relatedId != null && !fetchedPostIds.has(relatedId)) {
-      relatedPostIds.push(relatedId)
-      fetchedPostIds.add(relatedId)
-    }
-  }
-  const relatedCoreRows =
-    relatedPostIds.length > 0
-      ? fetchCoreRows(db, buildPostFlatQuery(backendUrls, relatedPostIds))
-      : []
+  const relatedCoreRows = expandNotificationRelatedPosts(
+    db,
+    backendUrls,
+    notifCoreRows,
+    fetchedPostIds,
+  )
 
-  // ── 5. Batch queries for all posts ──
-  const allPostIds = [...fetchedPostIds]
-  const batchMaps = runBatchQueries(db, allPostIds)
+  const batchMaps = runBatchQueries(db, [...fetchedPostIds])
 
-  // ── 6. Profile emoji batch for notification actors ──
-  const actorProfileIds = new Set<number>()
-  for (const row of notifCoreRows) {
-    const actorId = row[NOTIF_ACTOR_PROFILE_ID_COL] as number | null
-    if (actorId != null) actorProfileIds.add(actorId)
-  }
-  const actorEmojisMap =
-    actorProfileIds.size > 0
-      ? fetchProfileEmojisById(db, [...actorProfileIds])
-      : new Map<number, string>()
+  const actorEmojisMap = fetchActorEmojisForNotifications(db, notifCoreRows)
 
-  // ── 7. Assemble posts ──
   const allPostRows = [...postCoreRows, ...parentCoreRows, ...relatedCoreRows]
-  const postMap = new Map<number, SqliteStoredStatus>()
-  for (const row of allPostRows) {
-    const pid = row[POST_ID_COL] as number
-    postMap.set(pid, assemblePostFromFlat(row, batchMaps))
-  }
-
-  // ── 8. Link reblogs ──
-  for (const row of allPostRows) {
-    const pid = row[POST_ID_COL] as number
-    const reblogOfId = row[POST_REBLOG_OF_COL] as number | null
-    if (reblogOfId != null) {
-      const status = postMap.get(pid)
-      const parent = postMap.get(reblogOfId)
-      if (status && parent) {
-        status.reblog = parent
-      }
-    }
-  }
-
-  // ── 9. Assemble notifications ──
-  const notifMap = new Map<number, SqliteStoredNotification>()
-  for (const row of notifCoreRows) {
-    const nid = row[0] as number
-    notifMap.set(
-      nid,
-      assembleNotificationFromFlat(row, postMap, actorEmojisMap),
-    )
-  }
-
-  // ── 10. Source type ──
-  const hasPost = postIds.length > 0
-  const hasNotif = notificationIds.length > 0
-  let sourceType: 'post' | 'notification' | 'mixed' = 'post'
-  if (hasPost && hasNotif) {
-    sourceType = 'mixed'
-  } else if (hasNotif) {
-    sourceType = 'notification'
-  }
+  const postMap = buildPostMapWithReblogs(allPostRows, batchMaps)
+  const notifMap = buildNotificationMap(notifCoreRows, postMap, actorEmojisMap)
 
   return {
     displayOrder,
     meta: {
-      sourceType,
+      sourceType: resolveFlatFetchSourceType(postIds, notificationIds),
       totalDurationMs: performance.now() - startMs,
     },
     notifications: notifMap,
@@ -162,6 +92,123 @@ export function executeFlatFetch(
 // ================================================================
 // ヘルパー
 // ================================================================
+
+type CoreRow = (string | number | null)[]
+
+function fetchPostCoreRowsIfAny(
+  db: DbExec,
+  backendUrls: string[],
+  postIds: number[],
+): CoreRow[] {
+  if (postIds.length === 0) return []
+  return fetchCoreRows(db, buildPostFlatQuery(backendUrls, postIds))
+}
+
+function expandReblogParents(
+  db: DbExec,
+  backendUrls: string[],
+  postCoreRows: CoreRow[],
+  fetchedPostIds: Set<number>,
+): CoreRow[] {
+  const parentIds: number[] = []
+  for (const row of postCoreRows) {
+    const reblogId = row[POST_REBLOG_OF_COL] as number | null
+    if (reblogId != null && !fetchedPostIds.has(reblogId)) {
+      parentIds.push(reblogId)
+      fetchedPostIds.add(reblogId)
+    }
+  }
+  if (parentIds.length === 0) return []
+  return fetchCoreRows(db, buildPostFlatQuery(backendUrls, parentIds))
+}
+
+function fetchNotificationCoreRowsIfAny(
+  db: DbExec,
+  notificationIds: number[],
+): CoreRow[] {
+  if (notificationIds.length === 0) return []
+  return fetchCoreRows(db, buildNotificationFlatQuery(notificationIds))
+}
+
+function expandNotificationRelatedPosts(
+  db: DbExec,
+  backendUrls: string[],
+  notifCoreRows: CoreRow[],
+  fetchedPostIds: Set<number>,
+): CoreRow[] {
+  const relatedPostIds: number[] = []
+  for (const row of notifCoreRows) {
+    const relatedId = row[NOTIF_RELATED_POST_ID_COL] as number | null
+    if (relatedId != null && !fetchedPostIds.has(relatedId)) {
+      relatedPostIds.push(relatedId)
+      fetchedPostIds.add(relatedId)
+    }
+  }
+  if (relatedPostIds.length === 0) return []
+  return fetchCoreRows(db, buildPostFlatQuery(backendUrls, relatedPostIds))
+}
+
+function fetchActorEmojisForNotifications(
+  db: DbExec,
+  notifCoreRows: CoreRow[],
+): Map<number, string> {
+  const actorProfileIds = new Set<number>()
+  for (const row of notifCoreRows) {
+    const actorId = row[NOTIF_ACTOR_PROFILE_ID_COL] as number | null
+    if (actorId != null) actorProfileIds.add(actorId)
+  }
+  if (actorProfileIds.size === 0) return new Map()
+  return fetchProfileEmojisById(db, [...actorProfileIds])
+}
+
+function buildPostMapWithReblogs(
+  allPostRows: CoreRow[],
+  batchMaps: BatchMaps,
+): Map<number, SqliteStoredStatus> {
+  const postMap = new Map<number, SqliteStoredStatus>()
+  for (const row of allPostRows) {
+    const pid = row[POST_ID_COL] as number
+    postMap.set(pid, assemblePostFromFlat(row, batchMaps))
+  }
+  for (const row of allPostRows) {
+    const pid = row[POST_ID_COL] as number
+    const reblogOfId = row[POST_REBLOG_OF_COL] as number | null
+    if (reblogOfId == null) continue
+    const status = postMap.get(pid)
+    const parent = postMap.get(reblogOfId)
+    if (status && parent) {
+      status.reblog = parent
+    }
+  }
+  return postMap
+}
+
+function buildNotificationMap(
+  notifCoreRows: CoreRow[],
+  postMap: Map<number, SqliteStoredStatus>,
+  actorEmojisMap: Map<number, string>,
+): Map<number, SqliteStoredNotification> {
+  const notifMap = new Map<number, SqliteStoredNotification>()
+  for (const row of notifCoreRows) {
+    const nid = row[0] as number
+    notifMap.set(
+      nid,
+      assembleNotificationFromFlat(row, postMap, actorEmojisMap),
+    )
+  }
+  return notifMap
+}
+
+function resolveFlatFetchSourceType(
+  postIds: number[],
+  notificationIds: number[],
+): FlatFetchResult['meta']['sourceType'] {
+  const hasPost = postIds.length > 0
+  const hasNotif = notificationIds.length > 0
+  if (hasPost && hasNotif) return 'mixed'
+  if (hasNotif) return 'notification'
+  return 'post'
+}
 
 /** 単一の SELECT クエリを実行して行配列を返す */
 function fetchCoreRows(
