@@ -29,6 +29,130 @@ function createMockDb(userVersion: number) {
   return { db, handle: { db } as SchemaDbHandle }
 }
 
+type V2MigrationMockState = {
+  canonicalAcctAdded: boolean
+  usernameServerIndexCreated: boolean
+}
+
+function handleV2MigrationSideEffects(
+  sql: string,
+  state: V2MigrationMockState,
+): boolean {
+  if (sql.includes('ALTER TABLE profiles ADD COLUMN canonical_acct')) {
+    state.canonicalAcctAdded = true
+    return true
+  }
+  if (sql.includes('CREATE UNIQUE INDEX idx_profiles_username_server')) {
+    state.usernameServerIndexCreated = true
+    return true
+  }
+  return false
+}
+
+function resolveCanonicalAcctIndexRows(): string[][] {
+  return [
+    [
+      'CREATE UNIQUE INDEX idx_profiles_canonical_acct ON profiles(canonical_acct)',
+    ],
+  ]
+}
+
+function resolveUsernameServerIndexRows(
+  state: V2MigrationMockState,
+): string[][] {
+  if (state.usernameServerIndexCreated) {
+    return [
+      [
+        'CREATE UNIQUE INDEX idx_profiles_username_server ON profiles(username, server_id)',
+      ],
+    ]
+  }
+  return []
+}
+
+function resolveProfilesTableInfoRows(
+  state: V2MigrationMockState,
+): (string | number)[][] {
+  const base: (string | number)[][] = [
+    [0, 'id'],
+    [1, 'actor_uri'],
+    [2, 'username'],
+    [3, 'server_id'],
+    [4, 'acct'],
+  ]
+  if (state.canonicalAcctAdded) {
+    return [...base, [5, 'canonical_acct']]
+  }
+  return base
+}
+
+function resolveV2MigrationResultRows(
+  sql: string,
+  v2Encoded: number,
+  state: V2MigrationMockState,
+): unknown {
+  if (sql.includes('PRAGMA user_version')) {
+    return [[v2Encoded]]
+  }
+  if (
+    sql.includes('sqlite_master') &&
+    sql.includes("name='idx_profiles_canonical_acct'")
+  ) {
+    return resolveCanonicalAcctIndexRows()
+  }
+  if (
+    sql.includes('sqlite_master') &&
+    sql.includes("name='idx_profiles_username_server'")
+  ) {
+    return resolveUsernameServerIndexRows(state)
+  }
+  if (sql.includes('sqlite_master')) {
+    return [[1]]
+  }
+  if (sql.includes('notification_types')) {
+    return [['emoji_reaction']]
+  }
+  if (sql.includes('PRAGMA table_info(profiles)')) {
+    return resolveProfilesTableInfoRows(state)
+  }
+  if (sql.includes('COUNT(*)') && sql.includes('_profile_merge_map')) {
+    return [[0]]
+  }
+  if (sql.includes('COUNT(*)') && sql.includes('canonical_acct')) {
+    return [[0]]
+  }
+  if (
+    sql.includes('COUNT(*)') &&
+    sql.includes('username') &&
+    sql.includes('server_id')
+  ) {
+    return [[0]]
+  }
+  return undefined
+}
+
+function createV2MigrationMockDb(v2Encoded: number) {
+  const state: V2MigrationMockState = {
+    canonicalAcctAdded: false,
+    usernameServerIndexCreated: false,
+  }
+  const db = {
+    exec: vi.fn((sql: string, opts?: Record<string, unknown>) => {
+      if (typeof sql !== 'string') {
+        return undefined
+      }
+      if (handleV2MigrationSideEffects(sql, state)) {
+        return undefined
+      }
+      if (opts?.returnValue === 'resultRows') {
+        return resolveV2MigrationResultRows(sql, v2Encoded, state)
+      }
+      return undefined
+    }),
+  }
+  return { db, handle: { db } as SchemaDbHandle }
+}
+
 describe('v2.0.0 マイグレーション', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -199,94 +323,7 @@ describe('v2.0.0 マイグレーション', () => {
 
     it('v2.0.0 DB に対して v2.0.1 ~ v2.0.6 マイグレーションが適用される', () => {
       const v2Encoded = encodeSemVer({ major: 2, minor: 0, patch: 0 })
-      let canonicalAcctAdded = false
-      let usernameServerIndexCreated = false
-      // 各マイグレーションの validate/up 用モック
-      const db = {
-        exec: vi.fn((sql: string, opts?: Record<string, unknown>) => {
-          if (
-            typeof sql === 'string' &&
-            sql.includes('ALTER TABLE profiles ADD COLUMN canonical_acct')
-          ) {
-            canonicalAcctAdded = true
-            return undefined
-          }
-          if (
-            typeof sql === 'string' &&
-            sql.includes('CREATE UNIQUE INDEX idx_profiles_username_server')
-          ) {
-            usernameServerIndexCreated = true
-            return undefined
-          }
-          if (typeof sql === 'string' && opts?.returnValue === 'resultRows') {
-            if (sql.includes('PRAGMA user_version')) {
-              return [[v2Encoded]]
-            }
-            if (
-              sql.includes('sqlite_master') &&
-              sql.includes("name='idx_profiles_canonical_acct'")
-            ) {
-              return [
-                [
-                  'CREATE UNIQUE INDEX idx_profiles_canonical_acct ON profiles(canonical_acct)',
-                ],
-              ]
-            }
-            if (
-              sql.includes('sqlite_master') &&
-              sql.includes("name='idx_profiles_username_server'")
-            ) {
-              // up() 実行前は存在しない、実行後は存在する
-              if (usernameServerIndexCreated) {
-                return [
-                  [
-                    'CREATE UNIQUE INDEX idx_profiles_username_server ON profiles(username, server_id)',
-                  ],
-                ]
-              }
-              return []
-            }
-            if (sql.includes('sqlite_master')) {
-              return [[1]]
-            }
-            if (sql.includes('notification_types')) {
-              return [['emoji_reaction']]
-            }
-            if (sql.includes('PRAGMA table_info(profiles)')) {
-              const base = [
-                [0, 'id'],
-                [1, 'actor_uri'],
-                [2, 'username'],
-                [3, 'server_id'],
-                [4, 'acct'],
-              ]
-              if (canonicalAcctAdded) {
-                return [...base, [5, 'canonical_acct']]
-              }
-              return base
-            }
-            if (
-              sql.includes('COUNT(*)') &&
-              sql.includes('_profile_merge_map')
-            ) {
-              return [[0]]
-            }
-            if (sql.includes('COUNT(*)') && sql.includes('canonical_acct')) {
-              return [[0]]
-            }
-            if (
-              sql.includes('COUNT(*)') &&
-              sql.includes('username') &&
-              sql.includes('server_id')
-            ) {
-              // v2.0.5 validate: 重複なし
-              return [[0]]
-            }
-          }
-          return undefined
-        }),
-      }
-      const handle = { db } as SchemaDbHandle
+      const { db, handle } = createV2MigrationMockDb(v2Encoded)
       runMigrations(handle, mockDropAll, mockCreateFresh)
 
       // v2.0.1 の up() による CREATE TABLE (2) + v2.0.4 の _profile_merge_map (1) + v2.0.5 の _profile_merge_map_v205 (1)
