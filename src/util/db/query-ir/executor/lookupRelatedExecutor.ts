@@ -257,6 +257,139 @@ function executeWithJoin(
 
 // --------------- IN ベース（timeCondition なし or resolve） ---------------
 
+function buildInJoinConditions(
+  node: LookupRelatedNode,
+  input: NodeOutput,
+  lt: string,
+): {
+  binds: BindValue[]
+  conditions: string[]
+  dependentTables: string[]
+} {
+  const conditions: string[] = []
+  const binds: BindValue[] = []
+  const dependentTables = [node.lookupTable, input.sourceTable]
+
+  if (node.joinConditions.some((jc) => jc.resolveIdentity)) {
+    dependentTables.push('profiles')
+  }
+
+  for (const jc of node.joinConditions) {
+    const ids = input.rows.map((r) => r.id)
+    const placeholders = ids.map(() => '?').join(', ')
+
+    if (jc.resolveIdentity) {
+      const inputCol =
+        jc.inputColumn && jc.inputColumn !== 'id' ? jc.inputColumn : 'id'
+      conditions.push(
+        `${lt}.${jc.lookupColumn} IN (` +
+          'SELECT p2.id FROM profiles p2 ' +
+          'WHERE p2.canonical_acct IN (' +
+          'SELECT p1.canonical_acct FROM profiles p1 ' +
+          `WHERE p1.id IN (SELECT DISTINCT ${inputCol} FROM ${input.sourceTable} WHERE id IN (${placeholders}))` +
+          '))',
+      )
+      binds.push(...ids)
+    } else if (jc.resolve) {
+      conditions.push(
+        `${lt}.${jc.lookupColumn} IN (SELECT ${jc.resolve.matchColumn} FROM ${jc.resolve.via} WHERE ${jc.resolve.inputKey} IN (${placeholders}))`,
+      )
+      binds.push(...ids)
+      dependentTables.push(jc.resolve.via)
+    } else if (jc.inputColumn && jc.inputColumn !== 'id') {
+      conditions.push(
+        `${lt}.${jc.lookupColumn} IN (SELECT ${jc.inputColumn} FROM ${input.sourceTable} WHERE id IN (${placeholders}))`,
+      )
+      binds.push(...ids)
+    } else {
+      conditions.push(`${lt}.${jc.lookupColumn} IN (${placeholders})`)
+      binds.push(...ids)
+    }
+  }
+
+  return { binds, conditions, dependentTables }
+}
+
+function appendGlobalTimeWindowConditions(
+  tc: NonNullable<LookupRelatedNode['timeCondition']>,
+  input: NodeOutput,
+  lt: string,
+  conditions: string[],
+  binds: BindValue[],
+): void {
+  const minTime = Math.min(...input.rows.map((r) => r.createdAtMs))
+  const maxTime = Math.max(...input.rows.map((r) => r.createdAtMs))
+
+  if (tc.afterInput) {
+    conditions.push(`${lt}.${tc.lookupTimeColumn} >= ?`)
+    binds.push(minTime)
+    conditions.push(`${lt}.${tc.lookupTimeColumn} <= ?`)
+    binds.push(maxTime + tc.windowMs)
+    return
+  }
+  conditions.push(`${lt}.${tc.lookupTimeColumn} < ?`)
+  binds.push(maxTime)
+  conditions.push(`${lt}.${tc.lookupTimeColumn} >= ?`)
+  binds.push(minTime - tc.windowMs)
+}
+
+function resolveInPerRowOrderCol(node: LookupRelatedNode, lt: string): string {
+  if (node.timeCondition) {
+    return `${lt}.${node.timeCondition.lookupTimeColumn}`
+  }
+  const defaultTimeCol = getDefaultTimeColumn(node.lookupTable)
+  return defaultTimeCol ? `${lt}.${defaultTimeCol}` : `${lt}.id`
+}
+
+function resolveInPerRowPartitionOrder(
+  node: LookupRelatedNode,
+): 'ASC' | 'DESC' {
+  if (node.timeCondition) {
+    const isNearest = node.perLimitOrder === 'nearest'
+    return isNearest === node.timeCondition.afterInput ? 'ASC' : 'DESC'
+  }
+  return node.perLimitOrder === 'nearest' ? 'ASC' : 'DESC'
+}
+
+function buildInLookupSql(
+  node: LookupRelatedNode,
+  parts: {
+    groupByStr: string
+    lt: string
+    selectExpr: string
+    whereStr: string
+  },
+): string {
+  const { groupByStr, lt, selectExpr, whereStr } = parts
+  const usePerRowLimit = node.perLimit != null && !node.aggregate
+
+  if (usePerRowLimit) {
+    const partitionCol = `${lt}.${node.joinConditions[0].lookupColumn}`
+    const orderCol = resolveInPerRowOrderCol(node, lt)
+    const partitionOrder = resolveInPerRowPartitionOrder(node)
+    const innerSql = [
+      `SELECT ${selectExpr},`,
+      `ROW_NUMBER() OVER (PARTITION BY ${partitionCol} ORDER BY ${orderCol} ${partitionOrder}) AS _rn`,
+      `FROM ${node.lookupTable} ${lt}`,
+      whereStr,
+      groupByStr,
+    ]
+      .filter(Boolean)
+      .join(' ')
+    return `SELECT id, created_at_ms FROM (${innerSql}) WHERE _rn <= ${node.perLimit} ORDER BY created_at_ms DESC`
+  }
+
+  return [
+    `SELECT ${selectExpr}`,
+    `FROM ${node.lookupTable} ${lt}`,
+    whereStr,
+    groupByStr,
+    `ORDER BY created_at_ms DESC`,
+  ]
+    .filter(Boolean)
+    .join(' ')
+}
+
 /**
  * IN ベースの実行。
  * timeCondition がない場合、または resolve がある場合に使用する。
@@ -276,137 +409,26 @@ function executeWithIn(
   dependentTables: string[]
 } {
   const lt = 'lt'
-  const binds: BindValue[] = []
-  const conditions: string[] = []
-  const dependentTables = [node.lookupTable, input.sourceTable]
-
-  const hasIdentityResolve = node.joinConditions.some(
-    (jc) => jc.resolveIdentity,
+  const { binds, conditions, dependentTables } = buildInJoinConditions(
+    node,
+    input,
+    lt,
   )
 
-  if (hasIdentityResolve) {
-    dependentTables.push('profiles')
-  }
-
-  // --- JOIN 条件: 上流 IDs を IN 句で注入 ---
-  for (const jc of node.joinConditions) {
-    const ids = input.rows.map((r) => r.id)
-    const placeholders = ids.map(() => '?').join(', ')
-
-    if (jc.resolveIdentity) {
-      // canonical_acct カラムによる同一人物解決
-      const inputCol =
-        jc.inputColumn && jc.inputColumn !== 'id' ? jc.inputColumn : 'id'
-      conditions.push(
-        `${lt}.${jc.lookupColumn} IN (` +
-          'SELECT p2.id FROM profiles p2 ' +
-          'WHERE p2.canonical_acct IN (' +
-          'SELECT p1.canonical_acct FROM profiles p1 ' +
-          `WHERE p1.id IN (SELECT DISTINCT ${inputCol} FROM ${input.sourceTable} WHERE id IN (${placeholders}))` +
-          '))',
-      )
-      binds.push(...ids)
-    } else if (jc.resolve) {
-      // 明示的 resolve: 中間テーブル経由
-      conditions.push(
-        `${lt}.${jc.lookupColumn} IN (SELECT ${jc.resolve.matchColumn} FROM ${jc.resolve.via} WHERE ${jc.resolve.inputKey} IN (${placeholders}))`,
-      )
-      binds.push(...ids)
-      dependentTables.push(jc.resolve.via)
-    } else if (jc.inputColumn && jc.inputColumn !== 'id') {
-      // inputColumn 自動解決: 上流テーブルから inputColumn を subquery で取得
-      conditions.push(
-        `${lt}.${jc.lookupColumn} IN (SELECT ${jc.inputColumn} FROM ${input.sourceTable} WHERE id IN (${placeholders}))`,
-      )
-      binds.push(...ids)
-    } else {
-      // 直接 JOIN: 上流の ID を lookupColumn に直接マッチ
-      conditions.push(`${lt}.${jc.lookupColumn} IN (${placeholders})`)
-      binds.push(...ids)
-    }
-  }
-
-  // --- 時間条件 (グローバル min/max 近似 — resolve 使用時のフォールバック) ---
   if (node.timeCondition) {
-    const tc = node.timeCondition
-    const minTime = Math.min(...input.rows.map((r) => r.createdAtMs))
-    const maxTime = Math.max(...input.rows.map((r) => r.createdAtMs))
-
-    if (tc.afterInput) {
-      conditions.push(`${lt}.${tc.lookupTimeColumn} >= ?`)
-      binds.push(minTime)
-      conditions.push(`${lt}.${tc.lookupTimeColumn} <= ?`)
-      binds.push(maxTime + tc.windowMs)
-    } else {
-      conditions.push(`${lt}.${tc.lookupTimeColumn} < ?`)
-      binds.push(maxTime)
-      conditions.push(`${lt}.${tc.lookupTimeColumn} >= ?`)
-      binds.push(minTime - tc.windowMs)
-    }
+    appendGlobalTimeWindowConditions(
+      node.timeCondition,
+      input,
+      lt,
+      conditions,
+      binds,
+    )
   }
 
-  // --- SELECT 句構築 ---
-  let selectExpr: string
-  let groupByStr = ''
-
-  if (node.aggregate) {
-    selectExpr = `${lt}.id AS id, ${node.aggregate.function}(${lt}.${node.aggregate.column}) AS created_at_ms`
-    groupByStr = `GROUP BY ${lt}.id`
-  } else {
-    const defaultTimeCol = getDefaultTimeColumn(node.lookupTable)
-    selectExpr = defaultTimeCol
-      ? `${lt}.id AS id, ${lt}.${defaultTimeCol} AS created_at_ms`
-      : `${lt}.id AS id, 0 AS created_at_ms`
-  }
-
+  const { groupByStr, selectExpr } = buildLookupSelectExpr(node, lt)
   const whereStr =
     conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
-
-  // Per-row limit: ROW_NUMBER PARTITION BY lt.{lookupColumn} で各入力値あたり N 件に制限
-  const usePerRowLimit = node.perLimit != null && !node.aggregate
-
-  let sql: string
-  if (usePerRowLimit) {
-    const partitionCol = `${lt}.${node.joinConditions[0].lookupColumn}`
-    const defaultTimeCol = getDefaultTimeColumn(node.lookupTable)
-    let orderCol = `${lt}.id`
-    if (node.timeCondition) {
-      orderCol = `${lt}.${node.timeCondition.lookupTimeColumn}`
-    } else if (defaultTimeCol) {
-      orderCol = `${lt}.${defaultTimeCol}`
-    }
-
-    let partitionOrder: 'ASC' | 'DESC'
-    if (node.timeCondition) {
-      const isNearest = node.perLimitOrder === 'nearest'
-      partitionOrder =
-        isNearest === node.timeCondition.afterInput ? 'ASC' : 'DESC'
-    } else {
-      partitionOrder = node.perLimitOrder === 'nearest' ? 'ASC' : 'DESC'
-    }
-
-    const innerSql = [
-      `SELECT ${selectExpr},`,
-      `ROW_NUMBER() OVER (PARTITION BY ${partitionCol} ORDER BY ${orderCol} ${partitionOrder}) AS _rn`,
-      `FROM ${node.lookupTable} ${lt}`,
-      whereStr,
-      groupByStr,
-    ]
-      .filter(Boolean)
-      .join(' ')
-
-    sql = `SELECT id, created_at_ms FROM (${innerSql}) WHERE _rn <= ${node.perLimit} ORDER BY created_at_ms DESC`
-  } else {
-    sql = [
-      `SELECT ${selectExpr}`,
-      `FROM ${node.lookupTable} ${lt}`,
-      whereStr,
-      groupByStr,
-      `ORDER BY created_at_ms DESC`,
-    ]
-      .filter(Boolean)
-      .join(' ')
-  }
+  const sql = buildInLookupSql(node, { groupByStr, lt, selectExpr, whereStr })
 
   const rawRows = db.exec(sql, {
     bind: binds.length > 0 ? binds : undefined,
