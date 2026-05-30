@@ -1,11 +1,14 @@
 import { spawnSync } from 'node:child_process'
+import path from 'node:path'
 
-function run(command, args) {
-  const result = spawnSync(command, args, { stdio: 'inherit' })
+const zenstackBin = path.join(process.cwd(), 'node_modules', '.bin', 'zenstack')
+
+function run(args) {
+  const result = spawnSync(zenstackBin, args, { stdio: 'inherit' })
   return result.status ?? 1
 }
 
-const generateExit = run('zenstack', ['generate'])
+const generateExit = run(['generate'])
 if (generateExit !== 0) {
   process.exit(generateExit)
 }
@@ -24,7 +27,7 @@ if (!process.env.DATABASE_URL) {
   process.exit(0)
 }
 
-const migrateExit = run('zenstack', ['migrate', 'deploy'])
+const migrateExit = run(['migrate', 'deploy'])
 if (migrateExit !== 0 && vercelEnv === 'preview') {
   console.warn(
     '[prebuild] zenstack migrate deploy failed on preview; continuing build',
