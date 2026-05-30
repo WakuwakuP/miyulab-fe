@@ -14,11 +14,72 @@ import {
 import { useDropzone } from 'react-dropzone'
 import { CgSpinner } from 'react-icons/cg'
 
+import type { App } from 'types/types'
 import { GetClient } from 'util/GetClient'
 import { AppsContext } from 'util/provider/AppsProvider'
 import { InstanceContext } from 'util/provider/ResourceProvider'
 
 import { Media } from './Media'
+
+const decrementUploading = (setUploading: Dispatch<SetStateAction<number>>) => {
+  setUploading((prev) => prev - 1)
+}
+
+const uploadMediaFile = (
+  file: File,
+  apps: App[],
+  appIndex: number,
+  setAttachments: Dispatch<SetStateAction<Entity.Attachment[]>>,
+  setUploading: Dispatch<SetStateAction<number>>,
+) => {
+  if (apps.length <= 0) return
+  const client = GetClient(apps[appIndex])
+  client
+    .uploadMedia(file)
+    .then((res) => {
+      const Attachment = res.data as Entity.Attachment
+      setAttachments((prev) => [...prev, Attachment])
+    })
+    .catch((error) => {
+      console.error('Failed to upload media:', error)
+    })
+    .finally(() => {
+      decrementUploading(setUploading)
+    })
+}
+
+const processDroppedFile = (
+  file: File,
+  apps: App[],
+  appIndex: number,
+  setAttachments: Dispatch<SetStateAction<Entity.Attachment[]>>,
+  setUploading: Dispatch<SetStateAction<number>>,
+  update_limit: number,
+) => {
+  setUploading((prev) => prev + 1)
+  if (file.type.startsWith('image/')) {
+    imageCompression(file, {
+      maxSizeMB: update_limit,
+      maxWidthOrHeight: 2048,
+      useWebWorker: true,
+    })
+      .then((compressedFile) => {
+        uploadMediaFile(
+          compressedFile,
+          apps,
+          appIndex,
+          setAttachments,
+          setUploading,
+        )
+      })
+      .catch((error) => {
+        console.error('Failed to compress image:', error)
+        decrementUploading(setUploading)
+      })
+  } else {
+    uploadMediaFile(file, apps, appIndex, setAttachments, setUploading)
+  }
+}
 
 export const Dropzone = ({
   children,
@@ -42,41 +103,15 @@ export const Dropzone = ({
 
   const onDrop = useCallback(
     (acceptedFiles: File[]) => {
-      const uploadMedia = (file: File) => {
-        if (apps.length <= 0) return
-        const client = GetClient(apps[appIndex])
-        client
-          .uploadMedia(file)
-          .then((res) => {
-            const Attachment = res.data as Entity.Attachment
-            setAttachments((prev) => [...prev, Attachment])
-          })
-          .catch((error) => {
-            console.error('Failed to upload media:', error)
-          })
-          .finally(() => {
-            setUploading((prev) => prev - 1)
-          })
-      }
-
       acceptedFiles.forEach((file) => {
-        setUploading((prev) => prev + 1)
-        if (file.type.startsWith('image/')) {
-          imageCompression(file, {
-            maxSizeMB: update_limit,
-            maxWidthOrHeight: 2048,
-            useWebWorker: true,
-          })
-            .then((compressedFile) => {
-              uploadMedia(compressedFile)
-            })
-            .catch((error) => {
-              console.error('Failed to compress image:', error)
-              setUploading((prev) => prev - 1)
-            })
-        } else {
-          uploadMedia(file)
-        }
+        processDroppedFile(
+          file,
+          apps,
+          appIndex,
+          setAttachments,
+          setUploading,
+          update_limit,
+        )
       })
     },
     [apps, appIndex, setAttachments, setUploading, update_limit],
