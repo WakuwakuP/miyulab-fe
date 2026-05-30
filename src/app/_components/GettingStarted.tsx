@@ -19,7 +19,7 @@ import {
 import { CiWarning } from 'react-icons/ci'
 import { RiArrowLeftSLine } from 'react-icons/ri'
 import { Virtuoso } from 'react-virtuoso'
-import type { StatusAddAppIndex } from 'types/types'
+import type { App, StatusAddAppIndex } from 'types/types'
 import { GetClient } from 'util/GetClient'
 import {
   navigatePanel,
@@ -38,6 +38,14 @@ const conversationWithAppIndex = (
   ...conversation,
   appIndex,
 })
+
+function appListKey(app: App): string {
+  const token = app.tokenData?.access_token
+  if (token != null) {
+    return token
+  }
+  return `${app.backendUrl}:${app.appData.client_id}`
+}
 
 function BookmarkVirtuosoItem({
   isScrolling,
@@ -279,7 +287,7 @@ export const GettingStarted = () => {
         ) : (
           <>
             {apps.map((app, index) => (
-              <Fragment key={app.backendUrl}>
+              <Fragment key={appListKey(app)}>
                 <div className="flex w-full items-center space-x-2 border-b px-4 py-2 text-xl">
                   {app.tokenData == null && (
                     <button
