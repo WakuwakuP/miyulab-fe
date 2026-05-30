@@ -51,113 +51,106 @@ const ALL_NOTIFICATION_TYPES_COUNT = ALL_NOTIFICATION_TYPES.length
  * Hook 側で別途追加する（クエリ文字列には含めない）。
  */
 export function buildQueryFromConfig(config: TimelineConfigV2): string {
-  // ========================================
-  // ソース条件（タイムラインと通知、OR で結合）
-  // ========================================
-  const sourceConditions: string[] = []
-
-  // タイムライン種類条件
   const timelineCondition = buildTimelineTypeCondition(config)
-  if (timelineCondition) {
-    sourceConditions.push(timelineCondition)
-  }
-
-  // 通知タイプフィルタ（notifications テーブル側の条件）
   const notificationCondition = buildNotificationTypeCondition(
     config.notificationFilter,
   )
+  const sourceConditions = collectSourceConditions(
+    timelineCondition,
+    notificationCondition,
+  )
+  const filterConditions = buildFilterConditions(
+    config,
+    sourceConditions.length > 1,
+    timelineCondition,
+    notificationCondition,
+  )
+  return assembleQueryParts(sourceConditions, filterConditions)
+}
+
+function collectSourceConditions(
+  timelineCondition: string | null,
+  notificationCondition: string | null,
+): string[] {
+  const sourceConditions: string[] = []
+  if (timelineCondition) {
+    sourceConditions.push(timelineCondition)
+  }
   if (notificationCondition) {
     sourceConditions.push(notificationCondition)
   }
+  return sourceConditions
+}
 
-  // ========================================
-  // フィルタ条件（AND で絞り込み）
-  // ========================================
+function addMixedAwareFilter(
+  filterConditions: string[],
+  condition: string | null,
+  isMixed: boolean,
+): void {
+  if (!condition) return
+  filterConditions.push(isMixed ? nullTolerant(condition) : condition)
+}
+
+function buildFilterConditions(
+  config: TimelineConfigV2,
+  isMixed: boolean,
+  timelineCondition: string | null,
+  notificationCondition: string | null,
+): string[] {
   const filterConditions: string[] = []
 
-  // 混合クエリかどうか（statuses 固有フィルタを NULL 許容にする判定）
-  const isMixed = sourceConditions.length > 1
+  addMixedAwareFilter(filterConditions, buildMediaCondition(config), isMixed)
+  addMixedAwareFilter(
+    filterConditions,
+    buildVisibilityCondition(config.visibilityFilter),
+    isMixed,
+  )
 
-  // メディアフィルタ（v2: 正規化カラム使用）
-  const mediaCondition = buildMediaCondition(config)
-  if (mediaCondition) {
-    filterConditions.push(
-      isMixed ? nullTolerant(mediaCondition) : mediaCondition,
-    )
-  }
-
-  // 公開範囲フィルタ
-  const visibilityCondition = buildVisibilityCondition(config.visibilityFilter)
-  if (visibilityCondition) {
-    filterConditions.push(
-      isMixed ? nullTolerant(visibilityCondition) : visibilityCondition,
-    )
-  }
-
-  // 言語フィルタ（既に OR ... IS NULL を含むためそのまま）
   const languageCondition = buildLanguageCondition(config.languageFilter)
   if (languageCondition) {
     filterConditions.push(languageCondition)
   }
 
-  // ブースト除外
   if (config.excludeReblogs) {
-    const cond = 'p.is_reblog = 0'
-    filterConditions.push(isMixed ? nullTolerant(cond) : cond)
+    addMixedAwareFilter(filterConditions, 'p.is_reblog = 0', isMixed)
   }
-
-  // リプライ除外（IS NULL は混合クエリでも notifications 行を通すため変更不要）
   if (config.excludeReplies) {
     filterConditions.push('p.in_reply_to_uri IS NULL')
   }
-
-  // CW 付き除外
   if (config.excludeSpoiler) {
-    const cond = "p.spoiler_text = ''"
-    filterConditions.push(isMixed ? nullTolerant(cond) : cond)
+    addMixedAwareFilter(filterConditions, "p.spoiler_text = ''", isMixed)
   }
-
-  // センシティブ除外
   if (config.excludeSensitive) {
-    const cond = 'p.is_sensitive = 0'
-    filterConditions.push(isMixed ? nullTolerant(cond) : cond)
+    addMixedAwareFilter(filterConditions, 'p.is_sensitive = 0', isMixed)
   }
 
-  // アカウントフィルタ
-  const accountCondition = buildAccountCondition(config.accountFilter)
-  if (accountCondition) {
-    filterConditions.push(
-      isMixed ? nullTolerant(accountCondition) : accountCondition,
-    )
-  }
+  addMixedAwareFilter(
+    filterConditions,
+    buildAccountCondition(config.accountFilter),
+    isMixed,
+  )
 
-  // バックエンドフィルタ
-  // クエリコンテキストに応じて適切なテーブル別名を使用する
-  const hasTimeline = timelineCondition != null
-  const hasNotification = notificationCondition != null
   const backendCondition = buildBackendFilterCondition(
     config.backendFilter,
-    hasTimeline,
-    hasNotification,
+    timelineCondition != null,
+    notificationCondition != null,
   )
   if (backendCondition) {
     filterConditions.push(backendCondition)
   }
 
-  // ========================================
-  // クエリの組み立て
-  // (<ソース条件>) AND <フィルタ条件>
-  // ========================================
+  return filterConditions
+}
+
+function assembleQueryParts(
+  sourceConditions: string[],
+  filterConditions: string[],
+): string {
   const parts: string[] = []
 
   if (sourceConditions.length > 0) {
     const sourcePart = sourceConditions.join(' OR ')
-    // ソース条件が複数ある場合は括弧で囲む
-    if (sourceConditions.length > 1) {
-      parts.push(`(${sourcePart})`)
-    } else {
-      parts.push(sourcePart)
-    }
+    parts.push(sourceConditions.length > 1 ? `(${sourcePart})` : sourcePart)
   }
 
   parts.push(...filterConditions)
