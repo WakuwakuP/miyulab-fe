@@ -73,10 +73,25 @@ function ConversationVirtuosoItem({
   )
 }
 
+function hashForReactKey(value: string): string {
+  let hash = 0
+
+  for (let i = 0; i < value.length; i++) {
+    hash = (hash << 5) - hash + value.charCodeAt(i)
+    hash |= 0
+  }
+
+  return Math.abs(hash).toString(36)
+}
+
 function appReactKeyBase(app: App): string {
-  return (
-    app.tokenData?.access_token ?? `${app.backendUrl}:${app.appData.client_id}`
-  )
+  const base = `${app.backendUrl}:${app.appData.client_id}`
+
+  if (app.tokenData?.access_token != null) {
+    return `${base}:${hashForReactKey(app.tokenData.access_token)}`
+  }
+
+  return base
 }
 
 function appsWithUniqueReactKeys(apps: App[]) {
