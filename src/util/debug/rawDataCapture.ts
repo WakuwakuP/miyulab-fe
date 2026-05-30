@@ -1,5 +1,10 @@
 import type { Backend } from 'types/types'
 
+function idbError(error: DOMException | null, message: string): Error {
+  if (error instanceof Error) return error
+  return new Error(message, error ? { cause: error } : undefined)
+}
+
 // ============================================================
 // Types
 // ============================================================
@@ -134,7 +139,9 @@ function getDb(): Promise<IDBDatabase> {
 
     request.onerror = () => {
       dbOpenPromise = null
-      reject(request.error)
+      reject(
+        idbError(request.error, 'Failed to open raw data capture database'),
+      )
     }
   })
 
@@ -317,7 +324,7 @@ export function downloadJson(data: RawCaptureExport): void {
   a.download = `miyulab-raw-${data.filter}-${timestamp}.json`
   document.body.appendChild(a)
   a.click()
-  document.body.removeChild(a)
+  a.remove()
 
   URL.revokeObjectURL(url)
 }
@@ -341,7 +348,8 @@ function idbCount(
   return new Promise((resolve, reject) => {
     const req = query ? source.count(query) : source.count()
     req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
+    req.onerror = () =>
+      reject(idbError(req.error, 'IndexedDB count request failed'))
   })
 }
 
@@ -352,13 +360,15 @@ function idbGetAll<T>(
   return new Promise((resolve, reject) => {
     const req = query ? source.getAll(query) : source.getAll()
     req.onsuccess = () => resolve(req.result as T[])
-    req.onerror = () => reject(req.error)
+    req.onerror = () =>
+      reject(idbError(req.error, 'IndexedDB getAll request failed'))
   })
 }
 
 function idbTxComplete(tx: IDBTransaction): Promise<void> {
   return new Promise((resolve, reject) => {
     tx.oncomplete = () => resolve()
-    tx.onerror = () => reject(tx.error)
+    tx.onerror = () =>
+      reject(idbError(tx.error, 'IndexedDB transaction failed'))
   })
 }
