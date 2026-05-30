@@ -5,6 +5,13 @@ import type { StatusAddAppIndex } from 'types/types'
 import { GetClient } from 'util/GetClient'
 import { AppsContext } from 'util/provider/AppsProvider'
 
+const toStatusWithAppIndex = (
+  status: Omit<StatusAddAppIndex, 'appIndex'>,
+): StatusAddAppIndex => ({
+  ...status,
+  appIndex: 0,
+})
+
 export const HashtagDetail = ({ hashtag }: { hashtag?: string }) => {
   const apps = useContext(AppsContext)
   const [statuses, setStatuses] = useState<StatusAddAppIndex[]>([])
@@ -21,12 +28,7 @@ export const HashtagDetail = ({ hashtag }: { hashtag?: string }) => {
         limit: 50,
       })
       .then((res) => {
-        setStatuses(
-          res.data.map((status) => ({
-            ...status,
-            appIndex: 0,
-          })),
-        )
+        setStatuses(res.data.map(toStatusWithAppIndex))
       })
       .catch((error) => {
         console.error('Failed to fetch tag timeline:', error)
@@ -45,13 +47,8 @@ export const HashtagDetail = ({ hashtag }: { hashtag?: string }) => {
         max_id: statuses[statuses.length - 1].id,
       })
       .then((res) => {
-        setStatuses((prev) => [
-          ...prev,
-          ...res.data.map((status) => ({
-            ...status,
-            appIndex: 0,
-          })),
-        ])
+        const newStatuses = res.data.map(toStatusWithAppIndex)
+        setStatuses((prev) => [...prev, ...newStatuses])
       })
       .catch((error) => {
         console.error('Failed to fetch more tag timeline:', error)
