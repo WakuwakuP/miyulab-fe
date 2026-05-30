@@ -86,6 +86,72 @@ type ExistingPostLookup = {
   foundViaReblogDedup: boolean
 }
 
+type UriPostLookup = {
+  postId?: number
+  existingIsOriginal: boolean
+}
+
+function lookupPostIdFromUri(
+  db: DbExec,
+  normalizedUri: string,
+  isReblog: number,
+): UriPostLookup {
+  const existingRows = db.exec(
+    'SELECT id, is_reblog FROM posts WHERE object_uri = ?;',
+    { bind: [normalizedUri], returnValue: 'resultRows' },
+  ) as number[][]
+
+  if (existingRows.length === 0) {
+    return { existingIsOriginal: false }
+  }
+
+  if (isReblog === 1 && existingRows[0][1] === 0) {
+    return { existingIsOriginal: true }
+  }
+
+  return { existingIsOriginal: false, postId: existingRows[0][0] }
+}
+
+function isReblogMatchingOriginalUri(
+  normalizedUri: string,
+  reblogOfUri: string | null,
+  isReblog: number,
+): boolean {
+  return isReblog === 1 && normalizedUri !== '' && normalizedUri === reblogOfUri
+}
+
+function lookupExistingReblogByAuthor(
+  db: DbExec,
+  status: Entity.Status,
+  reblogOfUri: string,
+): number | undefined {
+  const rebloggerDomain = deriveAccountDomain(status.account)
+  if (!rebloggerDomain) return undefined
+
+  const existingReblog = db.exec(
+    `SELECT p.id FROM posts p
+     JOIN profiles pr ON pr.id = p.author_profile_id
+     JOIN servers s ON s.id = pr.server_id
+     JOIN posts orig ON orig.id = p.reblog_of_post_id
+     WHERE p.is_reblog = 1
+       AND orig.object_uri = ?
+       AND pr.username = ?
+       AND (s.host = ? OR pr.actor_uri LIKE ?)
+     LIMIT 1;`,
+    {
+      bind: [
+        reblogOfUri,
+        status.account.username,
+        rebloggerDomain,
+        `https://${rebloggerDomain}/%`,
+      ],
+      returnValue: 'resultRows',
+    },
+  ) as number[][]
+
+  return existingReblog.length > 0 ? existingReblog[0][0] : undefined
+}
+
 function syncProfileEmojisForStatus(
   db: DbExec,
   profileId: number,
@@ -126,17 +192,9 @@ function resolveExistingPostLookup(
   let foundViaReblogDedup = false
 
   if (postId === undefined && normalizedUri) {
-    const existingRows = db.exec(
-      'SELECT id, is_reblog FROM posts WHERE object_uri = ?;',
-      { bind: [normalizedUri], returnValue: 'resultRows' },
-    ) as number[][]
-    if (existingRows.length > 0) {
-      if (isReblog === 1 && existingRows[0][1] === 0) {
-        existingIsOriginal = true
-      } else {
-        postId = existingRows[0][0]
-      }
-    }
+    const uriLookup = lookupPostIdFromUri(db, normalizedUri, isReblog)
+    existingIsOriginal = uriLookup.existingIsOriginal
+    postId = uriLookup.postId
   }
 
   if (postId === undefined && !existingIsOriginal && localAccountId !== null) {
@@ -146,41 +204,20 @@ function resolveExistingPostLookup(
   if (
     postId === undefined &&
     !existingIsOriginal &&
-    isReblog === 1 &&
-    normalizedUri !== '' &&
-    normalizedUri === reblogOfUri
+    isReblogMatchingOriginalUri(normalizedUri, reblogOfUri, isReblog)
   ) {
     existingIsOriginal = true
   }
 
   if (postId === undefined && isReblog === 1 && reblogOfUri) {
-    const rebloggerDomain = deriveAccountDomain(status.account)
-    if (rebloggerDomain) {
-      const existingReblog = db.exec(
-        `SELECT p.id FROM posts p
-         JOIN profiles pr ON pr.id = p.author_profile_id
-         JOIN servers s ON s.id = pr.server_id
-         JOIN posts orig ON orig.id = p.reblog_of_post_id
-         WHERE p.is_reblog = 1
-           AND orig.object_uri = ?
-           AND pr.username = ?
-           AND (s.host = ? OR pr.actor_uri LIKE ?)
-         LIMIT 1;`,
-        {
-          bind: [
-            reblogOfUri,
-            status.account.username,
-            rebloggerDomain,
-            `https://${rebloggerDomain}/%`,
-          ],
-          returnValue: 'resultRows',
-        },
-      ) as number[][]
-      if (existingReblog.length > 0) {
-        postId = existingReblog[0][0]
-        existingIsOriginal = false
-        foundViaReblogDedup = true
-      }
+    const existingReblogId = lookupExistingReblogByAuthor(
+      db,
+      status,
+      reblogOfUri,
+    )
+    if (existingReblogId !== undefined) {
+      postId = existingReblogId
+      foundViaReblogDedup = true
     }
   }
 
