@@ -38,6 +38,101 @@ import {
   UsersContext,
 } from 'util/provider/ResourceProvider'
 
+const wrapIndexPrev = (index: number, length: number): number =>
+  index <= 0 ? length - 1 : index - 1
+
+const wrapIndexNext = (index: number, length: number): number =>
+  index >= length - 1 ? 0 : index + 1
+
+const handleSubmitShortcut = (
+  e: KeyboardEvent<HTMLTextAreaElement>,
+  onSubmit: () => void,
+): boolean => {
+  if (e.code === 'Enter' && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault()
+    onSubmit()
+    return true
+  }
+  return false
+}
+
+const shouldSkipAutocompleteKeys = (
+  pos: { caret: number; left: number; top: number } | null,
+  mentionFilteredLength: number,
+  emojiFilteredLength: number,
+): boolean =>
+  pos == null || mentionFilteredLength === 0 || emojiFilteredLength === 0
+
+type AutocompleteKeyDownHandlers = {
+  index: number
+  setIndex: Dispatch<SetStateAction<number>>
+  isMention: boolean
+  isEmoji: boolean
+  isTag: boolean
+  mentionFilteredLength: number
+  emojiFilteredLength: number
+  tagFilteredLength: number
+  mentionComplete: (index: number) => void
+  emojiComplete: (index: number) => void
+  tagComplete: (index: number) => void
+  setPos: Dispatch<
+    SetStateAction<{ top: number; left: number; caret: number } | null>
+  >
+}
+
+const handleAutocompleteKeyDown = (
+  e: KeyboardEvent<HTMLTextAreaElement>,
+  handlers: AutocompleteKeyDownHandlers,
+): void => {
+  const {
+    index,
+    setIndex,
+    isMention,
+    isEmoji,
+    isTag,
+    mentionFilteredLength,
+    emojiFilteredLength,
+    tagFilteredLength,
+    mentionComplete,
+    emojiComplete,
+    tagComplete,
+    setPos,
+  } = handlers
+
+  switch (e.code) {
+    case 'ArrowUp':
+      e.preventDefault()
+      if (isMention) setIndex(wrapIndexPrev(index, mentionFilteredLength))
+      if (isEmoji) setIndex(wrapIndexPrev(index, emojiFilteredLength))
+      if (isTag) setIndex(wrapIndexPrev(index, tagFilteredLength))
+      break
+    case 'ArrowDown':
+      e.preventDefault()
+      if (isMention) setIndex(wrapIndexNext(index, mentionFilteredLength))
+      if (isEmoji) setIndex(wrapIndexNext(index, emojiFilteredLength))
+      if (isTag) setIndex(wrapIndexNext(index, tagFilteredLength))
+      break
+    case 'Enter':
+    case 'Tab':
+      e.preventDefault()
+      if (isMention) mentionComplete(index)
+      if (isEmoji) emojiComplete(index)
+      if (isTag) tagComplete(index)
+      break
+    case 'Quote':
+      e.preventDefault()
+      if (isEmoji) emojiComplete(index)
+      break
+    case 'Escape':
+      e.preventDefault()
+      setPos(null)
+      setIndex(0)
+      break
+    default:
+      return
+  }
+}
+
 export const StatusRichTextarea = ({
   text,
   placeholder = '',
@@ -177,57 +272,30 @@ export const StatusRichTextarea = ({
           onChange(e.target.value)
         }
         onKeyDown={(e: KeyboardEvent<HTMLTextAreaElement>) => {
-          if (e.code === 'Enter' && (e.ctrlKey || e.metaKey)) {
-            e.preventDefault()
-            onSubmit()
-            return
-          }
-
+          if (handleSubmitShortcut(e, onSubmit)) return
           if (
-            pos == null ||
-            mentionFiltered.length === 0 ||
-            emojiFiltered.length === 0
+            shouldSkipAutocompleteKeys(
+              pos,
+              mentionFiltered.length,
+              emojiFiltered.length,
+            )
           )
             return
 
-          switch (e.code) {
-            case 'ArrowUp':
-              e.preventDefault()
-              if (isMention)
-                setIndex(index <= 0 ? mentionFiltered.length - 1 : index - 1)
-              if (isEmoji)
-                setIndex(index <= 0 ? emojiFiltered.length - 1 : index - 1)
-              if (isTag)
-                setIndex(index <= 0 ? tagFiltered.length - 1 : index - 1)
-              break
-            case 'ArrowDown':
-              e.preventDefault()
-              if (isMention)
-                setIndex(index >= mentionFiltered.length - 1 ? 0 : index + 1)
-              if (isEmoji)
-                setIndex(index >= emojiFiltered.length - 1 ? 0 : index + 1)
-              if (isTag)
-                setIndex(index >= tagFiltered.length - 1 ? 0 : index + 1)
-              break
-            case 'Enter':
-            case 'Tab':
-              e.preventDefault()
-              if (isMention) mentionComplete(index)
-              if (isEmoji) emojiComplete(index)
-              if (isTag) tagComplete(index)
-              break
-            case 'Quote':
-              e.preventDefault()
-              if (isEmoji) emojiComplete(index)
-              break
-            case 'Escape':
-              e.preventDefault()
-              setPos(null)
-              setIndex(0)
-              break
-            default:
-              return
-          }
+          handleAutocompleteKeyDown(e, {
+            emojiComplete,
+            emojiFilteredLength: emojiFiltered.length,
+            index,
+            isEmoji,
+            isMention,
+            isTag,
+            mentionComplete,
+            mentionFilteredLength: mentionFiltered.length,
+            setIndex,
+            setPos,
+            tagComplete,
+            tagFilteredLength: tagFiltered.length,
+          })
         }}
         onPaste={onPaste}
         onSelectionChange={(r: CaretPosition) => {
