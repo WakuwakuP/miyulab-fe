@@ -38,11 +38,15 @@ import {
   UsersContext,
 } from 'util/provider/ResourceProvider'
 
-const wrapIndexPrev = (index: number, length: number): number =>
-  index <= 0 ? length - 1 : index - 1
+const wrapIndexPrev = (index: number, length: number): number => {
+  if (length <= 0) return 0
+  return index <= 0 ? length - 1 : index - 1
+}
 
-const wrapIndexNext = (index: number, length: number): number =>
-  index >= length - 1 ? 0 : index + 1
+const wrapIndexNext = (index: number, length: number): number => {
+  if (length <= 0) return 0
+  return index >= length - 1 ? 0 : index + 1
+}
 
 const handleSubmitShortcut = (
   e: KeyboardEvent<HTMLTextAreaElement>,
@@ -58,10 +62,19 @@ const handleSubmitShortcut = (
 
 const shouldSkipAutocompleteKeys = (
   pos: { caret: number; left: number; top: number } | null,
+  isMention: boolean,
+  isEmoji: boolean,
+  isTag: boolean,
   mentionFilteredLength: number,
   emojiFilteredLength: number,
-): boolean =>
-  pos == null || mentionFilteredLength === 0 || emojiFilteredLength === 0
+  tagFilteredLength: number,
+): boolean => {
+  if (pos == null) return true
+  if (isMention && mentionFilteredLength === 0) return true
+  if (isEmoji && emojiFilteredLength === 0) return true
+  if (isTag && tagFilteredLength === 0) return true
+  return false
+}
 
 type AutocompleteKeyDownHandlers = {
   index: number
@@ -276,8 +289,12 @@ export const StatusRichTextarea = ({
           if (
             shouldSkipAutocompleteKeys(
               pos,
+              isMention,
+              isEmoji,
+              isTag,
               mentionFiltered.length,
               emojiFiltered.length,
+              tagFiltered.length,
             )
           )
             return
