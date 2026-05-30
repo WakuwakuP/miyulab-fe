@@ -243,13 +243,12 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
       retryCount: number,
       delay: number,
     ) => {
-      const timeout = setTimeout(() => {
+      setTimeout(() => {
         // 再接続能力を復元してから start()
         restartStream(stream)
         console.info(
           `reconnecting userStreaming (retry ${retryCount}/${MAX_RETRY_COUNT}, delay ${delay}ms)`,
         )
-        clearTimeout(timeout)
       }, delay)
     }
 
