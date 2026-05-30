@@ -121,12 +121,13 @@ export const GettingStarted = () => {
             limit: 20,
           })
           .then((res) => {
+            const bookmarkItems = res.data.map((status) => ({
+              ...status,
+              appIndex: appIndex,
+            }))
             setBookmarks((prev) => ({
               ...prev,
-              [appIndex]: res.data.map((status) => ({
-                ...status,
-                appIndex: appIndex,
-              })),
+              [appIndex]: bookmarkItems,
             }))
             setMaxIdCallback(res, appIndex)
           })
