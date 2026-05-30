@@ -19,9 +19,9 @@ import * as timelineOps from './timelineOperations'
 // ========================================
 
 export class MisskeyAdapter implements MegalodonInterface {
-  private client: Misskey.api.APIClient
-  private origin: string
-  private credential: string | null
+  private readonly client: Misskey.api.APIClient
+  private readonly origin: string
+  private readonly credential: string | null
 
   constructor(origin: string, credential?: string | null) {
     this.origin = origin

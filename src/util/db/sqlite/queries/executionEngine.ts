@@ -71,7 +71,7 @@ function executeMerge(
   const allItems: { id: number; type: string; createdAtMs: number }[] = []
   for (const idx of step.sourceStepIndices) {
     const prev = prevResults[idx]
-    if (prev && prev.type === 'id-collect') {
+    if (prev?.type === 'id-collect') {
       const sourceStep = plan.steps[idx]
       const sourceType =
         sourceStep.type === 'id-collect' ? sourceStep.source : 'post'
