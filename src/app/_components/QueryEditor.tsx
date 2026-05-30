@@ -46,6 +46,129 @@ function getTextareaBorderClass(
   return ''
 }
 
+type SuggestionStateSetters = {
+  setSelectedIndex: (index: number) => void
+  setShowSuggestions: (show: boolean) => void
+  setSuggestions: (suggestions: string[]) => void
+}
+
+function updateColumnValueSuggestions(
+  beforeCursor: string,
+  setters: SuggestionStateSetters,
+): boolean {
+  const columnValueMatch = COLUMN_VALUE_COMPLETION_RE.exec(beforeCursor)
+  if (!columnValueMatch) {
+    return false
+  }
+
+  const alias = columnValueMatch[1]
+  const column = columnValueMatch[2]
+  const partial = columnValueMatch[3]
+  if (!ALIAS_TO_TABLE[alias]?.columns[column]) {
+    return false
+  }
+
+  void searchDistinctColumnValues(alias, column, partial, 12).then((values) => {
+    if (values.length > 0) {
+      setters.setSuggestions(values)
+      setters.setSelectedIndex(0)
+      setters.setShowSuggestions(true)
+    } else {
+      setters.setShowSuggestions(false)
+    }
+  })
+  return true
+}
+
+function getLogicalOperatorSuggestions(
+  beforeCursor: string,
+  logicalOperators: readonly string[],
+  allCompletions: readonly string[],
+): string[] | null {
+  const logicalMatch = LOGICAL_OPERATOR_COMPLETION_RE.exec(beforeCursor)
+  if (!logicalMatch) {
+    return null
+  }
+
+  const partial = logicalMatch[1]
+  if (partial !== '' && !/^[A-Za-z]/.test(partial)) {
+    return null
+  }
+
+  const filtered = logicalOperators.filter((op) =>
+    op.toLowerCase().startsWith(partial.toLowerCase()),
+  )
+  if (filtered.length === 0 || partial.length === 0) {
+    return null
+  }
+
+  return [
+    ...filtered,
+    ...allCompletions.filter(
+      (item) =>
+        item.toLowerCase().startsWith(partial.toLowerCase()) &&
+        !filtered.includes(item),
+    ),
+  ].slice(0, 12)
+}
+
+function getComparisonOperatorSuggestions(
+  beforeCursor: string,
+  comparisonOperators: readonly string[],
+): string[] | null {
+  const operatorMatch = COMPARISON_OPERATOR_COMPLETION_RE.exec(beforeCursor)
+  if (!operatorMatch) {
+    return null
+  }
+
+  const alias = operatorMatch[1]
+  const column = operatorMatch[2]
+  const partial = operatorMatch[3]
+  const aliasColumns =
+    QUERY_COMPLETIONS.columns[alias as keyof typeof QUERY_COMPLETIONS.columns]
+  if (!(aliasColumns as readonly string[] | undefined)?.includes(column)) {
+    return null
+  }
+
+  const filtered = comparisonOperators.filter((op) =>
+    op.toLowerCase().startsWith(partial.toLowerCase()),
+  )
+  if (filtered.length === 0) {
+    return null
+  }
+
+  return filtered.slice(0, 12)
+}
+
+function updateWordSuffixSuggestions(
+  beforeCursor: string,
+  allCompletions: readonly string[],
+  setters: SuggestionStateSetters,
+): void {
+  const match = WORD_SUFFIX_COMPLETION_RE.exec(beforeCursor)
+  const currentWord = match ? match[0] : ''
+
+  if (currentWord.length < 1) {
+    setters.setShowSuggestions(false)
+    return
+  }
+
+  const filtered = allCompletions.filter((item) =>
+    item.toLowerCase().startsWith(currentWord.toLowerCase()),
+  )
+
+  if (
+    filtered.length > 0 &&
+    filtered[0].toLowerCase() !== currentWord.toLowerCase()
+  ) {
+    setters.setSuggestions(filtered.slice(0, 8))
+    setters.setSelectedIndex(0)
+    setters.setShowSuggestions(true)
+  } else {
+    setters.setShowSuggestions(false)
+  }
+}
+
 /**
  * SQL WHERE 句入力欄（補完付き）
  *
@@ -165,107 +288,41 @@ export const QueryEditor = ({
 
   const updateSuggestions = useCallback(
     (text: string, cursorPos: number) => {
-      // カーソル位置の直前のワードを取得
       const beforeCursor = text.slice(0, cursorPos)
-
-      // 汎用カラム値補完: alias.column = '...' or alias.column IN ('...', '...' の後
-      // すべてのエイリアス・カラムの組み合わせで動的 DB 検索を実行
-      const columnValueMatch = COLUMN_VALUE_COMPLETION_RE.exec(beforeCursor)
-      if (columnValueMatch) {
-        const alias = columnValueMatch[1]
-        const column = columnValueMatch[2]
-        const partial = columnValueMatch[3]
-        // ALIAS_TO_TABLE に登録されたエイリアス・カラムの場合のみ DB 検索
-        if (ALIAS_TO_TABLE[alias]?.columns[column]) {
-          void searchDistinctColumnValues(alias, column, partial, 12).then(
-            (values) => {
-              if (values.length > 0) {
-                setSuggestions(values)
-                setSelectedIndex(0)
-                setShowSuggestions(true)
-              } else {
-                setShowSuggestions(false)
-              }
-            },
-          )
-          return
-        }
+      const setters: SuggestionStateSetters = {
+        setSelectedIndex,
+        setShowSuggestions,
+        setSuggestions,
       }
 
-      // 論理演算子補完: 完全な条件式の後（閉じクォート、数値、IS NULL/IS NOT NULL、閉じ括弧の後のスペース）
-      const logicalMatch = LOGICAL_OPERATOR_COMPLETION_RE.exec(beforeCursor)
-      if (logicalMatch) {
-        const partial = logicalMatch[1]
-        // 入力がない場合（スペースのみ）、またはANDやORの入力中
-        if (partial === '' || /^[A-Za-z]/.test(partial)) {
-          const filtered = logicalOperators.filter((op) =>
-            op.toLowerCase().startsWith(partial.toLowerCase()),
-          )
-          // カラム名やキーワードの候補も含める（通常補完に fallthrough するため、ここではロジカル演算子のみ）
-          if (filtered.length > 0 && partial.length > 0) {
-            // 入力中のプレフィクスに一致する場合のみ表示
-            const allFiltered = [
-              ...filtered,
-              ...allCompletions.filter(
-                (item) =>
-                  item.toLowerCase().startsWith(partial.toLowerCase()) &&
-                  !filtered.includes(item),
-              ),
-            ]
-            setSuggestions(allFiltered.slice(0, 12))
-            setSelectedIndex(0)
-            setShowSuggestions(true)
-            return
-          }
-        }
-      }
-
-      // 比較演算子補完: alias.column の後のスペース
-      const operatorMatch = COMPARISON_OPERATOR_COMPLETION_RE.exec(beforeCursor)
-      if (operatorMatch) {
-        const alias = operatorMatch[1]
-        const column = operatorMatch[2]
-        const partial = operatorMatch[3]
-        // QUERY_COMPLETIONS のエイリアスに登録されたカラムの場合のみ
-        const aliasColumns =
-          QUERY_COMPLETIONS.columns[
-            alias as keyof typeof QUERY_COMPLETIONS.columns
-          ]
-        if ((aliasColumns as readonly string[] | undefined)?.includes(column)) {
-          const filtered = comparisonOperators.filter((op) =>
-            op.toLowerCase().startsWith(partial.toLowerCase()),
-          )
-          if (filtered.length > 0) {
-            setSuggestions(filtered.slice(0, 12))
-            setSelectedIndex(0)
-            setShowSuggestions(true)
-            return
-          }
-        }
-      }
-
-      const match = WORD_SUFFIX_COMPLETION_RE.exec(beforeCursor)
-      const currentWord = match ? match[0] : ''
-
-      if (currentWord.length < 1) {
-        setShowSuggestions(false)
+      if (updateColumnValueSuggestions(beforeCursor, setters)) {
         return
       }
 
-      const filtered = allCompletions.filter((item) =>
-        item.toLowerCase().startsWith(currentWord.toLowerCase()),
+      const logicalSuggestions = getLogicalOperatorSuggestions(
+        beforeCursor,
+        logicalOperators,
+        allCompletions,
       )
-
-      if (
-        filtered.length > 0 &&
-        filtered[0].toLowerCase() !== currentWord.toLowerCase()
-      ) {
-        setSuggestions(filtered.slice(0, 8))
+      if (logicalSuggestions) {
+        setSuggestions(logicalSuggestions)
         setSelectedIndex(0)
         setShowSuggestions(true)
-      } else {
-        setShowSuggestions(false)
+        return
       }
+
+      const operatorSuggestions = getComparisonOperatorSuggestions(
+        beforeCursor,
+        comparisonOperators,
+      )
+      if (operatorSuggestions) {
+        setSuggestions(operatorSuggestions)
+        setSelectedIndex(0)
+        setShowSuggestions(true)
+        return
+      }
+
+      updateWordSuffixSuggestions(beforeCursor, allCompletions, setters)
     },
     [allCompletions, comparisonOperators, logicalOperators],
   )
