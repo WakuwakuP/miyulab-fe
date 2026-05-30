@@ -10,11 +10,19 @@ on:
     types: [opened, synchronize, reopened, closed]
   workflow_dispatch:
 
+concurrency:
+  group: neon-preview-hygiene-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   reconcile-neon-preview-branches:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
       deleted_count: ${{ steps.hygiene.outputs.deleted_count }}
+      hygiene_ok: ${{ steps.hygiene.outputs.hygiene_ok }}
     steps:
       - name: Reconcile Neon preview branches with open PRs
         id: hygiene
@@ -28,6 +36,7 @@ jobs:
           if [ -z "$NEON_API_KEY" ] || [ -z "$NEON_PROJECT_ID" ]; then
             echo "Neon API credentials are not configured. Skipping preview branch hygiene."
             echo "deleted_count=0" >> "$GITHUB_OUTPUT"
+            echo "hygiene_ok=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -40,14 +49,18 @@ jobs:
             echo "Failed to fetch Neon branch list (HTTP $LIST_HTTP_CODE)"
             cat /tmp/branches.json
             echo "deleted_count=0" >> "$GITHUB_OUTPUT"
+            echo "hygiene_ok=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+
+          echo "hygiene_ok=true" >> "$GITHUB_OUTPUT"
 
           echo "Fetching open PR head branches..."
           if ! gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 1000 \
             --json headRefName --jq '.[].headRefName' > /tmp/open-pr-branches.txt; then
             echo "Failed to fetch open PR list. Skipping preview branch deletion."
             echo "deleted_count=0" >> "$GITHUB_OUTPUT"
+            echo "hygiene_ok=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -58,6 +71,7 @@ jobs:
           if [ "${#PREVIEW_BRANCHES[@]}" -eq 0 ]; then
             echo "No preview/* Neon branches found."
             echo "deleted_count=0" >> "$GITHUB_OUTPUT"
+            echo "hygiene_ok=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -96,12 +110,18 @@ jobs:
     if: >-
       github.event_name == 'pull_request' &&
       github.event.action != 'closed' &&
+<<<<<<< HEAD
       github.event.pull_request.head.repo.full_name == github.repository &&
       !contains(join(github.event.commits.*.message, ' '), 'chore(ci): redeploy preview after Neon branch hygiene') &&
       (
         needs.reconcile-neon-preview-branches.outputs.deleted_count != '0' ||
         contains(fromJSON('["opened", "reopened"]'), github.event.action)
       )
+=======
+      needs.reconcile-neon-preview-branches.outputs.hygiene_ok == 'true' &&
+      needs.reconcile-neon-preview-branches.outputs.deleted_count != '0' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+>>>>>>> 4c21b45 (fix(ci,a11y): harden Neon hygiene workflow and restore input labels)
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -117,6 +137,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          last_subject=$(git log -1 --format=%s)
+          if [ "$last_subject" = "chore(ci): redeploy preview after Neon branch hygiene" ]; then
+            echo "Latest commit is already a hygiene redeploy; skipping."
+            exit 0
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit --allow-empty \
