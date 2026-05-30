@@ -4,6 +4,131 @@ import {
   buildMuteCondition,
 } from 'util/queryBuilder'
 
+type FilterBuildContext = {
+  conditions: string[]
+  binds: (string | number)[]
+  prefix: string
+}
+
+function appendMediaFilter(
+  config: TimelineConfigV2,
+  ctx: FilterBuildContext,
+): void {
+  if (config.minMediaCount != null && config.minMediaCount > 0) {
+    ctx.conditions.push(
+      `(SELECT COUNT(*) FROM post_media WHERE post_id = ${ctx.prefix}id) >= ?`,
+    )
+    ctx.binds.push(config.minMediaCount)
+  } else if (config.onlyMedia) {
+    ctx.conditions.push(
+      `EXISTS(SELECT 1 FROM post_media WHERE post_id = ${ctx.prefix}id)`,
+    )
+  }
+}
+
+function appendVisibilityFilter(
+  config: TimelineConfigV2,
+  ctx: FilterBuildContext,
+): void {
+  if (
+    config.visibilityFilter != null &&
+    config.visibilityFilter.length > 0 &&
+    config.visibilityFilter.length < 4
+  ) {
+    const placeholders = config.visibilityFilter.map(() => '?').join(',')
+    ctx.conditions.push(
+      `(SELECT name FROM visibility_types WHERE id = ${ctx.prefix}visibility_id) IN (${placeholders})`,
+    )
+    ctx.binds.push(...config.visibilityFilter)
+  }
+}
+
+function appendLanguageFilter(
+  config: TimelineConfigV2,
+  ctx: FilterBuildContext,
+): void {
+  if (config.languageFilter != null && config.languageFilter.length > 0) {
+    const placeholders = config.languageFilter.map(() => '?').join(',')
+    ctx.conditions.push(
+      `(${ctx.prefix}language IN (${placeholders}) OR ${ctx.prefix}language IS NULL)`,
+    )
+    ctx.binds.push(...config.languageFilter)
+  }
+}
+
+function appendPostExclusionFilters(
+  config: TimelineConfigV2,
+  ctx: FilterBuildContext,
+): void {
+  if (config.excludeReblogs) {
+    ctx.conditions.push(`${ctx.prefix}is_reblog = 0`)
+  }
+  if (config.excludeReplies) {
+    ctx.conditions.push(`${ctx.prefix}in_reply_to_uri IS NULL`)
+  }
+  if (config.excludeSpoiler) {
+    ctx.conditions.push(`${ctx.prefix}spoiler_text = ''`)
+  }
+  if (config.excludeSensitive) {
+    ctx.conditions.push(`${ctx.prefix}is_sensitive = 0`)
+  }
+}
+
+function appendAccountFilter(
+  config: TimelineConfigV2,
+  ctx: FilterBuildContext,
+): void {
+  if (config.accountFilter != null && config.accountFilter.accts.length > 0) {
+    const placeholders = config.accountFilter.accts.map(() => '?').join(',')
+    const inClause = config.accountFilter.mode === 'include' ? 'IN' : 'NOT IN'
+    ctx.conditions.push(
+      `(SELECT acct FROM profiles WHERE id = ${ctx.prefix}author_profile_id) ${inClause} (${placeholders})`,
+    )
+    ctx.binds.push(...config.accountFilter.accts)
+  }
+}
+
+function appendMuteFilter(
+  config: TimelineConfigV2,
+  targetBackendUrls: string[],
+  tableAlias: string,
+  options: { profileJoined?: boolean } | undefined,
+  ctx: FilterBuildContext,
+): void {
+  const applyMute = config.applyMuteFilter ?? true
+  if (applyMute && config.accountFilter?.mode !== 'include') {
+    const mute = buildMuteCondition(targetBackendUrls, tableAlias, {
+      profileJoined: options?.profileJoined,
+    })
+    ctx.conditions.push(mute.sql)
+    ctx.binds.push(...mute.binds)
+  }
+}
+
+function appendInstanceBlockFilter(
+  config: TimelineConfigV2,
+  tableAlias: string,
+  options: { profileJoined?: boolean } | undefined,
+  ctx: FilterBuildContext,
+): void {
+  const applyBlock = config.applyInstanceBlock ?? true
+  if (applyBlock) {
+    ctx.conditions.push(
+      buildInstanceBlockCondition(tableAlias, {
+        profileJoined: options?.profileJoined,
+      }),
+    )
+  }
+}
+
+function warnIfFollowsOnlyUnsupported(config: TimelineConfigV2): void {
+  if (config.followsOnly) {
+    console.warn(
+      'followsOnly filter is not yet supported: follows table does not exist',
+    )
+  }
+}
+
 /**
  * TimelineConfigV2 の v2 フィルタオプションから
  * SQL WHERE 句の条件配列とバインド変数を生成する。
@@ -48,109 +173,20 @@ export function buildFilterConditions(
     profileJoined?: boolean
   },
 ): { conditions: string[]; binds: (string | number)[] } {
-  const conditions: string[] = []
-  const binds: (string | number)[] = []
-  const prefix = tableAlias ? `${tableAlias}.` : ''
-
-  // メディアフィルタ（新スキーマ: post_media サブクエリ）
-  if (config.minMediaCount != null && config.minMediaCount > 0) {
-    conditions.push(
-      `(SELECT COUNT(*) FROM post_media WHERE post_id = ${prefix}id) >= ?`,
-    )
-    binds.push(config.minMediaCount)
-  } else if (config.onlyMedia) {
-    conditions.push(
-      `EXISTS(SELECT 1 FROM post_media WHERE post_id = ${prefix}id)`,
-    )
+  const ctx: FilterBuildContext = {
+    binds: [],
+    conditions: [],
+    prefix: tableAlias ? `${tableAlias}.` : '',
   }
 
-  // 公開範囲フィルタ（v13: visibility → visibility_id + visibility_types）
-  if (
-    config.visibilityFilter != null &&
-    config.visibilityFilter.length > 0 &&
-    config.visibilityFilter.length < 4
-  ) {
-    const placeholders = config.visibilityFilter.map(() => '?').join(',')
-    conditions.push(
-      `(SELECT name FROM visibility_types WHERE id = ${prefix}visibility_id) IN (${placeholders})`,
-    )
-    binds.push(...config.visibilityFilter)
-  }
+  appendMediaFilter(config, ctx)
+  appendVisibilityFilter(config, ctx)
+  appendLanguageFilter(config, ctx)
+  appendPostExclusionFilters(config, ctx)
+  appendAccountFilter(config, ctx)
+  appendMuteFilter(config, targetBackendUrls, tableAlias, options, ctx)
+  appendInstanceBlockFilter(config, tableAlias, options, ctx)
+  warnIfFollowsOnlyUnsupported(config)
 
-  // 言語フィルタ（NULL は常に表示）
-  if (config.languageFilter != null && config.languageFilter.length > 0) {
-    const placeholders = config.languageFilter.map(() => '?').join(',')
-    conditions.push(
-      `(${prefix}language IN (${placeholders}) OR ${prefix}language IS NULL)`,
-    )
-    binds.push(...config.languageFilter)
-  }
-
-  // ブースト除外
-  if (config.excludeReblogs) {
-    conditions.push(`${prefix}is_reblog = 0`)
-  }
-
-  // リプライ除外
-  if (config.excludeReplies) {
-    conditions.push(`${prefix}in_reply_to_uri IS NULL`)
-  }
-
-  // CW 付き除外（新スキーマ: spoiler_text が空文字 = CW なし）
-  if (config.excludeSpoiler) {
-    conditions.push(`${prefix}spoiler_text = ''`)
-  }
-
-  // センシティブ除外
-  if (config.excludeSensitive) {
-    conditions.push(`${prefix}is_sensitive = 0`)
-  }
-
-  // アカウントフィルタ（v13: account_acct → author_profile_id + profiles）
-  if (config.accountFilter != null && config.accountFilter.accts.length > 0) {
-    const placeholders = config.accountFilter.accts.map(() => '?').join(',')
-    if (config.accountFilter.mode === 'include') {
-      conditions.push(
-        `(SELECT acct FROM profiles WHERE id = ${prefix}author_profile_id) IN (${placeholders})`,
-      )
-    } else {
-      conditions.push(
-        `(SELECT acct FROM profiles WHERE id = ${prefix}author_profile_id) NOT IN (${placeholders})`,
-      )
-    }
-    binds.push(...config.accountFilter.accts)
-  }
-
-  // ミュートアカウント除外
-  // accountFilter が include モードの場合はミュートを適用しない
-  // （明示的に指定ユーザーの投稿を見たい場合にミュートで消えるのは不適切）
-  const applyMute = config.applyMuteFilter ?? true
-  if (applyMute && config.accountFilter?.mode !== 'include') {
-    const mute = buildMuteCondition(targetBackendUrls, tableAlias, {
-      profileJoined: options?.profileJoined,
-    })
-    conditions.push(mute.sql)
-    binds.push(...mute.binds)
-  }
-
-  // インスタンスブロック除外
-  const applyBlock = config.applyInstanceBlock ?? true
-  if (applyBlock) {
-    conditions.push(
-      buildInstanceBlockCondition(tableAlias, {
-        profileJoined: options?.profileJoined,
-      }),
-    )
-  }
-
-  // フォロー中のアカウントのみ表示
-  // NOTE: follows テーブルは v2 スキーマに未実装のため、現在は無効。
-  // テーブル実装後にこのガードを除去すること。
-  if (config.followsOnly) {
-    console.warn(
-      'followsOnly filter is not yet supported: follows table does not exist',
-    )
-  }
-
-  return { binds, conditions }
+  return { binds: ctx.binds, conditions: ctx.conditions }
 }
