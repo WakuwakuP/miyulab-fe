@@ -39,6 +39,22 @@ import { AppsContext } from './AppsProvider'
 import { SetTagsContext, SetUsersContext } from './ResourceProvider'
 import { StartupCoordinatorContext } from './StartupCoordinator'
 
+type UserSummary = Pick<
+  Entity.Account,
+  'id' | 'acct' | 'avatar' | 'display_name'
+>
+
+function dedupeUsersByAcct(users: UserSummary[]): UserSummary[] {
+  const seen = new Set<string>()
+  const result: UserSummary[] = []
+  for (const user of users) {
+    if (seen.has(user.acct)) continue
+    seen.add(user.acct)
+    result.push(user)
+  }
+  return result
+}
+
 // ストア操作の型定義
 type StatusStoreActions = {
   /** お気に入り状態を更新 */
@@ -195,20 +211,13 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
 
       const account = notification.account
       if (account) {
-        setUsersEvent((prev) =>
-          [
-            {
-              acct: account.acct,
-              avatar: account.avatar,
-              display_name: account.display_name,
-              id: account.id,
-            },
-            ...prev,
-          ].filter(
-            (element, idx, self) =>
-              self.findIndex((e) => e.acct === element.acct) === idx,
-          ),
-        )
+        const newUser: UserSummary = {
+          acct: account.acct,
+          avatar: account.avatar,
+          display_name: account.display_name,
+          id: account.id,
+        }
+        setUsersEvent((prev) => dedupeUsersByAcct([newUser, ...prev]))
       }
     }
 
