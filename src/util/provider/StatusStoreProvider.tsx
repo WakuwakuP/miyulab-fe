@@ -44,6 +44,7 @@ type UserSummary = Pick<
   'id' | 'acct' | 'avatar' | 'display_name'
 >
 
+/** acct で重複を除く（先頭のエントリを優先） */
 function dedupeUsersByAcct(users: UserSummary[]): UserSummary[] {
   const seen = new Set<string>()
   const result: UserSummary[] = []
@@ -164,7 +165,7 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
       // ユーザー情報を収集
       const account = status.reblog?.account ?? status.account
       setUsersEvent((prev) =>
-        [
+        dedupeUsersByAcct([
           {
             acct: account.acct,
             avatar: account.avatar,
@@ -172,10 +173,7 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
             id: account.id,
           },
           ...prev,
-        ].filter(
-          (element, idx, self) =>
-            self.findIndex((e) => e.acct === element.acct) === idx,
-        ),
+        ]),
       )
 
       // IndexedDBに保存（appIndex は永続化しない）
@@ -388,12 +386,7 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
               display_name: account.display_name,
               id: account.id,
             }))
-          setUsersEvent((prev) =>
-            [...users, ...prev].filter(
-              (element, idx, self) =>
-                self.findIndex((e) => e.acct === element.acct) === idx,
-            ),
-          )
+          setUsersEvent((prev) => dedupeUsersByAcct([...users, ...prev]))
 
           await bulkAddNotifications(notifRes.data, backendUrl)
 
@@ -412,12 +405,7 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
               display_name: n.account.display_name,
               id: n.account.id,
             }))
-          setUsersEvent((prev) =>
-            [...prev, ...notifUsers].filter(
-              (element, idx, self) =>
-                self.findIndex((e) => e.acct === element.acct) === idx,
-            ),
-          )
+          setUsersEvent((prev) => dedupeUsersByAcct([...prev, ...notifUsers]))
         } catch (error) {
           console.error(`Failed to initialize for ${backendUrl}:`, error)
         }
