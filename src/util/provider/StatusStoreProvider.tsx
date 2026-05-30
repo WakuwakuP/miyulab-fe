@@ -82,6 +82,75 @@ function extractUsersFromNotifications(
     .map((n) => accountToUserSummary(n.account))
 }
 
+function captureRestTimelineResponses(
+  app: App,
+  backendUrl: string,
+  homeData: Entity.Status[],
+  notifData: Entity.Notification[],
+): void {
+  if (!isRawDataCaptureEnabled()) return
+
+  captureApiResponse({
+    backend: app.backend,
+    backendUrl,
+    dataCount: homeData.length,
+    eventType: 'getHomeTimeline',
+    origin: app.backend === 'misskey' ? 'misskey-js' : 'megalodon',
+    rawData: homeData,
+  })
+  captureApiResponse({
+    backend: app.backend,
+    backendUrl,
+    dataCount: notifData.length,
+    eventType: 'getNotifications',
+    origin: app.backend === 'misskey' ? 'misskey-js' : 'megalodon',
+    rawData: notifData,
+  })
+}
+
+async function fetchRestDataForApp(
+  app: App,
+  isCancelled: () => boolean,
+  setUsers: (updater: (prev: UserSummary[]) => UserSummary[]) => void,
+): Promise<void> {
+  const client = GetClient(app)
+  const { backendUrl } = app
+
+  try {
+    // ローカルアカウント情報を先に同期する。
+    // DB が空の場合、local_accounts レコードが存在しないと
+    // bulkUpsertStatuses が timeline_entries を作成できない。
+    try {
+      const credRes = await client.verifyAccountCredentials()
+      await ensureLocalAccount(credRes.data, backendUrl)
+    } catch (error) {
+      console.warn(`Failed to verify credentials for ${backendUrl}:`, error)
+    }
+
+    // ホームタイムラインと通知を並行して取得
+    const [homeRes, notifRes] = await Promise.all([
+      client.getHomeTimeline({ limit: 40 }),
+      client.getNotifications({ limit: 40 }),
+    ])
+
+    if (isCancelled()) return
+
+    captureRestTimelineResponses(app, backendUrl, homeRes.data, notifRes.data)
+
+    await bulkUpsertStatuses(homeRes.data, backendUrl, 'home')
+
+    const users = extractUsersFromStatuses(homeRes.data)
+    setUsers((prev) => dedupeUsersByAcct([...users, ...prev]))
+
+    await bulkAddNotifications(notifRes.data, backendUrl)
+
+    const notifUsers = extractUsersFromNotifications(notifRes.data)
+    setUsers((prev) => dedupeUsersByAcct([...prev, ...notifUsers]))
+  } catch (error) {
+    console.error(`Failed to initialize for ${backendUrl}:`, error)
+  }
+}
+
 // ストア操作の型定義
 type StatusStoreActions = {
   /** お気に入り状態を更新 */
@@ -355,67 +424,10 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
 
     const fetchAll = async () => {
       console.info('[Startup] Phase 3 開始: REST API 取得 + DB 書き込み')
-      const promises = apps.map(async (app) => {
-        const client = GetClient(app)
-        const { backendUrl } = app
-
-        try {
-          // ローカルアカウント情報を先に同期する。
-          // DB が空の場合、local_accounts レコードが存在しないと
-          // bulkUpsertStatuses が timeline_entries を作成できない。
-          try {
-            const credRes = await client.verifyAccountCredentials()
-            await ensureLocalAccount(credRes.data, backendUrl)
-          } catch (error) {
-            console.warn(
-              `Failed to verify credentials for ${backendUrl}:`,
-              error,
-            )
-          }
-
-          // ホームタイムラインと通知を並行して取得
-          const [homeRes, notifRes] = await Promise.all([
-            client.getHomeTimeline({ limit: 40 }),
-            client.getNotifications({ limit: 40 }),
-          ])
-
-          if (cancelled) return
-
-          // Raw data capture (API response)
-          if (isRawDataCaptureEnabled()) {
-            captureApiResponse({
-              backend: app.backend,
-              backendUrl,
-              dataCount: homeRes.data.length,
-              eventType: 'getHomeTimeline',
-              origin: app.backend === 'misskey' ? 'misskey-js' : 'megalodon',
-              rawData: homeRes.data,
-            })
-            captureApiResponse({
-              backend: app.backend,
-              backendUrl,
-              dataCount: notifRes.data.length,
-              eventType: 'getNotifications',
-              origin: app.backend === 'misskey' ? 'misskey-js' : 'megalodon',
-              rawData: notifRes.data,
-            })
-          }
-
-          await bulkUpsertStatuses(homeRes.data, backendUrl, 'home')
-
-          // ユーザー情報を収集
-          const users = extractUsersFromStatuses(homeRes.data)
-          setUsersEvent((prev) => dedupeUsersByAcct([...users, ...prev]))
-
-          await bulkAddNotifications(notifRes.data, backendUrl)
-
-          // 通知からユーザー情報を収集
-          const notifUsers = extractUsersFromNotifications(notifRes.data)
-          setUsersEvent((prev) => dedupeUsersByAcct([...prev, ...notifUsers]))
-        } catch (error) {
-          console.error(`Failed to initialize for ${backendUrl}:`, error)
-        }
-      })
+      const isCancelled = () => cancelled
+      const promises = apps.map((app) =>
+        fetchRestDataForApp(app, isCancelled, setUsersEvent),
+      )
 
       await Promise.all(promises)
 
