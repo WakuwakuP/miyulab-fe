@@ -84,12 +84,14 @@ const AddAccountModal = ({ onClose }: { onClose: () => void }) => {
 
   return (
     <>
-      <div
+      <button
+        aria-label="Close"
         className="absolute bottom-0 left-0 right-0 top-0 bg-black/60"
         onClick={() => {
           onClose()
         }}
-      ></div>
+        type="button"
+      />
       <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-md border bg-gray-600 p-12 text-center">
         <h1 className="pb-8 text-4xl">Miyulab-FE</h1>
         <div className="w-72 space-y-2">
