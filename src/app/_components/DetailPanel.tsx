@@ -16,6 +16,11 @@ import { DetailContext, SetDetailContext } from 'util/provider/DetailProvider'
 
 import { GettingStarted } from './GettingStarted'
 
+const pickAccountFromSearchResults = (
+  accounts: Entity.Account[],
+  searchQuery: string,
+) => accounts.find((account) => account.acct === searchQuery) ?? accounts[0]
+
 export const DetailPanel = () => {
   const apps = useContext(AppsContext)
   const detail = useContext(DetailContext)
@@ -130,8 +135,7 @@ export const DetailPanel = () => {
         client
           .searchAccount(searchQuery, { limit: 5, resolve: true })
           .then((res) => {
-            const found =
-              res.data.find((a) => a.acct === searchQuery) ?? res.data[0]
+            const found = pickAccountFromSearchResults(res.data, searchQuery)
             if (found) resolveAsAccount(found)
           })
           .catch((error) => {
@@ -146,8 +150,10 @@ export const DetailPanel = () => {
             client
               .searchAccount(searchQuery, { limit: 5, resolve: true })
               .then((res) => {
-                const found =
-                  res.data.find((a) => a.acct === searchQuery) ?? res.data[0]
+                const found = pickAccountFromSearchResults(
+                  res.data,
+                  searchQuery,
+                )
                 if (found) resolveAsAccount(found)
               })
               .catch((error) => {
