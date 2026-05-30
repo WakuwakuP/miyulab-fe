@@ -260,88 +260,81 @@ function StaticMultiCombobox({
 }
 
 // ---------------------------------------------------------------------------
-// Main ValueInput
+// Helpers
 // ---------------------------------------------------------------------------
 
-export function ValueInput({
-  column,
-  columnType,
+function toStringArray(value: FilterValue): string[] {
+  if (Array.isArray(value)) {
+    return value.map(String)
+  }
+  return String(value ?? '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
+
+function toNumericArray(vals: string[]): number[] {
+  return vals.map(Number).filter((n) => !Number.isNaN(n))
+}
+
+// ---------------------------------------------------------------------------
+// ValueInput variants
+// ---------------------------------------------------------------------------
+
+function KnownValuesInput({
+  isArrayOp,
   knownValues,
   onChange,
-  op,
-  searchValues,
-  table,
   value,
-}: ValueInputProps) {
-  const isNullOp = op === 'IS NULL' || op === 'IS NOT NULL'
-  const isArrayOp = op === 'IN' || op === 'NOT IN'
-
-  if (isNullOp) return null
-
-  // knownValues がある場合
-  if (knownValues && knownValues.length > 0) {
-    if (isArrayOp) {
-      const arrayVal = Array.isArray(value) ? (value as string[]) : []
-      return (
-        <StaticMultiCombobox
-          items={knownValues}
-          onChange={onChange}
-          value={arrayVal}
-        />
-      )
-    }
-    // 単一値: Select
+}: {
+  isArrayOp: boolean
+  knownValues: string[]
+  onChange: (value: FilterValue) => void
+  value: FilterValue
+}) {
+  if (isArrayOp) {
+    const arrayVal = Array.isArray(value) ? (value as string[]) : []
     return (
-      <Select onValueChange={(v) => onChange(v)} value={String(value ?? '')}>
-        <SelectTrigger className="h-7 text-xs bg-gray-800 border-gray-600 flex-1">
-          <SelectValue placeholder="値を選択" />
-        </SelectTrigger>
-        <SelectContent>
-          {knownValues.map((v) => (
-            <SelectItem key={v} value={v}>
-              {v}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <StaticMultiCombobox
+        items={knownValues}
+        onChange={onChange}
+        value={arrayVal}
+      />
     )
   }
 
-  // 数値型
-  if (columnType === 'integer' || columnType === 'real') {
-    if (isArrayOp) {
-      const arrayVal = Array.isArray(value)
-        ? value.map(String)
-        : String(value ?? '')
-            .split(',')
-            .map((s) => s.trim())
-            .filter(Boolean)
-      if (searchValues) {
-        return (
-          <AsyncMultiCombobox
-            column={column}
-            onChange={(vals) => {
-              const nums = vals.map(Number).filter((n) => !Number.isNaN(n))
-              onChange(nums)
-            }}
-            placeholder="数値を検索..."
-            searchValues={searchValues}
-            table={table}
-            value={arrayVal}
-          />
-        )
-      }
-      return (
-        <StaticMultiCombobox
-          items={arrayVal}
-          onChange={(vals) => {
-            const nums = vals.map(Number).filter((n) => !Number.isNaN(n))
-            onChange(nums)
-          }}
-          value={arrayVal}
-        />
-      )
-    }
+  return (
+    <Select onValueChange={(v) => onChange(v)} value={String(value ?? '')}>
+      <SelectTrigger className="h-7 text-xs bg-gray-800 border-gray-600 flex-1">
+        <SelectValue placeholder="値を選択" />
+      </SelectTrigger>
+      <SelectContent>
+        {knownValues.map((v) => (
+          <SelectItem key={v} value={v}>
+            {v}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}
+
+function NumericValueInput({
+  column,
+  isArrayOp,
+  onChange,
+  searchValues,
+  table,
+  value,
+}: {
+  column: string
+  isArrayOp: boolean
+  onChange: (value: FilterValue) => void
+  searchValues?: ValueInputProps['searchValues']
+  table: string
+  value: FilterValue
+}) {
+  if (!isArrayOp) {
     return (
       <Input
         className="h-7 text-xs bg-gray-800 border-gray-600 flex-1"
@@ -358,44 +351,82 @@ export function ValueInput({
     )
   }
 
-  // テキスト型 + DB検索
+  const arrayVal = toStringArray(value)
+  const handleNumericArrayChange = (vals: string[]) => {
+    onChange(toNumericArray(vals))
+  }
+
   if (searchValues) {
-    if (isArrayOp) {
-      const arrayVal = Array.isArray(value)
-        ? (value as string[])
-        : String(value ?? '')
-            .split(',')
-            .map((s) => s.trim())
-            .filter(Boolean)
-      return (
-        <AsyncMultiCombobox
-          column={column}
-          onChange={(vals) => onChange(vals)}
-          searchValues={searchValues}
-          table={table}
-          value={arrayVal}
-        />
-      )
-    }
     return (
-      <AutocompleteInput
+      <AsyncMultiCombobox
         column={column}
-        onChange={(v) => onChange(v)}
+        onChange={handleNumericArrayChange}
+        placeholder="数値を検索..."
         searchValues={searchValues}
         table={table}
-        value={String(value ?? '')}
+        value={arrayVal}
       />
     )
   }
 
-  // フォールバック: 素の Input
+  return (
+    <StaticMultiCombobox
+      items={arrayVal}
+      onChange={handleNumericArrayChange}
+      value={arrayVal}
+    />
+  )
+}
+
+function SearchValueInput({
+  column,
+  isArrayOp,
+  onChange,
+  searchValues,
+  table,
+  value,
+}: {
+  column: string
+  isArrayOp: boolean
+  onChange: (value: FilterValue) => void
+  searchValues: NonNullable<ValueInputProps['searchValues']>
+  table: string
+  value: FilterValue
+}) {
   if (isArrayOp) {
-    const arrayVal = Array.isArray(value)
-      ? value.map(String)
-      : String(value ?? '')
-          .split(',')
-          .map((s) => s.trim())
-          .filter(Boolean)
+    return (
+      <AsyncMultiCombobox
+        column={column}
+        onChange={(vals) => onChange(vals)}
+        searchValues={searchValues}
+        table={table}
+        value={toStringArray(value)}
+      />
+    )
+  }
+
+  return (
+    <AutocompleteInput
+      column={column}
+      onChange={(v) => onChange(v)}
+      searchValues={searchValues}
+      table={table}
+      value={String(value ?? '')}
+    />
+  )
+}
+
+function FallbackValueInput({
+  isArrayOp,
+  onChange,
+  value,
+}: {
+  isArrayOp: boolean
+  onChange: (value: FilterValue) => void
+  value: FilterValue
+}) {
+  if (isArrayOp) {
+    const arrayVal = toStringArray(value)
     return (
       <StaticMultiCombobox
         items={arrayVal}
@@ -422,6 +453,71 @@ export function ValueInput({
       }}
       placeholder="値"
       value={displayValue}
+    />
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Main ValueInput
+// ---------------------------------------------------------------------------
+
+export function ValueInput({
+  column,
+  columnType,
+  knownValues,
+  onChange,
+  op,
+  searchValues,
+  table,
+  value,
+}: ValueInputProps) {
+  const isNullOp = op === 'IS NULL' || op === 'IS NOT NULL'
+  const isArrayOp = op === 'IN' || op === 'NOT IN'
+
+  if (isNullOp) return null
+
+  if (knownValues && knownValues.length > 0) {
+    return (
+      <KnownValuesInput
+        isArrayOp={isArrayOp}
+        knownValues={knownValues}
+        onChange={onChange}
+        value={value}
+      />
+    )
+  }
+
+  if (columnType === 'integer' || columnType === 'real') {
+    return (
+      <NumericValueInput
+        column={column}
+        isArrayOp={isArrayOp}
+        onChange={onChange}
+        searchValues={searchValues}
+        table={table}
+        value={value}
+      />
+    )
+  }
+
+  if (searchValues) {
+    return (
+      <SearchValueInput
+        column={column}
+        isArrayOp={isArrayOp}
+        onChange={onChange}
+        searchValues={searchValues}
+        table={table}
+        value={value}
+      />
+    )
+  }
+
+  return (
+    <FallbackValueInput
+      isArrayOp={isArrayOp}
+      onChange={onChange}
+      value={value}
     />
   )
 }
