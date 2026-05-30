@@ -4,15 +4,25 @@ import { AccountDetail } from 'app/_parts/AccountDetail'
 import { HashtagDetail } from 'app/_parts/HashtagDetail'
 import { Panel } from 'app/_parts/Panel'
 import { Status } from 'app/_parts/Status'
-import type { Entity } from 'megalodon'
-import { useContext, useEffect, useState } from 'react'
+import type { Entity, MegalodonInterface } from 'megalodon'
+import {
+  type Dispatch,
+  type SetStateAction,
+  useContext,
+  useEffect,
+  useState,
+} from 'react'
 import { RiArrowLeftSLine } from 'react-icons/ri'
 import { Virtuoso } from 'react-virtuoso'
 import type { StatusAddAppIndex } from 'types/types'
 import { GetClient } from 'util/GetClient'
 import { useHashtagHistory } from 'util/hooks/useHashtagHistory'
 import { AppsContext } from 'util/provider/AppsProvider'
-import { DetailContext, SetDetailContext } from 'util/provider/DetailProvider'
+import {
+  DetailContext,
+  SetDetailContext,
+  type SetDetailParams,
+} from 'util/provider/DetailProvider'
 
 import { GettingStarted } from './GettingStarted'
 
@@ -20,6 +30,163 @@ const pickAccountFromSearchResults = (
   accounts: Entity.Account[],
   searchQuery: string,
 ) => accounts.find((account) => account.acct === searchQuery) ?? accounts[0]
+
+const normalizeSearchQuery = (rawQuery: string): string => {
+  if (!/^https?:\/\//.test(rawQuery)) return rawQuery
+
+  try {
+    const url = new URL(rawQuery)
+    const pathMatch = url.pathname.match(/^\/(?:@|users\/)([^/@]+)\/?$/)
+    if (pathMatch?.[1]) {
+      return `${pathMatch[1]}@${url.host}`
+    }
+  } catch {
+    // URL パース失敗時はそのまま使用
+  }
+  return rawQuery
+}
+
+const resolveStatusByUri = (
+  content: StatusAddAppIndex,
+  client: MegalodonInterface,
+  setDetail: Dispatch<SetStateAction<SetDetailParams>>,
+) => {
+  if (!content.uri) return
+
+  client
+    .search(content.uri, {
+      limit: 1,
+      resolve: true,
+      type: 'statuses',
+    })
+    .then((res) => {
+      const found = res.data.statuses[0]
+      if (found) {
+        setDetail({
+          content: {
+            ...found,
+            appIndex: content.appIndex,
+          },
+          type: 'Status',
+        })
+      }
+    })
+    .catch((error) => {
+      console.error('Failed to resolve status by URI:', error)
+    })
+}
+
+const fetchStatusContext = (
+  content: StatusAddAppIndex,
+  client: MegalodonInterface,
+  setContext: (context: StatusAddAppIndex[]) => void,
+) => {
+  client
+    .getStatusContext(content.id)
+    .then((res) => {
+      setContext([
+        ...(res.data.ancestors.map((status) => ({
+          ...status,
+          appIndex: content.appIndex,
+        })) ?? []),
+        content,
+        ...(res.data.descendants.map((status) => ({
+          ...status,
+          appIndex: content.appIndex,
+        })) ?? []),
+      ])
+    })
+    .catch((error) => {
+      console.error('Failed to fetch status context:', error)
+    })
+}
+
+const loadStatusDetail = (
+  content: StatusAddAppIndex,
+  client: MegalodonInterface,
+  setDetail: Dispatch<SetStateAction<SetDetailParams>>,
+  setContext: (context: StatusAddAppIndex[]) => void,
+) => {
+  if (!content.id) {
+    resolveStatusByUri(content, client, setDetail)
+    return
+  }
+  fetchStatusContext(content, client, setContext)
+}
+
+type ResolveAsAccount = (account: Entity.Account) => void
+
+const searchAccountWithFallback = (
+  client: MegalodonInterface,
+  searchQuery: string,
+  resolveAsAccount: ResolveAsAccount,
+) => {
+  client
+    .getAccount(searchQuery)
+    .then((res) => resolveAsAccount(res.data))
+    .catch((error) => {
+      console.error('Failed to fetch account:', error)
+      client
+        .searchAccount(searchQuery, { limit: 5, resolve: true })
+        .then((res) => {
+          const found = res.data[0]
+          if (found) resolveAsAccount(found)
+        })
+        .catch((fallbackError) => {
+          console.error('Fallback search also failed:', fallbackError)
+        })
+    })
+}
+
+const searchAccountByQuery = (
+  client: MegalodonInterface,
+  searchQuery: string,
+  resolveAsAccount: ResolveAsAccount,
+) => {
+  client
+    .searchAccount(searchQuery, { limit: 5, resolve: true })
+    .then((res) => {
+      const found = pickAccountFromSearchResults(res.data, searchQuery)
+      if (found) resolveAsAccount(found)
+    })
+    .catch((error) => {
+      console.error('Failed to search account:', error)
+    })
+}
+
+const loadSearchUserDetail = (
+  content: string,
+  appIndex: number,
+  client: MegalodonInterface,
+  setDetail: Dispatch<SetStateAction<SetDetailParams>>,
+) => {
+  const resolveAsAccount: ResolveAsAccount = (account) => {
+    setDetail({
+      content: {
+        ...account,
+        appIndex,
+      },
+      type: 'Account',
+    })
+  }
+
+  const searchQuery = normalizeSearchQuery(content)
+  const isAcctFormat = /^@?\w[\w.-]*@[\w.-]+\.\w+$/.test(searchQuery)
+  const isNumericId = /^\d+$/.test(searchQuery)
+
+  if (isNumericId) {
+    searchAccountWithFallback(client, searchQuery, resolveAsAccount)
+  } else if (isAcctFormat) {
+    searchAccountByQuery(client, searchQuery, resolveAsAccount)
+  } else {
+    client
+      .getAccount(searchQuery)
+      .then((res) => resolveAsAccount(res.data))
+      .catch(() => {
+        searchAccountByQuery(client, searchQuery, resolveAsAccount)
+      })
+  }
+}
 
 export const DetailPanel = () => {
   const apps = useContext(AppsContext)
@@ -34,133 +201,12 @@ export const DetailPanel = () => {
 
     if (detail.type === 'Status') {
       const client = GetClient(apps[detail.content.appIndex])
-
-      // id が空（SQLite キャッシュ由来で local_id 未解決）の場合は
-      // search API で投稿を解決し、setDetail で id を含む完全なデータに差し替える
-      if (!detail.content.id) {
-        if (!detail.content.uri) return
-        client
-          .search(detail.content.uri, {
-            limit: 1,
-            resolve: true,
-            type: 'statuses',
-          })
-          .then((res) => {
-            const found = res.data.statuses[0]
-            if (found) {
-              setDetail({
-                content: {
-                  ...found,
-                  appIndex: detail.content.appIndex,
-                },
-                type: 'Status',
-              })
-            }
-          })
-          .catch((error) => {
-            console.error('Failed to resolve status by URI:', error)
-          })
-        return
-      }
-
-      client
-        .getStatusContext(detail.content.id)
-        .then((res) => {
-          setContext([
-            ...(res.data.ancestors.map((status) => ({
-              ...status,
-              appIndex: detail.content.appIndex,
-            })) ?? []),
-            detail.content,
-            ...(res.data.descendants.map((status) => ({
-              ...status,
-              appIndex: detail.content.appIndex,
-            })) ?? []),
-          ])
-        })
-        .catch((error) => {
-          console.error('Failed to fetch status context:', error)
-        })
+      loadStatusDetail(detail.content, client, setDetail, setContext)
     }
 
     if (detail.type === 'SearchUser' && detail.content) {
       const client = GetClient(apps[detail.appIndex])
-
-      const resolveAsAccount = (account: Entity.Account) => {
-        setDetail({
-          content: {
-            ...account,
-            appIndex: detail.appIndex,
-          },
-          type: 'Account',
-        })
-      }
-
-      // URL 形式の場合、acct を抽出する (https://domain/@user → user@domain)
-      let searchQuery = detail.content
-      if (/^https?:\/\//.test(searchQuery)) {
-        try {
-          const url = new URL(searchQuery)
-          const pathMatch = url.pathname.match(/^\/(?:@|users\/)([^/@]+)\/?$/)
-          if (pathMatch?.[1]) {
-            searchQuery = `${pathMatch[1]}@${url.host}`
-          }
-        } catch {
-          // URL パース失敗時はそのまま使用
-        }
-      }
-
-      // 数値的な ID の場合は getAccount を優先し、失敗したら searchAccount にフォールバック
-      // acct 形式 (user@host) は常に searchAccount を使用し、それ以外 (例: Misskey 英数字 ID) はまず getAccount を試行してから searchAccount にフォールバックする
-      const isAcctFormat = /^@?\w[\w.-]*@[\w.-]+\.\w+$/.test(searchQuery)
-      const isNumericId = /^\d+$/.test(searchQuery)
-      if (isNumericId) {
-        client
-          .getAccount(searchQuery)
-          .then((res) => resolveAsAccount(res.data))
-          .catch((error) => {
-            console.error('Failed to fetch account:', error)
-            // getAccount 失敗時は searchAccount にフォールバック
-            client
-              .searchAccount(searchQuery, { limit: 5, resolve: true })
-              .then((res) => {
-                const found = res.data[0]
-                if (found) resolveAsAccount(found)
-              })
-              .catch((fallbackError) => {
-                console.error('Fallback search also failed:', fallbackError)
-              })
-          })
-      } else if (isAcctFormat) {
-        client
-          .searchAccount(searchQuery, { limit: 5, resolve: true })
-          .then((res) => {
-            const found = pickAccountFromSearchResults(res.data, searchQuery)
-            if (found) resolveAsAccount(found)
-          })
-          .catch((error) => {
-            console.error('Failed to search account:', error)
-          })
-      } else {
-        // Misskey 英数字 ID などの可能性: まず getAccount を試行し、失敗したら searchAccount
-        client
-          .getAccount(searchQuery)
-          .then((res) => resolveAsAccount(res.data))
-          .catch(() => {
-            client
-              .searchAccount(searchQuery, { limit: 5, resolve: true })
-              .then((res) => {
-                const found = pickAccountFromSearchResults(
-                  res.data,
-                  searchQuery,
-                )
-                if (found) resolveAsAccount(found)
-              })
-              .catch((error) => {
-                console.error('Failed to search account:', error)
-              })
-          })
-      }
+      loadSearchUserDetail(detail.content, detail.appIndex, client, setDetail)
     }
   }, [apps, detail, detail.content, detail.type, setDetail])
 
