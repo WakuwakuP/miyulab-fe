@@ -10,12 +10,22 @@ import {
   useEffect,
   useState,
 } from 'react'
+import type { App } from 'types/types'
 import { GetClient } from 'util/GetClient'
 import { AppsContext } from 'util/provider/AppsProvider'
 
 export type VerifiedAccount = {
   account: Entity.Account
   index: number
+}
+
+async function verifyAppAccount(
+  app: App,
+  index: number,
+): Promise<VerifiedAccount> {
+  const client = GetClient(app)
+  const res = await client.verifyAccountCredentials()
+  return { account: res.data, index }
 }
 
 export const PostAccountContext = createContext<VerifiedAccount[]>([])
@@ -52,12 +62,7 @@ export const PostAccountProvider = ({
     ;(async () => {
       try {
         const results = await Promise.allSettled(
-          apps.map((app, index) => {
-            const client = GetClient(app)
-            return client
-              .verifyAccountCredentials()
-              .then((res) => ({ account: res.data, index }))
-          }),
+          apps.map((app, index) => verifyAppAccount(app, index)),
         )
         if (cancelled) return
         const fulfilled = results
