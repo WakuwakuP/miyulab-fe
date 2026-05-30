@@ -217,6 +217,7 @@ function resolveExistingPostLookup(
     )
     if (existingReblogId !== undefined) {
       postId = existingReblogId
+      existingIsOriginal = false
       foundViaReblogDedup = true
     }
   }
