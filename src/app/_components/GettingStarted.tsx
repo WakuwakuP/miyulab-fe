@@ -12,7 +12,6 @@ import {
   useCallback,
   useContext,
   useEffect,
-  useEffectEvent,
   useMemo,
   useState,
 } from 'react'
@@ -140,11 +139,10 @@ export const GettingStarted = () => {
     [key: number]: string | null
   }>(Array.from({ length: apps.length }, () => null))
 
-  const setMaxIdEvent = useEffectEvent(setMaxId)
   const setMaxIdCallback = useCallback(
     (res: Response<Entity.Status[]>, index: number) => {
       if (res.headers.link == null) {
-        setMaxIdEvent((prev) => ({
+        setMaxId((prev) => ({
           ...prev,
           [index]: null,
         }))
@@ -162,7 +160,7 @@ export const GettingStarted = () => {
       const next = links.find((link) => link.rel === 'next')
 
       if (next == null) {
-        setMaxIdEvent((prev) => ({
+        setMaxId((prev) => ({
           ...prev,
           [index]: null,
         }))
@@ -172,14 +170,14 @@ export const GettingStarted = () => {
       const maxId = new URL(next.url).searchParams.get('max_id')
 
       if (maxId == null) {
-        setMaxIdEvent((prev) => ({
+        setMaxId((prev) => ({
           ...prev,
           [index]: null,
         }))
         return
       }
 
-      setMaxIdEvent((prev) => ({
+      setMaxId((prev) => ({
         ...prev,
         [index]: maxId,
       }))
