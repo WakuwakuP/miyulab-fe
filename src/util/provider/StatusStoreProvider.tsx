@@ -4,7 +4,6 @@ import type { Entity, WebSocketInterface } from 'megalodon'
 import {
   createContext,
   type ReactNode,
-  useCallback,
   useContext,
   useEffect,
   useEffectEvent,
@@ -419,11 +418,6 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
   const setUsersEvent = useEffectEvent(setUsers)
   const setTagsEvent = useEffectEvent(setTags)
 
-  // アクション更新関数
-  const setFavourited = useCallback(setFavouritedAction, [])
-  const setReblogged = useCallback(setRebloggedAction, [])
-  const setBookmarked = useCallback(setBookmarkedAction, [])
-
   // WebSocketストリームハンドラの作成
   const createStreamHandlers = useEffectEvent((app: App, _appIndex: number) =>
     buildStreamHandlers(app, setUsersEvent, setTagsEvent),
@@ -511,11 +505,11 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
 
   const storeActionsValue = useMemo(
     () => ({
-      setBookmarked,
-      setFavourited,
-      setReblogged,
+      setBookmarked: setBookmarkedAction,
+      setFavourited: setFavouritedAction,
+      setReblogged: setRebloggedAction,
     }),
-    [setBookmarked, setFavourited, setReblogged],
+    [],
   )
 
   return (
