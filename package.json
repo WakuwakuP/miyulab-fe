@@ -85,7 +85,7 @@
     "copy:sqlite-wasm": "node scripts/copy-sqlite-wasm-assets.mjs",
     "dev": "yarn copy:sqlite-wasm && next dev --experimental-https",
     "generate": "zen generate --lite",
-    "prebuild": "zenstack generate && zenstack migrate deploy",
+    "prebuild": "node scripts/zenstack-prebuild.mjs",
     "prepare": "husky install",
     "start": "next start",
     "test": "vitest run",

@@ -131,6 +131,12 @@ const AddAccountModal = ({ onClose }: { onClose: () => void }) => {
   )
 }
 
+async function fetchAccountWithApp(app: App) {
+  const client = GetClient(app)
+  const res = await client.verifyAccountCredentials()
+  return { account: res.data, app }
+}
+
 export const AccountsPanel = () => {
   const apps = useContext(AppsContext)
 
@@ -158,14 +164,7 @@ export const AccountsPanel = () => {
   useEffect(() => {
     ;(async () => {
       try {
-        const data = apps.map((app) => {
-          const client = GetClient(app)
-          return client.verifyAccountCredentials().then((res) => {
-            return { account: res.data, app }
-          })
-        })
-
-        const res = await Promise.all(data)
+        const res = await Promise.all(apps.map(fetchAccountWithApp))
         setAccounts(res)
       } catch (error) {
         console.error('Failed to verify account credentials:', error)

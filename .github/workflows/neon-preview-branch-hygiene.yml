@@ -1,0 +1,155 @@
+name: Neon Preview Branch Hygiene
+
+# Vercel preview deploys provision a Neon branch named preview/<git-branch>.
+# When the Neon branch limit is reached, provisioning fails before the build
+# starts (~0ms). This workflow deletes preview/* branches for closed PRs so
+# active PRs can provision successfully, then triggers a follow-up push so
+# Vercel deploys after capacity is available (avoids racing the first push).
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+  workflow_dispatch:
+
+concurrency:
+  group: neon-preview-hygiene-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  reconcile-neon-preview-branches:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      deleted_count: ${{ steps.hygiene.outputs.deleted_count }}
+      hygiene_ok: ${{ steps.hygiene.outputs.hygiene_ok }}
+    steps:
+      - name: Reconcile Neon preview branches with open PRs
+        id: hygiene
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ secrets.NEON_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$NEON_API_KEY" ] || [ -z "$NEON_PROJECT_ID" ]; then
+            echo "Neon API credentials are not configured. Skipping preview branch hygiene."
+            echo "deleted_count=0" >> "$GITHUB_OUTPUT"
+            echo "hygiene_ok=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Fetching Neon branches..."
+          LIST_HTTP_CODE=$(curl -sL -w "%{http_code}" -o /tmp/branches.json \
+            -H "Authorization: Bearer $NEON_API_KEY" \
+            -H "Content-Type: application/json" \
+            "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches")
+          if [ "$LIST_HTTP_CODE" != "200" ]; then
+            echo "Failed to fetch Neon branch list (HTTP $LIST_HTTP_CODE)"
+            cat /tmp/branches.json
+            echo "deleted_count=0" >> "$GITHUB_OUTPUT"
+            echo "hygiene_ok=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "hygiene_ok=true" >> "$GITHUB_OUTPUT"
+
+          echo "Fetching open PR head branches..."
+          if ! gh pr list --repo "$GITHUB_REPOSITORY" --state open --json headRefName \
+            --limit 100 --paginate --jq '.[].headRefName' > /tmp/open-pr-branches.txt; then
+            echo "Failed to fetch open PR list. Skipping preview branch deletion."
+            echo "deleted_count=0" >> "$GITHUB_OUTPUT"
+            echo "hygiene_ok=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          current_pr_head=""
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            current_pr_head="${{ github.head_ref }}"
+          fi
+
+          mapfile -t PREVIEW_BRANCHES < <(
+            jq -r '.branches[] | select(.name | startswith("preview/")) | .id + "\t" + .name' /tmp/branches.json
+          )
+
+          if [ "${#PREVIEW_BRANCHES[@]}" -eq 0 ]; then
+            echo "No preview/* Neon branches found."
+            echo "deleted_count=0" >> "$GITHUB_OUTPUT"
+            echo "hygiene_ok=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          deleted=0
+          kept=0
+          for entry in "${PREVIEW_BRANCHES[@]}"; do
+            branch_id="${entry%%$'\t'*}"
+            branch_name="${entry#*$'\t'}"
+            git_branch="${branch_name#preview/}"
+
+            if [ -n "$current_pr_head" ] && [ "$git_branch" = "$current_pr_head" ]; then
+              echo "Keep $branch_name (current PR head: $git_branch)"
+              kept=$((kept + 1))
+              continue
+            fi
+
+            if grep -Fxq "$git_branch" /tmp/open-pr-branches.txt; then
+              echo "Keep $branch_name (open PR branch: $git_branch)"
+              kept=$((kept + 1))
+              continue
+            fi
+
+            echo "Delete stale Neon branch $branch_name (id=$branch_id)"
+            DELETE_HTTP_CODE=$(curl -sL -w "%{http_code}" -o /tmp/delete-response.json \
+              -X DELETE \
+              -H "Authorization: Bearer $NEON_API_KEY" \
+              -H "Content-Type: application/json" \
+              "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches/$branch_id")
+            if [ "$DELETE_HTTP_CODE" = "200" ] || [ "$DELETE_HTTP_CODE" = "204" ]; then
+              deleted=$((deleted + 1))
+            else
+              echo "Warning: failed to delete $branch_name (HTTP $DELETE_HTTP_CODE)"
+              cat /tmp/delete-response.json
+            fi
+          done
+
+          echo "Neon preview branch hygiene complete (kept=$kept deleted=$deleted)"
+          echo "deleted_count=$deleted" >> "$GITHUB_OUTPUT"
+
+  redeploy-vercel-preview-after-hygiene:
+    needs: reconcile-neon-preview-branches
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.action != 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      needs.reconcile-neon-preview-branches.outputs.hygiene_ok == 'true' &&
+      !contains(join(github.event.commits.*.message, ' '), 'chore(ci): redeploy preview after Neon branch hygiene') &&
+      (
+        needs.reconcile-neon-preview-branches.outputs.deleted_count != '0' ||
+        contains(fromJSON('["opened", "reopened"]'), github.event.action)
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+
+      - name: Trigger Vercel preview redeploy
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          last_subject=$(git log -1 --format=%s)
+          if [ "$last_subject" = "chore(ci): redeploy preview after Neon branch hygiene" ]; then
+            echo "Latest commit is already a hygiene redeploy; skipping."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit --allow-empty \
+            -m "chore(ci): redeploy preview after Neon branch hygiene"
+          git push origin "HEAD:${{ github.event.pull_request.head.ref }}"
