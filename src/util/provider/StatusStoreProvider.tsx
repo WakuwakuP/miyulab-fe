@@ -39,13 +39,8 @@ import { AppsContext } from './AppsProvider'
 import { SetTagsContext, SetUsersContext } from './ResourceProvider'
 import { StartupCoordinatorContext } from './StartupCoordinator'
 
-type UserSummary = Pick<
-  Entity.Account,
-  'id' | 'acct' | 'avatar' | 'display_name'
->
-
 /** acct で重複を除く（先頭のエントリを優先） */
-function dedupeUsersByAcct(users: UserSummary[]): UserSummary[] {
+function dedupeUsersByAcct<T extends { acct: string }>(users: T[]): T[] {
   return users.filter(
     (element, idx, self) =>
       self.findIndex((e) => e.acct === element.acct) === idx,
