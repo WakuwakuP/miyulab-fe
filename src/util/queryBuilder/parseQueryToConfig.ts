@@ -287,7 +287,7 @@ export function parseQueryToConfig(
   const multiTagMatch =
     /(?:pbt\.tag|ht\.name|ht\.normalized_name)\s+IN\s*\(([^)]+)\)/i.exec(query)
   const andTagMatch =
-    /HAVING\s+COUNT\s*\(\s*DISTINCT\s+[a-z_][\w]*\.(?:tag|normalized_name|name)\s*\)\s*=\s*(\d+)/i.exec(
+    /HAVING\s+COUNT\s*\(\s*DISTINCT\s+[a-z_]\w*\.(?:tag|normalized_name|name)\s*\)\s*=\s*(\d+)/i.exec(
       query,
     )
 
@@ -299,7 +299,7 @@ export function parseQueryToConfig(
   } else if (multiTagMatch) {
     const tags = multiTagMatch[1]
       .split(',')
-      .map((t) => t.trim().replace(/^'|'$/g, '').replaceAll("''", "'"))
+      .map((t) => t.trim().replaceAll(/^'|'$/g, '').replaceAll("''", "'"))
       .filter(Boolean)
     const mode = andTagMatch ? 'and' : 'or'
     result.tagConfig = { mode, tags }

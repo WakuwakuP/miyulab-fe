@@ -8,6 +8,9 @@ const TIMELINE_SINGLE_RE = /^ptt\.timeline(?:Type|_key)\s*=\s*'([^']+)'$/i
 const TIMELINE_MULTI_RE = /^ptt\.timeline(?:Type|_key)\s+IN\s*\(([^)]+)\)$/i
 const NOTIFICATION_TYPE_SINGLE_RE = /^nt\.name\s*=\s*'([^']+)'$/i
 const NOTIFICATION_TYPE_MULTI_RE = /^nt\.name\s+IN\s*\(([^)]+)\)$/i
+const PR_ACCT_SINGLE_RE = /^pr\.acct\s*=\s*'([^']+)'$/i
+const AP_ACCT_SINGLE_RE = /^ap\.acct\s*=\s*'([^']+)'$/i
+const PR_ACCT_IN_RE = /^pr\.acct\s+IN\s*\(([^)]+)\)$/i
 
 // ---------------------------------------------------------------------------
 // Individual recognizers
@@ -67,7 +70,7 @@ function tryNotificationTypeFilter(cond: string): FilterNode | null {
 /** pr.acct = 'user@example.com' or ap.acct = '...' */
 function tryAccountFilter(cond: string): FilterNode | null {
   // Include: pr.acct = 'xxx'
-  const prMatch = cond.match(/^pr\.acct\s*=\s*'([^']+)'$/i)
+  const prMatch = PR_ACCT_SINGLE_RE.exec(cond)
   if (prMatch) {
     return {
       column: 'acct',
@@ -78,7 +81,7 @@ function tryAccountFilter(cond: string): FilterNode | null {
     }
   }
   // Notification actor: ap.acct = 'xxx'
-  const apMatch = cond.match(/^ap\.acct\s*=\s*'([^']+)'$/i)
+  const apMatch = AP_ACCT_SINGLE_RE.exec(cond)
   if (apMatch) {
     return {
       column: 'acct',
@@ -89,7 +92,7 @@ function tryAccountFilter(cond: string): FilterNode | null {
     }
   }
   // IN: pr.acct IN ('a', 'b')
-  const prInMatch = cond.match(/^pr\.acct\s+IN\s*\(([^)]+)\)$/i)
+  const prInMatch = PR_ACCT_IN_RE.exec(cond)
   if (prInMatch) {
     const accts = prInMatch[1]
       .split(',')
