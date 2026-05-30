@@ -36,6 +36,16 @@ export const SetSelectedAppIndexContext = createContext<
   Dispatch<SetStateAction<number>>
 >(() => {})
 
+function pickSelectedAppIndex(
+  fulfilled: VerifiedAccount[],
+  previousIndex: number,
+): number {
+  if (fulfilled.some(({ index }) => index === previousIndex)) {
+    return previousIndex
+  }
+  return fulfilled.length > 0 ? fulfilled[0].index : 0
+}
+
 export const PostAccountProvider = ({
   children,
 }: Readonly<{ children: ReactNode }>) => {
@@ -72,10 +82,7 @@ export const PostAccountProvider = ({
           )
           .map((r) => r.value)
         setAccounts(fulfilled)
-        setSelectedAppIndex((prev) => {
-          if (fulfilled.some((a) => a.index === prev)) return prev
-          return fulfilled.length > 0 ? fulfilled[0].index : 0
-        })
+        setSelectedAppIndex((prev) => pickSelectedAppIndex(fulfilled, prev))
       } catch (error) {
         console.error('Failed to verify account credentials:', error)
       }
