@@ -80,7 +80,7 @@ jobs:
               -H "Authorization: Bearer $NEON_API_KEY" \
               -H "Content-Type: application/json" \
               "https://console.neon.tech/api/v2/projects/$NEON_PROJECT_ID/branches/$branch_id")
-            if [ "$DELETE_HTTP_CODE" = "200" ]; then
+            if [ "$DELETE_HTTP_CODE" = "200" ] || [ "$DELETE_HTTP_CODE" = "204" ]; then
               deleted=$((deleted + 1))
             else
               echo "Warning: failed to delete $branch_name (HTTP $DELETE_HTTP_CODE)"
@@ -97,8 +97,11 @@ jobs:
       github.event_name == 'pull_request' &&
       github.event.action != 'closed' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
-      needs.reconcile-neon-preview-branches.outputs.deleted_count != '0' &&
-      !contains(join(github.event.commits.*.message, ' '), 'chore(ci): redeploy preview after Neon branch hygiene')
+      !contains(join(github.event.commits.*.message, ' '), 'chore(ci): redeploy preview after Neon branch hygiene') &&
+      (
+        needs.reconcile-neon-preview-branches.outputs.deleted_count != '0' ||
+        contains(fromJSON('["opened", "reopened"]'), github.event.action)
+      )
     runs-on: ubuntu-latest
     permissions:
       contents: write
