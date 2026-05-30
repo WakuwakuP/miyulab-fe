@@ -155,6 +155,7 @@ export const TimelineManagement = () => {
             : timeline,
         ),
       }))
+      setEmptyFolders((prev) => prev.filter((ef) => ef.key !== groupKey))
     },
     [setTimelineSettings],
   )
@@ -170,6 +171,9 @@ export const TimelineManagement = () => {
             : timeline,
         ),
       }))
+      setEmptyFolders((prev) =>
+        prev.map((ef) => (ef.key === oldKey ? { ...ef, key: newKey } : ef)),
+      )
     },
     [setTimelineSettings],
   )
@@ -436,22 +440,8 @@ export const TimelineManagement = () => {
                               !activeId.startsWith('folder-')
                             }
                             memberCount={column.members.length}
-                            onDeleteFolder={(key) => {
-                              onDeleteFolder(key)
-                              setEmptyFolders((prev) =>
-                                prev.filter((ef) => ef.key !== key),
-                              )
-                            }}
-                            onRenameFolder={(oldKey, newKey) => {
-                              onRenameFolder(oldKey, newKey)
-                              setEmptyFolders((prev) =>
-                                prev.map((ef) =>
-                                  ef.key === oldKey
-                                    ? { ...ef, key: newKey }
-                                    : ef,
-                                ),
-                              )
-                            }}
+                            onDeleteFolder={onDeleteFolder}
+                            onRenameFolder={onRenameFolder}
                             onToggleCollapse={onToggleCollapse}
                           >
                             {column.members.map((timeline) => (
