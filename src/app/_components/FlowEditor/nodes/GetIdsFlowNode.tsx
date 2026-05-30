@@ -30,15 +30,16 @@ export const GetIdsFlowNode = memo(function GetIdsFlowNode({
 
   const isRunning = execStatus?.nodeStates[id] === 'running'
 
+  let borderAccent = 'border-sky-600 shadow-black/20'
+  if (isRunning) {
+    borderAccent = 'border-amber-400 shadow-amber-400/20'
+  } else if (selected) {
+    borderAccent = 'border-sky-400 shadow-sky-400/20'
+  }
+
   return (
     <div
-      className={`rounded-lg border-2 px-4 py-3 min-w-[180px] shadow-md transition-all ${
-        isRunning
-          ? 'border-amber-400 shadow-amber-400/20'
-          : selected
-            ? 'border-sky-400 shadow-sky-400/20'
-            : 'border-sky-600 shadow-black/20'
-      } bg-gray-900 group`}
+      className={`rounded-lg border-2 px-4 py-3 min-w-[180px] shadow-md transition-all ${borderAccent} bg-gray-900 group`}
     >
       <Handle
         className="!w-3 !h-3 !border-2 !border-sky-400 !bg-gray-900"

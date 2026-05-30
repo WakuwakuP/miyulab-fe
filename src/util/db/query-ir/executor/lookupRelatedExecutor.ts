@@ -369,11 +369,12 @@ function executeWithIn(
   if (usePerRowLimit) {
     const partitionCol = `${lt}.${node.joinConditions[0].lookupColumn}`
     const defaultTimeCol = getDefaultTimeColumn(node.lookupTable)
-    const orderCol = node.timeCondition
-      ? `${lt}.${node.timeCondition.lookupTimeColumn}`
-      : defaultTimeCol
-        ? `${lt}.${defaultTimeCol}`
-        : `${lt}.id`
+    let orderCol = `${lt}.id`
+    if (node.timeCondition) {
+      orderCol = `${lt}.${node.timeCondition.lookupTimeColumn}`
+    } else if (defaultTimeCol) {
+      orderCol = `${lt}.${defaultTimeCol}`
+    }
 
     let partitionOrder: 'ASC' | 'DESC'
     if (node.timeCondition) {
