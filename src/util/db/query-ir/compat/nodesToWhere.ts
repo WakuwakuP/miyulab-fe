@@ -9,6 +9,8 @@ import type {
   AerialReplyFilter,
   ExistsFilter,
   FilterNode,
+  FilterOp,
+  FilterValue,
   OrGroup,
   RawSQLFilter,
   TableFilter,
@@ -48,15 +50,52 @@ function timelineScopeToSql(node: TimelineScope): string {
   return `ptt.timelineType IN (${keys})`
 }
 
+/** W-7: null 値の table-filter SQL */
+function nullValueTableFilterToSql(col: string, op: FilterOp): string {
+  if (op === '!=' || op === 'IS NOT NULL') {
+    return `${col} IS NOT NULL`
+  }
+  return `${col} IS NULL`
+}
+
+/** W-5: IN / NOT IN の table-filter SQL */
+function inNotInTableFilterToSql(
+  col: string,
+  op: 'IN' | 'NOT IN',
+  value: FilterValue,
+): string {
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      return op === 'IN' ? '0' : '1'
+    }
+    const values = value
+      .map((v) => (typeof v === 'string' ? `'${escapeSql(v)}'` : String(v)))
+      .join(', ')
+    return `${col} ${op} (${values})`
+  }
+  if (typeof value === 'string') {
+    return `${col} ${op === 'IN' ? '=' : '!='} '${escapeSql(value)}'`
+  }
+  return `${col} ${op === 'IN' ? '=' : '!='} ${value}`
+}
+
+function defaultOpTableFilterToSql(
+  col: string,
+  op: FilterOp,
+  value: FilterValue,
+): string {
+  if (typeof value === 'string') {
+    return `${col} ${op} '${escapeSql(value)}'`
+  }
+  return `${col} ${op} ${value}`
+}
+
 function tableFilterToSql(node: TableFilter): string {
   const alias = TABLE_TO_ALIAS[node.table] ?? node.table
   const col = `${alias}.${node.column}`
 
-  // W-7: null 値の処理
   if (node.value === null || node.value === undefined) {
-    if (node.op === '!=' || node.op === 'IS NOT NULL')
-      return `${col} IS NOT NULL`
-    return `${col} IS NULL`
+    return nullValueTableFilterToSql(col, node.op)
   }
 
   switch (node.op) {
@@ -65,28 +104,10 @@ function tableFilterToSql(node: TableFilter): string {
     case 'IS NOT NULL':
       return `${col} IS NOT NULL`
     case 'IN':
-    case 'NOT IN': {
-      if (Array.isArray(node.value)) {
-        // W-5: 空配列ガード
-        if (node.value.length === 0) {
-          return node.op === 'IN' ? '0' : '1'
-        }
-        const values = node.value
-          .map((v) => (typeof v === 'string' ? `'${escapeSql(v)}'` : String(v)))
-          .join(', ')
-        return `${col} ${node.op} (${values})`
-      }
-      if (typeof node.value === 'string') {
-        return `${col} ${node.op === 'IN' ? '=' : '!='} '${escapeSql(node.value)}'`
-      }
-      return `${col} ${node.op === 'IN' ? '=' : '!='} ${node.value}`
-    }
-    default: {
-      if (typeof node.value === 'string') {
-        return `${col} ${node.op} '${escapeSql(node.value)}'`
-      }
-      return `${col} ${node.op} ${node.value}`
-    }
+    case 'NOT IN':
+      return inNotInTableFilterToSql(col, node.op, node.value)
+    default:
+      return defaultOpTableFilterToSql(col, node.op, node.value)
   }
 }
 
