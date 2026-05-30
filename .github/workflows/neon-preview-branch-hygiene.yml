@@ -56,12 +56,17 @@ jobs:
           echo "hygiene_ok=true" >> "$GITHUB_OUTPUT"
 
           echo "Fetching open PR head branches..."
-          if ! gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 1000 \
-            --json headRefName --jq '.[].headRefName' > /tmp/open-pr-branches.txt; then
+          if ! gh pr list --repo "$GITHUB_REPOSITORY" --state open --json headRefName \
+            --limit 100 --paginate --jq '.[].headRefName' > /tmp/open-pr-branches.txt; then
             echo "Failed to fetch open PR list. Skipping preview branch deletion."
             echo "deleted_count=0" >> "$GITHUB_OUTPUT"
             echo "hygiene_ok=false" >> "$GITHUB_OUTPUT"
             exit 0
+          fi
+
+          current_pr_head=""
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            current_pr_head="${{ github.head_ref }}"
           fi
 
           mapfile -t PREVIEW_BRANCHES < <(
@@ -81,6 +86,12 @@ jobs:
             branch_id="${entry%%$'\t'*}"
             branch_name="${entry#*$'\t'}"
             git_branch="${branch_name#preview/}"
+
+            if [ -n "$current_pr_head" ] && [ "$git_branch" = "$current_pr_head" ]; then
+              echo "Keep $branch_name (current PR head: $git_branch)"
+              kept=$((kept + 1))
+              continue
+            fi
 
             if grep -Fxq "$git_branch" /tmp/open-pr-branches.txt; then
               echo "Keep $branch_name (open PR branch: $git_branch)"
@@ -110,18 +121,13 @@ jobs:
     if: >-
       github.event_name == 'pull_request' &&
       github.event.action != 'closed' &&
-<<<<<<< HEAD
       github.event.pull_request.head.repo.full_name == github.repository &&
+      needs.reconcile-neon-preview-branches.outputs.hygiene_ok == 'true' &&
       !contains(join(github.event.commits.*.message, ' '), 'chore(ci): redeploy preview after Neon branch hygiene') &&
       (
         needs.reconcile-neon-preview-branches.outputs.deleted_count != '0' ||
         contains(fromJSON('["opened", "reopened"]'), github.event.action)
       )
-=======
-      needs.reconcile-neon-preview-branches.outputs.hygiene_ok == 'true' &&
-      needs.reconcile-neon-preview-branches.outputs.deleted_count != '0' &&
-      github.event.pull_request.head.repo.full_name == github.repository
->>>>>>> 4c21b45 (fix(ci,a11y): harden Neon hygiene workflow and restore input labels)
     runs-on: ubuntu-latest
     permissions:
       contents: write
