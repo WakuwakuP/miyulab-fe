@@ -135,8 +135,7 @@ export const Poll = ({
         </div>
         <div className="flex">
           <div>
-            <span className="mr-1">{poll.votes_count}</span>
-            votes
+            <span className="mr-1">{poll.votes_count}</span> votes
           </div>
           <div></div>
         </div>
