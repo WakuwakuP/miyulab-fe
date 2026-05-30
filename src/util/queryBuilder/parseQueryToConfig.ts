@@ -1,21 +1,13 @@
 import type { StatusTimelineType, TimelineConfigV2 } from 'types/types'
 import { sortBackendUrls } from 'util/timelineConfigValidator'
-import { buildQueryFromConfig } from './buildQueryFromConfig'
+import {
+  ALL_NOTIFICATION_TYPES,
+  buildQueryFromConfig,
+} from './buildQueryFromConfig'
 
 // ================================================================
 // クエリ逆算（パーサー）
 // ================================================================
-
-const ALL_NOTIFICATION_TYPES: TimelineConfigV2['notificationFilter'] = [
-  'follow',
-  'follow_request',
-  'mention',
-  'reblog',
-  'favourite',
-  'emoji_reaction',
-  'poll_expired',
-  'status',
-]
 
 function parseQuotedList(raw: string): string[] {
   return raw
@@ -235,7 +227,7 @@ function applyNotificationFilter(
     /nt\.name\s+IS\s+NOT\s+NULL/i.test(query) ||
     /n\.notification_type\s+IS\s+NOT\s+NULL/i.test(query)
   ) {
-    result.notificationFilter = ALL_NOTIFICATION_TYPES
+    result.notificationFilter = [...ALL_NOTIFICATION_TYPES]
     return
   }
 
