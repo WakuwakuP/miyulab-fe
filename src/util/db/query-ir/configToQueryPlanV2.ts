@@ -121,6 +121,128 @@ function buildCompositeGraph(
 
 // --------------- GetIds ノード構築 ---------------
 
+function resolveGetIdsTable(
+  isNotification: boolean,
+  isTimelineScope: boolean,
+): string {
+  if (isNotification) return 'notifications'
+  if (isTimelineScope) return 'timeline_entries'
+  return 'posts'
+}
+
+function addTimelineScopeFilters(
+  filters: GetIdsFilter[],
+  timelineKeys: string[],
+  context: ConfigToV2Context,
+): void {
+  // timeline_entries がソーステーブルなので direct filter
+  filters.push({
+    column: 'timeline_key',
+    op: 'IN',
+    table: 'timeline_entries',
+    value: timelineKeys,
+  })
+
+  // home タイムラインはアカウントスコープが必要
+  if (timelineKeys.includes('home') && context.localAccountIds.length > 0) {
+    filters.push({
+      column: 'local_account_id',
+      op: 'IN',
+      table: 'timeline_entries',
+      value: [...context.localAccountIds],
+    })
+  }
+}
+
+function addTagFilters(
+  filters: GetIdsFilter[],
+  config: TimelineConfigV2,
+): void {
+  if (!config.tagConfig || config.tagConfig.tags.length === 0) return
+
+  const { mode, tags } = config.tagConfig
+
+  if (mode === 'or' || tags.length === 1) {
+    // OR モード or 単一タグ: 1つの EXISTS で IN 句
+    filters.push({
+      innerFilters: [
+        {
+          column: 'name',
+          op: 'IN',
+          table: 'hashtags',
+          value: tags.map((t) => t.toLowerCase()),
+        },
+      ],
+      mode: 'exists',
+      table: 'post_hashtags',
+    } satisfies ExistsCondition)
+    return
+  }
+
+  // AND モード: 各タグの EXISTS を AND で結合
+  for (const tag of tags) {
+    filters.push({
+      innerFilters: [
+        {
+          column: 'name',
+          op: '=',
+          table: 'hashtags',
+          value: tag.toLowerCase(),
+        },
+      ],
+      mode: 'exists',
+      table: 'post_hashtags',
+    } satisfies ExistsCondition)
+  }
+}
+
+function addBackendScopeFilters(
+  filters: GetIdsFilter[],
+  context: ConfigToV2Context,
+  isNotification: boolean,
+  isTag: boolean,
+): void {
+  if (context.localAccountIds.length === 0) return
+
+  if (isNotification) {
+    // 通知テーブルは local_account_id を直接持つ
+    filters.push({
+      column: 'local_account_id',
+      op: 'IN',
+      table: 'notifications',
+      value: [...context.localAccountIds],
+    })
+    return
+  }
+
+  if (!isTag) {
+    // home/local/public は timeline_entries 経由（既に scope で対応）
+    return
+  }
+
+  // tag: post_backend_ids で対象バックエンドにスコープ
+  filters.push({
+    column: 'id',
+    op: 'IN',
+    table: 'local_accounts',
+    value: [...context.localAccountIds],
+  })
+}
+
+function addNotificationTypeFilter(
+  filters: GetIdsFilter[],
+  config: TimelineConfigV2,
+): void {
+  if (!config.notificationFilter?.length) return
+
+  filters.push({
+    column: 'name',
+    op: 'IN',
+    table: 'notification_types',
+    value: [...config.notificationFilter],
+  })
+}
+
 function buildGetIdsNode(
   config: TimelineConfigV2,
   context: ConfigToV2Context,
@@ -132,111 +254,24 @@ function buildGetIdsNode(
 
   // home/local/public は timeline_entries からクエリ開始
   // (post_id を出力して Output で posts を参照)
-  const table = isNotification
-    ? 'notifications'
-    : isTimelineScope
-      ? 'timeline_entries'
-      : 'posts'
+  const table = resolveGetIdsTable(isNotification, isTimelineScope)
   const filters: GetIdsFilter[] = []
-  let orBranches: GetIdsFilter[][] | undefined
+  const orBranches: GetIdsFilter[][] | undefined = undefined
 
-  // --- Timeline Scope (home/local/public) ---
   if (isTimelineScope) {
-    // timeline_entries がソーステーブルなので direct filter
-    filters.push({
-      column: 'timeline_key',
-      op: 'IN',
-      table: 'timeline_entries',
-      value: timelineKeys,
-    })
-
-    // home タイムラインはアカウントスコープが必要
-    if (timelineKeys.includes('home') && context.localAccountIds.length > 0) {
-      filters.push({
-        column: 'local_account_id',
-        op: 'IN',
-        table: 'timeline_entries',
-        value: [...context.localAccountIds],
-      })
-    }
+    addTimelineScopeFilters(filters, timelineKeys, context)
   }
 
-  // --- Tag (hashtag JOIN) ---
-  if (isTag && config.tagConfig && config.tagConfig.tags.length > 0) {
-    const { mode, tags } = config.tagConfig
-
-    if (mode === 'or' || tags.length === 1) {
-      // OR モード or 単一タグ: 1つの EXISTS で IN 句
-      filters.push({
-        innerFilters: [
-          {
-            column: 'name',
-            op: 'IN',
-            table: 'hashtags',
-            value: tags.map((t) => t.toLowerCase()),
-          },
-        ],
-        mode: 'exists',
-        table: 'post_hashtags',
-      } satisfies ExistsCondition)
-    } else {
-      // AND モード: 各タグを OR ブランチとして表現（各タグが存在する投稿）
-      // → 実際には各タグの EXISTS を AND で結合
-      for (const tag of tags) {
-        filters.push({
-          innerFilters: [
-            {
-              column: 'name',
-              op: '=',
-              table: 'hashtags',
-              value: tag.toLowerCase(),
-            },
-          ],
-          mode: 'exists',
-          table: 'post_hashtags',
-        } satisfies ExistsCondition)
-      }
-    }
+  if (isTag) {
+    addTagFilters(filters, config)
   }
 
-  // --- Backend Filter ---
-  if (context.localAccountIds.length > 0) {
-    if (isNotification) {
-      // 通知テーブルは local_account_id を直接持つ
-      filters.push({
-        column: 'local_account_id',
-        op: 'IN',
-        table: 'notifications',
-        value: [...context.localAccountIds],
-      })
-    } else if (!isTag) {
-      // home/local/public は timeline_entries 経由（既に scope で対応）
-      // tag は post_backend_ids 経由
-    } else {
-      // tag: post_backend_ids で対象バックエンドにスコープ
-      filters.push({
-        column: 'id',
-        op: 'IN',
-        table: 'local_accounts',
-        value: [...context.localAccountIds],
-      })
-    }
-  }
-
-  // --- Content Filters ---
+  addBackendScopeFilters(filters, context, isNotification, isTag)
   addContentFilters(config, filters, table)
-
-  // --- Moderation Filters ---
   addModerationFilters(config, context, filters)
 
-  // --- Notification Type Filter ---
-  if (isNotification && config.notificationFilter?.length) {
-    filters.push({
-      column: 'name',
-      op: 'IN',
-      table: 'notification_types',
-      value: [...config.notificationFilter],
-    })
+  if (isNotification) {
+    addNotificationTypeFilter(filters, config)
   }
 
   return {
