@@ -41,23 +41,28 @@ export function ToggleFilters({
 }) {
   return (
     <div className="space-y-1">
-      {TOGGLE_FILTERS.map((filter) => (
-        <label
-          className="flex items-center justify-between gap-2 text-xs cursor-pointer"
-          key={filter.key}
-        >
-          <div>
-            <span>{filter.label}</span>
-            <span className="ml-2 text-gray-500">{filter.description}</span>
-          </div>
-          <input
-            checked={config[filter.key] ?? false}
-            className="cursor-pointer"
-            onChange={(e) => onChange({ [filter.key]: e.target.checked })}
-            type="checkbox"
-          />
-        </label>
-      ))}
+      {TOGGLE_FILTERS.map((filter) => {
+        const inputId = `toggle-filter-${filter.key}`
+        return (
+          <label
+            className="flex items-center justify-between gap-2 text-xs cursor-pointer"
+            htmlFor={inputId}
+            key={filter.key}
+          >
+            <span>
+              {filter.label}
+              <span className="ml-2 text-gray-500">{filter.description}</span>
+            </span>
+            <input
+              checked={config[filter.key] ?? false}
+              className="cursor-pointer"
+              id={inputId}
+              onChange={(e) => onChange({ [filter.key]: e.target.checked })}
+              type="checkbox"
+            />
+          </label>
+        )
+      })}
     </div>
   )
 }

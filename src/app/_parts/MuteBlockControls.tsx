@@ -21,7 +21,7 @@ export function MuteBlockControls({
           className="cursor-pointer"
           onChange={(e) => onChange({ applyMuteFilter: e.target.checked })}
           type="checkbox"
-        />
+        />{' '}
         Apply Mute Filter
       </label>
       <label className="flex items-center gap-2 text-xs cursor-pointer">
@@ -30,7 +30,7 @@ export function MuteBlockControls({
           className="cursor-pointer"
           onChange={(e) => onChange({ applyInstanceBlock: e.target.checked })}
           type="checkbox"
-        />
+        />{' '}
         Apply Instance Block
       </label>
       <div className="flex gap-2">

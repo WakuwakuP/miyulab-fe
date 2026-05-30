@@ -45,7 +45,7 @@ export function AccountFilterEditor({
               name="accountFilterMode"
               onChange={() => toggleMode('include')}
               type="radio"
-            />
+            />{' '}
             Include only
           </label>
           <label className="flex items-center gap-1 text-xs cursor-pointer">
@@ -54,7 +54,7 @@ export function AccountFilterEditor({
               name="accountFilterMode"
               onChange={() => toggleMode('exclude')}
               type="radio"
-            />
+            />{' '}
             Exclude
           </label>
         </div>
