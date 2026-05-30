@@ -19,13 +19,11 @@ export type VerifiedAccount = {
   index: number
 }
 
-async function verifyAppAccount(
-  app: App,
-  index: number,
-): Promise<VerifiedAccount> {
+function verifyAppAccount(app: App, index: number): Promise<VerifiedAccount> {
   const client = GetClient(app)
-  const res = await client.verifyAccountCredentials()
-  return { account: res.data, index }
+  return client
+    .verifyAccountCredentials()
+    .then((res) => ({ account: res.data, index }))
 }
 
 export const PostAccountContext = createContext<VerifiedAccount[]>([])
