@@ -44,8 +44,12 @@ jobs:
           fi
 
           echo "Fetching open PR head branches..."
-          gh pr list --repo "$GITHUB_REPOSITORY" --state open --json headRefName \
-            --jq '.[].headRefName' > /tmp/open-pr-branches.txt
+          if ! gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 1000 \
+            --json headRefName --jq '.[].headRefName' > /tmp/open-pr-branches.txt; then
+            echo "Failed to fetch open PR list. Skipping preview branch deletion."
+            echo "deleted_count=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
           mapfile -t PREVIEW_BRANCHES < <(
             jq -r '.branches[] | select(.name | startswith("preview/")) | .id + "\t" + .name' /tmp/branches.json
@@ -92,6 +96,8 @@ jobs:
     if: >-
       github.event_name == 'pull_request' &&
       github.event.action != 'closed' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      needs.reconcile-neon-preview-branches.outputs.deleted_count != '0' &&
       !contains(join(github.event.commits.*.message, ' '), 'chore(ci): redeploy preview after Neon branch hygiene')
     runs-on: ubuntu-latest
     permissions:
