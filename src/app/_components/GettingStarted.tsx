@@ -49,6 +49,30 @@ function BookmarkVirtuosoItem({
   return <Status key={status.id} scrolling={isScrolling} status={status} />
 }
 
+function ConversationVirtuosoItem({
+  appIndex,
+  conversation,
+  isScrolling,
+}: Readonly<{
+  appIndex: number
+  conversation: Entity.Conversation
+  isScrolling: boolean
+}>) {
+  return (
+    <div key={conversation.id}>
+      {conversation.last_status != null && (
+        <Status
+          scrolling={isScrolling}
+          status={{
+            ...conversation.last_status,
+            appIndex,
+          }}
+        />
+      )}
+    </div>
+  )
+}
+
 export const GettingStarted = () => {
   const apps = useContext(AppsContext)
   const route = usePanelRoute()
@@ -229,6 +253,17 @@ export const GettingStarted = () => {
     [isScrolling],
   )
 
+  const conversationItemContent = useCallback(
+    (_: number, conversation: Entity.Conversation) => (
+      <ConversationVirtuosoItem
+        appIndex={appIndex}
+        conversation={conversation}
+        isScrolling={isScrolling}
+      />
+    ),
+    [appIndex, isScrolling],
+  )
+
   return (
     <Panel name={title}>
       <div className="box-border">
@@ -334,19 +369,7 @@ export const GettingStarted = () => {
                     data={conversations[index]}
                     endReached={moreConversations}
                     isScrolling={setIsScrolling}
-                    itemContent={(_, conversation) => (
-                      <div key={conversation.id}>
-                        {conversation.last_status != null && (
-                          <Status
-                            scrolling={isScrolling}
-                            status={{
-                              ...conversation.last_status,
-                              appIndex: index,
-                            }}
-                          />
-                        )}
-                      </div>
-                    )}
+                    itemContent={conversationItemContent}
                   />
                 </div>
               )}
