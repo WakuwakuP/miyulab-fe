@@ -169,15 +169,13 @@ export const GettingStarted = () => {
         max_id: maxId[appIndex] ?? undefined,
       })
       .then((res) => {
+        const newItems = res.data.map((status) => ({
+          ...status,
+          appIndex: appIndex,
+        }))
         setBookmarks((prev) => ({
           ...prev,
-          [appIndex]: [
-            ...prev[appIndex],
-            ...res.data.map((status) => ({
-              ...status,
-              appIndex: appIndex,
-            })),
-          ],
+          [appIndex]: [...prev[appIndex], ...newItems],
         }))
         setMaxIdCallback(res, appIndex)
       })
