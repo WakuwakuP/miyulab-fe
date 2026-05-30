@@ -12,10 +12,8 @@ import type {
   ExistsFilter,
   FilterNode,
   ModerationFilter,
-  Pagination,
   QueryPlan,
   RawSQLFilter,
-  SortSpec,
   SourceNode,
   TableFilter,
   TimelineScope,
@@ -35,111 +33,139 @@ export type ConfigToNodesContext = {
 }
 
 // ---------------------------------------------------------------------------
-// Main conversion function
+// configToQueryPlan helpers
 // ---------------------------------------------------------------------------
 
-export function configToQueryPlan(
-  config: TimelineConfigV2,
-  context: ConfigToNodesContext,
-): QueryPlan {
-  const isNotification = config.type === 'notification'
-  const isTag = config.type === 'tag'
-
-  // === Source ===
-  const source: SourceNode = {
+function buildSource(config: TimelineConfigV2): SourceNode {
+  return {
     kind: 'source',
     orderBy: 'created_at_ms',
     orderDirection: 'DESC',
-    table: isNotification ? 'notifications' : 'posts',
+    table: config.type === 'notification' ? 'notifications' : 'posts',
+  }
+}
+
+function resolveTimelineKeys(config: TimelineConfigV2): string[] {
+  if (config.timelineTypes && config.timelineTypes.length > 0) {
+    return [...config.timelineTypes]
+  }
+  if (
+    config.type === 'home' ||
+    config.type === 'local' ||
+    config.type === 'public'
+  ) {
+    return [config.type]
+  }
+  return []
+}
+
+function buildTimelineScopeFilter(
+  config: TimelineConfigV2,
+  context: ConfigToNodesContext,
+): TimelineScope | undefined {
+  const isNotification = config.type === 'notification'
+  const isTag = config.type === 'tag'
+  if (isNotification || isTag) {
+    return undefined
   }
 
-  const filters: FilterNode[] = []
-  const composites: CompositeNode[] = []
-
-  // === Timeline Scope ===
-  if (!isNotification && !isTag) {
-    const timelineKeys =
-      config.timelineTypes && config.timelineTypes.length > 0
-        ? [...config.timelineTypes]
-        : config.type === 'home' ||
-            config.type === 'local' ||
-            config.type === 'public'
-          ? [config.type]
-          : []
-
-    if (timelineKeys.length > 0) {
-      const scope: TimelineScope = {
-        kind: 'timeline-scope',
-        timelineKeys,
-      }
-      // Home タイムラインはアカウントスコープが必要
-      if (timelineKeys.includes('home') && context.localAccountIds.length > 0) {
-        scope.accountScope = [...context.localAccountIds]
-      }
-      filters.push(scope)
-    }
+  const timelineKeys = resolveTimelineKeys(config)
+  if (timelineKeys.length === 0) {
+    return undefined
   }
 
-  // === Tag Combination ===
-  if (isTag && config.tagConfig && config.tagConfig.tags.length > 0) {
-    composites.push({
-      kind: 'tag-combination',
-      mode: config.tagConfig.mode ?? 'or',
-      tags: [...config.tagConfig.tags],
-    })
+  const scope: TimelineScope = {
+    kind: 'timeline-scope',
+    timelineKeys,
   }
-
-  // === Backend Filter ===
-  if (context.localAccountIds.length > 0) {
-    filters.push({
-      kind: 'backend-filter',
-      localAccountIds: [...context.localAccountIds],
-    } satisfies BackendFilter)
+  if (timelineKeys.includes('home') && context.localAccountIds.length > 0) {
+    scope.accountScope = [...context.localAccountIds]
   }
+  return scope
+}
 
-  // === Content Filters ===
+function buildTagComposite(
+  config: TimelineConfigV2,
+): CompositeNode | undefined {
+  if (
+    config.type !== 'tag' ||
+    !config.tagConfig ||
+    config.tagConfig.tags.length === 0
+  ) {
+    return undefined
+  }
+  return {
+    kind: 'tag-combination',
+    mode: config.tagConfig.mode ?? 'or',
+    tags: [...config.tagConfig.tags],
+  }
+}
 
-  // メディアフィルタ
+function buildBackendFilter(
+  context: ConfigToNodesContext,
+): BackendFilter | undefined {
+  if (context.localAccountIds.length === 0) {
+    return undefined
+  }
+  return {
+    kind: 'backend-filter',
+    localAccountIds: [...context.localAccountIds],
+  }
+}
+
+function buildMediaFilter(config: TimelineConfigV2): ExistsFilter | undefined {
   if (config.minMediaCount != null && config.minMediaCount > 0) {
-    filters.push({
+    return {
       countValue: config.minMediaCount,
       kind: 'exists-filter',
       mode: 'count-gte',
       table: 'post_media',
-    } satisfies ExistsFilter)
-  } else if (config.onlyMedia) {
-    filters.push({
+    }
+  }
+  if (config.onlyMedia) {
+    return {
       kind: 'exists-filter',
       mode: 'exists',
       table: 'post_media',
-    } satisfies ExistsFilter)
+    }
   }
+  return undefined
+}
 
-  // 公開範囲フィルタ
-  if (
-    config.visibilityFilter &&
-    config.visibilityFilter.length > 0 &&
-    config.visibilityFilter.length < 4
-  ) {
-    filters.push({
-      column: 'name',
-      kind: 'table-filter',
-      op: 'IN',
-      table: 'visibility_types',
-      value: [...config.visibilityFilter],
-    } satisfies TableFilter)
+function buildVisibilityFilter(
+  config: TimelineConfigV2,
+): TableFilter | undefined {
+  const visibility = config.visibilityFilter
+  if (!visibility || visibility.length === 0 || visibility.length >= 4) {
+    return undefined
   }
-
-  // 言語フィルタ (NULL は常に許可)
-  if (config.languageFilter && config.languageFilter.length > 0) {
-    filters.push({
-      kind: 'raw-sql-filter',
-      referencedTables: [],
-      where: `(p.language IN (${config.languageFilter.map((l) => `'${l.replace(/'/g, "''")}'`).join(',')}) OR p.language IS NULL)`,
-    } satisfies RawSQLFilter)
+  return {
+    column: 'name',
+    kind: 'table-filter',
+    op: 'IN',
+    table: 'visibility_types',
+    value: [...visibility],
   }
+}
 
-  // ブースト除外
+function buildLanguageFilter(
+  config: TimelineConfigV2,
+): RawSQLFilter | undefined {
+  if (!config.languageFilter || config.languageFilter.length === 0) {
+    return undefined
+  }
+  const inList = config.languageFilter
+    .map((l) => `'${l.replace(/'/g, "''")}'`)
+    .join(',')
+  return {
+    kind: 'raw-sql-filter',
+    referencedTables: [],
+    where: `(p.language IN (${inList}) OR p.language IS NULL)`,
+  }
+}
+
+function buildPostExclusionFilters(config: TimelineConfigV2): TableFilter[] {
+  const filters: TableFilter[] = []
   if (config.excludeReblogs) {
     filters.push({
       column: 'is_reblog',
@@ -147,20 +173,16 @@ export function configToQueryPlan(
       op: '=',
       table: 'posts',
       value: 0,
-    } satisfies TableFilter)
+    })
   }
-
-  // リプライ除外
   if (config.excludeReplies) {
     filters.push({
       column: 'in_reply_to_uri',
       kind: 'table-filter',
       op: 'IS NULL',
       table: 'posts',
-    } satisfies TableFilter)
+    })
   }
-
-  // CW 除外
   if (config.excludeSpoiler) {
     filters.push({
       column: 'spoiler_text',
@@ -168,10 +190,8 @@ export function configToQueryPlan(
       op: '=',
       table: 'posts',
       value: '',
-    } satisfies TableFilter)
+    })
   }
-
-  // センシティブ除外
   if (config.excludeSensitive) {
     filters.push({
       column: 'is_sensitive',
@@ -179,21 +199,40 @@ export function configToQueryPlan(
       op: '=',
       table: 'posts',
       value: 0,
-    } satisfies TableFilter)
+    })
   }
+  return filters
+}
 
-  // === Account Filter ===
-  if (config.accountFilter && config.accountFilter.accts.length > 0) {
-    filters.push({
-      column: 'acct',
-      kind: 'table-filter',
-      op: config.accountFilter.mode === 'include' ? 'IN' : 'NOT IN',
-      table: 'profiles',
-      value: [...config.accountFilter.accts],
-    } satisfies TableFilter)
+function buildContentFilters(config: TimelineConfigV2): FilterNode[] {
+  const filters: FilterNode[] = []
+  const media = buildMediaFilter(config)
+  if (media) filters.push(media)
+  const visibility = buildVisibilityFilter(config)
+  if (visibility) filters.push(visibility)
+  const language = buildLanguageFilter(config)
+  if (language) filters.push(language)
+  filters.push(...buildPostExclusionFilters(config))
+  return filters
+}
+
+function buildAccountFilter(config: TimelineConfigV2): TableFilter | undefined {
+  if (!config.accountFilter || config.accountFilter.accts.length === 0) {
+    return undefined
   }
+  return {
+    column: 'acct',
+    kind: 'table-filter',
+    op: config.accountFilter.mode === 'include' ? 'IN' : 'NOT IN',
+    table: 'profiles',
+    value: [...config.accountFilter.accts],
+  }
+}
 
-  // === Moderation Filters ===
+function buildModerationFilter(
+  config: TimelineConfigV2,
+  context: ConfigToNodesContext,
+): ModerationFilter | undefined {
   const applyList: ('mute' | 'instance-block')[] = []
   const applyMute = config.applyMuteFilter ?? true
   if (applyMute && config.accountFilter?.mode !== 'include') {
@@ -203,39 +242,64 @@ export function configToQueryPlan(
   if (applyBlock) {
     applyList.push('instance-block')
   }
-  if (applyList.length > 0) {
-    filters.push({
-      apply: applyList,
-      kind: 'moderation-filter',
-      serverIds:
-        context.serverIds.length > 0 ? [...context.serverIds] : undefined,
-    } satisfies ModerationFilter)
+  if (applyList.length === 0) {
+    return undefined
   }
-
-  // === Notification Type Filter ===
-  if (isNotification && config.notificationFilter?.length) {
-    filters.push({
-      column: 'name',
-      kind: 'table-filter',
-      op: 'IN',
-      table: 'notification_types',
-      value: [...config.notificationFilter],
-    } satisfies TableFilter)
+  return {
+    apply: applyList,
+    kind: 'moderation-filter',
+    serverIds:
+      context.serverIds.length > 0 ? [...context.serverIds] : undefined,
   }
+}
 
-  // === Sort & Pagination ===
-  const sort: SortSpec = {
-    direction: 'DESC',
-    field: 'created_at_ms',
-    kind: 'sort',
+function buildNotificationTypeFilter(
+  config: TimelineConfigV2,
+): TableFilter | undefined {
+  if (config.type !== 'notification' || !config.notificationFilter?.length) {
+    return undefined
   }
-
-  const pagination: Pagination = {
-    kind: 'pagination',
-    limit: context.queryLimit,
+  return {
+    column: 'name',
+    kind: 'table-filter',
+    op: 'IN',
+    table: 'notification_types',
+    value: [...config.notificationFilter],
   }
+}
 
-  return { composites, filters, pagination, sort, source }
+function appendIfDefined<T>(list: T[], item: T | undefined): void {
+  if (item !== undefined) {
+    list.push(item)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Main conversion function
+// ---------------------------------------------------------------------------
+
+export function configToQueryPlan(
+  config: TimelineConfigV2,
+  context: ConfigToNodesContext,
+): QueryPlan {
+  const filters: FilterNode[] = []
+  const composites: CompositeNode[] = []
+
+  appendIfDefined(filters, buildTimelineScopeFilter(config, context))
+  appendIfDefined(composites, buildTagComposite(config))
+  appendIfDefined(filters, buildBackendFilter(context))
+  filters.push(...buildContentFilters(config))
+  appendIfDefined(filters, buildAccountFilter(config))
+  appendIfDefined(filters, buildModerationFilter(config, context))
+  appendIfDefined(filters, buildNotificationTypeFilter(config))
+
+  return {
+    composites,
+    filters,
+    pagination: { kind: 'pagination', limit: context.queryLimit },
+    sort: { direction: 'DESC', field: 'created_at_ms', kind: 'sort' },
+    source: buildSource(config),
+  }
 }
 
 // ---------------------------------------------------------------------------
