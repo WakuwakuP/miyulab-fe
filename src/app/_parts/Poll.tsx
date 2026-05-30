@@ -68,54 +68,61 @@ export const Poll = ({
   return poll != null ? (
     <div className="p-2">
       <div>
-        {poll.options.map((option, index) => (
-          <div className="w-full" key={option.title}>
-            {showResults ? (
-              <div
-                className="my-0.5 flex flex-wrap rounded-md px-2"
-                style={{
-                  backgroundImage:
-                    option.votes_count != null && poll.votes_count > 0
-                      ? `linear-gradient(
+        {poll.options.map((option, index) => {
+          const barRedChannel = selected?.some((s) => s === index)
+            ? '255'
+            : '59'
+          return (
+            <div className="w-full" key={option.title}>
+              {showResults ? (
+                <div
+                  className="my-0.5 flex flex-wrap rounded-md px-2"
+                  style={{
+                    backgroundImage:
+                      option.votes_count != null && poll.votes_count > 0
+                        ? `linear-gradient(
                     to right,
-                    rgba(${selected?.some((s) => s === index) ? '255' : '59'},130,246,0.5) ${(option.votes_count / poll.votes_count) * 100}%,
+                    rgba(${barRedChannel},130,246,0.5) ${(option.votes_count / poll.votes_count) * 100}%,
                     rgba(255,255,255,0.1) ${(option.votes_count / poll.votes_count) * 100 * 1.05}%,
                     rgba(255,255,255,0.1) 100%
                     )`
-                      : 'linear-gradient(rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.1) 100%)',
-                }}
-              >
-                <span>{option.title}</span>
-                <span className="ml-2 text-white/50">
-                  {option.votes_count != null && poll.votes_count > 0
-                    ? ((option.votes_count / poll.votes_count) * 100).toFixed(1)
-                    : 0}
-                  % ({option.votes_count})
-                </span>
-              </div>
-            ) : (
-              <label htmlFor={internalId + option.title}>
-                <input
-                  checked={selected?.some((s) => s === index)}
-                  className="mr-1"
-                  id={internalId + option.title}
-                  name={internalId + poll.id}
-                  onChange={() => {
-                    if (poll.voted || isPollClosed(poll)) return
-                    if (selected.includes(index)) {
-                      setSelected(selected.filter((s) => s !== index))
-                    } else {
-                      setSelected([...selected, index])
-                    }
+                        : 'linear-gradient(rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.1) 100%)',
                   }}
-                  type={poll.multiple ? 'checkbox' : 'radio'}
-                  value={index}
-                />
-                {option.title}
-              </label>
-            )}
-          </div>
-        ))}
+                >
+                  <span>{option.title}</span>
+                  <span className="ml-2 text-white/50">
+                    {option.votes_count != null && poll.votes_count > 0
+                      ? ((option.votes_count / poll.votes_count) * 100).toFixed(
+                          1,
+                        )
+                      : 0}
+                    % ({option.votes_count})
+                  </span>
+                </div>
+              ) : (
+                <label htmlFor={internalId + option.title}>
+                  <input
+                    checked={selected?.some((s) => s === index)}
+                    className="mr-1"
+                    id={internalId + option.title}
+                    name={internalId + poll.id}
+                    onChange={() => {
+                      if (poll.voted || isPollClosed(poll)) return
+                      if (selected.includes(index)) {
+                        setSelected(selected.filter((s) => s !== index))
+                      } else {
+                        setSelected([...selected, index])
+                      }
+                    }}
+                    type={poll.multiple ? 'checkbox' : 'radio'}
+                    value={index}
+                  />
+                  {option.title}
+                </label>
+              )}
+            </div>
+          )
+        })}
       </div>
       <div className="flex items-center justify-between">
         <div className="flex flex-col gap-1">
