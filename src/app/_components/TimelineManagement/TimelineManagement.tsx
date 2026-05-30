@@ -28,6 +28,11 @@ import { generateId } from './constants'
 import { FolderSection } from './FolderSection'
 import { SortableFolderWrapper } from './SortableFolderWrapper'
 import { TimelineItem } from './TimelineItem'
+import {
+  dropTimelineIntoFolder,
+  reorderFolderColumns,
+  reorderIndividualTimeline,
+} from './timelineDragHandlers'
 
 export const TimelineManagement = () => {
   const timelineSettings = useContext(TimelineContext)
@@ -304,130 +309,38 @@ export const TimelineManagement = () => {
       const draggedId = String(active.id)
       const overId = String(over.id)
 
-      // フォルダ prefix のチェック
       const isActiveFolder = draggedId.startsWith('folder-')
       const isOverDroppableFolder = overId.startsWith('droppable-folder-')
       const isOverFolder = overId.startsWith('folder-')
 
-      // タイムラインをフォルダのドロップゾーンにドロップ
       if (!isActiveFolder && isOverDroppableFolder) {
-        const folderKey = overId.slice('droppable-folder-'.length)
-        const activeTimeline = sortedTimelines.find((t) => t.id === draggedId)
-        if (!activeTimeline) return
-
-        // フォルダ内の最大 order を取得して末尾に追加
-        const folderMembers = folderGroups.get(folderKey) ?? []
-        const otherOrders = sortedTimelines
-          .filter((t) => t.id !== draggedId)
-          .map((t) => t.order)
-        const baseOrder =
-          otherOrders.length > 0 ? Math.min(...otherOrders) - 1 : 0
-        const maxFolderOrder =
-          folderMembers.length > 0
-            ? Math.max(...folderMembers.map((m) => m.order))
-            : baseOrder
-
-        const updatedTimelines = sortedTimelines.map((t) => {
-          if (t.id === draggedId) {
-            return { ...t, order: maxFolderOrder + 0.5, tabGroup: folderKey }
-          }
-          return t
-        })
-
-        // order を正規化
-        const normalized = [...updatedTimelines]
-          .sort((a, b) => a.order - b.order)
-          .map((t, i) => ({ ...t, order: i }))
-
-        setTimelineSettings((prev) => ({
-          ...prev,
-          timelines: normalized,
-        }))
+        dropTimelineIntoFolder(
+          draggedId,
+          overId,
+          sortedTimelines,
+          folderGroups,
+          setTimelineSettings,
+        )
         return
       }
 
-      // columnsWithEmptyFolders ベースで並べ替え
-      const currentColumns = [...columnsWithEmptyFolders]
-      const getColumnIndex = (id: string) => {
-        if (id.startsWith('folder-')) {
-          const key = id.slice('folder-'.length)
-          return currentColumns.findIndex(
-            (c) => c.type === 'folder' && c.groupKey === key,
-          )
-        }
-        return currentColumns.findIndex(
-          (c) => c.type === 'single' && c.timeline.id === id,
-        )
-      }
-
       if (isActiveFolder || isOverFolder) {
-        // フォルダの並べ替え
-        const oldIndex = getColumnIndex(draggedId)
-        const newIndex = getColumnIndex(overId)
-
-        if (oldIndex === -1 || newIndex === -1) return
-
-        const [moved] = currentColumns.splice(oldIndex, 1)
-        currentColumns.splice(newIndex, 0, moved)
-
-        // 新しい order を再計算
-        const newTimelines: TimelineConfigV2[] = []
-        let order = 0
-        const newEmptyFolders: { key: string; sortOrder: number }[] = []
-        for (const col of currentColumns) {
-          if (col.type === 'single') {
-            newTimelines.push({ ...col.timeline, order: order++ })
-          } else if (col.members.length === 0) {
-            // 空フォルダの sortOrder を更新
-            newEmptyFolders.push({ key: col.groupKey, sortOrder: order++ })
-          } else {
-            for (const member of col.members) {
-              newTimelines.push({ ...member, order: order++ })
-            }
-          }
-        }
-
-        setEmptyFolders(newEmptyFolders)
-
-        setTimelineSettings((prev) => ({
-          ...prev,
-          timelines: newTimelines,
-        }))
-      } else {
-        // 個別タイムラインの移動
-        const oldIndex = sortedTimelines.findIndex(
-          (timeline) => timeline.id === draggedId,
+        reorderFolderColumns(
+          draggedId,
+          overId,
+          columnsWithEmptyFolders,
+          setEmptyFolders,
+          setTimelineSettings,
         )
-        const newIndex = sortedTimelines.findIndex(
-          (timeline) => timeline.id === overId,
-        )
-
-        if (oldIndex === -1 || newIndex === -1) {
-          return
-        }
-
-        const updatedTimelines = [...sortedTimelines]
-        const [movedTimeline] = updatedTimelines.splice(oldIndex, 1)
-
-        // 移動先のタイムラインのフォルダに合わせる
-        const overTimeline = sortedTimelines[newIndex]
-        const updatedMovedTimeline = {
-          ...movedTimeline,
-          tabGroup: overTimeline.tabGroup,
-        }
-
-        updatedTimelines.splice(newIndex, 0, updatedMovedTimeline)
-
-        const newTimelineSettings = updatedTimelines.map((timeline, index) => ({
-          ...timeline,
-          order: index,
-        }))
-
-        setTimelineSettings((prev) => ({
-          ...prev,
-          timelines: newTimelineSettings,
-        }))
+        return
       }
+
+      reorderIndividualTimeline(
+        draggedId,
+        overId,
+        sortedTimelines,
+        setTimelineSettings,
+      )
     },
     [
       sortedTimelines,
