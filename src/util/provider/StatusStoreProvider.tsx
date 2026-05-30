@@ -56,6 +56,32 @@ function dedupeUsersByAcct(users: UserSummary[]): UserSummary[] {
   return result
 }
 
+function accountToUserSummary(account: Entity.Account): UserSummary {
+  return {
+    acct: account.acct,
+    avatar: account.avatar,
+    display_name: account.display_name,
+    id: account.id,
+  }
+}
+
+function extractUsersFromStatuses(statuses: Entity.Status[]): UserSummary[] {
+  return statuses
+    .map((status) => status.reblog?.account ?? status.account)
+    .map(accountToUserSummary)
+}
+
+function extractUsersFromNotifications(
+  notifications: Entity.Notification[],
+): UserSummary[] {
+  return notifications
+    .filter(
+      (n): n is typeof n & { account: NonNullable<typeof n.account> } =>
+        n.account != null,
+    )
+    .map((n) => accountToUserSummary(n.account))
+}
+
 // ストア操作の型定義
 type StatusStoreActions = {
   /** お気に入り状態を更新 */
@@ -378,33 +404,13 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
           await bulkUpsertStatuses(homeRes.data, backendUrl, 'home')
 
           // ユーザー情報を収集
-          const users = homeRes.data
-            .map((status) => status.reblog?.account ?? status.account)
-            .map((account) => ({
-              acct: account.acct,
-              avatar: account.avatar,
-              display_name: account.display_name,
-              id: account.id,
-            }))
+          const users = extractUsersFromStatuses(homeRes.data)
           setUsersEvent((prev) => dedupeUsersByAcct([...users, ...prev]))
 
           await bulkAddNotifications(notifRes.data, backendUrl)
 
           // 通知からユーザー情報を収集
-          const notifUsers = notifRes.data
-            .filter(
-              (
-                n,
-              ): n is typeof n & {
-                account: NonNullable<typeof n.account>
-              } => n.account != null,
-            )
-            .map((n) => ({
-              acct: n.account.acct,
-              avatar: n.account.avatar,
-              display_name: n.account.display_name,
-              id: n.account.id,
-            }))
+          const notifUsers = extractUsersFromNotifications(notifRes.data)
           setUsersEvent((prev) => dedupeUsersByAcct([...prev, ...notifUsers]))
         } catch (error) {
           console.error(`Failed to initialize for ${backendUrl}:`, error)
