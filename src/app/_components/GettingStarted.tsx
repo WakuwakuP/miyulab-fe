@@ -348,9 +348,8 @@ export const GettingStarted = () => {
           </>
         )}
       </div>
-      {apps.map((_app, index) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: App には index で key を付ける
-        <Fragment key={index}>
+      {apps.map((app, index) => (
+        <Fragment key={app.appData.client_id}>
           {appIndex === index && (
             <>
               {selected === 'bookmark' && (
