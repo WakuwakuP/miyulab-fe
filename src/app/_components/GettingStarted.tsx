@@ -19,7 +19,7 @@ import {
 import { CiWarning } from 'react-icons/ci'
 import { RiArrowLeftSLine } from 'react-icons/ri'
 import { Virtuoso } from 'react-virtuoso'
-import type { StatusAddAppIndex } from 'types/types'
+import type { App, StatusAddAppIndex } from 'types/types'
 import { GetClient } from 'util/GetClient'
 import {
   navigatePanel,
@@ -73,6 +73,40 @@ function ConversationVirtuosoItem({
   )
 }
 
+function hashForReactKey(value: string): string {
+  let hash = 0
+
+  for (let i = 0; i < value.length; i++) {
+    hash = (hash << 5) - hash + value.charCodeAt(i)
+    hash |= 0
+  }
+
+  return Math.abs(hash).toString(36)
+}
+
+function appReactKeyBase(app: App): string {
+  const base = `${app.backendUrl}:${app.appData.client_id}`
+
+  if (app.tokenData?.access_token != null) {
+    return `${base}:${hashForReactKey(app.tokenData.access_token)}`
+  }
+
+  return base
+}
+
+function appsWithUniqueReactKeys(apps: App[]) {
+  const seen = new Map<string, number>()
+
+  return apps.map((app, index) => {
+    const base = appReactKeyBase(app)
+    const occurrence = seen.get(base) ?? 0
+    seen.set(base, occurrence + 1)
+    const key = occurrence === 0 ? base : `${base}#${occurrence}`
+
+    return { app, index, key }
+  })
+}
+
 export const GettingStarted = () => {
   const apps = useContext(AppsContext)
   const route = usePanelRoute()
@@ -89,6 +123,8 @@ export const GettingStarted = () => {
         return 'Getting Started'
     }
   }, [selected])
+
+  const indexedApps = useMemo(() => appsWithUniqueReactKeys(apps), [apps])
 
   const [bookmarks, setBookmarks] = useState<{
     [key: number]: StatusAddAppIndex[]
@@ -348,9 +384,8 @@ export const GettingStarted = () => {
           </>
         )}
       </div>
-      {apps.map((_app, index) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: App には index で key を付ける
-        <Fragment key={index}>
+      {indexedApps.map(({ index, key }) => (
+        <Fragment key={key}>
           {appIndex === index && (
             <>
               {selected === 'bookmark' && (
