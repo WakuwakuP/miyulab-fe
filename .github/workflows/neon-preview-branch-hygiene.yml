@@ -110,18 +110,12 @@ jobs:
     if: >-
       github.event_name == 'pull_request' &&
       github.event.action != 'closed' &&
-<<<<<<< HEAD
+      needs.reconcile-neon-preview-branches.outputs.hygiene_ok == 'true' &&
       github.event.pull_request.head.repo.full_name == github.repository &&
-      !contains(join(github.event.commits.*.message, ' '), 'chore(ci): redeploy preview after Neon branch hygiene') &&
       (
         needs.reconcile-neon-preview-branches.outputs.deleted_count != '0' ||
         contains(fromJSON('["opened", "reopened"]'), github.event.action)
       )
-=======
-      needs.reconcile-neon-preview-branches.outputs.hygiene_ok == 'true' &&
-      needs.reconcile-neon-preview-branches.outputs.deleted_count != '0' &&
-      github.event.pull_request.head.repo.full_name == github.repository
->>>>>>> 4c21b45 (fix(ci,a11y): harden Neon hygiene workflow and restore input labels)
     runs-on: ubuntu-latest
     permissions:
       contents: write
