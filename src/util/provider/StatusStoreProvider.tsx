@@ -39,12 +39,21 @@ import { AppsContext } from './AppsProvider'
 import { SetTagsContext, SetUsersContext } from './ResourceProvider'
 import { StartupCoordinatorContext } from './StartupCoordinator'
 
+type UserSummary = Pick<
+  Entity.Account,
+  'id' | 'acct' | 'avatar' | 'display_name'
+>
+
 /** acct で重複を除く（先頭のエントリを優先） */
-function dedupeUsersByAcct<T extends { acct: string }>(users: T[]): T[] {
-  return users.filter(
-    (element, idx, self) =>
-      self.findIndex((e) => e.acct === element.acct) === idx,
-  )
+function dedupeUsersByAcct(users: UserSummary[]): UserSummary[] {
+  const seen = new Set<string>()
+  const result: UserSummary[] = []
+  for (const user of users) {
+    if (seen.has(user.acct)) continue
+    seen.add(user.acct)
+    result.push(user)
+  }
+  return result
 }
 
 // ストア操作の型定義
@@ -200,17 +209,13 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
 
       const account = notification.account
       if (account) {
-        setUsersEvent((prev) =>
-          dedupeUsersByAcct([
-            {
-              acct: account.acct,
-              avatar: account.avatar,
-              display_name: account.display_name,
-              id: account.id,
-            },
-            ...prev,
-          ]),
-        )
+        const newUser: UserSummary = {
+          acct: account.acct,
+          avatar: account.avatar,
+          display_name: account.display_name,
+          id: account.id,
+        }
+        setUsersEvent((prev) => dedupeUsersByAcct([newUser, ...prev]))
       }
     }
 
@@ -231,6 +236,20 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
 
     const retryState = { count: 0 }
 
+    const scheduleStreamReconnect = (
+      stream: WebSocketInterface,
+      retryCount: number,
+      delay: number,
+    ) => {
+      setTimeout(() => {
+        // 再接続能力を復元してから start()
+        restartStream(stream)
+        console.info(
+          `reconnecting userStreaming (retry ${retryCount}/${MAX_RETRY_COUNT}, delay ${delay}ms)`,
+        )
+      }, delay)
+    }
+
     const onError = (stream: WebSocketInterface) => {
       return (err: Error | undefined) => {
         console.warn('userStreaming error:', err?.message ?? 'unknown error')
@@ -246,15 +265,11 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
           return
         }
 
-        const delay = getRetryDelay(retryState.count - 1)
-        const timeout = setTimeout(() => {
-          // 再接続能力を復元してから start()
-          restartStream(stream)
-          console.info(
-            `reconnecting userStreaming (retry ${retryState.count}/${MAX_RETRY_COUNT}, delay ${delay}ms)`,
-          )
-          clearTimeout(timeout)
-        }, delay)
+        scheduleStreamReconnect(
+          stream,
+          retryState.count,
+          getRetryDelay(retryState.count - 1),
+        )
       }
     }
 

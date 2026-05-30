@@ -17,6 +17,7 @@ type OutputPanelV2Props = {
 
 export function OutputPanelV2({ node, onUpdate }: OutputPanelV2Props) {
   const data = node.data as OutputFlowNodeDataV2
+  const limitInputId = `output-limit-${node.id}`
 
   return (
     <div className="space-y-3">
@@ -49,26 +50,30 @@ export function OutputPanelV2({ node, onUpdate }: OutputPanelV2Props) {
         </Select>
       </div>
       <div>
-        <label className="text-xs font-semibold text-gray-300 block mb-1">
+        <label
+          className="text-xs font-semibold text-gray-300 block mb-1"
+          htmlFor={limitInputId}
+        >
           取得件数
-          <input
-            className="w-full rounded bg-gray-700 px-2 py-1.5 text-sm text-white border border-gray-600"
-            onChange={(e) =>
-              onUpdate(node.id, {
-                ...data,
-                config: {
-                  ...data.config,
-                  pagination: {
-                    ...data.config.pagination,
-                    limit: Number(e.target.value),
-                  },
-                },
-              })
-            }
-            type="number"
-            value={data.config.pagination.limit}
-          />
         </label>
+        <input
+          className="w-full rounded bg-gray-700 px-2 py-1.5 text-sm text-white border border-gray-600"
+          id={limitInputId}
+          onChange={(e) =>
+            onUpdate(node.id, {
+              ...data,
+              config: {
+                ...data.config,
+                pagination: {
+                  ...data.config.pagination,
+                  limit: Number(e.target.value),
+                },
+              },
+            })
+          }
+          type="number"
+          value={data.config.pagination.limit}
+        />
       </div>
     </div>
   )
