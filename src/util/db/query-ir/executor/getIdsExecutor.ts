@@ -58,6 +58,177 @@ export type GetIdsCompileResult = {
   dependentTables: string[]
 }
 
+type FilterCompileContext = {
+  whereConditions: string[]
+  allBinds: BindValue[]
+  allJoins: JoinClause[]
+  dependentTables: Set<string>
+}
+
+function resolveEffectiveTimeCol(
+  alias: string,
+  timeCol: string | null,
+  tsjAlias: string | null,
+  tsj: GetIdsNode['timeSourceJoin'],
+): string | null {
+  if (tsjAlias) {
+    return `${tsjAlias}.${tsj?.timeColumn}`
+  }
+  if (timeCol != null) {
+    return `${alias}.${timeCol}`
+  }
+  return null
+}
+
+function withUpstreamIds(
+  filter: GetIdsFilter,
+  upstreamOutputs: Map<string, NodeOutput>,
+): GetIdsFilter {
+  if (!('upstreamSourceNodeId' in filter) || !filter.upstreamSourceNodeId) {
+    return filter
+  }
+  const upstream = upstreamOutputs.get(filter.upstreamSourceNodeId)
+  if (upstream && upstream.rows.length > 0) {
+    const ids = upstream.rows.map((r) => r.id)
+    return { ...filter, value: ids }
+  }
+  // 上流が空: IN → 結果なし (空配列), NOT IN → 全パス (空配列)
+  return { ...filter, value: [] }
+}
+
+function compileFilterIntoContext(
+  filter: GetIdsFilter,
+  table: string,
+  alias: string,
+  ctx: FilterCompileContext,
+): string | null {
+  const filterNode = getIdsFilterToFilterNode(filter)
+  const compiled = compileFilterNode(filterNode, table, alias)
+  ctx.allBinds.push(...compiled.binds)
+  ctx.allJoins.push(...compiled.joins)
+  ctx.dependentTables.add(filter.table)
+  if (compiled.sql && compiled.sql !== '1=1') {
+    return compiled.sql
+  }
+  return null
+}
+
+function joinSqlConditions(
+  conditions: string[],
+  operator: 'AND' | 'OR',
+): string | null {
+  if (conditions.length === 0) {
+    return null
+  }
+  if (conditions.length === 1) {
+    return conditions[0]
+  }
+  const joiner = operator === 'AND' ? ' AND ' : ' OR '
+  return `(${conditions.join(joiner)})`
+}
+
+function compileRegularFilters(
+  filters: GetIdsFilter[],
+  table: string,
+  alias: string,
+  upstreamOutputs: Map<string, NodeOutput>,
+  ctx: FilterCompileContext,
+): void {
+  for (const filter of filters) {
+    const effectiveFilter = withUpstreamIds(filter, upstreamOutputs)
+    const sql = compileFilterIntoContext(effectiveFilter, table, alias, ctx)
+    if (sql) {
+      ctx.whereConditions.push(sql)
+    }
+  }
+}
+
+function compileOrBranches(
+  orBranches: GetIdsFilter[][],
+  table: string,
+  alias: string,
+  ctx: FilterCompileContext,
+): string | null {
+  const branchSqls: string[] = []
+  for (const branch of orBranches) {
+    const branchConditions: string[] = []
+    for (const filter of branch) {
+      const sql = compileFilterIntoContext(filter, table, alias, ctx)
+      if (sql) {
+        branchConditions.push(sql)
+      }
+    }
+    const branchSql = joinSqlConditions(branchConditions, 'AND')
+    if (branchSql) {
+      branchSqls.push(branchSql)
+    }
+  }
+  return joinSqlConditions(branchSqls, 'OR')
+}
+
+function dedupeJoins(allJoins: JoinClause[]): JoinClause[] {
+  const seenAliases = new Set<string>()
+  return allJoins.filter((j) => {
+    if (seenAliases.has(j.alias)) {
+      return false
+    }
+    seenAliases.add(j.alias)
+    return true
+  })
+}
+
+function buildTimeJoinStr(
+  tsj: NonNullable<GetIdsNode['timeSourceJoin']>,
+  tsjAlias: string,
+  alias: string,
+): string {
+  return `INNER JOIN ${tsj.table} ${tsjAlias} ON ${alias}.${tsj.localColumn} = ${tsjAlias}.${tsj.foreignColumn}`
+}
+
+function buildSelectSql(params: {
+  alias: string
+  idCol: string
+  effectiveTimeCol: string | null
+  table: string
+  joinStr: string
+  timeJoinStr: string
+  whereStr: string
+  groupByStr: string
+  limitStr: string
+}): string {
+  const {
+    alias,
+    idCol,
+    effectiveTimeCol,
+    table,
+    joinStr,
+    timeJoinStr,
+    whereStr,
+    groupByStr,
+    limitStr,
+  } = params
+
+  const selectTime = effectiveTimeCol
+    ? `${effectiveTimeCol} AS created_at_ms`
+    : '0 AS created_at_ms'
+  const orderBy = effectiveTimeCol
+    ? `ORDER BY ${effectiveTimeCol} DESC`
+    : `ORDER BY ${alias}.rowid DESC`
+
+  return [
+    `SELECT ${alias}.${idCol} AS id, ${selectTime}`,
+    `FROM ${table} ${alias}`,
+    joinStr,
+    timeJoinStr,
+    whereStr,
+    groupByStr,
+    orderBy,
+    limitStr,
+  ]
+    .filter(Boolean)
+    .join(' ')
+}
+
 /**
  * GetIdsNode から SELECT id, created_at_ms SQL を生成する。
  *
@@ -77,140 +248,71 @@ export function compileGetIds(
       ? (node.outputTimeColumn ?? getDefaultTimeColumn(node.table))
       : null
 
-  // timeSourceJoin: FK→posts 経由で時刻カラムを取得する設定
   const tsj = node.timeSourceJoin
   const tsjAlias = tsj ? '_time_src' : null
-  // effectiveTimeCol: 完全修飾の時刻カラム式 (alias.column 形式)
-  // - timeSourceJoin あり: '_time_src.created_at_ms' 等
-  // - なし: 'p.created_at_ms' 等 (ローカルカラム)
-  let effectiveTimeCol: string | null = null
-  if (tsjAlias) {
-    effectiveTimeCol = `${tsjAlias}.${tsj?.timeColumn}`
-  } else if (timeCol != null) {
-    effectiveTimeCol = `${alias}.${timeCol}`
+  const effectiveTimeCol = resolveEffectiveTimeCol(
+    alias,
+    timeCol,
+    tsjAlias,
+    tsj,
+  )
+
+  const ctx: FilterCompileContext = {
+    allBinds: [],
+    allJoins: [],
+    dependentTables: new Set<string>([node.table]),
+    whereConditions: [],
   }
 
-  const whereConditions: string[] = []
-  const allBinds: BindValue[] = []
-  const allJoins: JoinClause[] = []
-  const dependentTables = new Set<string>([node.table])
+  compileRegularFilters(node.filters, node.table, alias, upstreamOutputs, ctx)
 
-  // --- 通常フィルタ ---
-  for (const filter of node.filters) {
-    // upstreamSourceNodeId がある場合は上流ノードの出力IDを値として注入
-    let effectiveFilter = filter
-    if ('upstreamSourceNodeId' in filter && filter.upstreamSourceNodeId) {
-      const upstream = upstreamOutputs.get(filter.upstreamSourceNodeId)
-      if (upstream && upstream.rows.length > 0) {
-        const ids = upstream.rows.map((r) => r.id)
-        effectiveFilter = { ...filter, value: ids }
-      } else {
-        // 上流が空: IN → 結果なし (空配列), NOT IN → 全パス (空配列)
-        effectiveFilter = { ...filter, value: [] }
-      }
-    }
-
-    const filterNode = getIdsFilterToFilterNode(effectiveFilter)
-    const compiled = compileFilterNode(filterNode, node.table, alias)
-    if (compiled.sql && compiled.sql !== '1=1') {
-      whereConditions.push(compiled.sql)
-    }
-    allBinds.push(...compiled.binds)
-    allJoins.push(...compiled.joins)
-    dependentTables.add(filter.table)
-  }
-
-  // --- OR ブランチ ---
   if (node.orBranches && node.orBranches.length > 0) {
-    const branchSqls: string[] = []
-    for (const branch of node.orBranches) {
-      const branchConditions: string[] = []
-      for (const filter of branch) {
-        const filterNode = getIdsFilterToFilterNode(filter)
-        const compiled = compileFilterNode(filterNode, node.table, alias)
-        if (compiled.sql && compiled.sql !== '1=1') {
-          branchConditions.push(compiled.sql)
-        }
-        allBinds.push(...compiled.binds)
-        allJoins.push(...compiled.joins)
-        dependentTables.add(filter.table)
-      }
-      if (branchConditions.length > 0) {
-        branchSqls.push(
-          branchConditions.length === 1
-            ? branchConditions[0]
-            : `(${branchConditions.join(' AND ')})`,
-        )
-      }
-    }
-    if (branchSqls.length > 0) {
-      whereConditions.push(
-        branchSqls.length === 1
-          ? branchSqls[0]
-          : `(${branchSqls.join(' OR ')})`,
-      )
+    const orSql = compileOrBranches(node.orBranches, node.table, alias, ctx)
+    if (orSql) {
+      ctx.whereConditions.push(orSql)
     }
   }
 
-  // --- カーソル条件 ---
   if (node.cursor) {
-    // timeSourceJoin がある場合は JOIN先エイリアスで時刻カラムを参照する
     const cursorPrefix = tsjAlias ?? alias
-    whereConditions.push(
+    ctx.whereConditions.push(
       `${cursorPrefix}.${node.cursor.column} ${node.cursor.op} ?`,
     )
-    allBinds.push(node.cursor.value)
+    ctx.allBinds.push(node.cursor.value)
   }
 
-  // --- JOIN 重複排除 ---
-  const seenAliases = new Set<string>()
-  const uniqueJoins = allJoins.filter((j) => {
-    if (seenAliases.has(j.alias)) return false
-    seenAliases.add(j.alias)
-    return true
-  })
-
-  // --- GROUP BY (1:N JOIN がある場合) ---
+  const uniqueJoins = dedupeJoins(ctx.allJoins)
   const needsGroupBy = uniqueJoins.some((j) => j.type === 'inner')
 
-  // --- timeSourceJoin: posts などへの追加 INNER JOIN ---
-  // (1:1 FK なので GROUP BY は不要)
   let timeJoinStr = ''
   if (tsjAlias && tsj) {
-    dependentTables.add(tsj.table)
-    timeJoinStr = `INNER JOIN ${tsj.table} ${tsjAlias} ON ${alias}.${tsj.localColumn} = ${tsjAlias}.${tsj.foreignColumn}`
+    ctx.dependentTables.add(tsj.table)
+    timeJoinStr = buildTimeJoinStr(tsj, tsjAlias, alias)
   }
 
-  // --- SQL 組み立て ---
   const joinStr = buildJoinString(uniqueJoins)
   const whereStr =
-    whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : ''
+    ctx.whereConditions.length > 0
+      ? `WHERE ${ctx.whereConditions.join(' AND ')}`
+      : ''
   const groupByStr = needsGroupBy ? `GROUP BY ${alias}.${idCol}` : ''
   const limitStr = limit != null ? `LIMIT ${limit}` : ''
 
-  const selectTime = effectiveTimeCol
-    ? `${effectiveTimeCol} AS created_at_ms`
-    : '0 AS created_at_ms'
-  const orderBy = effectiveTimeCol
-    ? `ORDER BY ${effectiveTimeCol} DESC`
-    : `ORDER BY ${alias}.rowid DESC`
-
-  const sql = [
-    `SELECT ${alias}.${idCol} AS id, ${selectTime}`,
-    `FROM ${node.table} ${alias}`,
+  const sql = buildSelectSql({
+    alias,
+    effectiveTimeCol,
+    groupByStr,
+    idCol,
     joinStr,
+    limitStr,
+    table: node.table,
     timeJoinStr,
     whereStr,
-    groupByStr,
-    orderBy,
-    limitStr,
-  ]
-    .filter(Boolean)
-    .join(' ')
+  })
 
   return {
-    binds: allBinds,
-    dependentTables: [...dependentTables],
+    binds: ctx.allBinds,
+    dependentTables: [...ctx.dependentTables],
     sql,
   }
 }
