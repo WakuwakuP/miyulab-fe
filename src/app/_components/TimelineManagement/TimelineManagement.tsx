@@ -34,6 +34,83 @@ import {
   reorderIndividualTimeline,
 } from './timelineDragHandlers'
 
+type FolderColumnProps = {
+  activeId: string | null
+  allFolderKeys: string[]
+  collapsedFolders: Set<string>
+  flowEditorId: string | null
+  groupKey: string
+  members: TimelineConfigV2[]
+  onDelete: (id: string) => void
+  onDeleteFolder: (groupKey: string) => void
+  onOpenFlowEditor: (id: string) => void
+  onRemoveFromFolder: (id: string) => void
+  onRenameFolder: (oldKey: string, newKey: string) => void
+  onToggleCollapse: (groupKey: string) => void
+  onToggleVisibility: (id: string) => void
+  overFolderKey: string | null
+}
+
+const SortableFolderColumn = ({
+  activeId,
+  allFolderKeys,
+  collapsedFolders,
+  flowEditorId,
+  groupKey,
+  members,
+  onDelete,
+  onDeleteFolder,
+  onOpenFlowEditor,
+  onRemoveFromFolder,
+  onRenameFolder,
+  onToggleCollapse,
+  onToggleVisibility,
+  overFolderKey,
+}: FolderColumnProps) => (
+  <SortableFolderWrapper id={`folder-${groupKey}`}>
+    {({ attributes, isDragging, listeners }) => (
+      <FolderSection
+        allFolderKeys={allFolderKeys}
+        collapsedFolders={collapsedFolders}
+        dragAttributes={attributes}
+        dragListeners={listeners}
+        groupKey={groupKey}
+        isDragging={isDragging}
+        isDropTarget={
+          overFolderKey === groupKey &&
+          activeId != null &&
+          !activeId.startsWith('folder-')
+        }
+        memberCount={members.length}
+        onDeleteFolder={onDeleteFolder}
+        onRenameFolder={onRenameFolder}
+        onToggleCollapse={onToggleCollapse}
+      >
+        {members.map((timeline) => (
+          <TimelineItem
+            flowEditorId={flowEditorId}
+            folderGroupKey={groupKey}
+            key={timeline.id}
+            onDelete={onDelete}
+            onOpenFlowEditor={onOpenFlowEditor}
+            onRemoveFromFolder={onRemoveFromFolder}
+            onToggleVisibility={onToggleVisibility}
+            timeline={timeline}
+          />
+        ))}
+        {members.length === 0 && (
+          <p className="flex items-center gap-1 text-xs text-gray-500 py-1">
+            <RiDragMove2Line aria-hidden="true" />
+            <span>
+              Empty folder — drag and drop timelines here to organize them
+            </span>
+          </p>
+        )}
+      </FolderSection>
+    )}
+  </SortableFolderWrapper>
+)
+
 export const TimelineManagement = () => {
   const timelineSettings = useContext(TimelineContext)
   const setTimelineSettings = useContext(SetTimelineContext)
@@ -422,52 +499,23 @@ export const TimelineManagement = () => {
                 {columnsWithEmptyFolders.map((column) => {
                   if (column.type === 'folder') {
                     return (
-                      <SortableFolderWrapper
-                        id={`folder-${column.groupKey}`}
+                      <SortableFolderColumn
+                        activeId={activeId}
+                        allFolderKeys={allFolderKeys}
+                        collapsedFolders={collapsedFolders}
+                        flowEditorId={flowEditorId}
+                        groupKey={column.groupKey}
                         key={`folder-${column.groupKey}`}
-                      >
-                        {({ attributes, isDragging, listeners }) => (
-                          <FolderSection
-                            allFolderKeys={allFolderKeys}
-                            collapsedFolders={collapsedFolders}
-                            dragAttributes={attributes}
-                            dragListeners={listeners}
-                            groupKey={column.groupKey}
-                            isDragging={isDragging}
-                            isDropTarget={
-                              overFolderKey === column.groupKey &&
-                              activeId != null &&
-                              !activeId.startsWith('folder-')
-                            }
-                            memberCount={column.members.length}
-                            onDeleteFolder={onDeleteFolder}
-                            onRenameFolder={onRenameFolder}
-                            onToggleCollapse={onToggleCollapse}
-                          >
-                            {column.members.map((timeline) => (
-                              <TimelineItem
-                                flowEditorId={flowEditorId}
-                                folderGroupKey={column.groupKey}
-                                key={timeline.id}
-                                onDelete={onDelete}
-                                onOpenFlowEditor={onOpenFlowEditor}
-                                onRemoveFromFolder={onRemoveFromFolder}
-                                onToggleVisibility={onToggleVisibility}
-                                timeline={timeline}
-                              />
-                            ))}
-                            {column.members.length === 0 && (
-                              <p className="flex items-center gap-1 text-xs text-gray-500 py-1">
-                                <RiDragMove2Line aria-hidden="true" />
-                                <span>
-                                  Empty folder — drag and drop timelines here to
-                                  organize them
-                                </span>
-                              </p>
-                            )}
-                          </FolderSection>
-                        )}
-                      </SortableFolderWrapper>
+                        members={column.members}
+                        onDelete={onDelete}
+                        onDeleteFolder={onDeleteFolder}
+                        onOpenFlowEditor={onOpenFlowEditor}
+                        onRemoveFromFolder={onRemoveFromFolder}
+                        onRenameFolder={onRenameFolder}
+                        onToggleCollapse={onToggleCollapse}
+                        onToggleVisibility={onToggleVisibility}
+                        overFolderKey={overFolderKey}
+                      />
                     )
                   }
                   const timeline = column.timeline
