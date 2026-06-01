@@ -12,7 +12,6 @@ import {
   useCallback,
   useContext,
   useEffect,
-  useEffectEvent,
   useMemo,
   useState,
 } from 'react'
@@ -81,6 +80,40 @@ function ConversationVirtuosoItem({
   )
 }
 
+function hashForReactKey(value: string): string {
+  let hash = 0
+
+  for (let i = 0; i < value.length; i++) {
+    hash = (hash << 5) - hash + value.charCodeAt(i)
+    hash |= 0
+  }
+
+  return Math.abs(hash).toString(36)
+}
+
+function appReactKeyBase(app: App): string {
+  const base = `${app.backendUrl}:${app.appData.client_id}`
+
+  if (app.tokenData?.access_token != null) {
+    return `${base}:${hashForReactKey(app.tokenData.access_token)}`
+  }
+
+  return base
+}
+
+function appsWithUniqueReactKeys(apps: App[]) {
+  const seen = new Map<string, number>()
+
+  return apps.map((app, index) => {
+    const base = appReactKeyBase(app)
+    const occurrence = seen.get(base) ?? 0
+    seen.set(base, occurrence + 1)
+    const key = occurrence === 0 ? base : `${base}#${occurrence}`
+
+    return { app, index, key }
+  })
+}
+
 export const GettingStarted = () => {
   const apps = useContext(AppsContext)
   const route = usePanelRoute()
@@ -98,6 +131,8 @@ export const GettingStarted = () => {
     }
   }, [selected])
 
+  const indexedApps = useMemo(() => appsWithUniqueReactKeys(apps), [apps])
+
   const [bookmarks, setBookmarks] = useState<{
     [key: number]: StatusAddAppIndex[]
   }>(Array.from({ length: apps.length }, () => []))
@@ -112,11 +147,10 @@ export const GettingStarted = () => {
     [key: number]: string | null
   }>(Array.from({ length: apps.length }, () => null))
 
-  const setMaxIdEvent = useEffectEvent(setMaxId)
   const setMaxIdCallback = useCallback(
     (res: Response<Entity.Status[]>, index: number) => {
       if (res.headers.link == null) {
-        setMaxIdEvent((prev) => ({
+        setMaxId((prev) => ({
           ...prev,
           [index]: null,
         }))
@@ -134,7 +168,7 @@ export const GettingStarted = () => {
       const next = links.find((link) => link.rel === 'next')
 
       if (next == null) {
-        setMaxIdEvent((prev) => ({
+        setMaxId((prev) => ({
           ...prev,
           [index]: null,
         }))
@@ -144,14 +178,14 @@ export const GettingStarted = () => {
       const maxId = new URL(next.url).searchParams.get('max_id')
 
       if (maxId == null) {
-        setMaxIdEvent((prev) => ({
+        setMaxId((prev) => ({
           ...prev,
           [index]: null,
         }))
         return
       }
 
-      setMaxIdEvent((prev) => ({
+      setMaxId((prev) => ({
         ...prev,
         [index]: maxId,
       }))
@@ -355,9 +389,8 @@ export const GettingStarted = () => {
           </>
         )}
       </div>
-      {apps.map((_app, index) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: App には index で key を付ける
-        <Fragment key={index}>
+      {indexedApps.map(({ index, key }) => (
+        <Fragment key={key}>
           {appIndex === index && (
             <>
               {selected === 'bookmark' && (

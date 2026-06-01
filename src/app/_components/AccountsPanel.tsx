@@ -243,7 +243,8 @@ export const AccountsPanel = () => {
         showDeleteAccountModal.account != null &&
         createPortal(
           <>
-            <div
+            <button
+              aria-label="Close"
               className="absolute bottom-0 left-0 right-0 top-0 bg-black/60"
               onClick={() => {
                 setShowDeleteAccountModal({
@@ -252,7 +253,8 @@ export const AccountsPanel = () => {
                   index: null,
                 })
               }}
-            ></div>
+              type="button"
+            />
             <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-md border bg-gray-600 p-12 text-center">
               <div>アカウントを削除しますか？</div>
               <div>
