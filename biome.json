@@ -1,8 +1,8 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.4.15/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.5.0/schema.json",
   "assist": {
     "actions": {
-      "recommended": true,
+      "preset": "recommended",
       "source": {
         "organizeImports": "on",
         "useSortedAttributes": "on",
@@ -41,7 +41,8 @@
       "!**/.github/prompts/**/*",
       "!**/src/zenstack/**/*",
       "!**/public/sqlite3.*",
-      "!**/public/sqlite3-*"
+      "!**/public/sqlite3-*",
+      "!**/public/*.svg"
     ]
   },
   "formatter": {

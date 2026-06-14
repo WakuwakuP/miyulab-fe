@@ -52,7 +52,7 @@ function findNodesByKind(plan: QueryPlanV2, kind: string) {
 /** GetIdsNode を ID 指定で取得 */
 function getGetIdsNode(plan: QueryPlanV2, id: string): GetIdsNode {
   const found = findNode(plan, id)
-  if (!found || found.node.kind !== 'get-ids') {
+  if (found?.node.kind !== 'get-ids') {
     throw new Error(`GetIdsNode not found: ${id}`)
   }
   return found.node
