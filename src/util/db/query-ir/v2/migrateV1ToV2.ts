@@ -134,7 +134,7 @@ function mergeFreePlanToV2(plan: QueryPlan): QueryPlanV2 {
 function mergePlanToV2(plan: QueryPlan): QueryPlanV2 {
   resetIds()
   const mergeComposite = plan.composites.find((c) => c.kind === 'merge')
-  if (!mergeComposite || mergeComposite.kind !== 'merge') {
+  if (mergeComposite?.kind !== 'merge') {
     return mergeFreePlanToV2(plan)
   }
 
