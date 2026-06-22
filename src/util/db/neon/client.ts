@@ -9,14 +9,26 @@ import { PostgresDialect } from '@zenstackhq/orm/dialects/postgres'
 import { Pool } from 'pg'
 import { schema } from 'zenstack/schema'
 
-let client: InstanceType<typeof ZenStackClient> | null = null
+function createNeonZenStackClient(databaseUrl: string) {
+  return new ZenStackClient(schema, {
+    dialect: new PostgresDialect({
+      pool: new Pool({
+        connectionString: databaseUrl,
+      }),
+    }),
+  })
+}
+
+type NeonZenStackClient = ReturnType<typeof createNeonZenStackClient>
+
+let client: NeonZenStackClient | null = null
 let initialized = false
 
 /**
  * ZenStack クライアントを取得する。
  * DATABASE_URL が未設定の場合は null を返す。
  */
-export function getNeonClient(): InstanceType<typeof ZenStackClient> | null {
+export function getNeonClient(): NeonZenStackClient | null {
   if (initialized) return client
 
   initialized = true
@@ -29,13 +41,7 @@ export function getNeonClient(): InstanceType<typeof ZenStackClient> | null {
     return null
   }
 
-  client = new ZenStackClient(schema, {
-    dialect: new PostgresDialect({
-      pool: new Pool({
-        connectionString: databaseUrl,
-      }),
-    }),
-  })
+  client = createNeonZenStackClient(databaseUrl)
 
   return client
 }
