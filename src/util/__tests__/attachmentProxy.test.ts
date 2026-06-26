@@ -1,6 +1,7 @@
 import { lookup } from 'node:dns/promises'
 import {
   createProxyAccessToken,
+  getAttachmentProxyAllowedDomains,
   isAllowedContentType,
   isAllowedRequestHost,
   isPrivateHost,
@@ -110,6 +111,36 @@ describe('attachmentProxy', () => {
     })
   })
 
+  describe('getAttachmentProxyAllowedDomains', () => {
+    it('NEXT_PUBLIC_APP_URL を許可ドメインに含める', () => {
+      vi.stubEnv('VERCEL_URL', 'myapp.vercel.app')
+      vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://custom.example.com')
+
+      expect(getAttachmentProxyAllowedDomains()).toEqual(
+        expect.arrayContaining(['myapp.vercel.app', 'https://custom.example.com']),
+      )
+
+      vi.unstubAllEnvs()
+    })
+
+    it('カスタムドメインの Host と Origin を受け入れる', () => {
+      vi.stubEnv('VERCEL_URL', 'myapp.vercel.app')
+      vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://custom.example.com')
+
+      const domains = getAttachmentProxyAllowedDomains()
+      expect(isAllowedRequestHost('custom.example.com', domains)).toBe(true)
+      expect(
+        isRequestFromAllowedOrigin(
+          null,
+          'https://custom.example.com',
+          domains,
+        ),
+      ).toBe(true)
+
+      vi.unstubAllEnvs()
+    })
+  })
+
   describe('isRequestFromAllowedOrigin', () => {
     const allowedDomains = ['miyulab-fe.vercel.app']
 
@@ -181,8 +212,21 @@ describe('attachmentProxy', () => {
       await expect(verifyProxyAccessToken(null)).resolves.toBe(false)
     })
 
+    it('Vercel preview では ATTACHMENT_PROXY_SECRET 未設定でもトークンを生成する', async () => {
+      vi.stubEnv('NODE_ENV', 'production')
+      vi.stubEnv('VERCEL_ENV', 'preview')
+      vi.stubEnv('ATTACHMENT_PROXY_SECRET', '')
+
+      const token = await createProxyAccessToken()
+      expect(token).toBeTruthy()
+      await expect(verifyProxyAccessToken(token)).resolves.toBe(true)
+
+      vi.unstubAllEnvs()
+    })
+
     it('本番環境でATTACHMENT_PROXY_SECRET未設定時はトークンを生成しない', async () => {
       vi.stubEnv('NODE_ENV', 'production')
+      vi.stubEnv('VERCEL_ENV', 'production')
       vi.stubEnv('ATTACHMENT_PROXY_SECRET', '')
       vi.stubEnv('VERCEL_URL', 'my-app.vercel.app')
 
