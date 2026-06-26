@@ -1,7 +1,10 @@
 import {
+  createProxyAccessToken,
   isAllowedContentType,
+  isAllowedRequestHost,
   isPrivateHost,
   isRequestFromAllowedOrigin,
+  verifyProxyAccessToken,
 } from 'util/attachmentProxy'
 import { describe, expect, it } from 'vitest'
 
@@ -19,8 +22,20 @@ describe('attachmentProxy', () => {
       expect(isPrivateHost('[::1]')).toBe(true)
     })
 
+    it('IPv4-mapped IPv6 loopbackを拒否する', () => {
+      expect(isPrivateHost('::ffff:127.0.0.1')).toBe(true)
+      expect(isPrivateHost('[::ffff:127.0.0.1]')).toBe(true)
+    })
+
+    it('IPv6 link-localとULAを拒否する', () => {
+      expect(isPrivateHost('fe80::1')).toBe(true)
+      expect(isPrivateHost('fd12:3456:789a:1::1')).toBe(true)
+      expect(isPrivateHost('fc00::1')).toBe(true)
+    })
+
     it('公開ホストを許可する', () => {
       expect(isPrivateHost('cdn.example.com')).toBe(false)
+      expect(isPrivateHost('2001:db8::1')).toBe(false)
     })
   })
 
@@ -84,6 +99,37 @@ describe('attachmentProxy', () => {
           allowedDomains,
         ),
       ).toBe(false)
+    })
+  })
+
+  describe('isAllowedRequestHost', () => {
+    const allowedDomains = ['miyulab-fe.vercel.app']
+
+    it('許可ドメインのHostを受け入れる', () => {
+      expect(
+        isAllowedRequestHost('miyulab-fe.vercel.app', allowedDomains),
+      ).toBe(true)
+      expect(
+        isAllowedRequestHost('miyulab-fe.vercel.app:443', allowedDomains),
+      ).toBe(true)
+    })
+
+    it('不一致のHostを拒否する', () => {
+      expect(isAllowedRequestHost('attacker.com', allowedDomains)).toBe(false)
+      expect(isAllowedRequestHost(null, allowedDomains)).toBe(false)
+    })
+  })
+
+  describe('proxy access token', () => {
+    it('トークンを生成して検証できる', async () => {
+      const token = await createProxyAccessToken()
+      expect(token).toBeTruthy()
+      await expect(verifyProxyAccessToken(token)).resolves.toBe(true)
+    })
+
+    it('不正なトークンを拒否する', async () => {
+      await expect(verifyProxyAccessToken('invalid.token')).resolves.toBe(false)
+      await expect(verifyProxyAccessToken(null)).resolves.toBe(false)
     })
   })
 })

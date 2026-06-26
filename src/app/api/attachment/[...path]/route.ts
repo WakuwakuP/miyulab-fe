@@ -1,8 +1,11 @@
 import { NextResponse } from 'next/server'
 import {
   isAllowedContentType,
+  isAllowedRequestHost,
   isPrivateHost,
   isRequestFromAllowedOrigin,
+  PROXY_COOKIE_NAME,
+  verifyProxyAccessToken,
 } from 'util/attachmentProxy'
 
 export const revalidate = 14400 // 4 hours
@@ -24,6 +27,21 @@ export async function GET(
     const origin = request.headers.get('origin')
 
     if (!referer && !origin) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    const proxyToken = request.headers
+      .get('cookie')
+      ?.split(';')
+      .map((part) => part.trim())
+      .find((part) => part.startsWith(`${PROXY_COOKIE_NAME}=`))
+      ?.slice(PROXY_COOKIE_NAME.length + 1)
+
+    if (!(await verifyProxyAccessToken(proxyToken))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    if (!isAllowedRequestHost(request.headers.get('host'), allowedDomains)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
