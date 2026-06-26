@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import {
   isAllowedContentType,
   isAllowedRequestHost,
-  isPrivateHost,
+  isPrivateHostWithDns,
   isRequestFromAllowedOrigin,
   PROXY_COOKIE_NAME,
   verifyProxyAccessToken,
@@ -78,7 +78,7 @@ export async function GET(
     }
 
     // プライベート/内部ネットワークへのリクエストをブロック (SSRF防止)
-    if (isPrivateHost(parsedUrl.hostname)) {
+    if (await isPrivateHostWithDns(parsedUrl.hostname)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 

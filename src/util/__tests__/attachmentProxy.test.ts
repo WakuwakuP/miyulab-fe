@@ -1,12 +1,20 @@
+import { lookup } from 'node:dns/promises'
 import {
   createProxyAccessToken,
   isAllowedContentType,
   isAllowedRequestHost,
   isPrivateHost,
+  isPrivateHostWithDns,
   isRequestFromAllowedOrigin,
   verifyProxyAccessToken,
 } from 'util/attachmentProxy'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
+
+vi.mock('node:dns/promises', () => ({
+  lookup: vi.fn(),
+}))
+
+const mockedLookup = vi.mocked(lookup)
 
 describe('attachmentProxy', () => {
   describe('isPrivateHost', () => {
@@ -36,6 +44,47 @@ describe('attachmentProxy', () => {
     it('公開ホストを許可する', () => {
       expect(isPrivateHost('cdn.example.com')).toBe(false)
       expect(isPrivateHost('2001:db8::1')).toBe(false)
+    })
+
+    it('127.0.0.0/8のループバック範囲を拒否する', () => {
+      expect(isPrivateHost('127.0.0.2')).toBe(true)
+      expect(isPrivateHost('127.255.255.255')).toBe(true)
+    })
+  })
+
+  describe('isPrivateHostWithDns', () => {
+    it('DNS解決後にプライベートIPへ解決するドメインを拒否する', async () => {
+      mockedLookup.mockResolvedValue([{ address: '10.0.0.1', family: 4 }])
+
+      await expect(isPrivateHostWithDns('cdn.example.com')).resolves.toBe(true)
+    })
+
+    it('DNS解決後に公開IPへ解決するドメインを許可する', async () => {
+      mockedLookup.mockResolvedValue([{ address: '93.184.216.34', family: 4 }])
+
+      await expect(isPrivateHostWithDns('cdn.example.com')).resolves.toBe(false)
+    })
+
+    it('DNS解決結果にプライベートIPが含まれる場合は拒否する', async () => {
+      mockedLookup.mockResolvedValue([
+        { address: '93.184.216.34', family: 4 },
+        { address: '192.168.1.1', family: 4 },
+      ])
+
+      await expect(isPrivateHostWithDns('cdn.example.com')).resolves.toBe(true)
+    })
+
+    it('DNS解決に失敗した場合は拒否する', async () => {
+      mockedLookup.mockRejectedValue(new Error('ENOTFOUND'))
+
+      await expect(isPrivateHostWithDns('cdn.example.com')).resolves.toBe(true)
+    })
+
+    it('リテラルIPにはDNS解決を行わない', async () => {
+      mockedLookup.mockClear()
+
+      await expect(isPrivateHostWithDns('93.184.216.34')).resolves.toBe(false)
+      expect(mockedLookup).not.toHaveBeenCalled()
     })
   })
 

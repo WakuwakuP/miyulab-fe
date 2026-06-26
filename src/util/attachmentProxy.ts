@@ -1,3 +1,6 @@
+import { lookup } from 'node:dns/promises'
+import { isIP } from 'node:net'
+
 const ALLOWED_CONTENT_TYPES = ['image/', 'audio/', 'video/']
 
 export const PROXY_COOKIE_NAME = '__attachment_proxy'
@@ -14,7 +17,7 @@ function stripIpv6Brackets(hostname: string): string {
 
 function isPrivateIpv4(hostname: string): boolean {
   const normalized = hostname.toLowerCase()
-  if (normalized === 'localhost' || normalized === '127.0.0.1') return true
+  if (normalized === 'localhost' || normalized.startsWith('127.')) return true
   if (normalized === '0.0.0.0') return true
   if (normalized.startsWith('10.')) return true
   if (normalized.startsWith('192.168.')) return true
@@ -50,6 +53,20 @@ export function isPrivateHost(hostname: string): boolean {
   if (host.endsWith('.local') || host.endsWith('.internal')) return true
   if (host.includes(':')) return isPrivateIpv6(host)
   return isPrivateIpv4(host)
+}
+
+export async function isPrivateHostWithDns(hostname: string): Promise<boolean> {
+  if (isPrivateHost(hostname)) return true
+
+  const host = stripIpv6Brackets(hostname.toLowerCase()).split('%')[0]
+  if (isIP(host)) return false
+
+  try {
+    const addresses = await lookup(host, { all: true, verbatim: true })
+    return addresses.some(({ address }) => isPrivateHost(address))
+  } catch {
+    return true
+  }
 }
 
 function normalizeHostname(host: string): string {
