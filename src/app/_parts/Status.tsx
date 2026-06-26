@@ -18,6 +18,7 @@ import type { Entity } from 'megalodon'
 import { useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { RiRepeatFill, RiVideoLine } from 'react-icons/ri'
 import type { PollAddAppIndex, StatusAddAppIndex } from 'types/types'
+import { replaceEmojis } from 'util/emojiReplacer'
 import { canPlay } from 'util/PlayerUtils'
 import { AppsContext } from 'util/provider/AppsProvider'
 import { SetDetailContext } from 'util/provider/DetailProvider'
@@ -115,56 +116,32 @@ export const Status = ({
     [],
   )
 
-  const getDisplayName = useCallback((account: Entity.Account) => {
-    let displayName = account.display_name
-    if (account.emojis.length > 0) {
-      account.emojis.forEach((emoji) => {
-        displayName = displayName.replace(
-          new RegExp(`:${emoji.shortcode}:`, 'gm'),
-          `<img src="${emoji.url}" alt="${emoji.shortcode}" title=":${emoji.shortcode}:" class="min-w-7 h-7 inline-block" loading="lazy" />`,
-        )
-      })
-    }
-    return displayName
-  }, [])
+  const getDisplayName = useCallback(
+    (account: Entity.Account) =>
+      replaceEmojis(account.display_name, account.emojis),
+    [],
+  )
 
   const displayName = useMemo(
     () => getDisplayName(status.account),
     [status.account, getDisplayName],
   )
 
-  const getSpoilerText = useCallback((status: Entity.Status) => {
-    let spoiler_text = status.spoiler_text
-    if (status.emojis.length > 0) {
-      status.emojis.forEach((emoji) => {
-        spoiler_text = spoiler_text.replace(
-          new RegExp(`:${emoji.shortcode}:`, 'gm'),
-          `<img src="${emoji.url}" alt="${emoji.shortcode}" title=":${emoji.shortcode}:" class="min-w-7 h-7 inline-block" loading="lazy" />`,
-        )
-      })
-    }
-
-    return spoiler_text
-  }, [])
+  const getSpoilerText = useCallback(
+    (status: Entity.Status) =>
+      replaceEmojis(status.spoiler_text, status.emojis),
+    [],
+  )
 
   const spoilerText = useMemo(
     () => getSpoilerText(status.reblog ?? status),
     [status.reblog, status, getSpoilerText],
   )
 
-  const getContentFormatted = useCallback((status: Entity.Status) => {
-    let content = status.content
-    if (status.emojis.length > 0) {
-      status.emojis.forEach((emoji) => {
-        content = content.replace(
-          new RegExp(`:${emoji.shortcode}:`, 'gm'),
-          `<img src="${emoji.url}" alt="${emoji.shortcode}" title=":${emoji.shortcode}:" class="min-w-7 h-7 inline-block" loading="lazy" />`,
-        )
-      })
-    }
-
-    return content
-  }, [])
+  const getContentFormatted = useCallback(
+    (status: Entity.Status) => replaceEmojis(status.content, status.emojis),
+    [],
+  )
 
   const contentFormatted = useMemo(
     () => getContentFormatted(status.reblog ?? status),

@@ -8,6 +8,7 @@ import type { Entity } from 'megalodon'
 import { useContext, useMemo } from 'react'
 import { RiRobotFill } from 'react-icons/ri'
 import type { AccountAddAppIndex } from 'types/types'
+import { replaceEmojis } from 'util/emojiReplacer'
 import { SetDetailContext } from 'util/provider/DetailProvider'
 
 export const UserInfo = ({
@@ -22,18 +23,15 @@ export const UserInfo = ({
   scrolling?: boolean
 }) => {
   const setDetail = useContext(SetDetailContext)
-  const getDisplayName = useMemo(() => {
-    let displayName = account.display_name
-    if (account.emojis.length > 0) {
-      account.emojis.forEach((emoji) => {
-        displayName = displayName.replace(
-          new RegExp(`:${emoji.shortcode}:`, 'gm'),
-          `<img src="${emoji.url}" alt="${emoji.shortcode}" class="min-w-5 h-5 inline-block" loading="lazy" />`,
-        )
-      })
-    }
-    return displayName
-  }, [account])
+  const getDisplayName = useMemo(
+    () =>
+      replaceEmojis(
+        account.display_name,
+        account.emojis,
+        'min-w-5 h-5 inline-block',
+      ),
+    [account],
+  )
 
   return (
     <h3

@@ -21,6 +21,7 @@ import {
 
 import innerText from 'react-innertext'
 import type { AccountAddAppIndex } from 'types/types'
+import { replaceEmojis } from 'util/emojiReplacer'
 import { GetClient } from 'util/GetClient'
 import { AppsContext } from 'util/provider/AppsProvider'
 import { SetDetailContext } from 'util/provider/DetailProvider'
@@ -43,18 +44,8 @@ export const AccountDetail = ({ account }: { account: AccountAddAppIndex }) => {
   const [tab, setTab] = useState<'toots' | 'media' | 'favourite'>('toots')
 
   const getEmojiText = useCallback(
-    (str: string) => {
-      let parseStr = str
-      if (account.emojis.length > 0) {
-        account.emojis.forEach((emoji) => {
-          parseStr = parseStr.replace(
-            new RegExp(`:${emoji.shortcode}:`, 'gm'),
-            `<img src="${emoji.url}" alt="${emoji.shortcode}" class="min-w-4 h-4 inline-block" loading="lazy" />`,
-          )
-        })
-      }
-      return parseStr
-    },
+    (str: string) =>
+      replaceEmojis(str, account.emojis, 'min-w-4 h-4 inline-block'),
     [account.emojis],
   )
 
