@@ -180,5 +180,16 @@ describe('attachmentProxy', () => {
       await expect(verifyProxyAccessToken('invalid.token')).resolves.toBe(false)
       await expect(verifyProxyAccessToken(null)).resolves.toBe(false)
     })
+
+    it('本番環境でATTACHMENT_PROXY_SECRET未設定時はトークンを生成しない', async () => {
+      vi.stubEnv('NODE_ENV', 'production')
+      vi.stubEnv('ATTACHMENT_PROXY_SECRET', '')
+      vi.stubEnv('VERCEL_URL', 'my-app.vercel.app')
+
+      await expect(createProxyAccessToken()).resolves.toBeNull()
+      await expect(verifyProxyAccessToken('1234.invalid')).resolves.toBe(false)
+
+      vi.unstubAllEnvs()
+    })
   })
 })

@@ -121,11 +121,13 @@ export function isAllowedRequestHost(
 }
 
 function getProxySecret(): string {
-  return (
-    process.env.ATTACHMENT_PROXY_SECRET ||
-    process.env.VERCEL_URL ||
-    (process.env.NODE_ENV !== 'production' ? 'dev-attachment-proxy-secret' : '')
-  )
+  if (process.env.ATTACHMENT_PROXY_SECRET) {
+    return process.env.ATTACHMENT_PROXY_SECRET
+  }
+  if (process.env.NODE_ENV !== 'production') {
+    return 'dev-attachment-proxy-secret'
+  }
+  return ''
 }
 
 function timingSafeEqualString(a: string, b: string): boolean {
