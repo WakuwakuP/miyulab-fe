@@ -1,24 +1,11 @@
 import { NextResponse } from 'next/server'
+import {
+  isAllowedContentType,
+  isPrivateHost,
+  isRequestFromAllowedOrigin,
+} from 'util/attachmentProxy'
 
 export const revalidate = 14400 // 4 hours
-
-const ALLOWED_CONTENT_TYPES = ['image/', 'audio/', 'video/']
-
-function isAllowedContentType(contentType: string | null): boolean {
-  if (!contentType) return false
-  return ALLOWED_CONTENT_TYPES.some((prefix) => contentType.startsWith(prefix))
-}
-
-function isPrivateHost(hostname: string): boolean {
-  if (hostname === 'localhost' || hostname === '127.0.0.1') return true
-  if (hostname === '[::1]' || hostname === '0.0.0.0') return true
-  if (hostname.startsWith('10.')) return true
-  if (hostname.startsWith('192.168.')) return true
-  if (hostname.startsWith('169.254.')) return true
-  if (/^172\.(1[6-9]|2\d|3[01])\./.test(hostname)) return true
-  if (hostname.endsWith('.local') || hostname.endsWith('.internal')) return true
-  return false
-}
 
 export async function GET(
   request: Request,
@@ -40,11 +27,11 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    const isAllowed = allowedDomains.some((domain) => {
-      if (referer?.includes(domain)) return true
-      if (origin?.includes(domain)) return true
-      return false
-    })
+    const isAllowed = isRequestFromAllowedOrigin(
+      referer,
+      origin,
+      allowedDomains,
+    )
 
     if (!isAllowed) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
