@@ -7,6 +7,7 @@ import * as emoji from 'node-emoji'
 import { useContext, useMemo } from 'react'
 import { RiStarFill } from 'react-icons/ri'
 import type { NotificationAddAppIndex, StatusAddAppIndex } from 'types/types'
+import { replaceEmojis } from 'util/emojiReplacer'
 import { AppsContext } from 'util/provider/AppsProvider'
 import { SetDetailContext } from 'util/provider/DetailProvider'
 import {
@@ -109,16 +110,10 @@ export const Notification = ({
 
   const displayName = useMemo(() => {
     if (notification.account == null) return ''
-    let displayName = notification.account.display_name
-    if (notification.account.emojis.length > 0) {
-      notification.account.emojis.forEach((accountEmoji) => {
-        displayName = displayName.replace(
-          new RegExp(`:${accountEmoji.shortcode}:`, 'gm'),
-          `<img src="${accountEmoji.url}" alt="${accountEmoji.shortcode}" title=":${accountEmoji.shortcode}:" class="min-w-7 h-7 inline-block" loading="lazy" />`,
-        )
-      })
-    }
-    return displayName
+    return replaceEmojis(
+      notification.account.display_name,
+      notification.account.emojis,
+    )
   }, [notification.account])
 
   switch (notification.type) {

@@ -1,4 +1,12 @@
 import { NextResponse } from 'next/server'
+import {
+  isAllowedContentType,
+  isAllowedRequestHost,
+  isPrivateHostWithDns,
+  isRequestFromAllowedOrigin,
+  PROXY_COOKIE_NAME,
+  verifyProxyAccessToken,
+} from 'util/attachmentProxy'
 
 export const revalidate = 14400 // 4 hours
 
@@ -14,9 +22,38 @@ export async function GET(
       process.env.VERCEL_PROJECT_PRODUCTION_URL,
     ].filter((domain): domain is string => !!domain)
 
-    // RefererまたはOriginヘッダーをチェック
+    // RefererまたはOriginヘッダーをチェック（両方不在の場合も拒否）
     const referer = request.headers.get('referer')
     const origin = request.headers.get('origin')
+
+    if (!referer && !origin) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    const proxyToken = request.headers
+      .get('cookie')
+      ?.split(';')
+      .map((part) => part.trim())
+      .find((part) => part.startsWith(`${PROXY_COOKIE_NAME}=`))
+      ?.slice(PROXY_COOKIE_NAME.length + 1)
+
+    if (!(await verifyProxyAccessToken(proxyToken))) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    if (!isAllowedRequestHost(request.headers.get('host'), allowedDomains)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    const isAllowed = isRequestFromAllowedOrigin(
+      referer,
+      origin,
+      allowedDomains,
+    )
+
+    if (!isAllowed) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
 
     const { path } = await context.params
 
@@ -32,30 +69,20 @@ export async function GET(
     const queryString = requestUrl.search
     const imageUrl = `https://${decodedPath}${queryString}`
 
-    // 新しいタブで開いた場合（RefererもOriginもない場合）
-    // リダイレクトではなく画像を直接表示する
-    const shouldProxy = !referer && !origin
-
-    if (!shouldProxy) {
-      const isAllowed = allowedDomains.some((domain) => {
-        if (referer?.includes(domain)) return true
-        if (origin?.includes(domain)) return true
-        return false
-      })
-
-      if (!isAllowed) {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-      }
-    }
-
     // URLの妥当性チェック
+    let parsedUrl: URL
     try {
-      new URL(imageUrl)
+      parsedUrl = new URL(imageUrl)
     } catch {
       return NextResponse.json({ error: 'Invalid URL' }, { status: 400 })
     }
 
-    // 外部画像を取得
+    // プライベート/内部ネットワークへのリクエストをブロック (SSRF防止)
+    if (await isPrivateHostWithDns(parsedUrl.hostname)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
+
+    // 外部メディアを取得
     const attachmentResponse = await fetch(imageUrl, {
       cache: 'force-cache',
       headers: { 'User-Agent': 'miyulab-fe/1.0' },
@@ -70,7 +97,15 @@ export async function GET(
 
     const contentType = attachmentResponse.headers.get('content-type')
 
-    // 画像データを取得
+    // メディア以外のContent-Typeを拒否
+    if (!isAllowedContentType(contentType)) {
+      return NextResponse.json(
+        { error: 'Invalid content type' },
+        { status: 403 },
+      )
+    }
+
+    // メディアデータを取得
     const imageBuffer = await attachmentResponse.arrayBuffer()
 
     // next/imageに適したレスポンスを返す

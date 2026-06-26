@@ -1,6 +1,7 @@
 import type { Entity } from 'megalodon'
 import type { MfmFn, MfmNode } from 'mfm-js'
 import { extract, parse } from 'mfm-js'
+import { escapeHtml } from 'util/escapeHtml'
 
 // ========================================
 // MFM Text → HTML Conversion (mfm-js AST based)
@@ -251,14 +252,7 @@ const fnHtmlRenderers: Partial<Record<string, FnHtmlRenderer>> = {
 // Sanitization Helpers
 // ========================================
 
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-}
+// escapeHtml is imported from util/escapeHtml
 
 /** CSS duration (e.g. "1s", "500ms", "0.5s") を検証 */
 function sanitizeDuration(

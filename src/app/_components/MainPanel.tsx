@@ -8,6 +8,7 @@ import { UserInfo } from 'app/_parts/UserInfo'
 import type { Entity } from 'megalodon'
 import { useCallback, useContext, useEffect, useState } from 'react'
 import { RiCloseCircleLine, RiPlayFill } from 'react-icons/ri'
+import { replaceEmojis } from 'util/emojiReplacer'
 import { GetClient } from 'util/GetClient'
 import { canPlay } from 'util/PlayerUtils'
 import { AppsContext } from 'util/provider/AppsProvider'
@@ -67,31 +68,15 @@ export const MainPanel = () => {
     setAttachments([])
   }
 
-  const getContentFormatted = (status: Entity.Status) => {
-    let content = status.content
-    if (status.emojis.length > 0) {
-      status.emojis.forEach((emoji) => {
-        content = content.replace(
-          new RegExp(`:${emoji.shortcode}:`, 'gm'),
-          `<img src="${emoji.url}" alt="${emoji.shortcode}" class="min-w-4 h-4 inline-block" loading="lazy" />`,
-        )
-      })
-    }
-    return content
-  }
+  const getContentFormatted = (status: Entity.Status) =>
+    replaceEmojis(status.content, status.emojis, 'min-w-4 h-4 inline-block')
 
-  const getDisplayNameFormatted = (account: Entity.Account) => {
-    let displayName = account.display_name
-    if (account.emojis.length > 0) {
-      account.emojis.forEach((emoji) => {
-        displayName = displayName.replace(
-          new RegExp(`:${emoji.shortcode}:`, 'gm'),
-          `<img src="${emoji.url}" alt="${emoji.shortcode}" class="min-w-4 h-4 inline-block" loading="lazy" />`,
-        )
-      })
-    }
-    return displayName
-  }
+  const getDisplayNameFormatted = (account: Entity.Account) =>
+    replaceEmojis(
+      account.display_name,
+      account.emojis,
+      'min-w-4 h-4 inline-block',
+    )
 
   const contentFormatted = () => {
     if (replyTo == null) return ''
