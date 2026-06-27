@@ -211,10 +211,21 @@ describe('attachmentProxy', () => {
       await expect(verifyProxyAccessToken(null)).resolves.toBe(false)
     })
 
-    it('Vercel preview では ATTACHMENT_PROXY_SECRET 未設定でもトークンを生成する', async () => {
+    it('Vercel preview で ATTACHMENT_PROXY_SECRET 未設定時はトークンを生成しない', async () => {
       vi.stubEnv('NODE_ENV', 'production')
       vi.stubEnv('VERCEL_ENV', 'preview')
       vi.stubEnv('ATTACHMENT_PROXY_SECRET', '')
+
+      await expect(createProxyAccessToken()).resolves.toBeNull()
+      await expect(verifyProxyAccessToken('1234.invalid')).resolves.toBe(false)
+
+      vi.unstubAllEnvs()
+    })
+
+    it('Vercel preview で ATTACHMENT_PROXY_SECRET 設定時はトークンを生成する', async () => {
+      vi.stubEnv('NODE_ENV', 'production')
+      vi.stubEnv('VERCEL_ENV', 'preview')
+      vi.stubEnv('ATTACHMENT_PROXY_SECRET', 'preview-only-secret')
 
       const token = await createProxyAccessToken()
       expect(token).toBeTruthy()

@@ -138,12 +138,8 @@ function getProxySecret(): string {
   if (process.env.ATTACHMENT_PROXY_SECRET) {
     return process.env.ATTACHMENT_PROXY_SECRET
   }
-  // Vercel preview は NODE_ENV=production のため、本番 fail-closed だけだと
-  // ATTACHMENT_PROXY_SECRET 未設定時にメディアがすべて 403 になる。
-  if (
-    process.env.NODE_ENV !== 'production' ||
-    process.env.VERCEL_ENV === 'preview'
-  ) {
+  // ローカル開発のみ固定シークレットを許可。preview/production は fail-closed。
+  if (process.env.NODE_ENV !== 'production') {
     return 'dev-attachment-proxy-secret'
   }
   return ''
