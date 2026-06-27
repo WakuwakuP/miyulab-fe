@@ -117,7 +117,10 @@ describe('attachmentProxy', () => {
       vi.stubEnv('NEXT_PUBLIC_APP_URL', 'https://custom.example.com')
 
       expect(getAttachmentProxyAllowedDomains()).toEqual(
-        expect.arrayContaining(['myapp.vercel.app', 'https://custom.example.com']),
+        expect.arrayContaining([
+          'myapp.vercel.app',
+          'https://custom.example.com',
+        ]),
       )
 
       vi.unstubAllEnvs()
@@ -130,11 +133,7 @@ describe('attachmentProxy', () => {
       const domains = getAttachmentProxyAllowedDomains()
       expect(isAllowedRequestHost('custom.example.com', domains)).toBe(true)
       expect(
-        isRequestFromAllowedOrigin(
-          null,
-          'https://custom.example.com',
-          domains,
-        ),
+        isRequestFromAllowedOrigin(null, 'https://custom.example.com', domains),
       ).toBe(true)
 
       vi.unstubAllEnvs()
