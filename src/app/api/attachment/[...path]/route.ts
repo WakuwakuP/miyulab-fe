@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import {
+  getAttachmentProxyAllowedDomains,
   isAllowedContentType,
   isAllowedRequestHost,
   isPrivateHostWithDns,
@@ -15,12 +16,7 @@ export async function GET(
   context: { params: Promise<{ path: string[] }> },
 ) {
   try {
-    // Vercelの環境変数から許可されたドメインを取得
-    const allowedDomains = [
-      process.env.VERCEL_URL,
-      process.env.VERCEL_BRANCH_URL,
-      process.env.VERCEL_PROJECT_PRODUCTION_URL,
-    ].filter((domain): domain is string => !!domain)
+    const allowedDomains = getAttachmentProxyAllowedDomains()
 
     // RefererまたはOriginヘッダーをチェック（両方不在の場合も拒否）
     const referer = request.headers.get('referer')

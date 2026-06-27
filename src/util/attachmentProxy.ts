@@ -89,6 +89,20 @@ function extractHostnameFromHeader(value: string | null): string | null {
   }
 }
 
+export function getAttachmentProxyAllowedDomains(): string[] {
+  const domains = [
+    process.env.VERCEL_URL,
+    process.env.VERCEL_BRANCH_URL,
+    process.env.VERCEL_PROJECT_PRODUCTION_URL,
+    process.env.NEXT_PUBLIC_APP_URL,
+    process.env.NEXT_PUBLIC_VERCEL_URL,
+    process.env.NEXT_PUBLIC_VERCEL_BRANCH_URL,
+    process.env.NEXT_PUBLIC_VERCEL_PROJECT_PRODUCTION_URL,
+  ]
+
+  return domains.filter((domain): domain is string => !!domain)
+}
+
 export function getAllowedProxyHosts(allowedDomains: string[]): Set<string> {
   const hosts = new Set(allowedDomains.map(normalizeAllowedDomain))
   if (process.env.NODE_ENV === 'development') {
@@ -124,6 +138,7 @@ function getProxySecret(): string {
   if (process.env.ATTACHMENT_PROXY_SECRET) {
     return process.env.ATTACHMENT_PROXY_SECRET
   }
+  // ローカル開発のみ固定シークレットを許可。preview/production は fail-closed。
   if (process.env.NODE_ENV !== 'production') {
     return 'dev-attachment-proxy-secret'
   }
