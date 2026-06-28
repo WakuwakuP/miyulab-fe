@@ -30,7 +30,7 @@
     "lucide-react": "^1.22.0",
     "megalodon": "^10.3.0",
     "mfm-js": "^0.26.0",
-    "misskey-js": "^2026.6.0",
+    "misskey-js": "^2026.6.1-alpha.1",
     "next": "^16.2.9",
     "node-emoji": "^2.2.0",
     "pg": "^8.22.0",
