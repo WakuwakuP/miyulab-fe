@@ -32,20 +32,21 @@ import { BATCH_INTERACTIONS_SQL, BATCH_SQL_TEMPLATES } from './statusBatch'
 export const MAX_QUERY_LIMIT = 2147483647
 
 // ================================================================
-// エンゲージメント CSV ビルダー (SQL 断片)
+// インタラクション JSON ビルダー (SQL 断片)
 // ================================================================
 
 /**
- * post_interactions の boolean フラグから engagements_csv を構築する SQL 式。
- * SUBSTR(..., 2) で先頭のカンマを除去し、NULLIF で空文字を NULL に変換する。
+ * post_interactions のフラグとローカル reaction 情報を JSON にする SQL 式。
  */
-const ENGAGEMENTS_CSV_EXPR = `NULLIF(SUBSTR(
-      CASE WHEN pi2.is_favourited = 1 THEN ',favourite' ELSE '' END ||
-      CASE WHEN pi2.is_reblogged = 1 THEN ',reblog' ELSE '' END ||
-      CASE WHEN pi2.is_bookmarked = 1 THEN ',bookmark' ELSE '' END ||
-      CASE WHEN pi2.is_muted = 1 THEN ',mute' ELSE '' END ||
-      CASE WHEN pi2.is_pinned = 1 THEN ',pin' ELSE '' END
-    , 2), '')`
+const INTERACTIONS_JSON_EXPR = `json_object(
+      'is_favourited', pi2.is_favourited,
+      'is_reblogged', pi2.is_reblogged,
+      'is_bookmarked', pi2.is_bookmarked,
+      'is_muted', pi2.is_muted,
+      'is_pinned', pi2.is_pinned,
+      'my_reaction_name', pi2.my_reaction_name,
+      'my_reaction_url', pi2.my_reaction_url
+    )`
 
 // ================================================================
 // SELECT 句
@@ -81,7 +82,7 @@ export const STATUS_SELECT = `
   COALESCE(ps.replies_count, 0) AS replies_count,
   COALESCE(ps.reblogs_count, 0) AS reblogs_count,
   COALESCE(ps.favourites_count, 0) AS favourites_count,
-  (SELECT ${ENGAGEMENTS_CSV_EXPR} FROM post_interactions pi2 WHERE pi2.post_id = p.id LIMIT 1) AS engagements_csv,
+  (SELECT ${INTERACTIONS_JSON_EXPR} FROM post_interactions pi2 WHERE pi2.post_id = p.id AND pi2.local_account_id = spb.local_account_id LIMIT 1) AS interactions_json,
   (SELECT json_group_array(json_object('id', pm.media_local_id, 'type', COALESCE((SELECT mt.name FROM media_types mt WHERE mt.id = pm.media_type_id), 'unknown'), 'url', pm.url, 'preview_url', pm.preview_url, 'description', pm.description, 'blurhash', pm.blurhash, 'remote_url', pm.remote_url)) FROM post_media pm WHERE pm.post_id = p.id ORDER BY pm.sort_order) AS media_json,
   (SELECT json_group_array(json_object('acct', pme.acct, 'username', pme.username, 'url', pme.url)) FROM post_mentions pme WHERE pme.post_id = p.id) AS mentions_json,
   (SELECT json_group_array(tk) FROM (SELECT DISTINCT te.timeline_key AS tk FROM timeline_entries te WHERE te.post_id = p.id)) AS timelineTypes,
@@ -112,9 +113,9 @@ export const STATUS_SELECT = `
   COALESCE(rps.reblogs_count, 0) AS rb_reblogs_count,
   COALESCE(rps.favourites_count, 0) AS rb_favourites_count,
   CASE WHEN rs.id IS NOT NULL
-    THEN (SELECT ${ENGAGEMENTS_CSV_EXPR} FROM post_interactions pi2 WHERE pi2.post_id = rs.id LIMIT 1)
+    THEN (SELECT ${INTERACTIONS_JSON_EXPR} FROM post_interactions pi2 WHERE pi2.post_id = rs.id AND pi2.local_account_id = spb.local_account_id LIMIT 1)
     ELSE NULL
-  END AS rb_engagements_csv,
+  END AS rb_interactions_json,
   CASE WHEN rs.id IS NOT NULL
     THEN (SELECT json_group_array(json_object('id', pm.media_local_id, 'type', COALESCE((SELECT mt.name FROM media_types mt WHERE mt.id = pm.media_type_id), 'unknown'), 'url', pm.url, 'preview_url', pm.preview_url, 'description', pm.description, 'blurhash', pm.blurhash, 'remote_url', pm.remote_url)) FROM post_media pm WHERE pm.post_id = rs.id ORDER BY pm.sort_order)
     ELSE NULL
@@ -290,13 +291,15 @@ export function buildScopedEngagementsSql(
   const quoted = backendUrls.map((u) => `'${u.replace(/'/g, "''")}'`).join(',')
   return `
   SELECT pi.post_id,
-    NULLIF(SUBSTR(
-      CASE WHEN pi.is_favourited = 1 THEN ',favourite' ELSE '' END ||
-      CASE WHEN pi.is_reblogged = 1 THEN ',reblog' ELSE '' END ||
-      CASE WHEN pi.is_bookmarked = 1 THEN ',bookmark' ELSE '' END ||
-      CASE WHEN pi.is_muted = 1 THEN ',mute' ELSE '' END ||
-      CASE WHEN pi.is_pinned = 1 THEN ',pin' ELSE '' END
-    , 2), '') AS engagements_csv
+    json_object(
+      'is_favourited', pi.is_favourited,
+      'is_reblogged', pi.is_reblogged,
+      'is_bookmarked', pi.is_bookmarked,
+      'is_muted', pi.is_muted,
+      'is_pinned', pi.is_pinned,
+      'my_reaction_name', pi.my_reaction_name,
+      'my_reaction_url', pi.my_reaction_url
+    ) AS interactions_json
   FROM post_interactions pi
   WHERE pi.post_id IN (${placeholder})
     AND pi.local_account_id IN (

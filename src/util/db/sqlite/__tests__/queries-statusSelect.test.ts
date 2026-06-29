@@ -1,4 +1,5 @@
 import {
+  buildScopedEngagementsSql,
   STATUS_BASE_JOINS,
   STATUS_BASE_SELECT,
   STATUS_SELECT,
@@ -171,6 +172,22 @@ describe('statusSelect — 新スキーマ対応', () => {
 
     it('STATUS_SELECT に engagement_types が含まれていない', () => {
       expect(STATUS_SELECT).not.toContain('engagement_types')
+    })
+
+    it('スコープ付き interactions SQL が reaction 情報を JSON で返す', () => {
+      const sql = buildScopedEngagementsSql(['https://example.com'])
+
+      expect(sql).toContain('json_object')
+      expect(sql).toContain('my_reaction_name')
+      expect(sql).toContain('my_reaction_url')
+      expect(sql).toContain('interactions_json')
+      expect(sql).not.toContain('engagements_csv')
+    })
+
+    it('STATUS_SELECT の interactions_json は選択中 local account にスコープする', () => {
+      expect(STATUS_SELECT).toContain(
+        'pi2.local_account_id = spb.local_account_id',
+      )
     })
   })
 

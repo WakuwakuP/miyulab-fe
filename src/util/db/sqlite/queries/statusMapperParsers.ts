@@ -20,6 +20,69 @@ export function parseEmojiReactions(json: string | null): Entity.Reaction[] {
   }
 }
 
+function normalizeReactionName(name: string): string {
+  return name.startsWith(':') && name.endsWith(':') ? name.slice(1, -1) : name
+}
+
+function isSameReaction(
+  reaction: Entity.Reaction,
+  localName: string,
+  localUrl: string | null,
+): boolean {
+  if (
+    normalizeReactionName(reaction.name) !== normalizeReactionName(localName)
+  ) {
+    return false
+  }
+
+  if (!localUrl) return true
+  const reactionUrl = reaction.url ?? reaction.static_url ?? null
+  return reactionUrl === null || reactionUrl === localUrl
+}
+
+export function mergeLocalReaction(
+  reactions: Entity.Reaction[],
+  interactions: InteractionsJson | null,
+): Entity.Reaction[] {
+  const localName = interactions?.my_reaction_name
+  if (!localName) return reactions
+
+  let found = false
+  const merged = reactions.map((reaction) => {
+    if (!isSameReaction(reaction, localName, interactions.my_reaction_url)) {
+      return reaction
+    }
+    found = true
+    const staticUrl =
+      reaction.static_url ?? interactions.my_reaction_url ?? undefined
+    const url = reaction.url ?? interactions.my_reaction_url ?? undefined
+    return {
+      ...reaction,
+      me: true,
+      ...(staticUrl ? { static_url: staticUrl } : {}),
+      ...(url ? { url } : {}),
+    }
+  })
+
+  if (found) return merged
+
+  return [
+    ...merged,
+    {
+      account_ids: [],
+      count: 1,
+      me: true,
+      name: localName,
+      ...(interactions.my_reaction_url
+        ? {
+            static_url: interactions.my_reaction_url,
+            url: interactions.my_reaction_url,
+          }
+        : {}),
+    },
+  ]
+}
+
 /** カスタム絵文字 JSON をパースする */
 export function parseEmojis(json: string | null): Entity.Emoji[] {
   if (!json) return []

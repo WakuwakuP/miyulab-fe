@@ -95,6 +95,34 @@ describe('updateInteraction', () => {
     expect(calls[1].opts?.bind).toEqual([100, 1, 0, expect.any(Number)])
   })
 
+  it('preserveRecentLocalTrueMs 指定時は記録済み同一 action の stale false を書き込まない', () => {
+    const { calls, db } = createMockDb()
+
+    updateInteraction(db, 100, 1, 'favourite', true, undefined, {
+      recordLocalAction: true,
+    })
+    updateInteraction(db, 100, 1, 'favourite', false, undefined, {
+      preserveRecentLocalTrueMs: 60_000,
+    })
+
+    expect(calls).toHaveLength(1)
+    expect(calls[0].opts?.bind).toEqual([100, 1, 1, expect.any(Number)])
+  })
+
+  it('recent local 記録は action ごとに分離される', () => {
+    const { calls, db } = createMockDb()
+
+    updateInteraction(db, 101, 1, 'bookmark', true, undefined, {
+      recordLocalAction: true,
+    })
+    updateInteraction(db, 101, 1, 'favourite', false, undefined, {
+      preserveRecentLocalTrueMs: 60_000,
+    })
+
+    expect(calls).toHaveLength(2)
+    expect(calls[1].opts?.bind).toEqual([101, 1, 0, expect.any(Number)])
+  })
+
   it('不明なアクション名の場合何もしない', () => {
     const { db, calls } = createMockDb()
 

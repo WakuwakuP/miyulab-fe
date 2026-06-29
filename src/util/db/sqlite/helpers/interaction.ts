@@ -14,6 +14,21 @@ const ACTION_COLUMN_MAP: Record<string, string> = {
   reblog: 'is_reblogged',
 }
 
+type UpdateInteractionOptions = {
+  preserveRecentLocalTrueMs?: number
+  recordLocalAction?: boolean
+}
+
+const recentLocalTrueInteractions = new Map<string, number>()
+
+function interactionKey(
+  postId: number,
+  localAccountId: number,
+  action: string,
+): string {
+  return `${postId}:${localAccountId}:${action}`
+}
+
 /**
  * post_interactions テーブルの対応するブーリアンカラムを更新する。
  * レコードがなければ INSERT、あれば UPDATE（UPSERT）。
@@ -25,19 +40,40 @@ export function updateInteraction(
   action: string,
   value: boolean,
   collector?: WrittenTableCollector,
+  options?: UpdateInteractionOptions,
 ): void {
   const column = ACTION_COLUMN_MAP[action]
   if (!column) return
 
   const now = Date.now()
+  const key = interactionKey(postId, localAccountId, action)
+  const recentLocalTrueAt = recentLocalTrueInteractions.get(key)
+  if (
+    !value &&
+    options?.preserveRecentLocalTrueMs !== undefined &&
+    recentLocalTrueAt !== undefined &&
+    now - recentLocalTrueAt <= options.preserveRecentLocalTrueMs
+  ) {
+    return
+  }
+
+  const updateClause = `${column} = excluded.${column},
+       updated_at = excluded.updated_at`
+
   db.exec(
     `INSERT INTO post_interactions (post_id, local_account_id, ${column}, updated_at)
      VALUES (?, ?, ?, ?)
      ON CONFLICT(post_id, local_account_id) DO UPDATE SET
-       ${column} = excluded.${column},
-       updated_at = excluded.updated_at;`,
+       ${updateClause};`,
     { bind: [postId, localAccountId, value ? 1 : 0, now] },
   )
+  if (options?.recordLocalAction) {
+    if (value) {
+      recentLocalTrueInteractions.set(key, now)
+    } else {
+      recentLocalTrueInteractions.delete(key)
+    }
+  }
   collector?.add('post_interactions')
 }
 
@@ -51,6 +87,7 @@ export function toggleReaction(
   localAccountId: number,
   name: string | null,
   url: string | null,
+  collector?: WrittenTableCollector,
 ): void {
   const now = Date.now()
   db.exec(
@@ -62,4 +99,5 @@ export function toggleReaction(
        updated_at = excluded.updated_at;`,
     { bind: [postId, localAccountId, name, url, now] },
   )
+  collector?.add('post_interactions')
 }

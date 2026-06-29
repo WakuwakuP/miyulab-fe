@@ -35,6 +35,8 @@ import {
 } from './statusHelpers'
 import type { DbExec, WrittenTableCollector } from './types'
 
+const STALE_INTERACTION_FALSE_PROTECTION_MS = 60_000
+
 // ================================================================
 // メンション同期
 // ================================================================
@@ -418,17 +420,39 @@ function syncReblogOriginalInteractions(
   if (originalStatus.favourited === true) {
     updateInteraction(db, postId, localAccountId, 'favourite', true, collector)
   } else if (originalStatus.favourited === false) {
-    updateInteraction(db, postId, localAccountId, 'favourite', false, collector)
+    updateInteraction(
+      db,
+      postId,
+      localAccountId,
+      'favourite',
+      false,
+      collector,
+      {
+        preserveRecentLocalTrueMs: STALE_INTERACTION_FALSE_PROTECTION_MS,
+      },
+    )
   }
   if (originalStatus.reblogged === true) {
     updateInteraction(db, postId, localAccountId, 'reblog', true, collector)
   } else if (originalStatus.reblogged === false) {
-    updateInteraction(db, postId, localAccountId, 'reblog', false, collector)
+    updateInteraction(db, postId, localAccountId, 'reblog', false, collector, {
+      preserveRecentLocalTrueMs: STALE_INTERACTION_FALSE_PROTECTION_MS,
+    })
   }
   if (originalStatus.bookmarked === true) {
     updateInteraction(db, postId, localAccountId, 'bookmark', true, collector)
   } else if (originalStatus.bookmarked === false) {
-    updateInteraction(db, postId, localAccountId, 'bookmark', false, collector)
+    updateInteraction(
+      db,
+      postId,
+      localAccountId,
+      'bookmark',
+      false,
+      collector,
+      {
+        preserveRecentLocalTrueMs: STALE_INTERACTION_FALSE_PROTECTION_MS,
+      },
+    )
   }
 }
 

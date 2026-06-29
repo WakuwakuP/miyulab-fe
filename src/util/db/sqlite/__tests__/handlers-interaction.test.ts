@@ -87,8 +87,10 @@ describe('handleUpdateStatusAction', () => {
       1,
       'favourite',
       true,
+      undefined,
+      { recordLocalAction: true },
     )
-    expect(result).toEqual({ changedTables: ['posts'] })
+    expect(result).toEqual({ changedTables: ['posts', 'post_interactions'] })
   })
 
   it('reblog アクションを処理する', () => {
@@ -98,8 +100,16 @@ describe('handleUpdateStatusAction', () => {
     const result = handleUpdateStatusAction(db, 2, '67890', 'reblogged', true)
 
     expect(resolvePostIdInternal).toHaveBeenCalledWith(db, 2, '67890')
-    expect(updateInteraction).toHaveBeenCalledWith(db, 200, 2, 'reblog', true)
-    expect(result).toEqual({ changedTables: ['posts'] })
+    expect(updateInteraction).toHaveBeenCalledWith(
+      db,
+      200,
+      2,
+      'reblog',
+      true,
+      undefined,
+      { recordLocalAction: true },
+    )
+    expect(result).toEqual({ changedTables: ['posts', 'post_interactions'] })
   })
 
   it('bookmark アクションを処理する', () => {
@@ -115,8 +125,10 @@ describe('handleUpdateStatusAction', () => {
       3,
       'bookmark',
       false,
+      undefined,
+      { recordLocalAction: true },
     )
-    expect(result).toEqual({ changedTables: ['posts'] })
+    expect(result).toEqual({ changedTables: ['posts', 'post_interactions'] })
   })
 
   it('投稿が見つからない場合は何もしない', () => {
@@ -156,8 +168,18 @@ describe('handleUpdateStatusAction', () => {
       1,
       'favourite',
       true,
+      undefined,
+      { recordLocalAction: true },
     )
-    expect(updateInteraction).toHaveBeenCalledWith(db, 50, 1, 'favourite', true)
+    expect(updateInteraction).toHaveBeenCalledWith(
+      db,
+      50,
+      1,
+      'favourite',
+      true,
+      undefined,
+      { recordLocalAction: true },
+    )
   })
 
   it('このポストを reblog している他の投稿にも伝播する', () => {
@@ -174,9 +196,33 @@ describe('handleUpdateStatusAction', () => {
 
     // 自身 + リブログ2件 = 3回
     expect(updateInteraction).toHaveBeenCalledTimes(3)
-    expect(updateInteraction).toHaveBeenCalledWith(db, 100, 1, 'reblog', true)
-    expect(updateInteraction).toHaveBeenCalledWith(db, 200, 1, 'reblog', true)
-    expect(updateInteraction).toHaveBeenCalledWith(db, 300, 1, 'reblog', true)
+    expect(updateInteraction).toHaveBeenCalledWith(
+      db,
+      100,
+      1,
+      'reblog',
+      true,
+      undefined,
+      { recordLocalAction: true },
+    )
+    expect(updateInteraction).toHaveBeenCalledWith(
+      db,
+      200,
+      1,
+      'reblog',
+      true,
+      undefined,
+      { recordLocalAction: true },
+    )
+    expect(updateInteraction).toHaveBeenCalledWith(
+      db,
+      300,
+      1,
+      'reblog',
+      true,
+      undefined,
+      { recordLocalAction: true },
+    )
   })
 })
 
@@ -193,12 +239,13 @@ describe('handleToggleReaction', () => {
 
     expect(resolvePostIdInternal).toHaveBeenCalledWith(db, 1, '12345')
     expect(toggleReaction).toHaveBeenCalledWith(db, 100, 1, '👍', null)
-    expect(result).toEqual({ changedTables: ['posts'] })
+    expect(result).toEqual({ changedTables: ['posts', 'post_interactions'] })
   })
 
   it('カスタム絵文字のリアクションを設定する（shortcode → url 解決）', () => {
     // SELECT id, url FROM custom_emojis WHERE server_id = ? AND shortcode = ?
     const { db } = createMockDb([
+      [],
       [[42, 'https://example.com/emoji/blobcat.png']],
     ])
     vi.mocked(resolvePostIdInternal).mockReturnValue(100)
@@ -223,7 +270,7 @@ describe('handleToggleReaction', () => {
       'blobcat',
       'https://example.com/emoji/blobcat.png',
     )
-    expect(result).toEqual({ changedTables: ['posts'] })
+    expect(result).toEqual({ changedTables: ['posts', 'post_interactions'] })
   })
 
   it('リアクションをクリアする（value=false）', () => {
@@ -234,7 +281,31 @@ describe('handleToggleReaction', () => {
 
     expect(resolvePostIdInternal).toHaveBeenCalledWith(db, 1, '12345')
     expect(toggleReaction).toHaveBeenCalledWith(db, 100, 1, null, null)
-    expect(result).toEqual({ changedTables: ['posts'] })
+    expect(result).toEqual({ changedTables: ['posts', 'post_interactions'] })
+  })
+
+  it('reblog からのリアクションを元投稿と同じ元投稿の reblog に伝播する', () => {
+    const { db } = createMockDb([[[50]], [[100], [200]]])
+    vi.mocked(resolvePostIdInternal).mockReturnValue(100)
+
+    handleToggleReaction(db, 1, '12345', true, '👍')
+
+    expect(toggleReaction).toHaveBeenCalledTimes(3)
+    expect(toggleReaction).toHaveBeenCalledWith(db, 100, 1, '👍', null)
+    expect(toggleReaction).toHaveBeenCalledWith(db, 50, 1, '👍', null)
+    expect(toggleReaction).toHaveBeenCalledWith(db, 200, 1, '👍', null)
+  })
+
+  it('元投稿からのリアクションを reblog 投稿にも伝播する', () => {
+    const { db } = createMockDb([[[null]], [[200], [300]]])
+    vi.mocked(resolvePostIdInternal).mockReturnValue(100)
+
+    handleToggleReaction(db, 1, '12345', true, '👍')
+
+    expect(toggleReaction).toHaveBeenCalledTimes(3)
+    expect(toggleReaction).toHaveBeenCalledWith(db, 100, 1, '👍', null)
+    expect(toggleReaction).toHaveBeenCalledWith(db, 200, 1, '👍', null)
+    expect(toggleReaction).toHaveBeenCalledWith(db, 300, 1, '👍', null)
   })
 
   it('投稿が見つからない場合は何もしない', () => {

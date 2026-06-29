@@ -11,7 +11,7 @@
  *   [16] author_display  [17] author_avatar    [18] author_header
  *   [19] author_locked   [20] author_bot       [21] author_url
  *   [22] replies_count   [23] reblogs_count    [24] favourites_count
- *   [25] engagements_csv [26] media_json       [27] mentions_json
+ *   [25] interactions_json [26] media_json     [27] mentions_json
  *   [28] timelineTypes   [29] belongingTags
  *   [30] status_emojis_json [31] account_emojis_json
  *   [32] poll_json
@@ -25,7 +25,7 @@
  *   [46] rb_author_display [47] rb_author_avatar [48] rb_author_header
  *   [49] rb_author_locked [50] rb_author_bot    [51] rb_author_url
  *   [52] rb_replies_count [53] rb_reblogs_count [54] rb_favourites_count
- *   [55] rb_engagements_csv [56] rb_media_json  [57] rb_mentions_json
+ *   [55] rb_interactions_json [56] rb_media_json [57] rb_mentions_json
  *   [58] rb_status_emojis_json [59] rb_account_emojis_json
  *   [60] rb_poll_json     [61] rb_local_id
  *
@@ -37,20 +37,46 @@
 import type { Entity } from 'megalodon'
 import {
   editedAtMsToIso,
+  mergeLocalReaction,
   parseEmojiReactions,
   parseEmojis,
   parseInlinePoll,
+  parseInteractions,
   parseMediaAttachments,
   parseMentions,
 } from './statusMapperParsers'
-import type { SqliteStoredStatus, TimelineType } from './statusMapperTypes'
+import type {
+  InteractionsJson,
+  SqliteStoredStatus,
+  TimelineType,
+} from './statusMapperTypes'
+
+function parseLegacyEngagements(jsonOrCsv: string | null): string[] {
+  if (!jsonOrCsv || jsonOrCsv.trimStart().startsWith('{')) return []
+  return jsonOrCsv.split(',')
+}
+
+function hasInteraction(
+  interactions: InteractionsJson | null,
+  engagements: string[],
+  column: keyof Pick<
+    InteractionsJson,
+    'is_bookmarked' | 'is_favourited' | 'is_reblogged'
+  >,
+  legacyName: string,
+): boolean {
+  return interactions
+    ? interactions[column] === 1
+    : engagements.includes(legacyName)
+}
 
 export function rowToStoredStatus(
   row: (string | number | null)[],
 ): SqliteStoredStatus {
   // ── サブクエリ結果の取り出し ──
-  const engagementsCsv = row[25] as string | null
-  const engagements = engagementsCsv ? engagementsCsv.split(',') : []
+  const interactionsJson = row[25] as string | null
+  const interactions = parseInteractions(interactionsJson)
+  const engagements = parseLegacyEngagements(interactionsJson)
   const mediaJson = row[26] as string | null
   const mentionsJson = row[27] as string | null
   const timelineTypesJson = row[28] as string | null
@@ -73,8 +99,9 @@ export function rowToStoredStatus(
   let reblog: Entity.Status | null = null
 
   if (isReblog && rbPostId !== null) {
-    const rbEngagementsCsv = row[55] as string | null
-    const rbEngagements = rbEngagementsCsv ? rbEngagementsCsv.split(',') : []
+    const rbInteractionsJson = row[55] as string | null
+    const rbInteractions = parseInteractions(rbInteractionsJson)
+    const rbEngagements = parseLegacyEngagements(rbInteractionsJson)
     const rbMediaJson = row[56] as string | null
     const rbMentionsJson = row[57] as string | null
     const rbStatusEmojisJson = row[58] as string | null
@@ -110,14 +137,27 @@ export function rowToStoredStatus(
         username: (row[45] as string) ?? '',
       },
       application: null,
-      bookmarked: rbEngagements.includes('bookmark'),
+      bookmarked: hasInteraction(
+        rbInteractions,
+        rbEngagements,
+        'is_bookmarked',
+        'bookmark',
+      ),
       card: null,
       content: (row[34] as string) ?? '',
       created_at: row[42] ? new Date(row[42] as number).toISOString() : '',
       edited_at: editedAtMsToIso(rbEditedAtMs),
-      emoji_reactions: parseEmojiReactions(rbEmojiReactionsJson),
+      emoji_reactions: mergeLocalReaction(
+        parseEmojiReactions(rbEmojiReactionsJson),
+        rbInteractions,
+      ),
       emojis: parseEmojis(rbStatusEmojisJson),
-      favourited: rbEngagements.includes('favourite'),
+      favourited: hasInteraction(
+        rbInteractions,
+        rbEngagements,
+        'is_favourited',
+        'favourite',
+      ),
       favourites_count: (row[54] as number) ?? 0,
       id: (row[61] as string) ?? '',
       in_reply_to_account_id: null,
@@ -132,7 +172,12 @@ export function rowToStoredStatus(
       quote: null,
       quote_approval: { automatic: [], current_user: '', manual: [] },
       reblog: null,
-      reblogged: rbEngagements.includes('reblog'),
+      reblogged: hasInteraction(
+        rbInteractions,
+        rbEngagements,
+        'is_reblogged',
+        'reblog',
+      ),
       reblogs_count: (row[53] as number) ?? 0,
       replies_count: (row[52] as number) ?? 0,
       sensitive: (row[39] as number) === 1,
@@ -176,16 +221,29 @@ export function rowToStoredStatus(
     application: null,
     backendUrl: (row[1] as string) ?? '',
     belongingTags,
-    bookmarked: engagements.includes('bookmark'),
+    bookmarked: hasInteraction(
+      interactions,
+      engagements,
+      'is_bookmarked',
+      'bookmark',
+    ),
     card: null,
     content: (row[5] as string) ?? '',
     created_at: new Date(row[3] as number).toISOString(),
     created_at_ms: row[3] as number,
     edited_at: editedAtMsToIso(editedAtMs),
     edited_at_ms: editedAtMs,
-    emoji_reactions: parseEmojiReactions(emojiReactionsJson),
+    emoji_reactions: mergeLocalReaction(
+      parseEmojiReactions(emojiReactionsJson),
+      interactions,
+    ),
     emojis: parseEmojis(statusEmojisJson),
-    favourited: engagements.includes('favourite'),
+    favourited: hasInteraction(
+      interactions,
+      engagements,
+      'is_favourited',
+      'favourite',
+    ),
     favourites_count: (row[24] as number) ?? 0,
     id: (row[2] as string) ?? '',
     in_reply_to_account_id: null,
@@ -202,7 +260,12 @@ export function rowToStoredStatus(
     quote: null,
     quote_approval: { automatic: [], current_user: '', manual: [] },
     reblog,
-    reblogged: engagements.includes('reblog'),
+    reblogged: hasInteraction(
+      interactions,
+      engagements,
+      'is_reblogged',
+      'reblog',
+    ),
     reblogs_count: (row[23] as number) ?? 0,
     replies_count: (row[22] as number) ?? 0,
     sensitive: (row[10] as number) === 1,
