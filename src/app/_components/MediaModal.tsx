@@ -181,6 +181,7 @@ export const MediaModal = () => {
   const [isZoomed, setIsZoomed] = useState(false)
 
   const closeModal = useCallback(() => {
+    setIsZoomed(false)
     setAttachment({
       attachment: [],
       index: null,
