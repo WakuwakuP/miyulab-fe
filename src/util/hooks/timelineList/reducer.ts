@@ -39,8 +39,8 @@ export type TimelineListState = {
   /** 過去方向にまだ取得可能か */
   hasMoreOlder: boolean
 
-  /** scrollback 中にストリーミング通知が保留されたか */
-  deferredStreaming: boolean
+  /** scrollback 中に保留されたストリーミング通知の changedTables */
+  deferredChangedTables: ReadonlySet<string> | null
 
   /** API フォールバックで枯渇したリソース (バックエンドURL → リソース種別) */
   exhaustedResources: Map<string, { notifications: boolean; statuses: boolean }>
@@ -48,7 +48,7 @@ export type TimelineListState = {
 
 export function createInitialState(): TimelineListState {
   return {
-    deferredStreaming: false,
+    deferredChangedTables: null,
     exhaustedResources: new Map(),
     hasMoreOlder: true,
     initialized: false,
@@ -67,7 +67,7 @@ export type TimelineListEvent =
   | { items: TimelineItem[]; type: 'INITIAL_FETCH_SUCCEEDED' }
   | { type: 'INITIAL_FETCH_EMPTY' }
   | { items: TimelineItem[]; type: 'STREAMING_FETCH_SUCCEEDED' }
-  | { type: 'STREAMING_DEFERRED' }
+  | { changedTables: ReadonlySet<string>; type: 'STREAMING_DEFERRED' }
   | { items: TimelineItem[]; type: 'DEFERRED_STREAMING_FLUSH_SUCCEEDED' }
   | { type: 'SCROLLBACK_STARTED' }
   | { items: TimelineItem[]; type: 'SCROLLBACK_DB_SUCCEEDED' }
@@ -93,10 +93,16 @@ export function timelineListReducer(
       return mergeItems(state, event.items)
 
     case 'STREAMING_DEFERRED':
-      return { ...state, deferredStreaming: true }
+      return {
+        ...state,
+        deferredChangedTables: mergeChangedTables(
+          state.deferredChangedTables,
+          event.changedTables,
+        ),
+      }
 
     case 'DEFERRED_STREAMING_FLUSH_SUCCEEDED':
-      return mergeItems({ ...state, deferredStreaming: false }, event.items)
+      return mergeItems({ ...state, deferredChangedTables: null }, event.items)
 
     case 'SCROLLBACK_STARTED':
       return { ...state, isScrollbackRunning: true }
@@ -107,7 +113,7 @@ export function timelineListReducer(
     case 'SCROLLBACK_COMPLETED':
       return {
         ...state,
-        deferredStreaming: false,
+        deferredChangedTables: null,
         hasMoreOlder: event.hasMoreOlder,
         isScrollbackRunning: false,
       }
@@ -133,6 +139,18 @@ export function timelineListReducer(
 }
 
 // --------------- ヘルパー ---------------
+
+function mergeChangedTables(
+  current: ReadonlySet<string> | null,
+  next: ReadonlySet<string>,
+): ReadonlySet<string> {
+  if (!current) return new Set(next)
+  const merged = new Set(current)
+  for (const table of next) {
+    merged.add(table)
+  }
+  return merged
+}
 
 /** アイテムを Map にマージし、カーソルを更新して sortedItems を再生成 */
 function mergeItems(

@@ -159,7 +159,7 @@ describe('handleUpdateStatusAction', () => {
       undefined,
       { recordLocalAction: true },
     )
-    expect(result).toEqual({ changedTables: ['posts', 'post_interactions'] })
+    expect(result).toEqual({ changedTables: ['post_interactions'] })
   })
 
   it('reblog アクションを処理する', () => {
@@ -178,7 +178,7 @@ describe('handleUpdateStatusAction', () => {
       undefined,
       { recordLocalAction: true },
     )
-    expect(result).toEqual({ changedTables: ['posts', 'post_interactions'] })
+    expect(result).toEqual({ changedTables: ['post_interactions'] })
   })
 
   it('bookmark アクションを処理する', () => {
@@ -197,7 +197,7 @@ describe('handleUpdateStatusAction', () => {
       undefined,
       { recordLocalAction: true },
     )
-    expect(result).toEqual({ changedTables: ['posts', 'post_interactions'] })
+    expect(result).toEqual({ changedTables: ['post_interactions'] })
   })
 
   it('投稿が見つからない場合は何もしない', () => {
@@ -404,7 +404,7 @@ describe('handleToggleReaction', () => {
 
     expect(resolvePostIdInternal).toHaveBeenCalledWith(db, 1, '12345')
     expect(toggleReaction).toHaveBeenCalledWith(db, 100, 1, '👍', null)
-    expect(result).toEqual({ changedTables: ['posts', 'post_interactions'] })
+    expect(result).toEqual({ changedTables: ['post_interactions'] })
   })
 
   it('カスタム絵文字のリアクションを設定する（shortcode → url 解決）', () => {
@@ -436,7 +436,7 @@ describe('handleToggleReaction', () => {
       'blobcat',
       'https://example.com/emoji/blobcat.png',
     )
-    expect(result).toEqual({ changedTables: ['posts', 'post_interactions'] })
+    expect(result).toEqual({ changedTables: ['post_interactions'] })
   })
 
   it('リアクションをクリアする（value=false）', () => {
@@ -447,7 +447,7 @@ describe('handleToggleReaction', () => {
 
     expect(resolvePostIdInternal).toHaveBeenCalledWith(db, 1, '12345')
     expect(toggleReaction).toHaveBeenCalledWith(db, 100, 1, null, null)
-    expect(result).toEqual({ changedTables: ['posts', 'post_interactions'] })
+    expect(result).toEqual({ changedTables: ['post_interactions'] })
   })
 
   it('reblog からのリアクションを元投稿と同じ元投稿の reblog に伝播する', () => {

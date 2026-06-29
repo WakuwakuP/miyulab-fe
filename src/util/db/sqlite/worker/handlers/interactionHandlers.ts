@@ -144,7 +144,7 @@ export function handleUpdateStatusAction(
     )
   }
 
-  return { changedTables: ['posts', 'post_interactions'] }
+  return { changedTables: ['post_interactions'] }
 }
 
 export function handleToggleReaction(
@@ -163,7 +163,7 @@ export function handleToggleReaction(
     for (const relatedPostId of relatedPostIds) {
       toggleReaction(db, relatedPostId, localAccountId, null, null)
     }
-    return { changedTables: ['posts', 'post_interactions'] }
+    return { changedTables: ['post_interactions'] }
   }
 
   const isCustom = emoji.startsWith(':') && emoji.endsWith(':')
@@ -187,5 +187,5 @@ export function handleToggleReaction(
     }
   }
 
-  return { changedTables: ['posts', 'post_interactions'] }
+  return { changedTables: ['post_interactions'] }
 }

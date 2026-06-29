@@ -11,6 +11,8 @@ import type { ChangeHint } from 'util/db/sqlite/connection'
 
 import { CURSOR_MARGIN_MS } from './itemHelpers'
 
+const INTERACTION_ONLY_TABLE = 'post_interactions'
+
 /**
  * ChangeHint 配列から changedTables を集約して Set にまとめる。
  *
@@ -57,4 +59,32 @@ export function buildStreamingCursor(state: {
     }
   }
   return undefined
+}
+
+export function shouldBypassStreamingCursor(
+  changedTables: ReadonlySet<string>,
+): boolean {
+  return changedTables.size === 1 && changedTables.has(INTERACTION_ONLY_TABLE)
+}
+
+export function resolveStreamingFetchWindow(
+  changedTables: ReadonlySet<string>,
+  state: {
+    newestId: number
+    newestMs: number
+    sortedItems: readonly unknown[]
+  },
+  pageSize: number,
+): { cursor?: PaginationCursor; limit: number } {
+  if (shouldBypassStreamingCursor(changedTables)) {
+    return {
+      cursor: undefined,
+      limit: Math.max(pageSize, state.sortedItems.length + pageSize),
+    }
+  }
+
+  return {
+    cursor: buildStreamingCursor(state),
+    limit: pageSize,
+  }
 }

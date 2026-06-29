@@ -55,6 +55,7 @@ function buildChangeHint(command: SendCommandPayload): ChangeHint | undefined {
       }
     case 'updateStatus':
     case 'updateStatusAction':
+    case 'toggleReaction':
     case 'addNotification':
     case 'bulkAddNotifications':
     case 'updateNotificationStatusAction':

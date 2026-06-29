@@ -5,6 +5,8 @@ import { CURSOR_MARGIN_MS } from '../itemHelpers'
 import {
   aggregateChangedTables,
   buildStreamingCursor,
+  resolveStreamingFetchWindow,
+  shouldBypassStreamingCursor,
 } from '../streamingHelpers'
 
 // --------------- aggregateChangedTables ---------------
@@ -80,5 +82,86 @@ describe('buildStreamingCursor', () => {
     const cursor = buildStreamingCursor({ newestId: 0, newestMs: 5000 })
     expect(cursor).toBeDefined()
     expect(cursor?.value).toBe(5000 - 1)
+  })
+})
+
+// --------------- shouldBypassStreamingCursor ---------------
+
+describe('shouldBypassStreamingCursor', () => {
+  it('post_interactions 単独変更では既存 column item 更新のため cursor を使わない', () => {
+    expect(shouldBypassStreamingCursor(new Set(['post_interactions']))).toBe(
+      true,
+    )
+  })
+
+  it('posts / timeline_entries だけの変更では cursor 差分取得を維持する', () => {
+    expect(
+      shouldBypassStreamingCursor(new Set(['posts', 'timeline_entries'])),
+    ).toBe(false)
+  })
+
+  it('post_interactions が通常 upsert と一緒に来た場合は cursor 差分取得を維持する', () => {
+    expect(
+      shouldBypassStreamingCursor(new Set(['posts', 'post_interactions'])),
+    ).toBe(false)
+  })
+})
+
+// --------------- resolveStreamingFetchWindow ---------------
+
+describe('resolveStreamingFetchWindow', () => {
+  it('post_interactions 単独変更では cursor なしで表示件数より広い window を取得する', () => {
+    const result = resolveStreamingFetchWindow(
+      new Set(['post_interactions']),
+      {
+        newestId: 20,
+        newestMs: 5000,
+        sortedItems: Array.from({ length: 80 }),
+      },
+      40,
+    )
+
+    expect(result).toEqual({
+      cursor: undefined,
+      limit: 120,
+    })
+  })
+
+  it('post_interactions 単独変更で表示中 item がない場合は PAGE_SIZE を維持する', () => {
+    const result = resolveStreamingFetchWindow(
+      new Set(['post_interactions']),
+      {
+        newestId: 20,
+        newestMs: 5000,
+        sortedItems: [],
+      },
+      40,
+    )
+
+    expect(result).toEqual({
+      cursor: undefined,
+      limit: 40,
+    })
+  })
+
+  it('通常 upsert では cursor 付き PAGE_SIZE 取得を維持する', () => {
+    const result = resolveStreamingFetchWindow(
+      new Set(['posts', 'post_interactions']),
+      {
+        newestId: 20,
+        newestMs: 5000,
+        sortedItems: Array.from({ length: 80 }),
+      },
+      40,
+    )
+
+    expect(result).toEqual({
+      cursor: {
+        direction: 'after',
+        field: 'created_at_ms',
+        value: 5000 - CURSOR_MARGIN_MS,
+      },
+      limit: 40,
+    })
   })
 })
