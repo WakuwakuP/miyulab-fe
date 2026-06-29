@@ -37,6 +37,9 @@ export function createPostTables(db: DbExec): void {
     `CREATE UNIQUE INDEX IF NOT EXISTS idx_posts_object_uri ON posts(object_uri) WHERE object_uri != '';`,
   )
   db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_posts_canonical_url ON posts(canonical_url) WHERE canonical_url IS NOT NULL AND canonical_url != '';`,
+  )
+  db.exec(
     `CREATE INDEX IF NOT EXISTS idx_posts_author ON posts(author_profile_id);`,
   )
   db.exec(

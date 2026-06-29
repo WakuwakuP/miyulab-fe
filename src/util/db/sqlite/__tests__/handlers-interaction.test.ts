@@ -34,14 +34,30 @@ vi.mock(
 // ─── 型 ─────────────────────────────────────────────────────────
 
 type ExecCall = { sql: string; opts?: Parameters<DbExecCompat['exec']>[1] }
+type SelectRows = unknown[][]
+type SelectResultProvider = (args: {
+  opts?: Parameters<DbExecCompat['exec']>[1]
+  selectIndex: number
+  sql: string
+}) => SelectRows | undefined
+
+type MockPost = {
+  canonicalUrl?: string | null
+  id: number
+  objectUri?: string
+  reblogOfPostId?: number | null
+}
 
 // ─── Mock DB factory ────────────────────────────────────────────
 
 /**
  * DbExecCompat のモックを作成する。
  * SELECT の returnValue === 'resultRows' のとき、selectResults を順番に返す。
+ * 関数を渡すと SQL/bind に応じた SELECT 結果を返せる。
  */
-function createMockDb(selectResults: unknown[][] = []): {
+function createMockDb(
+  selectResults: SelectRows[] | SelectResultProvider = [],
+): {
   db: DbExecCompat
   calls: ExecCall[]
 } {
@@ -52,7 +68,10 @@ function createMockDb(selectResults: unknown[][] = []): {
     exec: vi.fn((sql: string, opts?: Parameters<DbExecCompat['exec']>[1]) => {
       calls.push({ opts, sql })
       if (opts?.returnValue === 'resultRows') {
-        const result = selectResults[selectIndex]
+        const result =
+          typeof selectResults === 'function'
+            ? selectResults({ opts, selectIndex, sql })
+            : selectResults[selectIndex]
         selectIndex++
         return result !== undefined ? result : []
       }
@@ -61,6 +80,56 @@ function createMockDb(selectResults: unknown[][] = []): {
   }
 
   return { calls, db }
+}
+
+function createInteractionSelectProvider(
+  posts: MockPost[],
+  fallback?: SelectResultProvider,
+): SelectResultProvider {
+  return (args) => {
+    const { opts, sql } = args
+    const bind = opts?.bind ?? []
+
+    if (
+      sql.includes(
+        'SELECT object_uri, canonical_url, reblog_of_post_id FROM posts WHERE id = ?',
+      )
+    ) {
+      const post = posts.find(({ id }) => id === bind[0])
+      return post
+        ? [
+            [
+              post.objectUri ?? '',
+              post.canonicalUrl ?? null,
+              post.reblogOfPostId ?? null,
+            ],
+          ]
+        : []
+    }
+
+    if (sql.includes('WHERE id != ?') && sql.includes('canonical_url = ?')) {
+      const [postId, objectUri, canonicalUrl] = bind
+      return posts
+        .filter((post) => post.id !== postId)
+        .filter((post) => {
+          const sameObjectUri = objectUri !== '' && post.objectUri === objectUri
+          const sameCanonicalUrl =
+            canonicalUrl !== null &&
+            canonicalUrl !== '' &&
+            post.canonicalUrl === canonicalUrl
+          return sameObjectUri || sameCanonicalUrl
+        })
+        .map((post) => [post.id])
+    }
+
+    if (sql.includes('SELECT id FROM posts WHERE reblog_of_post_id = ?')) {
+      return posts
+        .filter((post) => post.reblogOfPostId === bind[0])
+        .map((post) => [post.id])
+    }
+
+    return fallback?.(args)
+  }
 }
 
 // ─── セットアップ ───────────────────────────────────────────────
@@ -149,13 +218,16 @@ describe('handleUpdateStatusAction', () => {
   })
 
   it('リブログ元の投稿にもインタラクションを伝播する', () => {
-    // resolvePostIdInternal → post_id=100
-    // SELECT reblog_of_post_id FROM posts WHERE id = 100 → 50 (元投稿)
-    // SELECT id FROM posts WHERE reblog_of_post_id = 100 → [] (この投稿をリブログした他投稿なし)
-    const { db } = createMockDb([
-      [[50]], // reblog_of_post_id for post 100
-      [], // no posts reblogging post 100
-    ])
+    const { db } = createMockDb(
+      createInteractionSelectProvider([
+        { id: 50, objectUri: 'https://example.com/objects/50' },
+        {
+          id: 100,
+          objectUri: 'https://example.com/objects/100',
+          reblogOfPostId: 50,
+        },
+      ]),
+    )
     vi.mocked(resolvePostIdInternal).mockReturnValue(100)
 
     handleUpdateStatusAction(db, 1, '12345', 'favourited', true)
@@ -183,13 +255,21 @@ describe('handleUpdateStatusAction', () => {
   })
 
   it('このポストを reblog している他の投稿にも伝播する', () => {
-    // resolvePostIdInternal → post_id=100
-    // SELECT reblog_of_post_id FROM posts WHERE id = 100 → null (元投稿なし)
-    // SELECT id FROM posts WHERE reblog_of_post_id = 100 → [200, 300]
-    const { db } = createMockDb([
-      [[null]], // reblog_of_post_id = null
-      [[200], [300]], // posts that reblog post 100
-    ])
+    const { db } = createMockDb(
+      createInteractionSelectProvider([
+        { id: 100, objectUri: 'https://example.com/objects/100' },
+        {
+          id: 200,
+          objectUri: 'https://example.com/objects/200',
+          reblogOfPostId: 100,
+        },
+        {
+          id: 300,
+          objectUri: 'https://example.com/objects/300',
+          reblogOfPostId: 100,
+        },
+      ]),
+    )
     vi.mocked(resolvePostIdInternal).mockReturnValue(100)
 
     handleUpdateStatusAction(db, 1, '12345', 'reblogged', true)
@@ -224,6 +304,91 @@ describe('handleUpdateStatusAction', () => {
       { recordLocalAction: true },
     )
   })
+
+  it('同一 canonical_url の別投稿にも favourite を伝播する', () => {
+    const canonicalUrl = 'https://example.com/@alice/posts/1'
+    const { db } = createMockDb(
+      createInteractionSelectProvider([
+        {
+          canonicalUrl,
+          id: 100,
+          objectUri: 'https://example.com/objects/source',
+        },
+        {
+          canonicalUrl,
+          id: 150,
+          objectUri: 'https://mirror.example/objects/equivalent',
+        },
+      ]),
+    )
+    vi.mocked(resolvePostIdInternal).mockReturnValue(100)
+
+    handleUpdateStatusAction(db, 1, '12345', 'favourited', true)
+
+    expect(updateInteraction).toHaveBeenCalledTimes(2)
+    expect(updateInteraction).toHaveBeenCalledWith(
+      db,
+      100,
+      1,
+      'favourite',
+      true,
+      undefined,
+      { recordLocalAction: true },
+    )
+    expect(updateInteraction).toHaveBeenCalledWith(
+      db,
+      150,
+      1,
+      'favourite',
+      true,
+      undefined,
+      { recordLocalAction: true },
+    )
+  })
+
+  it('同一 canonical_url の元投稿とそれぞれの reblog にも favourite を伝播する', () => {
+    const canonicalUrl = 'https://example.com/@alice/posts/1'
+    const { db } = createMockDb(
+      createInteractionSelectProvider([
+        {
+          canonicalUrl,
+          id: 100,
+          objectUri: 'https://example.com/objects/source',
+        },
+        {
+          canonicalUrl,
+          id: 150,
+          objectUri: 'https://mirror.example/objects/equivalent',
+        },
+        {
+          id: 200,
+          objectUri: 'https://example.com/objects/reblog-source',
+          reblogOfPostId: 100,
+        },
+        {
+          id: 250,
+          objectUri: 'https://mirror.example/objects/reblog-equivalent',
+          reblogOfPostId: 150,
+        },
+      ]),
+    )
+    vi.mocked(resolvePostIdInternal).mockReturnValue(200)
+
+    handleUpdateStatusAction(db, 1, '12345', 'favourited', true)
+
+    expect(updateInteraction).toHaveBeenCalledTimes(4)
+    for (const postId of [200, 100, 150, 250]) {
+      expect(updateInteraction).toHaveBeenCalledWith(
+        db,
+        postId,
+        1,
+        'favourite',
+        true,
+        undefined,
+        { recordLocalAction: true },
+      )
+    }
+  })
 })
 
 // ================================================================
@@ -244,10 +409,11 @@ describe('handleToggleReaction', () => {
 
   it('カスタム絵文字のリアクションを設定する（shortcode → url 解決）', () => {
     // SELECT id, url FROM custom_emojis WHERE server_id = ? AND shortcode = ?
-    const { db } = createMockDb([
-      [],
-      [[42, 'https://example.com/emoji/blobcat.png']],
-    ])
+    const { db } = createMockDb(({ sql }) =>
+      sql.includes('custom_emojis')
+        ? [[42, 'https://example.com/emoji/blobcat.png']]
+        : [],
+    )
     vi.mocked(resolvePostIdInternal).mockReturnValue(100)
 
     const result = handleToggleReaction(db, 1, '12345', true, ':blobcat:')
@@ -285,7 +451,21 @@ describe('handleToggleReaction', () => {
   })
 
   it('reblog からのリアクションを元投稿と同じ元投稿の reblog に伝播する', () => {
-    const { db } = createMockDb([[[50]], [[100], [200]]])
+    const { db } = createMockDb(
+      createInteractionSelectProvider([
+        { id: 50, objectUri: 'https://example.com/objects/50' },
+        {
+          id: 100,
+          objectUri: 'https://example.com/objects/100',
+          reblogOfPostId: 50,
+        },
+        {
+          id: 200,
+          objectUri: 'https://example.com/objects/200',
+          reblogOfPostId: 50,
+        },
+      ]),
+    )
     vi.mocked(resolvePostIdInternal).mockReturnValue(100)
 
     handleToggleReaction(db, 1, '12345', true, '👍')
@@ -297,7 +477,21 @@ describe('handleToggleReaction', () => {
   })
 
   it('元投稿からのリアクションを reblog 投稿にも伝播する', () => {
-    const { db } = createMockDb([[[null]], [[200], [300]]])
+    const { db } = createMockDb(
+      createInteractionSelectProvider([
+        { id: 100, objectUri: 'https://example.com/objects/100' },
+        {
+          id: 200,
+          objectUri: 'https://example.com/objects/200',
+          reblogOfPostId: 100,
+        },
+        {
+          id: 300,
+          objectUri: 'https://example.com/objects/300',
+          reblogOfPostId: 100,
+        },
+      ]),
+    )
     vi.mocked(resolvePostIdInternal).mockReturnValue(100)
 
     handleToggleReaction(db, 1, '12345', true, '👍')
@@ -306,6 +500,31 @@ describe('handleToggleReaction', () => {
     expect(toggleReaction).toHaveBeenCalledWith(db, 100, 1, '👍', null)
     expect(toggleReaction).toHaveBeenCalledWith(db, 200, 1, '👍', null)
     expect(toggleReaction).toHaveBeenCalledWith(db, 300, 1, '👍', null)
+  })
+
+  it('同一 canonical_url の別投稿にもリアクションを伝播する', () => {
+    const canonicalUrl = 'https://example.com/@alice/posts/1'
+    const { db } = createMockDb(
+      createInteractionSelectProvider([
+        {
+          canonicalUrl,
+          id: 100,
+          objectUri: 'https://example.com/objects/source',
+        },
+        {
+          canonicalUrl,
+          id: 150,
+          objectUri: 'https://mirror.example/objects/equivalent',
+        },
+      ]),
+    )
+    vi.mocked(resolvePostIdInternal).mockReturnValue(100)
+
+    handleToggleReaction(db, 1, '12345', true, '👍')
+
+    expect(toggleReaction).toHaveBeenCalledTimes(2)
+    expect(toggleReaction).toHaveBeenCalledWith(db, 100, 1, '👍', null)
+    expect(toggleReaction).toHaveBeenCalledWith(db, 150, 1, '👍', null)
   })
 
   it('投稿が見つからない場合は何もしない', () => {
