@@ -25,6 +25,7 @@ import {
   SetPlayerSettingContext,
 } from 'util/provider/PlayerProvider'
 import { SettingContext } from 'util/provider/SettingProvider'
+import { toSecureResourceUrl } from 'util/secureResourceUrl'
 import {
   extractYouTubeVideoId,
   getDirectEmbedUrl,
@@ -292,7 +293,7 @@ const PlayerController = () => {
   }
 
   const currentAttachment = index == null ? null : attachment[index]
-  const currentUrl = currentAttachment?.url ?? ''
+  const currentUrl = toSecureResourceUrl(currentAttachment?.url) ?? ''
   const currentYouTubeVideoId = extractYouTubeVideoId(currentUrl)
 
   useEffect(() => {

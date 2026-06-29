@@ -25,6 +25,7 @@ import { replaceEmojis } from 'util/emojiReplacer'
 import { GetClient } from 'util/GetClient'
 import { AppsContext } from 'util/provider/AppsProvider'
 import { SetDetailContext } from 'util/provider/DetailProvider'
+import { toSecureResourceUrl } from 'util/secureResourceUrl'
 
 import { Status } from './Status'
 
@@ -226,7 +227,7 @@ export const AccountDetail = ({ account }: { account: AccountAddAppIndex }) => {
           alt="header"
           className="max-h-80 w-full object-cover"
           loading="lazy"
-          src={account.header}
+          src={toSecureResourceUrl(account.header)}
         />
       </div>
       <UserInfo account={account} />

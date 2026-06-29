@@ -5,6 +5,7 @@ import { ProxyImage } from 'app/_parts/ProxyImage'
 import type { Entity } from 'megalodon'
 import * as Emoji from 'node-emoji'
 import type { CSSProperties, KeyboardEvent, ReactNode } from 'react'
+import { toSecureResourceUrl } from 'util/secureResourceUrl'
 
 function selectAutocompleteItem(
   event: KeyboardEvent<HTMLButtonElement>,
@@ -176,7 +177,7 @@ export const EmojiMenu = ({
               alt={char.shortcode}
               className="mr-1 h-6 w-6"
               loading="lazy"
-              src={char.url}
+              src={toSecureResourceUrl(char.url)}
             />
           )}
           <div>:{char.shortcode}:</div>

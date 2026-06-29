@@ -27,6 +27,7 @@ import {
   EmojiCatalogContext,
   EmojiContext,
 } from 'util/provider/ResourceProvider'
+import { toSecureResourceUrl } from 'util/secureResourceUrl'
 
 export const Status = ({
   status,
@@ -310,7 +311,7 @@ export const Status = ({
                 small ? 'w-3 h-3' : 'w-6 h-6',
               ].join(' ')}
               loading="lazy"
-              src={status.account.avatar}
+              src={toSecureResourceUrl(status.account.avatar)}
             />
             <div
               className="pl-2 whitespace-nowrap"

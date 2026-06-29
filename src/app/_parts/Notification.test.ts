@@ -10,7 +10,9 @@ describe('Notification emoji reaction image', () => {
     )
     const emojiImageBlock = source.match(/<img\s+alt="emoji"[\s\S]*?\/>/)?.[0]
 
-    expect(emojiImageBlock).toContain('src={resolvedReactionUrl}')
+    expect(emojiImageBlock).toContain(
+      'src={toSecureResourceUrl(resolvedReactionUrl)}',
+    )
     expect(source).not.toMatch(/<ProxyImage\s+alt="emoji"/)
   })
 })

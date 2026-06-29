@@ -12,6 +12,7 @@ import {
   EmojiCatalogContext,
   EmojiContext,
 } from 'util/provider/ResourceProvider'
+import { toSecureResourceUrl } from 'util/secureResourceUrl'
 
 export const EmojiReactions = ({
   status,
@@ -105,7 +106,7 @@ export const EmojiReactions = ({
                 alt={reaction.name}
                 className="h-7 min-w-5 max-w-24 shrink-0 object-contain"
                 loading="lazy"
-                src={imgUrl}
+                src={toSecureResourceUrl(imgUrl)}
                 title={reaction.name}
               />
             ) : (
