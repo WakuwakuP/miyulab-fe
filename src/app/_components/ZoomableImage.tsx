@@ -1,7 +1,7 @@
 'use client'
 
 import type { Entity } from 'megalodon'
-import { useEffect, useRef } from 'react'
+import { type MouseEventHandler, useEffect, useRef } from 'react'
 import { RiAddLine, RiRefreshLine, RiSubtractLine } from 'react-icons/ri'
 import {
   type ReactZoomPanPinchRef,
@@ -12,10 +12,12 @@ import {
 export const ZoomableImage = ({
   media,
   className,
+  onBackgroundClick,
   onZoomChange,
 }: {
   media: Entity.Attachment
   className?: string
+  onBackgroundClick?: () => void
   onZoomChange?: (isZoomed: boolean) => void
 }) => {
   const transformRef = useRef<ReactZoomPanPinchRef>(null)
@@ -37,8 +39,14 @@ export const ZoomableImage = ({
     }
   }
 
+  const handleBackgroundClick: MouseEventHandler<HTMLDivElement> = (e) => {
+    if (e.target instanceof HTMLImageElement) return
+    if (e.target instanceof Element && e.target.closest('button')) return
+    onBackgroundClick?.()
+  }
+
   return (
-    <div className="relative h-full w-full">
+    <div className="relative h-full w-full" onClick={handleBackgroundClick}>
       <TransformWrapper
         doubleClick={{ mode: 'reset' }}
         initialScale={1}
@@ -69,6 +77,9 @@ export const ZoomableImage = ({
                   className,
                 ].join(' ')}
                 draggable={false}
+                onClick={(e) => {
+                  e.stopPropagation()
+                }}
                 src={media.url ?? media.preview_url ?? undefined}
               />
             </TransformComponent>
