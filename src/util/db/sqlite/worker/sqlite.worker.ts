@@ -309,7 +309,9 @@ function dispatchWorkerRequest(msg: WorkerRequest, db: WorkerDb): void {
         msg.value,
         msg.emoji,
       )
-      sendResponse(msg.id, { ok: true }, r.changedTables)
+      sendResponse(msg.id, { ok: true }, r.changedTables, undefined, {
+        backendUrl: msg.backendUrl,
+      })
       break
     }
 

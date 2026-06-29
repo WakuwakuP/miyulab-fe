@@ -42,7 +42,7 @@ describe('createInitialState', () => {
     expect(s.initialized).toBe(false)
     expect(s.isScrollbackRunning).toBe(false)
     expect(s.hasMoreOlder).toBe(true)
-    expect(s.deferredStreaming).toBe(false)
+    expect(s.deferredChangedTables).toBeNull()
     expect(s.exhaustedResources.size).toBe(0)
   })
 })
@@ -137,25 +137,31 @@ describe('STREAMING_FETCH_SUCCEEDED', () => {
 })
 
 describe('STREAMING_DEFERRED', () => {
-  it('deferredStreaming=true になる', () => {
+  it('changedTables が保持される', () => {
     const s0 = createInitialState()
-    const s1 = dispatch(s0, { type: 'STREAMING_DEFERRED' })
+    const s1 = dispatch(s0, {
+      changedTables: new Set(['post_interactions']),
+      type: 'STREAMING_DEFERRED',
+    })
 
-    expect(s1.deferredStreaming).toBe(true)
+    expect(s1.deferredChangedTables).toEqual(new Set(['post_interactions']))
   })
 })
 
 describe('DEFERRED_STREAMING_FLUSH_SUCCEEDED', () => {
-  it('アイテムがマージされ deferredStreaming=false になる', () => {
+  it('アイテムがマージされ deferredChangedTables=null になる', () => {
     const s0 = createInitialState()
     const items = [makeStatus('1', 100)]
     const s1 = dispatch(
       s0,
-      { type: 'STREAMING_DEFERRED' },
+      {
+        changedTables: new Set(['post_interactions']),
+        type: 'STREAMING_DEFERRED',
+      },
       { items, type: 'DEFERRED_STREAMING_FLUSH_SUCCEEDED' },
     )
 
-    expect(s1.deferredStreaming).toBe(false)
+    expect(s1.deferredChangedTables).toBeNull()
     expect(s1.itemMap.size).toBe(1)
   })
 })
@@ -199,16 +205,19 @@ describe('SCROLLBACK_COMPLETED', () => {
     expect(s1.hasMoreOlder).toBe(false)
   })
 
-  it('deferredStreaming がリセットされる', () => {
+  it('deferredChangedTables がリセットされる', () => {
     const s0 = createInitialState()
     const s1 = dispatch(
       s0,
-      { type: 'STREAMING_DEFERRED' },
+      {
+        changedTables: new Set(['post_interactions']),
+        type: 'STREAMING_DEFERRED',
+      },
       { type: 'SCROLLBACK_STARTED' },
       { hasMoreOlder: true, type: 'SCROLLBACK_COMPLETED' },
     )
 
-    expect(s1.deferredStreaming).toBe(false)
+    expect(s1.deferredChangedTables).toBeNull()
   })
 })
 
@@ -369,7 +378,10 @@ describe('複合シナリオ', () => {
       s0,
       { items: [makeStatus('1', 100)], type: 'INITIAL_FETCH_SUCCEEDED' },
       { type: 'SCROLLBACK_STARTED' },
-      { type: 'STREAMING_DEFERRED' },
+      {
+        changedTables: new Set(['post_interactions']),
+        type: 'STREAMING_DEFERRED',
+      },
       { items: [makeStatus('0', 50)], type: 'SCROLLBACK_DB_SUCCEEDED' },
       { hasMoreOlder: true, type: 'SCROLLBACK_COMPLETED' },
       {
@@ -378,25 +390,33 @@ describe('複合シナリオ', () => {
       },
     )
 
-    expect(s.deferredStreaming).toBe(false)
+    expect(s.deferredChangedTables).toBeNull()
     expect(s.isScrollbackRunning).toBe(false)
     expect(s.itemMap.size).toBe(3)
     expect(s.newestMs).toBe(200)
     expect(s.oldestMs).toBe(50)
   })
 
-  it('scrollback中に複数回 STREAMING_DEFERRED が来ても deferredStreaming は true のまま', () => {
+  it('scrollback中に複数回 STREAMING_DEFERRED が来ると changedTables が union される', () => {
     const s0 = createInitialState()
     const s = dispatch(
       s0,
       { items: [makeStatus('1', 100)], type: 'INITIAL_FETCH_SUCCEEDED' },
       { type: 'SCROLLBACK_STARTED' },
-      { type: 'STREAMING_DEFERRED' },
-      { type: 'STREAMING_DEFERRED' },
-      { type: 'STREAMING_DEFERRED' },
+      {
+        changedTables: new Set(['post_interactions']),
+        type: 'STREAMING_DEFERRED',
+      },
+      { changedTables: new Set(['posts']), type: 'STREAMING_DEFERRED' },
+      {
+        changedTables: new Set(['timeline_entries']),
+        type: 'STREAMING_DEFERRED',
+      },
     )
 
-    expect(s.deferredStreaming).toBe(true)
+    expect(s.deferredChangedTables).toEqual(
+      new Set(['post_interactions', 'posts', 'timeline_entries']),
+    )
     expect(s.isScrollbackRunning).toBe(true)
   })
 
@@ -452,7 +472,10 @@ describe('複合シナリオ', () => {
       // 1回目 scrollback
       { type: 'SCROLLBACK_STARTED' },
       // scrollback 中に streaming 通知
-      { type: 'STREAMING_DEFERRED' },
+      {
+        changedTables: new Set(['post_interactions']),
+        type: 'STREAMING_DEFERRED',
+      },
       // scrollback DB 成功
       { items: [makeStatus('3', 300)], type: 'SCROLLBACK_DB_SUCCEEDED' },
       // scrollback 完了
@@ -479,7 +502,7 @@ describe('複合シナリオ', () => {
     expect(s.oldestMs).toBe(100)
     expect(s.isScrollbackRunning).toBe(false)
     expect(s.hasMoreOlder).toBe(false)
-    expect(s.deferredStreaming).toBe(false)
+    expect(s.deferredChangedTables).toBeNull()
 
     const timestamps = s.sortedItems.map((i) => itemTimestamp(i))
     expect(timestamps).toEqual([800, 700, 600, 500, 400, 300, 200, 100])

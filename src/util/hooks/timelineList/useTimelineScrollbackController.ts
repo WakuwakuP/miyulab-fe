@@ -28,7 +28,7 @@ import {
 } from 'util/timelineFetcher'
 
 import type { TimelineListEvent, TimelineListState } from './reducer'
-import { buildStreamingCursor } from './streamingHelpers'
+import { resolveStreamingFetchWindow } from './streamingHelpers'
 
 const PAGE_SIZE = TIMELINE_QUERY_LIMIT
 
@@ -132,16 +132,24 @@ export function useTimelineScrollbackController({
     } finally {
       // scrollback 完了
       if (stateRef.current.isScrollbackRunning) {
-        const hasDeferredStreaming = stateRef.current.deferredStreaming
+        const flushState = stateRef.current
+        const deferredChangedTables = flushState.deferredChangedTables
         dispatch({
-          hasMoreOlder: stateRef.current.hasMoreOlder,
+          hasMoreOlder: flushState.hasMoreOlder,
           type: 'SCROLLBACK_COMPLETED',
         })
 
-        // 保留されたストリーミング更新を回収（カーソル付き差分取得）
-        if (hasDeferredStreaming) {
-          const cursor = buildStreamingCursor(stateRef.current)
-          fetchPage({ cursor, limit: PAGE_SIZE }).then((result) => {
+        if (deferredChangedTables) {
+          const { cursor, limit } = resolveStreamingFetchWindow(
+            deferredChangedTables,
+            flushState,
+            PAGE_SIZE,
+          )
+          fetchPage({
+            changedTables: deferredChangedTables,
+            cursor,
+            limit,
+          }).then((result) => {
             if (!result) return
             recordDuration(result.durationMs)
             dispatch({

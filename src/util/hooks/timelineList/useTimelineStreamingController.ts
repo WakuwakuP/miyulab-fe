@@ -27,7 +27,7 @@ import type {
 } from 'util/hooks/useTimelineDataSource'
 
 import type { TimelineListEvent, TimelineListState } from './reducer'
-import { buildStreamingCursor } from './streamingHelpers'
+import { resolveStreamingFetchWindow } from './streamingHelpers'
 
 const PAGE_SIZE = TIMELINE_QUERY_LIMIT
 
@@ -64,32 +64,34 @@ export function useTimelineStreamingController({
     const doFetch = (changedTables: ReadonlySet<string>) => {
       pendingFetch = true
       const s = stateRef.current
-      const cursor = buildStreamingCursor(s)
+      const { cursor, limit } = resolveStreamingFetchWindow(
+        changedTables,
+        s,
+        PAGE_SIZE,
+      )
       tlDebug(
         '[TL] onMatched: fetching latest page',
         cursor ? 'with cursor' : 'full',
       )
 
-      fetchPage({ changedTables, cursor, limit: PAGE_SIZE, sessionTag }).then(
-        (result) => {
-          tlDebug(
-            '[TL] onMatched: fetch result',
-            result ? result.items.length : 'null',
-          )
-          if (result) {
-            recordDuration(result.durationMs)
-            dispatch({ items: result.items, type: 'STREAMING_FETCH_SUCCEEDED' })
-          }
+      fetchPage({ changedTables, cursor, limit, sessionTag }).then((result) => {
+        tlDebug(
+          '[TL] onMatched: fetch result',
+          result ? result.items.length : 'null',
+        )
+        if (result) {
+          recordDuration(result.durationMs)
+          dispatch({ items: result.items, type: 'STREAMING_FETCH_SUCCEEDED' })
+        }
 
-          pendingFetch = false
-          // 保留中の変更があればまとめてフェッチ
-          if (coalescedChangedTables) {
-            const merged = coalescedChangedTables
-            coalescedChangedTables = null
-            doFetch(merged)
-          }
-        },
-      )
+        pendingFetch = false
+        // 保留中の変更があればまとめてフェッチ
+        if (coalescedChangedTables) {
+          const merged = coalescedChangedTables
+          coalescedChangedTables = null
+          doFetch(merged)
+        }
+      })
     }
 
     const onMatched = (changedTables: ReadonlySet<string>) => {
@@ -97,7 +99,7 @@ export function useTimelineStreamingController({
       // scrollback 中は保留
       if (s.isScrollbackRunning) {
         tlDebug('[TL] onMatched: deferred (scrollback running)')
-        dispatch({ type: 'STREAMING_DEFERRED' })
+        dispatch({ changedTables, type: 'STREAMING_DEFERRED' })
         return
       }
       // 初期ロード完了前はスキップ

@@ -133,6 +133,7 @@ export function useTimelineDataSource(
       tables.add('notifications')
     } else {
       tables.add('posts')
+      tables.add('post_interactions')
       tables.add('timeline_entries')
     }
     if (basePlan && isQueryPlanV2(basePlan)) {

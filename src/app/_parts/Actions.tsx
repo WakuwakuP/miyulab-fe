@@ -1,7 +1,7 @@
 'use client'
 
 import { EmojiReactionPicker } from 'app/_parts/EmojiReactionPicker'
-import { useCallback, useContext, useRef, useState } from 'react'
+import { useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { FaLock } from 'react-icons/fa'
 import {
   RiBookmark2Fill,
@@ -43,6 +43,18 @@ export const Actions = ({
   const [showReactionPicker, setShowReactionPicker] = useState(false)
   const [triggerRect, setTriggerRect] = useState<DOMRect | null>(null)
   const reactionBtnRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    setReblogged(status.reblogged)
+  }, [status.reblogged])
+
+  useEffect(() => {
+    setFavourited(status.favourited)
+  }, [status.favourited])
+
+  useEffect(() => {
+    setBookmarked(status.bookmarked)
+  }, [status.bookmarked])
 
   const handleReaction = useCallback(
     (emoji: string) => {
