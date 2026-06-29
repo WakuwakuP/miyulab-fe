@@ -24,6 +24,7 @@ import { v2_0_3_migration } from './v2.0.3'
 import { v2_0_4_migration } from './v2.0.4'
 import { v2_0_5_migration } from './v2.0.5'
 import { v2_0_6_migration } from './v2.0.6'
+import { v2_0_7_migration } from './v2.0.7'
 
 export const migrations: Migration[] = [
   v2_0_0_migration,
@@ -33,6 +34,7 @@ export const migrations: Migration[] = [
   v2_0_4_migration,
   v2_0_5_migration,
   v2_0_6_migration,
+  v2_0_7_migration,
 ]
 
 export function runMigrations(

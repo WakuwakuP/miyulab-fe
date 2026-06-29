@@ -231,10 +231,11 @@ describe('スキーマ定義', () => {
       expect(sqlContainsTable(execCalls, 'post_stats')).toBe(true)
     })
 
-    it('posts テーブルに object_uri, author, created, reblog_of, quote_of, reply, origin_server インデックスを作成する', () => {
+    it('posts テーブルに object_uri, canonical_url, author, created, reblog_of, quote_of, reply, origin_server インデックスを作成する', () => {
       const { db, execCalls } = createMockDb()
       createPostTables(db)
       expect(sqlContainsIndex(execCalls, 'idx_posts_object_uri')).toBe(true)
+      expect(sqlContainsIndex(execCalls, 'idx_posts_canonical_url')).toBe(true)
       expect(sqlContainsIndex(execCalls, 'idx_posts_author')).toBe(true)
       expect(sqlContainsIndex(execCalls, 'idx_posts_created')).toBe(true)
       expect(sqlContainsIndex(execCalls, 'idx_posts_reblog_of')).toBe(true)

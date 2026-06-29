@@ -19,32 +19,101 @@ const ACTION_NAME_MAP: Record<string, string> = {
   reblogged: 'reblog',
 }
 
+type PostIdentity = {
+  canonicalUrl: string | null
+  objectUri: string
+  reblogOfPostId: number | null
+}
+
+function resolvePostIdentity(db: DbExec, postId: number): PostIdentity | null {
+  const rows = db.exec(
+    'SELECT object_uri, canonical_url, reblog_of_post_id FROM posts WHERE id = ?;',
+    { bind: [postId], returnValue: 'resultRows' },
+  ) as (string | number | null)[][]
+
+  if (rows.length === 0) return null
+
+  return {
+    canonicalUrl: rows[0][1] as string | null,
+    objectUri: (rows[0][0] as string | null) ?? '',
+    reblogOfPostId: rows[0][2] as number | null,
+  }
+}
+
+function resolveEquivalentPostIds(
+  db: DbExec,
+  postId: number,
+  identity: PostIdentity,
+): number[] {
+  const rows = db.exec(
+    `SELECT id FROM posts
+     WHERE id != ?
+       AND (
+         (object_uri != '' AND object_uri = ?)
+         OR (canonical_url IS NOT NULL AND canonical_url != '' AND canonical_url = ?)
+       );`,
+    {
+      bind: [postId, identity.objectUri, identity.canonicalUrl],
+      returnValue: 'resultRows',
+    },
+  ) as number[][]
+
+  return rows.map((row) => row[0])
+}
+
 function resolveRelatedInteractionPostIds(
   db: DbExec,
   postId: number,
 ): number[] {
-  const related = new Set<number>([postId])
-  const postInfo = db.exec(
-    'SELECT reblog_of_post_id FROM posts WHERE id = ?;',
-    { bind: [postId], returnValue: 'resultRows' },
-  ) as (number | null)[][]
+  const related = new Set<number>()
+  const pendingPostIds: number[] = []
+  const sourcePostIds = new Set<number>()
+  const processedSourcePostIds = new Set<number>()
 
-  if (postInfo.length === 0) {
-    return [...related]
+  function enqueue(candidatePostId: number): void {
+    if (related.has(candidatePostId)) return
+    related.add(candidatePostId)
+    pendingPostIds.push(candidatePostId)
   }
 
-  const reblogOfPostId = postInfo[0][0]
-  const sourcePostId = reblogOfPostId ?? postId
-  if (reblogOfPostId != null) {
-    related.add(reblogOfPostId)
-  }
+  enqueue(postId)
 
-  const reblogRows = db.exec(
-    'SELECT id FROM posts WHERE reblog_of_post_id = ?;',
-    { bind: [sourcePostId], returnValue: 'resultRows' },
-  ) as number[][]
-  for (const row of reblogRows) {
-    related.add(row[0])
+  while (pendingPostIds.length > 0 || sourcePostIds.size > 0) {
+    const nextPostId = pendingPostIds.shift()
+    if (nextPostId !== undefined) {
+      const identity = resolvePostIdentity(db, nextPostId)
+      if (!identity) continue
+
+      if (identity.reblogOfPostId != null) {
+        sourcePostIds.add(identity.reblogOfPostId)
+        enqueue(identity.reblogOfPostId)
+      } else {
+        sourcePostIds.add(nextPostId)
+      }
+
+      for (const equivalentPostId of resolveEquivalentPostIds(
+        db,
+        nextPostId,
+        identity,
+      )) {
+        enqueue(equivalentPostId)
+      }
+      continue
+    }
+
+    const sourcePostId = [...sourcePostIds].find(
+      (id) => !processedSourcePostIds.has(id),
+    )
+    if (sourcePostId === undefined) break
+    processedSourcePostIds.add(sourcePostId)
+
+    const reblogRows = db.exec(
+      'SELECT id FROM posts WHERE reblog_of_post_id = ?;',
+      { bind: [sourcePostId], returnValue: 'resultRows' },
+    ) as number[][]
+    for (const row of reblogRows) {
+      enqueue(row[0])
+    }
   }
 
   return [...related]
