@@ -8,6 +8,7 @@ import {
   TransformComponent,
   TransformWrapper,
 } from 'react-zoom-pan-pinch'
+import { toSecureResourceUrl } from 'util/secureResourceUrl'
 
 export const ZoomableImage = ({
   media,
@@ -30,6 +31,7 @@ export const ZoomableImage = ({
   }, [media.id])
 
   if (media.type !== 'image') return null
+  const imageUrl = toSecureResourceUrl(media.url ?? media.preview_url)
 
   const handleZoomStateChange = (scale: number) => {
     const nowZoomed = scale > 1
@@ -80,7 +82,7 @@ export const ZoomableImage = ({
                 onClick={(e) => {
                   e.stopPropagation()
                 }}
-                src={media.url ?? media.preview_url ?? undefined}
+                src={imageUrl}
               />
             </TransformComponent>
             <div className="absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 gap-2">

@@ -4,6 +4,7 @@ import { type MouseEventHandler, useContext } from 'react'
 
 import { canPlay } from 'util/PlayerUtils'
 import { SetPlayerContext } from 'util/provider/PlayerProvider'
+import { toSecureResourceUrl } from 'util/secureResourceUrl'
 
 export const Card = ({ card }: { card: Entity.Card | null }) => {
   const setPlayer = useContext(SetPlayerContext)
@@ -45,7 +46,7 @@ export const Card = ({ card }: { card: Entity.Card | null }) => {
         <img
           alt="card"
           className="aspect-video w-full rounded-t-lg object-cover"
-          src={card.image}
+          src={toSecureResourceUrl(card.image)}
         />
       )}
       <div className="w-full px-2">

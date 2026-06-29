@@ -14,6 +14,7 @@ import {
   EmojiCatalogContext,
   EmojiContext,
 } from 'util/provider/ResourceProvider'
+import { toSecureResourceUrl } from 'util/secureResourceUrl'
 
 const AvatarPlaceholder = () => (
   <div className="h-12 w-12 flex-none rounded-lg bg-gray-600" />
@@ -46,7 +47,7 @@ const ReactionDisplay = ({
       className="h-12 max-w-full flex-none rounded-lg object-contain"
       decoding="async"
       loading="lazy"
-      src={resolvedReactionUrl}
+      src={toSecureResourceUrl(resolvedReactionUrl)}
       title={reactionName}
     />
   )

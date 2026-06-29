@@ -1,6 +1,7 @@
 import type { Entity } from 'megalodon'
 import type { HTMLProps } from 'react'
 import { RiPlayCircleLine } from 'react-icons/ri'
+import { toSecureResourceUrl } from 'util/secureResourceUrl'
 
 export const Media = ({
   media,
@@ -15,6 +16,10 @@ export const Media = ({
   className?: HTMLProps<HTMLElement>['className']
   fullSize?: boolean
 }) => {
+  const mediaUrl = toSecureResourceUrl(media.url) ?? ''
+  const previewUrl = toSecureResourceUrl(media.preview_url)
+  const remoteUrl = toSecureResourceUrl(media.remote_url)
+
   if (scrolling)
     return (
       <div
@@ -38,11 +43,7 @@ export const Media = ({
           onClick={() => {
             if (onClick != null) onClick()
           }}
-          src={
-            fullSize
-              ? (media.remote_url ?? media.url)
-              : (media.preview_url ?? media.url)
-          }
+          src={fullSize ? (remoteUrl ?? mediaUrl) : (previewUrl ?? mediaUrl)}
           width={1920}
         />
       )
@@ -63,7 +64,7 @@ export const Media = ({
             className="h-full w-full object-contain"
             key={media.id}
             muted
-            src={media.url}
+            src={mediaUrl}
           />
           <div className="absolute left-0 top-0 h-full w-full bg-black/50">
             <RiPlayCircleLine
@@ -90,7 +91,7 @@ export const Media = ({
             className="h-full w-full object-contain"
             key={media.id}
             muted
-            src={media.url}
+            src={mediaUrl}
           />
           <div className="absolute left-0 top-0 h-full w-full bg-black/50">
             <RiPlayCircleLine
@@ -110,7 +111,7 @@ export const Media = ({
             if (onClick != null) onClick()
           }}
         >
-          <audio className="w-full" controls key={media.id} src={media.url} />
+          <audio className="w-full" controls key={media.id} src={mediaUrl} />
           <button
             className="absolute left-0 top-0 z-1 h-full w-full border-0 bg-transparent p-0"
             onClick={(e) => {

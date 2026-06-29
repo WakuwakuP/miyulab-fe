@@ -1,5 +1,6 @@
 import type { Entity } from 'megalodon'
 import { escapeHtml } from 'util/escapeHtml'
+import { toSecureResourceUrl } from 'util/secureResourceUrl'
 
 /**
  * Replace custom emoji shortcodes (`:name:`) in a string with `<img>` tags,
@@ -12,9 +13,10 @@ export function replaceEmojis(
 ): string {
   let result = text
   for (const emoji of emojis) {
+    const emojiUrl = toSecureResourceUrl(emoji.url) ?? ''
     result = result.replace(
       new RegExp(`:${escapeForRegex(emoji.shortcode)}:`, 'gm'),
-      `<img src="${escapeHtml(emoji.url)}" alt="${escapeHtml(emoji.shortcode)}" title=":${escapeHtml(emoji.shortcode)}:" class="${className}" loading="lazy" />`,
+      `<img src="${escapeHtml(emojiUrl)}" alt="${escapeHtml(emoji.shortcode)}" title=":${escapeHtml(emoji.shortcode)}:" class="${className}" loading="lazy" />`,
     )
   }
   return result
