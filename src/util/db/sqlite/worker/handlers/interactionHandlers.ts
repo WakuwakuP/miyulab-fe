@@ -19,6 +19,37 @@ const ACTION_NAME_MAP: Record<string, string> = {
   reblogged: 'reblog',
 }
 
+function resolveRelatedInteractionPostIds(
+  db: DbExec,
+  postId: number,
+): number[] {
+  const related = new Set<number>([postId])
+  const postInfo = db.exec(
+    'SELECT reblog_of_post_id FROM posts WHERE id = ?;',
+    { bind: [postId], returnValue: 'resultRows' },
+  ) as (number | null)[][]
+
+  if (postInfo.length === 0) {
+    return [...related]
+  }
+
+  const reblogOfPostId = postInfo[0][0]
+  const sourcePostId = reblogOfPostId ?? postId
+  if (reblogOfPostId != null) {
+    related.add(reblogOfPostId)
+  }
+
+  const reblogRows = db.exec(
+    'SELECT id FROM posts WHERE reblog_of_post_id = ?;',
+    { bind: [sourcePostId], returnValue: 'resultRows' },
+  ) as number[][]
+  for (const row of reblogRows) {
+    related.add(row[0])
+  }
+
+  return [...related]
+}
+
 export function handleUpdateStatusAction(
   db: DbExec,
   localAccountId: number,
@@ -32,40 +63,19 @@ export function handleUpdateStatusAction(
   const normalizedAction = ACTION_NAME_MAP[action]
   if (!normalizedAction) return { changedTables: [] }
 
-  // 自分自身のインタラクションを更新
-  updateInteraction(db, postId, localAccountId, normalizedAction, value)
-
-  // リブログチェーン: reblog_of_post_id から関連投稿を更新
-  const postInfo = db.exec(
-    'SELECT reblog_of_post_id FROM posts WHERE id = ?;',
-    { bind: [postId], returnValue: 'resultRows' },
-  ) as (number | null)[][]
-
-  if (postInfo.length > 0) {
-    const reblogOfPostId = postInfo[0][0]
-
-    // リブログ元の投稿もインタラクションを伝播
-    if (reblogOfPostId != null) {
-      updateInteraction(
-        db,
-        reblogOfPostId,
-        localAccountId,
-        normalizedAction,
-        value,
-      )
-    }
-
-    // このポストを reblog している他の投稿にも伝播
-    const reblogRows = db.exec(
-      'SELECT id FROM posts WHERE reblog_of_post_id = ?;',
-      { bind: [postId], returnValue: 'resultRows' },
-    ) as number[][]
-    for (const row of reblogRows) {
-      updateInteraction(db, row[0], localAccountId, normalizedAction, value)
-    }
+  for (const relatedPostId of resolveRelatedInteractionPostIds(db, postId)) {
+    updateInteraction(
+      db,
+      relatedPostId,
+      localAccountId,
+      normalizedAction,
+      value,
+      undefined,
+      { recordLocalAction: true },
+    )
   }
 
-  return { changedTables: ['posts'] }
+  return { changedTables: ['posts', 'post_interactions'] }
 }
 
 export function handleToggleReaction(
@@ -77,11 +87,14 @@ export function handleToggleReaction(
 ): HandlerResult {
   const postId = resolvePostIdInternal(db, localAccountId, localId)
   if (postId === undefined) return { changedTables: [] }
+  const relatedPostIds = resolveRelatedInteractionPostIds(db, postId)
 
   // value=false の場合はリアクションをクリア
   if (!value) {
-    toggleReaction(db, postId, localAccountId, null, null)
-    return { changedTables: ['posts'] }
+    for (const relatedPostId of relatedPostIds) {
+      toggleReaction(db, relatedPostId, localAccountId, null, null)
+    }
+    return { changedTables: ['posts', 'post_interactions'] }
   }
 
   const isCustom = emoji.startsWith(':') && emoji.endsWith(':')
@@ -95,11 +108,15 @@ export function handleToggleReaction(
     ) as (number | string)[][]
 
     const url = rows.length > 0 ? (rows[0][1] as string) : null
-    toggleReaction(db, postId, localAccountId, shortcode, url)
+    for (const relatedPostId of relatedPostIds) {
+      toggleReaction(db, relatedPostId, localAccountId, shortcode, url)
+    }
   } else {
     // Unicode 絵文字
-    toggleReaction(db, postId, localAccountId, emoji, null)
+    for (const relatedPostId of relatedPostIds) {
+      toggleReaction(db, relatedPostId, localAccountId, emoji, null)
+    }
   }
 
-  return { changedTables: ['posts'] }
+  return { changedTables: ['posts', 'post_interactions'] }
 }

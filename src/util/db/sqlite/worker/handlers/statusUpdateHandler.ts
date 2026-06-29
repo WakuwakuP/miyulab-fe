@@ -39,6 +39,8 @@ import {
 } from './statusHelpers'
 import type { DbExec, HandlerResult, WrittenTableCollector } from './types'
 
+const STALE_INTERACTION_FALSE_PROTECTION_MS = 60_000
+
 function resolveUpdateTargetPostId(
   db: DbExec,
   status: Entity.Status,
@@ -90,17 +92,39 @@ function syncStatusInteractions(
   if (status.favourited === true) {
     updateInteraction(db, postId, localAccountId, 'favourite', true, collector)
   } else if (status.favourited === false) {
-    updateInteraction(db, postId, localAccountId, 'favourite', false, collector)
+    updateInteraction(
+      db,
+      postId,
+      localAccountId,
+      'favourite',
+      false,
+      collector,
+      {
+        preserveRecentLocalTrueMs: STALE_INTERACTION_FALSE_PROTECTION_MS,
+      },
+    )
   }
   if (status.reblogged === true) {
     updateInteraction(db, postId, localAccountId, 'reblog', true, collector)
   } else if (status.reblogged === false) {
-    updateInteraction(db, postId, localAccountId, 'reblog', false, collector)
+    updateInteraction(db, postId, localAccountId, 'reblog', false, collector, {
+      preserveRecentLocalTrueMs: STALE_INTERACTION_FALSE_PROTECTION_MS,
+    })
   }
   if (status.bookmarked === true) {
     updateInteraction(db, postId, localAccountId, 'bookmark', true, collector)
   } else if (status.bookmarked === false) {
-    updateInteraction(db, postId, localAccountId, 'bookmark', false, collector)
+    updateInteraction(
+      db,
+      postId,
+      localAccountId,
+      'bookmark',
+      false,
+      collector,
+      {
+        preserveRecentLocalTrueMs: STALE_INTERACTION_FALSE_PROTECTION_MS,
+      },
+    )
   }
 }
 

@@ -30,6 +30,7 @@ import type { Entity } from 'megalodon'
 import type { BatchMaps } from './statusBatch'
 import {
   editedAtMsToIso,
+  mergeLocalReaction,
   parseBatchPoll,
   parseEmojiReactions,
   parseEmojis,
@@ -112,7 +113,10 @@ export function assembleStatusFromBatch(
       content: (row[26] as string) ?? '',
       created_at: row[34] ? new Date(row[34] as number).toISOString() : '',
       edited_at: editedAtMsToIso(rbEditedAtMs),
-      emoji_reactions: parseEmojiReactions(rbEmojiReactionsJson),
+      emoji_reactions: mergeLocalReaction(
+        parseEmojiReactions(rbEmojiReactionsJson),
+        rbInteractions,
+      ),
       emojis: parseEmojis(rbCustomEmojisJson),
       favourited: rbInteractions?.is_favourited === 1,
       favourites_count: (row[46] as number) ?? 0,
@@ -180,7 +184,10 @@ export function assembleStatusFromBatch(
     created_at_ms: row[3] as number,
     edited_at: editedAtMsToIso(editedAtMs),
     edited_at_ms: editedAtMs,
-    emoji_reactions: parseEmojiReactions(emojiReactionsJson),
+    emoji_reactions: mergeLocalReaction(
+      parseEmojiReactions(emojiReactionsJson),
+      interactions,
+    ),
     emojis: parseEmojis(customEmojisJson),
     favourited: interactions?.is_favourited === 1,
     favourites_count: (row[24] as number) ?? 0,

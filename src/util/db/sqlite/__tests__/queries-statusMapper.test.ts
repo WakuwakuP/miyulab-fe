@@ -27,7 +27,7 @@ import { describe, expect, it } from 'vitest'
  *   [16] author_display   [17] author_avatar    [18] author_header
  *   [19] author_locked    [20] author_bot       [21] author_url
  *   [22] replies_count    [23] reblogs_count    [24] favourites_count
- *   [25] engagements_csv  [26] media_json       [27] mentions_json
+ *   [25] interactions_json [26] media_json      [27] mentions_json
  *   [28] timelineTypes    [29] belongingTags
  *   [30] status_emojis_json [31] account_emojis_json
  *   [32] poll_json
@@ -39,7 +39,7 @@ import { describe, expect, it } from 'vitest'
  *   [46] rb_author_display [47] rb_author_avatar [48] rb_author_header
  *   [49] rb_author_locked [50] rb_author_bot    [51] rb_author_url
  *   [52] rb_replies_count [53] rb_reblogs_count [54] rb_favourites_count
- *   [55] rb_engagements_csv [56] rb_media_json  [57] rb_mentions_json
+ *   [55] rb_interactions_json [56] rb_media_json [57] rb_mentions_json
  *   [58] rb_status_emojis_json [59] rb_account_emojis_json
  *   [60] rb_poll_json     [61] rb_local_id
  *   [62] author_account_id [63] rb_author_account_id
@@ -73,7 +73,7 @@ function makeRow(): (string | number | null)[] {
   row[22] = 3 // replies_count
   row[23] = 5 // reblogs_count
   row[24] = 10 // favourites_count
-  row[25] = null // engagements_csv
+  row[25] = null // interactions_json
   row[62] = '' // author_account_id
   return row
 }
@@ -233,6 +233,39 @@ describe('rowToStoredStatus', () => {
 
     expect(result.visibility).toBe('unlisted')
   })
+
+  it('rowToStoredStatus が local reaction を emoji_reactions に反映する', () => {
+    const row = makeRow()
+    row[25] = JSON.stringify({
+      is_bookmarked: 0,
+      is_favourited: 1,
+      is_muted: 0,
+      is_pinned: 0,
+      is_reblogged: 0,
+      my_reaction_name: '👍',
+      my_reaction_url: null,
+    })
+    row[64] = JSON.stringify([
+      {
+        account_ids: [],
+        count: 2,
+        me: false,
+        name: '👍',
+      },
+    ])
+
+    const result = rowToStoredStatus(row)
+
+    expect(result.favourited).toBe(true)
+    expect(result.emoji_reactions).toEqual([
+      {
+        account_ids: [],
+        count: 2,
+        me: true,
+        name: '👍',
+      },
+    ])
+  })
 })
 
 // ─── assembleStatusFromBatch ────────────────────────────────────
@@ -261,6 +294,123 @@ describe('assembleStatusFromBatch', () => {
     expect(result.favourited).toBe(true)
     expect(result.reblogged).toBe(false)
     expect(result.bookmarked).toBe(true)
+  })
+
+  it('ローカル reaction を既存 emoji_reactions に反映する', () => {
+    const row = makeBaseRow()
+    const postId = row[0] as number
+    row[50] = JSON.stringify([
+      {
+        account_ids: [],
+        count: 2,
+        me: false,
+        name: '👍',
+      },
+    ])
+
+    const interactionsJson = JSON.stringify({
+      is_bookmarked: 0,
+      is_favourited: 0,
+      is_muted: 0,
+      is_pinned: 0,
+      is_reblogged: 0,
+      my_reaction_name: '👍',
+      my_reaction_url: null,
+    })
+    const maps = makeMaps({
+      interactionsMap: new Map([[postId, interactionsJson]]),
+    })
+
+    const result = assembleStatusFromBatch(row, maps)
+
+    expect(result.emoji_reactions).toEqual([
+      {
+        account_ids: [],
+        count: 2,
+        me: true,
+        name: '👍',
+      },
+    ])
+  })
+
+  it('ローカル reaction が payload にない場合 emoji_reactions に追加する', () => {
+    const row = makeBaseRow()
+    const postId = row[0] as number
+    row[50] = '[]'
+
+    const interactionsJson = JSON.stringify({
+      is_bookmarked: 0,
+      is_favourited: 0,
+      is_muted: 0,
+      is_pinned: 0,
+      is_reblogged: 0,
+      my_reaction_name: 'blobcat',
+      my_reaction_url: 'https://example.com/emoji/blobcat.png',
+    })
+    const maps = makeMaps({
+      interactionsMap: new Map([[postId, interactionsJson]]),
+    })
+
+    const result = assembleStatusFromBatch(row, maps)
+
+    expect(result.emoji_reactions).toEqual([
+      {
+        account_ids: [],
+        count: 1,
+        me: true,
+        name: 'blobcat',
+        static_url: 'https://example.com/emoji/blobcat.png',
+        url: 'https://example.com/emoji/blobcat.png',
+      },
+    ])
+  })
+
+  it('reblog 元のローカル reaction を reblog.emoji_reactions に反映する', () => {
+    const row = makeBaseRow()
+    row[11] = 1
+    row[25] = 77
+    row[26] = '<p>Reblogged</p>'
+    row[27] = ''
+    row[28] = 'https://example.com/@bob/777'
+    row[29] = 'en'
+    row[30] = 'public'
+    row[31] = 0
+    row[32] = null
+    row[33] = null
+    row[34] = 1700000100000
+    row[35] = 'https://example.com/users/bob/statuses/777'
+    row[36] = 'bob'
+    row[37] = 'bob'
+    row[38] = 'Bob'
+    row[39] = 'https://example.com/bob-avatar.png'
+    row[40] = 'https://example.com/bob-header.png'
+    row[41] = 0
+    row[42] = 0
+    row[43] = 'https://example.com/@bob'
+    row[44] = 0
+    row[45] = 0
+    row[46] = 0
+    row[47] = '777'
+    row[51] = JSON.stringify([{ count: 1, me: false, name: '🔥' }])
+
+    const interactionsJson = JSON.stringify({
+      is_bookmarked: 0,
+      is_favourited: 0,
+      is_muted: 0,
+      is_pinned: 0,
+      is_reblogged: 0,
+      my_reaction_name: '🔥',
+      my_reaction_url: null,
+    })
+    const maps = makeMaps({
+      interactionsMap: new Map([[77, interactionsJson]]),
+    })
+
+    const result = assembleStatusFromBatch(row, maps)
+
+    expect(result.reblog?.emoji_reactions).toEqual([
+      { count: 1, me: true, name: '🔥' },
+    ])
   })
 
   it('assembleStatusFromBatch が mentions に username と url を含める', () => {

@@ -332,6 +332,7 @@ describe('handleUpdateStatus', () => {
       'favourite',
       false,
       expect.anything(),
+      { preserveRecentLocalTrueMs: 60_000 },
     )
     expect(helpersModule.updateInteraction).toHaveBeenCalledWith(
       db,
@@ -340,6 +341,7 @@ describe('handleUpdateStatus', () => {
       'reblog',
       false,
       expect.anything(),
+      { preserveRecentLocalTrueMs: 60_000 },
     )
     expect(helpersModule.updateInteraction).toHaveBeenCalledWith(
       db,
@@ -348,6 +350,7 @@ describe('handleUpdateStatus', () => {
       'bookmark',
       false,
       expect.anything(),
+      { preserveRecentLocalTrueMs: 60_000 },
     )
   })
 
