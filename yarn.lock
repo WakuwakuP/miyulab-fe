@@ -2741,12 +2741,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/node@npm:^26.0.1":
-  version: 26.0.1
-  resolution: "@types/node@npm:26.0.1"
+"@types/node@npm:^26.1.0":
+  version: 26.1.0
+  resolution: "@types/node@npm:26.1.0"
   dependencies:
     undici-types: "npm:~8.3.0"
-  checksum: 10c0/31d204333c70124da6bcac7d1f27d8980149fe3f95a8419bfcd19c3e5823705c0e370d71ac34399352e1263b2d5fc41c87af964ec81e5a05a32224d65d8d224e
+  checksum: 10c0/61c22ad1ef215e24138cb8b7368fb68bab9de4c123b3f23d411749b015ba1b7d22f878ad54add26a0b69068d7e07c04af665069d8571b6c6c3b9b2fb73b7bd91
   languageName: node
   linkType: hard
 
@@ -5478,12 +5478,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"lucide-react@npm:^1.22.0":
-  version: 1.22.0
-  resolution: "lucide-react@npm:1.22.0"
+"lucide-react@npm:^1.23.0":
+  version: 1.23.0
+  resolution: "lucide-react@npm:1.23.0"
   peerDependencies:
     react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
-  checksum: 10c0/6d7066773c2d5f1a3e8f274d4544d2e6fb133f284c843ce89c041c7d2d6e265e5bed48c057724553405bdc4c943547642ceac25c2b807d5efbb1e75d0127de92
+  checksum: 10c0/1cb2108d81c9713e20dd1beb7b6ac5bfc17307d5f38388f84921cf6a124efb4b933c73929bede42f00bd08aa2df340b0904acdf4fb90206ccd52971e943e775b
   languageName: node
   linkType: hard
 
@@ -5794,7 +5794,7 @@ __metadata:
     "@radix-ui/react-tooltip": "npm:^1.2.10"
     "@sqlite.org/sqlite-wasm": "npm:^3.53.0-build1"
     "@tailwindcss/postcss": "npm:^4.3.1"
-    "@types/node": "npm:^26.0.1"
+    "@types/node": "npm:^26.1.0"
     "@types/pg": "npm:^8.20.0"
     "@types/react": "npm:^19.2.17"
     "@types/react-dom": "npm:^19.2.3"
@@ -5818,7 +5818,7 @@ __metadata:
     husky: "npm:9.1.7"
     jquery: "npm:^4.0.0"
     lint-staged: "npm:^17.0.8"
-    lucide-react: "npm:^1.22.0"
+    lucide-react: "npm:^1.23.0"
     megalodon: "npm:^10.3.0"
     mfm-js: "npm:^0.26.0"
     misskey-js: "npm:^2026.6.1-alpha.1"
@@ -5831,7 +5831,7 @@ __metadata:
     react-dropzone: "npm:^15.0.0"
     react-hook-form: "npm:^7.80.0"
     react-hot-toast: "npm:^2.6.0"
-    react-icons: "npm:^5.6.0"
+    react-icons: "npm:^5.7.0"
     react-innertext: "npm:^1.1.5"
     react-player: "npm:^3.4.0"
     react-virtuoso: "npm:^4.18.10"
@@ -6590,12 +6590,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"react-icons@npm:^5.6.0":
-  version: 5.6.0
-  resolution: "react-icons@npm:5.6.0"
+"react-icons@npm:^5.7.0":
+  version: 5.7.0
+  resolution: "react-icons@npm:5.7.0"
   peerDependencies:
     react: "*"
-  checksum: 10c0/addba1ebfd45cdf7f69291d0c93df64fca1271cfdb66df657abd223e3451c73356b035f50e75858627dd182b02129596c79eaaaa45d32eb52658e443a992645c
+  checksum: 10c0/cc5ae92e61ef9d8fc83cb3f3ac2710deab9174c5831bdaf2a94b099acfc91074a60d4b3adfd3165dcb9b21799ca6c760b3f4f6596d75198c1ed2ea44240818c8
   languageName: node
   linkType: hard
 
