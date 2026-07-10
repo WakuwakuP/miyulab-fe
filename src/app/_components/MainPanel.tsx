@@ -8,6 +8,7 @@ import { UserInfo } from 'app/_parts/UserInfo'
 import type { Entity } from 'megalodon'
 import { useCallback, useContext, useEffect, useState } from 'react'
 import { RiCloseCircleLine, RiPlayFill } from 'react-icons/ri'
+import { containsHashtag } from 'util/containsHashtag'
 import { replaceEmojis } from 'util/emojiReplacer'
 import { GetClient } from 'util/GetClient'
 import { canPlay } from 'util/PlayerUtils'
@@ -58,6 +59,7 @@ export const MainPanel = () => {
 
   const [mediaLink, setMediaLink] = useState('')
   const [isPlay, setIsPlay] = useState(false)
+  const [showPublicConfirm, setShowPublicConfirm] = useState(false)
 
   const resetForm = () => {
     setVisibility(defaultStatusVisibility)
@@ -66,6 +68,7 @@ export const MainPanel = () => {
     setContent('')
     setReplyTo(undefined)
     setAttachments([])
+    setShowPublicConfirm(false)
   }
 
   const getContentFormatted = (status: Entity.Status) =>
@@ -83,7 +86,9 @@ export const MainPanel = () => {
     return getContentFormatted(replyTo)
   }
 
-  const clickPost = () => {
+  const submitPost = (visibilityOverride?: Entity.StatusVisibility) => {
+    setShowPublicConfirm(false)
+
     if (apps.length <= 0) return
     if (content === '') return
     if (apps[selectedAppIndex] == null) return
@@ -97,13 +102,26 @@ export const MainPanel = () => {
         media_ids:
           attachments.length > 0 ? attachments.map((a) => a.id) : undefined,
         spoiler_text: isCW ? spoilerText : undefined,
-        visibility: visibility,
+        visibility: visibilityOverride ?? visibility,
       })
       .catch((error) => {
         console.error('Failed to post status:', error)
       })
 
     resetForm()
+  }
+
+  const clickPost = () => {
+    if (apps.length <= 0) return
+    if (content === '') return
+    if (apps[selectedAppIndex] == null) return
+
+    if (containsHashtag(content) && visibility !== 'public') {
+      setShowPublicConfirm(true)
+      return
+    }
+
+    submitPost()
   }
 
   useEffect(() => {
@@ -337,6 +355,44 @@ export const MainPanel = () => {
             </button>
           </div>
         </div>
+        {showPublicConfirm && (
+          <div className="absolute inset-0 z-10">
+            <button
+              aria-label="Close"
+              className="absolute inset-0 h-full w-full bg-black/60"
+              onClick={() => setShowPublicConfirm(false)}
+              type="button"
+            />
+            <div className="absolute left-1/2 top-1/2 w-[min(100%-1rem,20rem)] -translate-x-1/2 -translate-y-1/2 rounded-md border bg-gray-600 p-6 text-center">
+              <div className="pb-4">Publicに変更しますか？</div>
+              <div className="flex flex-col gap-2">
+                <button
+                  className="rounded-md border bg-gray-900 px-4 py-2"
+                  onClick={() => setShowPublicConfirm(false)}
+                  type="button"
+                >
+                  戻る
+                </button>
+                <button
+                  className="rounded-md border bg-gray-900 px-4 py-2"
+                  onClick={() => submitPost()}
+                  type="button"
+                >
+                  そのまま送信
+                </button>
+                {visibility !== 'direct' && (
+                  <button
+                    className="rounded-md border bg-gray-900 px-4 py-2"
+                    onClick={() => submitPost('public')}
+                    type="button"
+                  >
+                    Publicで送信
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </Panel>
   )
