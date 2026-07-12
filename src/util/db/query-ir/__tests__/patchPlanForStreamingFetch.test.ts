@@ -240,7 +240,9 @@ describe('patchPlanForStreamingFetch', () => {
     const patched = patchPlanForStreamingFetch(plan, 50, afterCursor, changed)
     const posts = patched.nodes.find((n) => n.id === 'get-posts')
     const notif = patched.nodes.find((n) => n.id === 'get-notif')
+    // biome-ignore lint/correctness/noUnsafeOptionalChaining: test assertion
     expect((posts?.node as GetIdsNode).cursor).toBeDefined()
+    // biome-ignore lint/correctness/noUnsafeOptionalChaining: test assertion
     expect((notif?.node as GetIdsNode).cursor).toBeUndefined()
   })
 
