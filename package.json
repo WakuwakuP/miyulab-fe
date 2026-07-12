@@ -15,7 +15,7 @@
     "@radix-ui/react-tooltip": "^1.2.12",
     "@sqlite.org/sqlite-wasm": "^3.53.0-build1",
     "@vercel/analytics": "^2.0.1",
-    "@xyflow/react": "^12.11.1",
+    "@xyflow/react": "^12.11.2",
     "@zenstackhq/orm": "^3.8.1",
     "@zenstackhq/schema": "^3.8.1",
     "browser-image-compression": "^2.0.2",
