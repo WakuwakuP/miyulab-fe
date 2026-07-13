@@ -5818,7 +5818,7 @@ __metadata:
     react-player: "npm:^3.4.0"
     react-virtuoso: "npm:^4.18.10"
     react-zoom-pan-pinch: "npm:^4.0.3"
-    rich-textarea: "npm:0.27.0"
+    rich-textarea: "npm:0.27.1"
     sharp: "npm:^0.35.3"
     slick-carousel: "npm:^1.8.1"
     tailwind-merge: "npm:^3.6.0"
@@ -6790,12 +6790,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"rich-textarea@npm:0.27.0":
-  version: 0.27.0
-  resolution: "rich-textarea@npm:0.27.0"
+"rich-textarea@npm:0.27.1":
+  version: 0.27.1
+  resolution: "rich-textarea@npm:0.27.1"
   peerDependencies:
     react: ">=16.14.0"
-  checksum: 10c0/3461b1a0fb7af5aa65eeeeecded9402495a28bad9d29faf93f781d68b5818a7370bf335744bb8ed2e257f197542d75b428cae81d2d7963d409d2d0ed4045898c
+  checksum: 10c0/4c9b2f6f95a2e9e57e0403a72b5c93e9daae7377cc8f90ac1d84d14da0df44e75dad8830e9a6bbf284e3d77b46ce4e80524717649a069025579915624af0b466
   languageName: node
   linkType: hard
 
