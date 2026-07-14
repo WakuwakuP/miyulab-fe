@@ -5,7 +5,6 @@ import type { Entity } from 'megalodon'
 import React, {
   type ChangeEventHandler,
   type MouseEventHandler,
-  useCallback,
   useContext,
   useEffect,
   useEffectEvent,
@@ -19,6 +18,15 @@ import { RiCloseCircleLine, RiPauseFill, RiPlayFill } from 'react-icons/ri'
 import ReactPlayer from 'react-player'
 
 import {
+  getPlayerControlCapabilities,
+  getPlayerSizeTokens,
+  isPlayableAttachmentType,
+  type PlayerMediaMode,
+  type PlayerSizeTokens,
+  resolvePlayerMediaMode,
+  shouldIgnorePlayerKeydownTarget,
+} from 'util/playerMediaMode'
+import {
   PlayerContext,
   PlayerSettingContext,
   SetPlayerContext,
@@ -26,42 +34,7 @@ import {
 } from 'util/provider/PlayerProvider'
 import { SettingContext } from 'util/provider/SettingProvider'
 import { toSecureResourceUrl } from 'util/secureResourceUrl'
-import {
-  extractYouTubeVideoId,
-  getDirectEmbedUrl,
-  isExternalVideo,
-} from 'util/videoEmbed'
-
-const playableTypes = ['audio', 'video', 'gifv'] as Readonly<
-  Entity.Attachment['type'][]
->
-
-function isEditableKeyboardTarget(target: EventTarget | null): boolean {
-  return (
-    target instanceof HTMLInputElement ||
-    target instanceof HTMLSelectElement ||
-    target instanceof HTMLTextAreaElement
-  )
-}
-
-function shouldIgnorePlayerKeydown(
-  event: KeyboardEvent,
-  playerRoot: HTMLElement | null,
-): boolean {
-  const target = event.target
-  if (!(target instanceof Node)) return true
-  if (isEditableKeyboardTarget(target)) return true
-  if (
-    target instanceof HTMLElement &&
-    target.closest('[data-autocomplete-menu]') != null
-  ) {
-    return true
-  }
-  if (!playerRoot?.contains(target)) return true
-  // Space はフォーカス中のボタンに任せる（二重トグル防止）
-  if (event.code === 'Space' && target instanceof HTMLButtonElement) return true
-  return false
-}
+import { extractYouTubeVideoId, getDirectEmbedUrl } from 'util/videoEmbed'
 
 function seekPlayed(
   player: React.RefObject<HTMLVideoElement | null>,
@@ -78,57 +51,76 @@ function seekPlayed(
   })
 }
 
-type PlayerSizeClasses = { h: string; w: string }
+function toggleNativePlayback(
+  player: React.RefObject<HTMLVideoElement | null>,
+  setPlaying: React.Dispatch<React.SetStateAction<boolean>>,
+) {
+  const el = player.current
+  if (el == null) {
+    // Ref may be unset on first paint or right after src change; fall back
+    // to the controlled `playing` prop so the gesture still toggles playback.
+    setPlaying((prev) => !prev)
+    return
+  }
+  if (el.paused) {
+    void el.play()
+    setPlaying(true)
+  } else {
+    el.pause()
+    setPlaying(false)
+  }
+}
 
 function renderPlayableMedia({
   attachment,
   classNamePlayerSize,
   currentUrl,
   currentYouTubeVideoId,
-  externalEmbedFailed,
   handleProgress,
+  mediaMode,
   onExternalEmbedError,
   player,
   playing,
   volume,
 }: {
   attachment: Entity.Attachment
-  classNamePlayerSize: PlayerSizeClasses
+  classNamePlayerSize: PlayerSizeTokens
   currentUrl: string
   currentYouTubeVideoId: string | null
-  externalEmbedFailed: boolean
   handleProgress: (event: React.SyntheticEvent<HTMLVideoElement>) => void
+  mediaMode: PlayerMediaMode
   onExternalEmbedError: () => void
   player: React.RefObject<HTMLVideoElement | null>
   playing: boolean
   volume: number
 }): React.ReactNode {
-  if (!playableTypes.includes(attachment.type)) {
+  if (!isPlayableAttachmentType(attachment.type)) {
     return null
   }
 
-  if (!isExternalVideo(currentUrl)) {
+  if (mediaMode === 'native') {
     return (
       <ReactPlayer
         className="aspect-video"
-        height={attachment.type === 'audio' ? 0 : classNamePlayerSize.h}
+        height={attachment.type === 'audio' ? 0 : classNamePlayerSize.hPx}
         loop
         onTimeUpdate={handleProgress}
         playing={playing}
         ref={player}
         src={currentUrl}
         volume={volume}
-        width={'100%'}
+        width="100%"
       />
     )
   }
 
-  if (externalEmbedFailed) {
+  if (mediaMode === 'fallback') {
     return (
       <div
-        className={['relative aspect-video w-full', classNamePlayerSize.h].join(
-          ' ',
-        )}
+        className={[
+          'relative aspect-video w-full',
+          classNamePlayerSize.hClass,
+        ].join(' ')}
       >
         {currentYouTubeVideoId == null ? (
           <div className="h-full w-full bg-black" />
@@ -154,19 +146,25 @@ function renderPlayableMedia({
     )
   }
 
-  return (
-    <iframe
-      allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
-      allowFullScreen
-      className={['aspect-video w-full', classNamePlayerSize.h].join(' ')}
-      // @ts-expect-error -- credentialless is a valid HTML attribute but not yet in React's type definitions
-      credentialless=""
-      onError={onExternalEmbedError}
-      src={getDirectEmbedUrl(currentUrl) ?? currentUrl}
-      style={{ border: 'none' }}
-      title="Video player"
-    />
-  )
+  if (mediaMode === 'iframe') {
+    return (
+      <iframe
+        allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
+        allowFullScreen
+        className={['aspect-video w-full', classNamePlayerSize.hClass].join(
+          ' ',
+        )}
+        // @ts-expect-error -- credentialless is a valid HTML attribute but not yet in React's type definitions
+        credentialless=""
+        onError={onExternalEmbedError}
+        src={getDirectEmbedUrl(currentUrl) ?? currentUrl}
+        style={{ border: 'none' }}
+        title="Video player"
+      />
+    )
+  }
+
+  return null
 }
 
 const PlayerController = () => {
@@ -178,33 +176,50 @@ const PlayerController = () => {
 
   const player = useRef<HTMLVideoElement>(null)
   const playerRootRef = useRef<HTMLDivElement>(null)
-  const [playing, setPlaying] = useState<boolean>(false)
-  const [played, setPlayed] = useState<number>(0)
-  const [seeking, setSeeking] = useState<boolean>(false)
+  const [playing, setPlaying] = useState(false)
+  const [played, setPlayed] = useState(0)
+  const [seeking, setSeeking] = useState(false)
   const [externalEmbedFailed, setExternalEmbedFailed] = useState(false)
 
-  const classNamePlayerSize = useMemo(() => {
-    switch (playerSize) {
-      case 'small':
-        return { h: 'h-[180px]', w: 'w-[320px]' }
-      case 'medium':
-        return { h: 'h-[360px]', w: 'w-[640px]' }
-      case 'large':
-        return { h: 'h-[460px]', w: 'w-[820px]' }
-    }
-  }, [playerSize])
+  const classNamePlayerSize = useMemo(
+    () => getPlayerSizeTokens(playerSize),
+    [playerSize],
+  )
 
-  const onClickPlay = () => {
-    setPlaying((prev) => !prev)
+  const currentAttachment = index == null ? null : attachment[index]
+  const currentUrl = toSecureResourceUrl(currentAttachment?.url) ?? ''
+  const [trackedUrl, setTrackedUrl] = useState(currentUrl)
+  const currentYouTubeVideoId = extractYouTubeVideoId(currentUrl)
+  const mediaMode = resolvePlayerMediaMode({
+    attachmentType: currentAttachment?.type,
+    currentUrl,
+    externalEmbedFailed,
+  })
+  const controls = getPlayerControlCapabilities(mediaMode, attachment.length)
+
+  // Reset playback state while rendering so the first paint after a track
+  // switch never keeps `playing={true}` with the new src (avoids a blip).
+  if (currentUrl !== trackedUrl) {
+    setTrackedUrl(currentUrl)
+    if (currentUrl !== '') {
+      setExternalEmbedFailed(false)
+      setPlayed(0)
+      setPlaying(false)
+    }
   }
 
-  const onClickClose = useCallback(() => {
+  const onClickPlay = () => {
+    if (!controls.canPlayPause) return
+    toggleNativePlayback(player, setPlaying)
+  }
+
+  const onClickClose = () => {
     setPlaying(false)
     setAttachment({
       attachment: [],
       index: null,
     })
-  }, [setAttachment])
+  }
 
   const handleSeekMouseDown: MouseEventHandler<HTMLInputElement> = () => {
     setSeeking(true)
@@ -215,35 +230,39 @@ const PlayerController = () => {
   }
 
   const onKeyDown = useEffectEvent((e: KeyboardEvent) => {
-    if (shouldIgnorePlayerKeydown(e, playerRootRef.current)) return
-
-    const canSeekNativePlayer =
-      currentAttachment != null &&
-      playableTypes.includes(currentAttachment.type) &&
-      (!isExternalVideo(currentUrl) || externalEmbedFailed)
+    if (shouldIgnorePlayerKeydownTarget(e.target)) return
+    // Space はフォーカス中のボタンに任せる（二重トグル防止）
+    if (e.code === 'Space' && e.target instanceof HTMLButtonElement) return
 
     switch (e.code) {
-      case 'Space':
+      case 'Escape':
         e.preventDefault()
-        setPlaying((prev) => !prev)
+        onClickClose()
+        break
+      case 'Space':
+        if (!controls.canPlayPause) break
+        e.preventDefault()
+        toggleNativePlayback(player, setPlaying)
         break
       case 'ArrowLeft':
-        if (!canSeekNativePlayer) break
+        if (!controls.canSeek) break
         e.preventDefault()
         seekPlayed(player, -0.1, setPlayed)
         break
       case 'ArrowRight':
-        if (!canSeekNativePlayer) break
+        if (!controls.canSeek) break
         e.preventDefault()
         seekPlayed(player, 0.1, setPlayed)
         break
       case 'ArrowUp':
+        if (!controls.canVolume) break
         e.preventDefault()
         setPlayerSetting((prev) => ({
           volume: Math.min(1, prev.volume + 0.05),
         }))
         break
       case 'ArrowDown':
+        if (!controls.canVolume) break
         e.preventDefault()
         setPlayerSetting((prev) => ({
           volume: Math.max(0, prev.volume - 0.05),
@@ -259,6 +278,11 @@ const PlayerController = () => {
     }
   }, [])
 
+  useEffect(() => {
+    if (currentUrl === '') return
+    playerRootRef.current?.focus({ preventScroll: true })
+  }, [currentUrl])
+
   const handleSeekMouseUp: MouseEventHandler<HTMLInputElement> = () => {
     setSeeking(false)
     if (player.current != null && player.current.duration > 0) {
@@ -270,8 +294,7 @@ const PlayerController = () => {
     if (!seeking && event.currentTarget != null) {
       const video = event.currentTarget
       if (video.duration > 0) {
-        const played = video.currentTime / video.duration
-        setPlayed(played)
+        setPlayed(video.currentTime / video.duration)
       }
     }
   }
@@ -292,28 +315,15 @@ const PlayerController = () => {
     })
   }
 
-  const currentAttachment = index == null ? null : attachment[index]
-  const currentUrl = toSecureResourceUrl(currentAttachment?.url) ?? ''
-  const currentYouTubeVideoId = extractYouTubeVideoId(currentUrl)
-
-  useEffect(() => {
-    if (currentUrl === '') return
-    setExternalEmbedFailed(false)
-  }, [currentUrl])
-
   if (currentAttachment == null) return null
-
-  const canSeekNativePlayer =
-    playableTypes.includes(currentAttachment.type) &&
-    (!isExternalVideo(currentUrl) || externalEmbedFailed)
 
   const playableMedia = renderPlayableMedia({
     attachment: currentAttachment,
     classNamePlayerSize,
     currentUrl,
     currentYouTubeVideoId,
-    externalEmbedFailed,
     handleProgress,
+    mediaMode,
     onExternalEmbedError: () => {
       setExternalEmbedFailed(true)
     },
@@ -325,15 +335,19 @@ const PlayerController = () => {
   return (
     <div
       className={[
-        'fixed bottom-0 right-0 z-40 max-w-full',
-        classNamePlayerSize.w,
+        'fixed bottom-0 right-0 z-40 max-w-full outline-none',
+        classNamePlayerSize.wClass,
       ].join(' ')}
       data-player
       ref={playerRootRef}
+      tabIndex={-1}
     >
-      <div className=" bg-black" onClick={onClickPlay}>
+      <div
+        className="bg-black"
+        onClick={controls.canPlayPause ? onClickPlay : undefined}
+      >
         {playableMedia}
-        {'image' === currentAttachment.type && (
+        {currentAttachment.type === 'image' && (
           <img
             alt={currentAttachment.description ?? ''}
             className="h-full w-full object-contain"
@@ -343,13 +357,19 @@ const PlayerController = () => {
       </div>
       <div className="box-border flex h-12 items-center space-x-px bg-gray-500 pt-[2px]">
         <button
-          className="flex h-12 w-12 shrink-0 items-center justify-center bg-gray-800 hover:bg-gray-500"
+          className="flex h-12 w-12 shrink-0 items-center justify-center bg-gray-800 hover:bg-gray-500 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-gray-800"
+          disabled={!controls.canPlayPause}
           onClick={onClickPlay}
+          title={
+            controls.canPlayPause
+              ? undefined
+              : 'Use the embedded player controls'
+          }
           type="button"
         >
           {playing ? <RiPauseFill size={30} /> : <RiPlayFill size={30} />}
         </button>
-        {attachment.length > 1 && (
+        {controls.canPrevNext && (
           <>
             <button
               className="flex h-12 w-12 shrink-0 items-center justify-center bg-gray-800 hover:bg-gray-500"
@@ -369,8 +389,8 @@ const PlayerController = () => {
         )}
         <div className="flex h-12 w-full shrink bg-gray-800">
           <input
-            className="w-full"
-            disabled={!canSeekNativePlayer}
+            className="w-full disabled:cursor-not-allowed disabled:opacity-40"
+            disabled={!controls.canSeek}
             max="0.9999999"
             min="0"
             onChange={handleSeekChange}
@@ -383,7 +403,8 @@ const PlayerController = () => {
         </div>
         <div className="flex h-12 w-32 shrink-0 bg-gray-800">
           <input
-            className="w-32"
+            className="w-32 disabled:cursor-not-allowed disabled:opacity-40"
+            disabled={!controls.canVolume}
             max="1"
             min="0"
             onChange={(e) => {
