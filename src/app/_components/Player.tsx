@@ -56,7 +56,12 @@ function toggleNativePlayback(
   setPlaying: React.Dispatch<React.SetStateAction<boolean>>,
 ) {
   const el = player.current
-  if (el == null) return
+  if (el == null) {
+    // Ref may be unset on first paint or right after src change; fall back
+    // to the controlled `playing` prop so the gesture still toggles playback.
+    setPlaying((prev) => !prev)
+    return
+  }
   if (el.paused) {
     void el.play()
     setPlaying(true)
@@ -183,6 +188,7 @@ const PlayerController = () => {
 
   const currentAttachment = index == null ? null : attachment[index]
   const currentUrl = toSecureResourceUrl(currentAttachment?.url) ?? ''
+  const [trackedUrl, setTrackedUrl] = useState(currentUrl)
   const currentYouTubeVideoId = extractYouTubeVideoId(currentUrl)
   const mediaMode = resolvePlayerMediaMode({
     attachmentType: currentAttachment?.type,
@@ -190,6 +196,17 @@ const PlayerController = () => {
     externalEmbedFailed,
   })
   const controls = getPlayerControlCapabilities(mediaMode, attachment.length)
+
+  // Reset playback state while rendering so the first paint after a track
+  // switch never keeps `playing={true}` with the new src (avoids a blip).
+  if (currentUrl !== trackedUrl) {
+    setTrackedUrl(currentUrl)
+    if (currentUrl !== '') {
+      setExternalEmbedFailed(false)
+      setPlayed(0)
+      setPlaying(false)
+    }
+  }
 
   const onClickPlay = () => {
     if (!controls.canPlayPause) return
@@ -263,9 +280,6 @@ const PlayerController = () => {
 
   useEffect(() => {
     if (currentUrl === '') return
-    setExternalEmbedFailed(false)
-    setPlayed(0)
-    setPlaying(false)
     playerRootRef.current?.focus({ preventScroll: true })
   }, [currentUrl])
 
