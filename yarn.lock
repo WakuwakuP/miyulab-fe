@@ -4526,6 +4526,26 @@ __metadata:
   languageName: node
   linkType: hard
 
+"foglamp@npm:^0.7.1":
+  version: 0.7.1
+  resolution: "foglamp@npm:0.7.1"
+  dependencies:
+    uuidv7: "npm:^1.2.1"
+  peerDependencies:
+    ai: ^4 || ^5 || ^6 || ^7.0.0-beta.1
+    react: ^18 || ^19
+    react-dom: ^18 || ^19
+  peerDependenciesMeta:
+    react:
+      optional: true
+    react-dom:
+      optional: true
+  bin:
+    foglamp: dist/cli.mjs
+  checksum: 10c0/02e4bb65bbb5bfbb11ff1e69026a0aa3619996ba066cfeca9f92a767293f6c73f1aedd5218d600f5da2b4857d3a33feb139cd9f8fec3ba1d6defecfc7502cb5e
+  languageName: node
+  linkType: hard
+
 "follow-redirects@npm:^1.15.11":
   version: 1.16.0
   resolution: "follow-redirects@npm:1.16.0"
@@ -5795,6 +5815,7 @@ __metadata:
     domelementtype: "npm:^3.0.0"
     embla-carousel-react: "npm:^8.6.0"
     emoji-picker-react: "npm:^4.19.1"
+    foglamp: "npm:^0.7.1"
     globals: "npm:^17.7.0"
     html-react-parser: "npm:^6.1.4"
     husky: "npm:9.1.7"
@@ -7808,6 +7829,15 @@ __metadata:
   bin:
     uuid: dist/esm/bin/uuid
   checksum: 10c0/9e3af58eba872ece5a5e76f4773a94fc78a0ef2c2444c38dbe6b42f41dadf76c01850fd783604f27986f6195e6286aef064d45987d401b2a33127b98ddf7c0c5
+  languageName: node
+  linkType: hard
+
+"uuidv7@npm:^1.2.1":
+  version: 1.2.1
+  resolution: "uuidv7@npm:1.2.1"
+  bin:
+    uuidv7: cli.js
+  checksum: 10c0/adaf3387f10435efccf5ab6bb23344228c5737f98137619dc53521d2325522536218449175a0f2b1b13c4ffb846448cbcc4fb667bebf0457392a0b7bb35004a8
   languageName: node
   linkType: hard
 
