@@ -27,6 +27,7 @@ yarn-error.log*
 
 # local env files
 .env*.local
+.env
 
 # vercel
 .vercel
@@ -35,11 +36,10 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-.vercel
-
 certificates
 
 plans/*
 !plans/.gitkeep
 
-.env
+# foglamp scan artifacts (editToken is a secret)
+.foglamp/
