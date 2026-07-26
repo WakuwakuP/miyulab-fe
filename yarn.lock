@@ -4643,10 +4643,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"globals@npm:^17.7.0":
-  version: 17.7.0
-  resolution: "globals@npm:17.7.0"
-  checksum: 10c0/e83f791acf537b85fa1632ac48a45432a1999a61acd9f955b5c2145f66d6b5000a7945029874b6184fa2dfac8d33af03885a5a7ffa457866f1bcf0b40d0c1291
+"globals@npm:^17.8.0":
+  version: 17.8.0
+  resolution: "globals@npm:17.8.0"
+  checksum: 10c0/e31b36cef3befd446487674dc6ca7b8f8e62a3b76aadd975dbf80ffa732366b3ac58df8941999eb6b1406d97480103711db85d2a49c955da47ff5ec688bee9b5
   languageName: node
   linkType: hard
 
@@ -5285,9 +5285,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"lint-staged@npm:^17.1.0":
-  version: 17.1.0
-  resolution: "lint-staged@npm:17.1.0"
+"lint-staged@npm:^17.2.0":
+  version: 17.2.0
+  resolution: "lint-staged@npm:17.2.0"
   dependencies:
     picomatch: "npm:^4.0.5"
     string-argv: "npm:^0.3.2"
@@ -5298,7 +5298,7 @@ __metadata:
       optional: true
   bin:
     lint-staged: bin/lint-staged.js
-  checksum: 10c0/70d09008f7fb1b451e52ff6743f3d562b9c4d694ea5a6c038159ac11bbff1bb887952fc78ff3ca74af064bf95388a762c1ec32c0a6c3fd47509a29be13b9f013
+  checksum: 10c0/47eb70637304faa5c723a7adee4f7699a78f928b710b09f167240642285656cf0987b316e3ad4ca34bda10466fbad7a1cb4922cfbf470e5ad0d836eb384f2809
   languageName: node
   linkType: hard
 
@@ -5346,12 +5346,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"lucide-react@npm:^1.25.0":
-  version: 1.25.0
-  resolution: "lucide-react@npm:1.25.0"
+"lucide-react@npm:^1.27.0":
+  version: 1.27.0
+  resolution: "lucide-react@npm:1.27.0"
   peerDependencies:
     react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
-  checksum: 10c0/66eb6f82926547ad7086a410c3ce912307e776c75a495c7ae9d68d96ab58abfb61124b6da5c398cdbf820539830ccc8dabfe9960a06b9e0d43670adba822d4b1
+  checksum: 10c0/18b078fed81124ee3535350c8aa1718945c94fe87d7f76c815cb49bdf39ed49f6fa53fb9b3aa56653dc8ca3523ea91c76cf3040dfb8b3497b1e6356b29f3e5c9
   languageName: node
   linkType: hard
 
@@ -5615,14 +5615,14 @@ __metadata:
   languageName: node
   linkType: hard
 
-"misskey-js@npm:^2026.7.0-beta.1":
-  version: 2026.7.0-beta.1
-  resolution: "misskey-js@npm:2026.7.0-beta.1"
+"misskey-js@npm:^2026.7.0-beta.6":
+  version: 2026.7.0-beta.6
+  resolution: "misskey-js@npm:2026.7.0-beta.6"
   dependencies:
     "@simplewebauthn/browser": "npm:13.3.0"
     eventemitter3: "npm:5.0.4"
     reconnecting-websocket: "npm:4.4.0"
-  checksum: 10c0/333dd7db91874179d03ac882a0eafdc3943ac938e7be3fe3d77d92b09df57e74f5076293c26b40ef17a1a77cc861fc0eb6ed8b3c60d40748edc7c447dbaf5108
+  checksum: 10c0/b94fdf84fcad9ade2974f508e07a9c1e83cc7722d1b0775bcff2769c1464e885b5c2c7f0d1f8f0cd16523c1691066e52c8a80922d6c7772f29308ed0771bfd0b
   languageName: node
   linkType: hard
 
@@ -5674,15 +5674,15 @@ __metadata:
     domelementtype: "npm:^3.0.0"
     embla-carousel-react: "npm:^8.6.0"
     emoji-picker-react: "npm:^4.19.1"
-    globals: "npm:^17.7.0"
+    globals: "npm:^17.8.0"
     html-react-parser: "npm:^6.1.5"
     husky: "npm:9.1.7"
     jquery: "npm:^4.0.0"
-    lint-staged: "npm:^17.1.0"
-    lucide-react: "npm:^1.25.0"
+    lint-staged: "npm:^17.2.0"
+    lucide-react: "npm:^1.27.0"
     megalodon: "npm:^10.3.0"
     mfm-js: "npm:^0.26.0"
-    misskey-js: "npm:^2026.7.0-beta.1"
+    misskey-js: "npm:^2026.7.0-beta.6"
     next: "npm:^16.2.12"
     node-emoji: "npm:^2.2.0"
     pg: "npm:^8.22.0"
@@ -5690,7 +5690,7 @@ __metadata:
     react: "npm:19.2.8"
     react-dom: "npm:19.2.8"
     react-dropzone: "npm:^19.1.1"
-    react-hook-form: "npm:^7.82.0"
+    react-hook-form: "npm:^7.83.0"
     react-hot-toast: "npm:^2.6.0"
     react-icons: "npm:^5.7.0"
     react-innertext: "npm:^1.1.5"
@@ -6436,12 +6436,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"react-hook-form@npm:^7.82.0":
-  version: 7.82.0
-  resolution: "react-hook-form@npm:7.82.0"
+"react-hook-form@npm:^7.83.0":
+  version: 7.83.0
+  resolution: "react-hook-form@npm:7.83.0"
   peerDependencies:
     react: ^16.8.0 || ^17 || ^18 || ^19
-  checksum: 10c0/89a3f775a9f2503a2ba4586e6080ddcb435331ef2fcf8cb3d2b29e69386fe21c387b94d8b7000d968357c354dcbf38f650bedeec319971d99c67249a6eec9137
+  checksum: 10c0/3a1cfbb6bd614833675e1db1c079e05dc51c4f26c5259424023846a380de22d51748a755032a9983af492d25cbe98c524eecadce3c75e6997ff136e7538be06e
   languageName: node
   linkType: hard
 
