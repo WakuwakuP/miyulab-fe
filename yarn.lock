@@ -5614,14 +5614,14 @@ __metadata:
   languageName: node
   linkType: hard
 
-"misskey-js@npm:^2026.7.0-alpha.6":
-  version: 2026.7.0-alpha.6
-  resolution: "misskey-js@npm:2026.7.0-alpha.6"
+"misskey-js@npm:^2026.7.0-beta.1":
+  version: 2026.7.0-beta.1
+  resolution: "misskey-js@npm:2026.7.0-beta.1"
   dependencies:
     "@simplewebauthn/browser": "npm:13.3.0"
     eventemitter3: "npm:5.0.4"
     reconnecting-websocket: "npm:4.4.0"
-  checksum: 10c0/ef737087a479ca98862888077ba5d36a816f3a18df04ac55cba2d8f22d17ab3bc5ea0d9f6646670478caa85048399f13c16c9e37cf3794cc7510be600ca3c45a
+  checksum: 10c0/333dd7db91874179d03ac882a0eafdc3943ac938e7be3fe3d77d92b09df57e74f5076293c26b40ef17a1a77cc861fc0eb6ed8b3c60d40748edc7c447dbaf5108
   languageName: node
   linkType: hard
 
@@ -5681,7 +5681,7 @@ __metadata:
     lucide-react: "npm:^1.25.0"
     megalodon: "npm:^10.3.0"
     mfm-js: "npm:^0.26.0"
-    misskey-js: "npm:^2026.7.0-alpha.6"
+    misskey-js: "npm:^2026.7.0-beta.1"
     next: "npm:^16.2.10"
     node-emoji: "npm:^2.2.0"
     pg: "npm:^8.22.0"
