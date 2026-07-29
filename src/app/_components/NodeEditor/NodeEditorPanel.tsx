@@ -7,7 +7,7 @@
 // FilterNode[] をビジュアルにカード表示し、追加・削除・編集を可能にする。
 // 下部に SQL プレビューを表示する。
 
-import { useCallback, useMemo } from 'react'
+import { useCallback, useMemo, useRef } from 'react'
 import type { ResolvedAccount } from 'util/accountResolver'
 import { nodesToWhere } from 'util/db/query-ir/compat/nodesToWhere'
 import type { FilterNode } from 'util/db/query-ir/nodes'
@@ -25,6 +25,11 @@ type NodeEditorPanelProps = {
   onChange: (nodes: FilterNode[]) => void
 }
 
+type NodeKeyEntry = {
+  key: string
+  node: FilterNode
+}
+
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
@@ -34,6 +39,49 @@ export function NodeEditorPanel({
   nodes,
   onChange,
 }: NodeEditorPanelProps) {
+  const nodeKeyStateRef = useRef<{ entries: NodeKeyEntry[]; nextId: number }>({
+    entries: [],
+    nextId: 0,
+  })
+
+  const nodeItems = useMemo(() => {
+    const keyState = nodeKeyStateRef.current
+    const previousEntries = keyState.entries
+    const usedPreviousIndexes = new Set<number>()
+
+    const entries = nodes.map((node, nodeIndex) => {
+      const currentEntry = previousEntries[nodeIndex]
+
+      if (currentEntry?.node === node) {
+        usedPreviousIndexes.add(nodeIndex)
+        return { key: currentEntry.key, node }
+      }
+
+      const matchingIndex = previousEntries.findIndex(
+        (entry, previousIndex) =>
+          !usedPreviousIndexes.has(previousIndex) && entry.node === node,
+      )
+
+      if (matchingIndex !== -1) {
+        usedPreviousIndexes.add(matchingIndex)
+        return { key: previousEntries[matchingIndex].key, node }
+      }
+
+      if (previousEntries.length === nodes.length && currentEntry) {
+        usedPreviousIndexes.add(nodeIndex)
+        return { key: currentEntry.key, node }
+      }
+
+      const key = `filter-node-${keyState.nextId}`
+      keyState.nextId += 1
+      return { key, node }
+    })
+
+    keyState.entries = entries
+
+    return entries.map((entry, index) => ({ ...entry, index }))
+  }, [nodes])
+
   const handleUpdate = useCallback(
     (index: number, updated: FilterNode) => {
       const next = [...nodes]
@@ -76,11 +124,10 @@ export function NodeEditorPanel({
         </div>
       ) : (
         <div className="space-y-2">
-          {nodes.map((node, index) => (
+          {nodeItems.map(({ index, key, node }) => (
             <NodeCard
               accounts={accounts}
-              // biome-ignore lint/suspicious/noArrayIndexKey: nodes don't have stable IDs
-              key={index}
+              key={key}
               node={node}
               onRemove={() => handleRemove(index)}
               onUpdate={(updated) => handleUpdate(index, updated)}
