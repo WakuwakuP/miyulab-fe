@@ -166,6 +166,7 @@ export const Status = ({
         return (
           <a
             {...attributesToProps(node.attribs)}
+            href={node.attribs.href ?? '#'}
             onClick={(e) => {
               e.stopPropagation()
               e.preventDefault()
