@@ -11,9 +11,6 @@
 
 import type { SlowQueryLogEntry, SlowQueryLogMessage } from './protocol'
 
-// biome-ignore lint/suspicious/noExplicitAny: sqlite-wasm types are not exact
-type RawDb = any
-
 /** スローログの閾値（ミリ秒） */
 const SLOW_QUERY_THRESHOLD_MS = 1000
 
@@ -102,7 +99,8 @@ function sanitizeBind(bind: (string | number | null)[] | undefined): string {
  * @param durationMs - 実行にかかった時間（ミリ秒）
  */
 export function logSlowQueryExplain(
-  db: RawDb,
+  // biome-ignore lint/suspicious/noExplicitAny: sqlite-wasm types are not exact
+  db: any,
   sql: string,
   bind: (string | number | null)[] | undefined,
   durationMs: number,
