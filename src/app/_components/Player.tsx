@@ -4,6 +4,7 @@
 import type { Entity } from 'megalodon'
 import React, {
   type ChangeEventHandler,
+  type KeyboardEventHandler,
   type MouseEventHandler,
   useContext,
   useEffect,
@@ -214,6 +215,15 @@ const PlayerController = () => {
     toggleNativePlayback(player, setPlaying)
   }
 
+  const handleMediaKeyDown: KeyboardEventHandler<HTMLDivElement> = (e) => {
+    if (!controls.canPlayPause || e.currentTarget !== e.target) return
+    if (e.key !== 'Enter' && e.key !== ' ') return
+
+    e.preventDefault()
+    e.stopPropagation()
+    onClickPlay()
+  }
+
   const onClickClose = () => {
     setPlaying(false)
     setAttachment({
@@ -346,6 +356,9 @@ const PlayerController = () => {
       <div
         className="bg-black"
         onClick={controls.canPlayPause ? onClickPlay : undefined}
+        onKeyDown={controls.canPlayPause ? handleMediaKeyDown : undefined}
+        role={controls.canPlayPause ? 'button' : undefined}
+        tabIndex={controls.canPlayPause ? 0 : undefined}
       >
         {playableMedia}
         {currentAttachment.type === 'image' && (
