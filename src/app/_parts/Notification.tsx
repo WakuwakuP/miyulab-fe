@@ -135,6 +135,7 @@ export const Notification = ({
         </div>
       )
     case 'mention':
+    case 'status':
       return (
         <div className="ml-1 mt-2 box-border border-b-2 border-l-2 border-green-500 pl-2">
           {notification.status != null && (
@@ -441,22 +442,6 @@ export const Notification = ({
               </span>
             </button>
           </h3>
-        </div>
-      )
-    case 'status':
-      return (
-        <div className="ml-1 mt-2 box-border border-b-2 border-l-2 border-green-500 pl-2">
-          {notification.status != null && (
-            <Status
-              scrolling={scrolling}
-              status={
-                {
-                  ...notification.status,
-                  appIndex: notification.appIndex,
-                } as StatusAddAppIndex
-              }
-            />
-          )}
         </div>
       )
     default:
