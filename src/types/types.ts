@@ -337,10 +337,3 @@ export type TimelineSettingsV2 = {
   /** 設定バージョン（マイグレーション判定用） */
   version: 2
 }
-
-// ========================================
-// Backward-compatible aliases
-// ========================================
-
-/** @deprecated TimelineSettingsV2 を使用してください */
-export type TimelineSettings = TimelineSettingsV2

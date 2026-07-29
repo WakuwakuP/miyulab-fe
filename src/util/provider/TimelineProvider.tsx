@@ -9,10 +9,10 @@ import {
   useState,
 } from 'react'
 
-import type { TimelineSettings } from 'types/types'
+import type { TimelineSettingsV2 } from 'types/types'
 import { isV2Settings } from 'util/migration/migrateTimeline'
 
-const initialTimelineSettings: TimelineSettings = {
+const initialTimelineSettings: TimelineSettingsV2 = {
   timelines: [
     {
       backendFilter: { mode: 'all' },
@@ -62,8 +62,8 @@ const initialTimelineSettings: TimelineSettings = {
  * customQuery は Advanced Query モード時のみ保持する。
  */
 function cleanupNonAdvancedCustomQuery(
-  settings: TimelineSettings,
-): TimelineSettings {
+  settings: TimelineSettingsV2,
+): TimelineSettingsV2 {
   let changed = false
   const timelines = settings.timelines.map((tl) => {
     if (!tl.advancedQuery && tl.customQuery != null) {
@@ -76,19 +76,19 @@ function cleanupNonAdvancedCustomQuery(
   return changed ? { ...settings, timelines } : settings
 }
 
-export const TimelineContext = createContext<TimelineSettings>(
+export const TimelineContext = createContext<TimelineSettingsV2>(
   initialTimelineSettings,
 )
 
 export const SetTimelineContext = createContext<
-  Dispatch<SetStateAction<TimelineSettings>>
+  Dispatch<SetStateAction<TimelineSettingsV2>>
 >(() => {})
 
 export const TimelineProvider = ({
   children,
 }: Readonly<{ children: ReactNode }>) => {
   const [storageLoading, setStorageLoading] = useState<boolean>(true)
-  const [timelineSettings, setTimelineSettings] = useState<TimelineSettings>(
+  const [timelineSettings, setTimelineSettings] = useState<TimelineSettingsV2>(
     initialTimelineSettings,
   )
 
@@ -123,7 +123,7 @@ export const TimelineProvider = ({
     if (storageLoading) {
       return
     }
-    const toSave: TimelineSettings = {
+    const toSave: TimelineSettingsV2 = {
       timelines: timelineSettings.timelines,
       version: 2,
     }
