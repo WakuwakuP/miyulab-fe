@@ -509,7 +509,6 @@ function upsertSingleStatus(
     ensureReblogOriginalPost(
       db,
       status.reblog,
-      '',
       serverId,
       now,
       localAccountId,
