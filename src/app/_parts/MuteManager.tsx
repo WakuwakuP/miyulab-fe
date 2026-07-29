@@ -124,7 +124,7 @@ export function MuteManager({ onClose }: { onClose: () => void }) {
     })
   }
 
-  const dialogRef = useRef<HTMLDivElement>(null)
+  const dialogRef = useRef<HTMLDialogElement>(null)
 
   // Escape キーでモーダルを閉じる
   useEffect(() => {
@@ -148,12 +148,12 @@ export function MuteManager({ onClose }: { onClose: () => void }) {
         onClick={onClose}
         type="button"
       />
-      <div
+      <dialog
         aria-label="Muted Accounts"
         aria-modal="true"
-        className="relative w-full max-w-md rounded-lg border border-gray-600 bg-gray-800 p-4 shadow-xl outline-none"
+        className="relative m-0 w-full max-w-md rounded-lg border border-gray-600 bg-gray-800 p-4 shadow-xl outline-none"
+        open
         ref={dialogRef}
-        role="dialog"
         tabIndex={-1}
       >
         <h3 className="mb-3 text-sm font-semibold text-gray-200">
@@ -248,7 +248,7 @@ export function MuteManager({ onClose }: { onClose: () => void }) {
             Close
           </button>
         </div>
-      </div>
+      </dialog>
     </div>
   )
 }
