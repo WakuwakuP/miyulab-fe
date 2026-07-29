@@ -10,6 +10,12 @@ type BackendFilterSelectorProps = {
   value: BackendFilter
 }
 
+const backendFilterModeLabels = {
+  all: 'All',
+  composite: 'Custom',
+  single: 'Single',
+} satisfies Record<BackendFilter['mode'], string>
+
 export const BackendFilterSelector = ({
   onChange,
   value,
@@ -107,7 +113,7 @@ export const BackendFilterSelector = ({
             onClick={() => handleModeChange(mode)}
             type="button"
           >
-            {mode === 'all' ? 'All' : mode === 'single' ? 'Single' : 'Custom'}
+            {backendFilterModeLabels[mode]}
           </button>
         ))}
       </div>
