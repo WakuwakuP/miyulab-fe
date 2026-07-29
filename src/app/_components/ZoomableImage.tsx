@@ -1,7 +1,12 @@
 'use client'
 
 import type { Entity } from 'megalodon'
-import { type MouseEventHandler, useEffect, useRef } from 'react'
+import {
+  type KeyboardEventHandler,
+  type MouseEventHandler,
+  useEffect,
+  useRef,
+} from 'react'
 import { RiAddLine, RiRefreshLine, RiSubtractLine } from 'react-icons/ri'
 import {
   type ReactZoomPanPinchRef,
@@ -47,8 +52,25 @@ export const ZoomableImage = ({
     onBackgroundClick?.()
   }
 
+  const handleBackgroundKeyDown: KeyboardEventHandler<HTMLDivElement> = (e) => {
+    if (e.target !== e.currentTarget) return
+    if (e.key !== 'Enter' && e.key !== ' ') return
+    e.preventDefault()
+    onBackgroundClick?.()
+  }
+
+  const backgroundInteractionProps = onBackgroundClick
+    ? ({
+        'aria-label': 'Close image viewer',
+        onClick: handleBackgroundClick,
+        onKeyDown: handleBackgroundKeyDown,
+        role: 'button',
+        tabIndex: 0,
+      } as const)
+    : {}
+
   return (
-    <div className="relative h-full w-full" onClick={handleBackgroundClick}>
+    <div className="relative h-full w-full" {...backgroundInteractionProps}>
       <TransformWrapper
         doubleClick={{ mode: 'reset' }}
         initialScale={1}
