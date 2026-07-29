@@ -36,6 +36,7 @@ function buildChangeHint(command: SendCommandPayload): ChangeHint | undefined {
   switch (command.type) {
     case 'upsertStatus':
     case 'bulkUpsertStatuses':
+    case 'removeFromTimeline':
       return {
         backendUrl: command.backendUrl,
         tag: command.tag,
@@ -46,12 +47,6 @@ function buildChangeHint(command: SendCommandPayload): ChangeHint | undefined {
         backendUrl: command.backendUrl,
         tag: command.tag,
         timelineType: command.sourceTimelineType,
-      }
-    case 'removeFromTimeline':
-      return {
-        backendUrl: command.backendUrl,
-        tag: command.tag,
-        timelineType: command.timelineType,
       }
     case 'updateStatus':
     case 'updateStatusAction':
