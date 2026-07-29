@@ -1,6 +1,13 @@
 'use client'
 
-import { useCallback, useContext, useEffect, useRef, useState } from 'react'
+import {
+  type ReactNode,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from 'react'
 import { getSqliteDb, notifyChange } from 'util/db/sqlite/connection'
 import { AppsContext } from 'util/provider/AppsProvider'
 
@@ -140,6 +147,46 @@ export function MuteManager({ onClose }: { onClose: () => void }) {
     dialogRef.current?.focus()
   }, [])
 
+  let mutedAccountsContent: ReactNode
+  if (isLoading) {
+    mutedAccountsContent = (
+      <p className="py-4 text-center text-xs text-gray-500">Loading...</p>
+    )
+  } else if (mutedAccounts.length === 0) {
+    mutedAccountsContent = (
+      <p className="py-4 text-center text-xs text-gray-500">
+        No muted accounts
+      </p>
+    )
+  } else {
+    mutedAccountsContent = (
+      <ul className="space-y-1">
+        {mutedAccounts.map((account) => (
+          <li
+            className="flex items-center justify-between rounded border border-slate-700 px-2 py-1.5"
+            key={account.account_acct}
+          >
+            <div className="min-w-0 flex-1">
+              <span className="block truncate text-xs text-white">
+                @{account.account_acct}
+              </span>
+              <span className="text-xs text-gray-500">
+                {formatDate(account.muted_at)}
+              </span>
+            </div>
+            <button
+              className="ml-2 shrink-0 rounded border border-slate-600 px-2 py-0.5 text-xs text-gray-300 hover:bg-slate-700 hover:text-white"
+              onClick={() => handleUnmute(account.account_acct)}
+              type="button"
+            >
+              Unmute
+            </button>
+          </li>
+        ))}
+      </ul>
+    )
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <button
@@ -204,40 +251,7 @@ export function MuteManager({ onClose }: { onClose: () => void }) {
           </button>
         </div>
         {/* List */}
-        <div className="max-h-60 overflow-y-auto">
-          {isLoading ? (
-            <p className="py-4 text-center text-xs text-gray-500">Loading...</p>
-          ) : mutedAccounts.length === 0 ? (
-            <p className="py-4 text-center text-xs text-gray-500">
-              No muted accounts
-            </p>
-          ) : (
-            <ul className="space-y-1">
-              {mutedAccounts.map((account) => (
-                <li
-                  className="flex items-center justify-between rounded border border-slate-700 px-2 py-1.5"
-                  key={account.account_acct}
-                >
-                  <div className="min-w-0 flex-1">
-                    <span className="block truncate text-xs text-white">
-                      @{account.account_acct}
-                    </span>
-                    <span className="text-xs text-gray-500">
-                      {formatDate(account.muted_at)}
-                    </span>
-                  </div>
-                  <button
-                    className="ml-2 shrink-0 rounded border border-slate-600 px-2 py-0.5 text-xs text-gray-300 hover:bg-slate-700 hover:text-white"
-                    onClick={() => handleUnmute(account.account_acct)}
-                    type="button"
-                  >
-                    Unmute
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        <div className="max-h-60 overflow-y-auto">{mutedAccountsContent}</div>
         {/* Close */}
         <div className="mt-3 flex justify-end">
           <button
