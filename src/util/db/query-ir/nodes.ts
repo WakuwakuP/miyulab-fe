@@ -208,9 +208,6 @@ export function isOrGroup(node: FilterNode): node is OrGroup {
 // Query IR V2 — グラフベースのノード定義
 // ============================================================
 
-/** 既存の QueryPlan 形状 (V1) */
-export type QueryPlanV1 = QueryPlan
-
 /** 単一フィルタ条件 (getIds 内部) */
 export type FilterCondition = {
   table: string
@@ -407,7 +404,7 @@ export type QueryPlanV2 = {
 }
 
 export function isQueryPlanV2(
-  plan: QueryPlanV1 | QueryPlanV2 | undefined,
+  plan: QueryPlan | QueryPlanV2 | undefined,
 ): plan is QueryPlanV2 {
   return (
     plan != null &&
