@@ -149,6 +149,13 @@ export const Status = ({
     [status, getContentFormatted],
   )
 
+  const openStatusDetail = useCallback(() => {
+    setDetail({
+      content: status,
+      type: 'Status',
+    })
+  }, [setDetail, status])
+
   const replace = (node: DOMNode) => {
     if (node.type === ElementType.Tag && node.name === 'a') {
       const classNames = (node.attribs.class ?? '').split(' ')
@@ -352,14 +359,18 @@ export const Status = ({
           })}
         </div>
       )}
+      {/* biome-ignore lint/a11y/useSemanticElements: status content can contain links, so a native button would create invalid nested interactive HTML. */}
       <div
         className="content"
-        onClick={() => {
-          setDetail({
-            content: status,
-            type: 'Status',
-          })
+        onClick={openStatusDetail}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            openStatusDetail()
+          }
         }}
+        role="button"
+        tabIndex={0}
       >
         <EditedAt editedAt={status.edited_at} />
         {parse(contentFormatted, { replace })}
