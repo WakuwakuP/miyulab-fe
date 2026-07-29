@@ -113,7 +113,7 @@ export const AppsProvider = ({
     if (apps.length > 0) {
       const now = Date.now()
       apps.forEach(async (app) => {
-        if (app.tokenData == null || app.tokenData?.refresh_token == null) {
+        if (app.tokenData?.refresh_token == null) {
           return
         } else if (
           app.tokenData.expires_in != null &&
