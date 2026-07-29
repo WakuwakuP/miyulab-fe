@@ -1,7 +1,7 @@
 'use client'
 
 import { Checkbox } from 'components/ui/checkbox'
-import { useCallback } from 'react'
+import { useCallback, useId } from 'react'
 import type { TimelineScope } from 'util/db/query-ir/nodes'
 
 const TIMELINE_KEYS = [
@@ -18,6 +18,7 @@ export function TimelineScopeBody({
   node: TimelineScope
   onUpdate: (n: TimelineScope) => void
 }) {
+  const idPrefix = useId()
   const toggle = useCallback(
     (key: string) => {
       const keys = new Set(node.timelineKeys)
@@ -36,20 +37,22 @@ export function TimelineScopeBody({
   return (
     <div className="flex flex-wrap gap-2">
       {TIMELINE_KEYS.map(({ key, label }) => (
-        <span
-          className="flex items-center gap-1.5 text-xs text-gray-300 cursor-pointer"
+        <div
+          className="flex items-center gap-1.5 text-xs text-gray-300"
           key={key}
-          onClick={() => toggle(key)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') toggle(key)
-          }}
         >
           <Checkbox
             checked={node.timelineKeys.includes(key)}
+            id={`${idPrefix}-timeline-scope-${key}`}
             onCheckedChange={() => toggle(key)}
           />
-          {label}
-        </span>
+          <label
+            className="cursor-pointer"
+            htmlFor={`${idPrefix}-timeline-scope-${key}`}
+          >
+            {label}
+          </label>
+        </div>
       ))}
     </div>
   )
