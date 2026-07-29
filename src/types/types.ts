@@ -342,8 +342,5 @@ export type TimelineSettingsV2 = {
 // Backward-compatible aliases
 // ========================================
 
-/** @deprecated TimelineConfigV2 を使用してください */
-export type TimelineConfig = TimelineConfigV2
-
 /** @deprecated TimelineSettingsV2 を使用してください */
 export type TimelineSettings = TimelineSettingsV2
