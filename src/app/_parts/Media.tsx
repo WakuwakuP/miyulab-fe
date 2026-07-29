@@ -48,9 +48,10 @@ export const Media = ({
         />
       )
     case 'video':
+    case 'gifv':
       return (
         <button
-          aria-label={media.description || 'Open video media'}
+          aria-label={media.description || `Open ${media.type} media`}
           className={[
             'relative aspect-square max-h-48 cursor-pointer border-0 bg-transparent object-contain p-0.5',
             className,
@@ -78,33 +79,6 @@ export const Media = ({
             />
           </span>
         </button>
-      )
-    case 'gifv':
-      return (
-        <div
-          className={[
-            'relative aspect-square max-h-48 object-contain p-0.5',
-            className,
-          ].join(' ')}
-          onClick={(e) => {
-            e.preventDefault()
-            e.stopPropagation()
-            if (onClick != null) onClick()
-          }}
-        >
-          <video
-            className="h-full w-full object-contain"
-            key={media.id}
-            muted
-            src={mediaUrl}
-          />
-          <div className="absolute left-0 top-0 h-full w-full bg-black/50">
-            <RiPlayCircleLine
-              className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-white"
-              size={70}
-            />
-          </div>
-        </div>
       )
     case 'audio':
       return (
