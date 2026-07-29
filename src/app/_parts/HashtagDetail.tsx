@@ -12,6 +12,18 @@ const toStatusWithAppIndex = (
   appIndex: 0,
 })
 
+function HashtagDetailStatusItem({
+  status,
+}: Readonly<{
+  status: StatusAddAppIndex
+}>) {
+  return <Status key={status.id} status={status} />
+}
+
+function hashtagDetailStatusItemContent(_: number, status: StatusAddAppIndex) {
+  return <HashtagDetailStatusItem status={status} />
+}
+
 export const HashtagDetail = ({ hashtag }: { hashtag?: string }) => {
   const apps = useContext(AppsContext)
   const [statuses, setStatuses] = useState<StatusAddAppIndex[]>([])
@@ -61,7 +73,7 @@ export const HashtagDetail = ({ hashtag }: { hashtag?: string }) => {
     <Virtuoso
       data={statuses}
       endReached={moreStatus}
-      itemContent={(_, status) => <Status key={status.id} status={status} />}
+      itemContent={hashtagDetailStatusItemContent}
     />
   )
 }
