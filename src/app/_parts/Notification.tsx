@@ -397,46 +397,49 @@ export const Notification = ({
       return (
         <div className="ml-1 mt-2 box-border border-b-2 border-l-2 border-pink-500 pl-2">
           <p>Follow request</p>
-          <h3
-            className="flex"
-            onClick={() => {
-              if (notification.account == null) return
-              setDetail({
-                content: {
-                  ...notification.account,
-                  appIndex: notification.appIndex,
-                },
-                type: 'Account',
-              })
-            }}
-          >
-            {scrolling ? (
-              <AvatarPlaceholder />
-            ) : (
-              <ProxyImage
-                alt="avatar"
-                className="h-12 w-12 flex-none rounded-lg object-contain"
-                height={48}
-                src={notification.account?.avatar ?? ''}
-                width={48}
-              />
-            )}
-            <div className="w-[calc(100%-56px)] pl-2">
-              <p className="w-full truncate">
-                <span
-                  // biome-ignore lint/security/noDangerouslySetInnerHtml: TODO
-                  dangerouslySetInnerHTML={{
-                    __html: displayName,
-                  }}
+          <h3>
+            <button
+              className="flex w-full cursor-pointer appearance-none border-0 bg-transparent p-0 text-left text-inherit"
+              onClick={() => {
+                if (notification.account == null) return
+                setDetail({
+                  content: {
+                    ...notification.account,
+                    appIndex: notification.appIndex,
+                  },
+                  type: 'Account',
+                })
+              }}
+              type="button"
+            >
+              {scrolling ? (
+                <AvatarPlaceholder />
+              ) : (
+                <ProxyImage
+                  alt="avatar"
+                  className="h-12 w-12 flex-none rounded-lg object-contain"
+                  height={48}
+                  src={notification.account?.avatar ?? ''}
+                  width={48}
                 />
-              </p>
-              <p
-                className="w-full truncate text-gray-300"
-                title={`@${notification.account?.acct ?? ''}`}
-              >
-                @{notification.account?.acct ?? ''}
-              </p>
-            </div>
+              )}
+              <span className="w-[calc(100%-56px)] pl-2">
+                <span className="block w-full truncate">
+                  <span
+                    // biome-ignore lint/security/noDangerouslySetInnerHtml: TODO
+                    dangerouslySetInnerHTML={{
+                      __html: displayName,
+                    }}
+                  />
+                </span>
+                <span
+                  className="block w-full truncate text-gray-300"
+                  title={`@${notification.account?.acct ?? ''}`}
+                >
+                  @{notification.account?.acct ?? ''}
+                </span>
+              </span>
+            </button>
           </h3>
         </div>
       )
