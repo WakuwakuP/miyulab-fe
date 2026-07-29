@@ -336,8 +336,7 @@ export function upsertNotification(
 
   if (
     reactionUrl == null &&
-    reactionName != null &&
-    reactionName.startsWith(':') &&
+    reactionName?.startsWith(':') &&
     reactionName.endsWith(':') &&
     reactionName.length > 2
   ) {
