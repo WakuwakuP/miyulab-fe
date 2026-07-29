@@ -56,7 +56,7 @@ export class MisskeyWebSocketAdapter
   // biome-ignore lint/suspicious/noExplicitAny: 同上
   private mainChannel: any = null
   private readonly channelType: ChannelType
-  private channelParams: Record<string, unknown>
+  private readonly channelParams: Record<string, unknown>
   private origin: string
   private readonly token: string
   private started = false
