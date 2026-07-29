@@ -38,7 +38,13 @@ export function formatSemVer(v: SemVer): string {
 export function compareSemVer(a: SemVer, b: SemVer): -1 | 0 | 1 {
   const ea = encodeSemVer(a)
   const eb = encodeSemVer(b)
-  return ea < eb ? -1 : ea > eb ? 1 : 0
+  if (ea < eb) {
+    return -1
+  }
+  if (ea > eb) {
+    return 1
+  }
+  return 0
 }
 
 export const LATEST_VERSION: SemVer = { major: 2, minor: 0, patch: 7 }
