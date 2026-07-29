@@ -31,21 +31,45 @@ export const Media = ({
     )
   switch (media.type) {
     case 'image':
+      if (onClick == null) {
+        return (
+          <img
+            alt=""
+            className={[
+              'aspect-square max-h-48 object-contain p-0.5',
+              className,
+            ].join(' ')}
+            height={1920}
+            key={media.id}
+            src={fullSize ? (remoteUrl ?? mediaUrl) : (previewUrl ?? mediaUrl)}
+            width={1920}
+          />
+        )
+      }
+
       return (
-        <img
-          alt=""
+        <button
+          aria-label={media.description || 'Open image media'}
           className={[
-            'aspect-square max-h-48 cursor-pointer object-contain p-0.5',
+            'aspect-square max-h-48 cursor-pointer border-0 bg-transparent object-contain p-0.5',
             className,
           ].join(' ')}
-          height={1920}
-          key={media.id}
-          onClick={() => {
-            if (onClick != null) onClick()
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            onClick()
           }}
-          src={fullSize ? (remoteUrl ?? mediaUrl) : (previewUrl ?? mediaUrl)}
-          width={1920}
-        />
+          type="button"
+        >
+          <img
+            alt=""
+            className="h-full w-full object-contain"
+            height={1920}
+            key={media.id}
+            src={fullSize ? (remoteUrl ?? mediaUrl) : (previewUrl ?? mediaUrl)}
+            width={1920}
+          />
+        </button>
       )
     case 'video':
     case 'gifv':
