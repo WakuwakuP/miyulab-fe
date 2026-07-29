@@ -77,21 +77,26 @@ export function FilterConditionRow({
     })
   }
 
-  function handleBindToggle(checked: boolean) {
-    if (checked && upstreamNodes.length > 0) {
-      const op = filter.op === 'IN' || filter.op === 'NOT IN' ? filter.op : 'IN'
-      onUpdate({
-        ...filter,
-        op,
-        upstreamSourceNodeId: upstreamNodes[0].id,
-        value: undefined,
-      })
-    } else {
-      onUpdate({
-        ...filter,
-        upstreamSourceNodeId: undefined,
-      })
+  function handleBindEnable() {
+    const firstUpstreamNode = upstreamNodes[0]
+    if (!firstUpstreamNode) {
+      return
     }
+
+    const op = filter.op === 'IN' || filter.op === 'NOT IN' ? filter.op : 'IN'
+    onUpdate({
+      ...filter,
+      op,
+      upstreamSourceNodeId: firstUpstreamNode.id,
+      value: undefined,
+    })
+  }
+
+  function handleBindDisable() {
+    onUpdate({
+      ...filter,
+      upstreamSourceNodeId: undefined,
+    })
   }
 
   function handleSourceNodeChange(nodeId: string) {
@@ -173,7 +178,9 @@ export function FilterConditionRow({
               <Switch
                 checked={isInputMode}
                 className="h-4 w-7 [&>span]:h-3 [&>span]:w-3 [&>span]:data-[state=checked]:translate-x-3"
-                onCheckedChange={handleBindToggle}
+                onCheckedChange={
+                  isInputMode ? handleBindDisable : handleBindEnable
+                }
               />
             </div>
           )}
