@@ -262,18 +262,23 @@ function runMergeNode(
   recordNodeStat(nodeStats, nodeId, nodeStart, false, output.rows.length)
 }
 
+type OutputNodeExecutionContext = {
+  db: DbExec
+  outputs: Map<string, NodeOutput>
+  nodeStats: Record<string, NodeStat>
+  options: GraphExecuteOptions
+  start: number
+  captureVersionsFn: () => Record<string, number>
+}
+
 function runOutputNode(
-  db: DbExec,
-  outputs: Map<string, NodeOutput>,
-  nodeStats: Record<string, NodeStat>,
+  context: OutputNodeExecutionContext,
   nodeId: string,
   node: OutputNodeV2,
   incoming: string[],
-  options: GraphExecuteOptions,
   nodeStart: number,
-  start: number,
-  captureVersionsFn: () => Record<string, number>,
 ): GraphExecuteResult {
+  const { db, outputs, nodeStats, options, start, captureVersionsFn } = context
   const firstInput = getFirstUpstreamOutput(incoming, outputs)
   if (!firstInput) {
     return buildEmptyGraphResult(nodeStats, outputs, start, captureVersionsFn)
@@ -373,16 +378,11 @@ export function executeGraphPlan(
         break
       case 'output-v2':
         return runOutputNode(
-          db,
-          outputs,
-          nodeStats,
+          { captureVersionsFn, db, nodeStats, options, outputs, start },
           nodeId,
           entry.node as OutputNodeV2,
           incoming,
-          options,
           nodeStart,
-          start,
-          captureVersionsFn,
         )
     }
   }
