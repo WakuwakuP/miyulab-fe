@@ -34,16 +34,16 @@ export const MergeFlowNodeV2 = memo(function MergeFlowNodeV2({
   }
 
   const isRunning = execStatus?.nodeStates[id] === 'running'
+  let nodeFrameClassName = 'border-cyan-600 shadow-black/20'
+  if (isRunning) {
+    nodeFrameClassName = 'border-amber-400 shadow-amber-400/20'
+  } else if (selected) {
+    nodeFrameClassName = 'border-cyan-400 shadow-cyan-400/20'
+  }
 
   return (
     <div
-      className={`rounded-lg border-2 px-4 py-3 min-w-[160px] shadow-md transition-all ${
-        isRunning
-          ? 'border-amber-400 shadow-amber-400/20'
-          : selected
-            ? 'border-cyan-400 shadow-cyan-400/20'
-            : 'border-cyan-600 shadow-black/20'
-      } bg-gray-900 group`}
+      className={`rounded-lg border-2 px-4 py-3 min-w-[160px] shadow-md transition-all ${nodeFrameClassName} bg-gray-900 group`}
     >
       <Handle
         className="!w-3 !h-3 !bg-cyan-400 !border-2 !border-cyan-600"
