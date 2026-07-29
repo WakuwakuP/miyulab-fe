@@ -299,9 +299,11 @@ const ReactionEmojisSetting = () => {
       {showPicker &&
         createPortal(
           <>
-            <div
-              className="fixed inset-0 z-50"
+            <button
+              aria-label="Close emoji picker"
+              className="fixed inset-0 z-50 border-0 bg-transparent p-0"
               onClick={() => setShowPicker(false)}
+              type="button"
             />
             <div
               className="fixed left-1/2 top-1/2 z-50 -translate-x-1/2 -translate-y-1/2"
