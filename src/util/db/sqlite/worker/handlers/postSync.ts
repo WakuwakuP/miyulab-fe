@@ -203,6 +203,17 @@ export function syncPostStats(
 
 type PostColumns = ReturnType<typeof extractPostColumns>
 
+type ReblogOriginalPostRowInput = {
+  cols: PostColumns
+  existingPostId: number | undefined
+  normalizedUri: string
+  now: number
+  profileId: number
+  repostOfPostId: number | null
+  serverId: number
+  visibilityId: number | null
+}
+
 function syncReblogOriginalProfileEmojis(
   db: DbExec,
   originalStatus: Entity.Status,
@@ -247,14 +258,16 @@ function resolveReblogOriginalPostId(
 
 function upsertReblogOriginalPostRow(
   db: DbExec,
-  normalizedUri: string,
-  serverId: number,
-  now: number,
-  profileId: number,
-  cols: PostColumns,
-  visibilityId: number | null,
-  repostOfPostId: number | null,
-  existingPostId: number | undefined,
+  {
+    cols,
+    existingPostId,
+    normalizedUri,
+    now,
+    profileId,
+    repostOfPostId,
+    serverId,
+    visibilityId,
+  }: ReblogOriginalPostRowInput,
 ): number {
   if (existingPostId !== undefined) {
     // author_profile_id は更新しない（handleUpsertStatus と同一方針）
@@ -500,22 +513,21 @@ export function ensureReblogOriginalPost(
       | string
       | null) ?? null,
   )
-  const postId = upsertReblogOriginalPostRow(
-    db,
-    normalizedUri,
-    serverId,
-    now,
-    profileId,
+  const postId = upsertReblogOriginalPostRow(db, {
     cols,
-    visibilityId,
-    repostOfPostId,
-    resolveReblogOriginalPostId(
+    existingPostId: resolveReblogOriginalPostId(
       db,
       normalizedUri,
       localAccountId,
       originalStatus.id,
     ),
-  )
+    normalizedUri,
+    now,
+    profileId,
+    repostOfPostId,
+    serverId,
+    visibilityId,
+  })
   collector?.add('posts')
 
   registerReblogOriginalBackendId(
