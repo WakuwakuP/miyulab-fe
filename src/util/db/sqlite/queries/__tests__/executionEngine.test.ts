@@ -337,6 +337,11 @@ describe('executeQueryPlan', () => {
       }
 
       const result = executeQueryPlan(db, plan)
+      expect(executedQueries).toEqual([
+        'SELECT p.id, p.created_at_ms FROM posts',
+        'SELECT * FROM media WHERE post_id IN (?,?)',
+        'SELECT * FROM mentions WHERE post_id IN (?,?)',
+      ])
       const batchResult = result.stepResults[1]
       expect(batchResult.type).toBe('batch-enrich')
       if (batchResult.type === 'batch-enrich') {
