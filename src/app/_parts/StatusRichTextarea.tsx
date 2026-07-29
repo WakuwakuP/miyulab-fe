@@ -95,14 +95,26 @@ type AutocompleteKeyDownHandlers = {
 
 const applyAutocompleteNavigation = (
   direction: 'prev' | 'next',
-  index: number,
-  setIndex: Dispatch<SetStateAction<number>>,
-  isMention: boolean,
-  isEmoji: boolean,
-  isTag: boolean,
-  mentionFilteredLength: number,
-  emojiFilteredLength: number,
-  tagFilteredLength: number,
+  {
+    emojiFilteredLength,
+    index,
+    isEmoji,
+    isMention,
+    isTag,
+    mentionFilteredLength,
+    setIndex,
+    tagFilteredLength,
+  }: Pick<
+    AutocompleteKeyDownHandlers,
+    | 'emojiFilteredLength'
+    | 'index'
+    | 'isEmoji'
+    | 'isMention'
+    | 'isTag'
+    | 'mentionFilteredLength'
+    | 'setIndex'
+    | 'tagFilteredLength'
+  >,
 ): void => {
   const wrap = direction === 'prev' ? wrapIndexPrev : wrapIndexNext
   if (isMention) setIndex(wrap(index, mentionFilteredLength))
@@ -134,9 +146,6 @@ const handleAutocompleteKeyDown = (
     isMention,
     isEmoji,
     isTag,
-    mentionFilteredLength,
-    emojiFilteredLength,
-    tagFilteredLength,
     mentionComplete,
     emojiComplete,
     tagComplete,
@@ -149,14 +158,7 @@ const handleAutocompleteKeyDown = (
       e.preventDefault()
       applyAutocompleteNavigation(
         e.code === 'ArrowUp' ? 'prev' : 'next',
-        index,
-        setIndex,
-        isMention,
-        isEmoji,
-        isTag,
-        mentionFilteredLength,
-        emojiFilteredLength,
-        tagFilteredLength,
+        handlers,
       )
       break
     case 'Enter':
