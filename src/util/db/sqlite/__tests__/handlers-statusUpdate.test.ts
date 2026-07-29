@@ -93,6 +93,33 @@ function createMockStatus(
   } as Entity.Status
 }
 
+/**
+ * handleUpdateStatus は URI → post_backend_ids の順で既存投稿を検索する。
+ * テスト用に、URI 検索で postId=42 を返すモック DB を作成する。
+ */
+function createDbWithExistingPost() {
+  return createMockDb((sql, opts) => {
+    // SELECT id FROM posts WHERE object_uri = ?
+    if (
+      sql.includes('SELECT') &&
+      sql.includes('FROM posts') &&
+      sql.includes('object_uri')
+    ) {
+      return [[42]]
+    }
+    // SELECT id FROM posts WHERE id = ?  (存在確認)
+    if (
+      sql.includes('SELECT') &&
+      sql.includes('FROM posts') &&
+      sql.includes('WHERE id')
+    ) {
+      return [[42]]
+    }
+    if (opts?.returnValue === 'resultRows') return []
+    return undefined
+  })
+}
+
 // ================================================================
 // モック設定
 // ================================================================
@@ -159,33 +186,6 @@ const { handleUpdateStatus } = await import(
 // ================================================================
 
 describe('handleUpdateStatus', () => {
-  /**
-   * handleUpdateStatus は URI → post_backend_ids の順で既存投稿を検索する。
-   * テスト用に、URI 検索で postId=42 を返すモック DB を作成する。
-   */
-  function createDbWithExistingPost() {
-    return createMockDb((sql, opts) => {
-      // SELECT id FROM posts WHERE object_uri = ?
-      if (
-        sql.includes('SELECT') &&
-        sql.includes('FROM posts') &&
-        sql.includes('object_uri')
-      ) {
-        return [[42]]
-      }
-      // SELECT id FROM posts WHERE id = ?  (存在確認)
-      if (
-        sql.includes('SELECT') &&
-        sql.includes('FROM posts') &&
-        sql.includes('WHERE id')
-      ) {
-        return [[42]]
-      }
-      if (opts?.returnValue === 'resultRows') return []
-      return undefined
-    })
-  }
-
   beforeEach(() => {
     vi.clearAllMocks()
     vi.mocked(statusHelpersModule.resolvePostIdInternal).mockReturnValue(
