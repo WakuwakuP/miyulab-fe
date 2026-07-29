@@ -30,16 +30,18 @@ export const Panel = ({
   return (
     <section>
       {name === undefined ? null : (
-        <h2
-          className="h-8 bg-slate-800 p-1 text-center"
-          onClick={() => {
-            if (onClickHeader != null) {
-              onClickHeader()
-            }
-          }}
-          title={durationTitle}
-        >
-          {name}
+        <h2 className="h-8 bg-slate-800 text-center" title={durationTitle}>
+          {onClickHeader == null ? (
+            <span className="block p-1">{name}</span>
+          ) : (
+            <button
+              className="h-full w-full cursor-pointer border-0 bg-transparent p-1 text-center text-inherit"
+              onClick={onClickHeader}
+              type="button"
+            >
+              {name}
+            </button>
+          )}
         </h2>
       )}
       <div className={className} ref={ref} style={{ height: mainAreaHeight }}>
