@@ -57,7 +57,7 @@ export class MisskeyWebSocketAdapter
   private mainChannel: any = null
   private readonly channelType: ChannelType
   private readonly channelParams: Record<string, unknown>
-  private origin: string
+  private readonly origin: string
   private readonly token: string
   private started = false
 
