@@ -64,6 +64,11 @@ const pe = (source: string, target: string): QueryPlanV2Edge => ({
   target,
 })
 
+const sortPlanEdges = (edges: QueryPlanV2Edge[]) =>
+  [...edges].sort((a, b) =>
+    `${a.source}-${a.target}`.localeCompare(`${b.source}-${b.target}`),
+  )
+
 const v2 = (
   nodes: QueryPlanV2Node[],
   edges: QueryPlanV2Edge[],
@@ -588,11 +593,7 @@ describe('ラウンドトリップ（queryPlanToFlow ↔ flowToQueryPlanV2）', 
     const result = flowToQueryPlanV2(flow)
 
     // Assert
-    const sortEdges = (edges: { source: string; target: string }[]) =>
-      [...edges].sort((a, b) =>
-        `${a.source}-${a.target}`.localeCompare(`${b.source}-${b.target}`),
-      )
-    expect(sortEdges(result.edges)).toEqual(sortEdges(original.edges))
+    expect(sortPlanEdges(result.edges)).toEqual(sortPlanEdges(original.edges))
   })
 
   it('V2プラン → Flow → V2プランの変換で、各ノードのconfigが同一であること', () => {
@@ -634,11 +635,7 @@ describe('ラウンドトリップ（queryPlanToFlow ↔ flowToQueryPlanV2）', 
     expect(resultIds).toEqual(originalIds)
 
     // Assert — エッジ
-    const sortEdges = (edges: { source: string; target: string }[]) =>
-      [...edges].sort((a, b) =>
-        `${a.source}-${a.target}`.localeCompare(`${b.source}-${b.target}`),
-      )
-    expect(sortEdges(result.edges)).toEqual(sortEdges(original.edges))
+    expect(sortPlanEdges(result.edges)).toEqual(sortPlanEdges(original.edges))
 
     // Assert — ノード config
     for (const origNode of original.nodes) {
