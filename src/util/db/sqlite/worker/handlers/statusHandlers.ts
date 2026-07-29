@@ -115,6 +115,18 @@ type UriPostLookup = {
   existingIsOriginal: boolean
 }
 
+type InsertNewPostRowParams = {
+  existingIsOriginal: boolean
+  normalizedUri: string
+  serverId: number
+  now: number
+  profileId: number
+  visibilityId: number | null
+  cols: PostColumns
+  isReblog: number
+  reblogOfPostId: number | null
+}
+
 function lookupPostIdFromUri(
   db: DbExec,
   normalizedUri: string,
@@ -305,15 +317,17 @@ function updateExistingPostRow(
 
 function insertNewPostRow(
   db: DbExec,
-  existingIsOriginal: boolean,
-  normalizedUri: string,
-  serverId: number,
-  now: number,
-  profileId: number,
-  visibilityId: number | null,
-  cols: PostColumns,
-  isReblog: number,
-  reblogOfPostId: number | null,
+  {
+    existingIsOriginal,
+    normalizedUri,
+    serverId,
+    now,
+    profileId,
+    visibilityId,
+    cols,
+    isReblog,
+    reblogOfPostId,
+  }: InsertNewPostRowParams,
 ): number {
   const insertUri = existingIsOriginal ? '' : normalizedUri
   db.exec(
@@ -547,18 +561,17 @@ function upsertSingleStatus(
     )
     postId = existingPostId
   } else {
-    postId = insertNewPostRow(
-      db,
+    postId = insertNewPostRow(db, {
+      cols,
       existingIsOriginal,
+      isReblog,
       normalizedUri,
-      serverId,
       now,
       profileId,
-      visibilityId,
-      cols,
-      isReblog,
       reblogOfPostId,
-    )
+      serverId,
+      visibilityId,
+    })
   }
   collector?.add('posts')
 
