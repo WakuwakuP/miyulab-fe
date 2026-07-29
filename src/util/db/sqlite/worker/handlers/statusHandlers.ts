@@ -127,6 +127,18 @@ type InsertNewPostRowParams = {
   reblogOfPostId: number | null
 }
 
+type RegisterPostBackendAndTimelineParams = {
+  postId: number
+  localAccountId: number
+  localId: string
+  serverId: number
+  timelineKey: string
+  isReblog: number
+  reblogOfPostId: number | null
+  createdAtMs: number
+  collector?: WrittenTableCollector
+}
+
 function lookupPostIdFromUri(
   db: DbExec,
   normalizedUri: string,
@@ -398,20 +410,22 @@ function updatePostUriCache(
 
 function registerPostBackendAndTimeline(
   db: DbExec,
-  postId: number,
-  status: Entity.Status,
-  serverId: number,
-  localAccountId: number,
-  timelineKey: string,
-  isReblog: number,
-  reblogOfPostId: number | null,
-  createdAtMs: number,
-  collector?: WrittenTableCollector,
+  {
+    postId,
+    localAccountId,
+    localId,
+    serverId,
+    timelineKey,
+    isReblog,
+    reblogOfPostId,
+    createdAtMs,
+    collector,
+  }: RegisterPostBackendAndTimelineParams,
 ): void {
   db.exec(
     `INSERT OR IGNORE INTO post_backend_ids (post_id, local_account_id, local_id, server_id)
      VALUES (?, ?, ?, ?);`,
-    { bind: [postId, localAccountId, status.id, serverId] },
+    { bind: [postId, localAccountId, localId, serverId] },
   )
   collector?.add('post_backend_ids')
 
@@ -586,18 +600,17 @@ function upsertSingleStatus(
   )
 
   if (localAccountId !== null) {
-    registerPostBackendAndTimeline(
-      db,
-      postId,
-      status,
-      serverId,
-      localAccountId,
-      timelineKey,
-      isReblog,
-      reblogOfPostId,
-      cols.created_at_ms,
+    registerPostBackendAndTimeline(db, {
       collector,
-    )
+      createdAtMs: cols.created_at_ms,
+      isReblog,
+      localAccountId,
+      localId: status.id,
+      postId,
+      reblogOfPostId,
+      serverId,
+      timelineKey,
+    })
   }
 
   syncPostRelatedData(
