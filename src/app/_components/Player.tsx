@@ -156,8 +156,7 @@ function renderPlayableMedia({
         className={['aspect-video w-full', classNamePlayerSize.hClass].join(
           ' ',
         )}
-        // @ts-expect-error -- credentialless is a valid HTML attribute but not yet in React's type definitions
-        credentialless=""
+        {...{ credentialless: '' }}
         onError={onExternalEmbedError}
         src={getDirectEmbedUrl(currentUrl) ?? currentUrl}
         style={{ border: 'none' }}
