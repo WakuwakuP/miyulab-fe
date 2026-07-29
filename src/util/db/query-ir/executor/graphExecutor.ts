@@ -194,16 +194,21 @@ function runGetIdsNode(
   recordNodeStat(nodeStats, nodeId, nodeStart, false, output.rows.length)
 }
 
+type LookupRelatedNodeExecutionContext = {
+  db: DbExec
+  cache: WorkerNodeCache
+  outputs: Map<string, NodeOutput>
+  nodeStats: Record<string, NodeStat>
+}
+
 function runLookupRelatedNode(
-  db: DbExec,
-  cache: WorkerNodeCache,
-  outputs: Map<string, NodeOutput>,
-  nodeStats: Record<string, NodeStat>,
+  context: LookupRelatedNodeExecutionContext,
   nodeId: string,
   node: LookupRelatedNode,
   incoming: string[],
   nodeStart: number,
 ): void {
+  const { db, cache, outputs, nodeStats } = context
   const firstInput = getFirstUpstreamOutput(incoming, outputs)
   if (!firstInput) {
     outputs.set(nodeId, {
@@ -349,10 +354,7 @@ export function executeGraphPlan(
         break
       case 'lookup-related':
         runLookupRelatedNode(
-          db,
-          cache,
-          outputs,
-          nodeStats,
+          { cache, db, nodeStats, outputs },
           nodeId,
           entry.node as LookupRelatedNode,
           incoming,
