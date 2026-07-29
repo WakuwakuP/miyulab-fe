@@ -148,17 +148,22 @@ function buildEmptyGraphResult(
   }
 }
 
+type GetIdsNodeExecutionContext = {
+  db: DbExec
+  cache: WorkerNodeCache
+  outputs: Map<string, NodeOutput>
+  nodeStats: Record<string, NodeStat>
+  globalLimit: number | undefined
+}
+
 function runGetIdsNode(
-  db: DbExec,
-  cache: WorkerNodeCache,
-  outputs: Map<string, NodeOutput>,
-  nodeStats: Record<string, NodeStat>,
+  context: GetIdsNodeExecutionContext,
   nodeId: string,
   node: GetIdsNode,
   incoming: string[],
-  globalLimit: number | undefined,
   nodeStart: number,
 ): void {
+  const { db, cache, outputs, nodeStats, globalLimit } = context
   const upstreamOutputs = collectUpstreamOutputs(incoming, outputs)
   const upstreamHash =
     upstreamOutputs.size > 0
@@ -335,14 +340,10 @@ export function executeGraphPlan(
     switch (entry.node.kind) {
       case 'get-ids':
         runGetIdsNode(
-          db,
-          cache,
-          outputs,
-          nodeStats,
+          { cache, db, globalLimit, nodeStats, outputs },
           nodeId,
           entry.node as GetIdsNode,
           incoming,
-          globalLimit,
           nodeStart,
         )
         break
