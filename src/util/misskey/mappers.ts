@@ -152,11 +152,10 @@ export function mapUserLiteToAccount(
   instanceHost?: string,
 ): Entity.Account {
   const acct = user.host ? `${user.username}@${user.host}` : user.username
+  const localUserUrl = instanceHost ? `${instanceHost}/@${user.username}` : ''
   const userUrl = user.host
     ? `https://${user.host}/@${user.username}`
-    : instanceHost
-      ? `${instanceHost}/@${user.username}`
-      : ''
+    : localUserUrl
 
   return {
     acct,
