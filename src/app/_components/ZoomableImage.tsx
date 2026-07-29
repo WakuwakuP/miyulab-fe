@@ -101,9 +101,6 @@ export const ZoomableImage = ({
                   className,
                 ].join(' ')}
                 draggable={false}
-                onClick={(e) => {
-                  e.stopPropagation()
-                }}
                 src={imageUrl}
               />
             </TransformComponent>
