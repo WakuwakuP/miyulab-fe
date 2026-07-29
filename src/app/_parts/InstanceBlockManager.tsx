@@ -1,5 +1,6 @@
 'use client'
 
+import type { ReactNode } from 'react'
 import { useCallback, useEffect, useState } from 'react'
 import { getSqliteDb, notifyChange } from 'util/db/sqlite/connection'
 
@@ -159,6 +160,46 @@ export function InstanceBlockManager({ onClose }: { onClose: () => void }) {
     })
   }
 
+  let instanceListContent: ReactNode
+  if (isLoading) {
+    instanceListContent = (
+      <p className="py-4 text-center text-xs text-gray-500">Loading...</p>
+    )
+  } else if (blockedInstances.length === 0) {
+    instanceListContent = (
+      <p className="py-4 text-center text-xs text-gray-500">
+        No blocked instances
+      </p>
+    )
+  } else {
+    instanceListContent = (
+      <ul className="space-y-1">
+        {blockedInstances.map((instance) => (
+          <li
+            className="flex items-center justify-between rounded border border-slate-700 px-2 py-1.5"
+            key={instance.instance_domain}
+          >
+            <div className="min-w-0 flex-1">
+              <span className="block truncate text-xs text-white">
+                {instance.instance_domain}
+              </span>
+              <span className="text-xs text-gray-500">
+                {formatDate(instance.blocked_at)}
+              </span>
+            </div>
+            <button
+              className="ml-2 shrink-0 rounded border border-slate-600 px-2 py-0.5 text-xs text-gray-300 hover:bg-slate-700 hover:text-white"
+              onClick={() => handleUnblock(instance.instance_domain)}
+              type="button"
+            >
+              Unblock
+            </button>
+          </li>
+        ))}
+      </ul>
+    )
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <button
@@ -216,40 +257,7 @@ export function InstanceBlockManager({ onClose }: { onClose: () => void }) {
         </p>
 
         {/* List */}
-        <div className="max-h-60 overflow-y-auto">
-          {isLoading ? (
-            <p className="py-4 text-center text-xs text-gray-500">Loading...</p>
-          ) : blockedInstances.length === 0 ? (
-            <p className="py-4 text-center text-xs text-gray-500">
-              No blocked instances
-            </p>
-          ) : (
-            <ul className="space-y-1">
-              {blockedInstances.map((instance) => (
-                <li
-                  className="flex items-center justify-between rounded border border-slate-700 px-2 py-1.5"
-                  key={instance.instance_domain}
-                >
-                  <div className="min-w-0 flex-1">
-                    <span className="block truncate text-xs text-white">
-                      {instance.instance_domain}
-                    </span>
-                    <span className="text-xs text-gray-500">
-                      {formatDate(instance.blocked_at)}
-                    </span>
-                  </div>
-                  <button
-                    className="ml-2 shrink-0 rounded border border-slate-600 px-2 py-0.5 text-xs text-gray-300 hover:bg-slate-700 hover:text-white"
-                    onClick={() => handleUnblock(instance.instance_domain)}
-                    type="button"
-                  >
-                    Unblock
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        <div className="max-h-60 overflow-y-auto">{instanceListContent}</div>
 
         {/* Close */}
         <div className="mt-3 flex justify-end">
