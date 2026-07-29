@@ -8,7 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from 'components/ui/select'
-import { useCallback } from 'react'
+import { useCallback, useId } from 'react'
 import type { AerialReplyFilter } from 'util/db/query-ir/nodes'
 
 const NOTIFICATION_TYPES_FOR_AERIAL = [
@@ -32,6 +32,7 @@ export function AerialReplyBody({
   node: AerialReplyFilter
   onUpdate: (n: AerialReplyFilter) => void
 }) {
+  const idPrefix = useId()
   const toggleType = useCallback(
     (key: string) => {
       const types = new Set(node.notificationTypes)
@@ -51,20 +52,22 @@ export function AerialReplyBody({
     <div className="space-y-2">
       <div className="flex flex-wrap gap-2">
         {NOTIFICATION_TYPES_FOR_AERIAL.map(({ key, label }) => (
-          <span
-            className="flex items-center gap-1.5 text-xs text-gray-300 cursor-pointer"
+          <div
+            className="flex items-center gap-1.5 text-xs text-gray-300"
             key={key}
-            onClick={() => toggleType(key)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') toggleType(key)
-            }}
           >
             <Checkbox
               checked={node.notificationTypes.includes(key)}
+              id={`${idPrefix}-aerial-reply-${key}`}
               onCheckedChange={() => toggleType(key)}
             />
-            {label}
-          </span>
+            <label
+              className="cursor-pointer"
+              htmlFor={`${idPrefix}-aerial-reply-${key}`}
+            >
+              {label}
+            </label>
+          </div>
         ))}
       </div>
       <div className="flex items-center gap-2">
