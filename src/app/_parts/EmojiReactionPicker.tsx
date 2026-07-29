@@ -41,7 +41,7 @@ export const EmojiReactionPicker = ({
 }) => {
   const fallbackEmojis = useContext(EmojiContext)
   const emojiCatalog = useContext(EmojiCatalogContext)
-  const pickerRef = useRef<HTMLDivElement>(null)
+  const pickerRef = useRef<HTMLDialogElement>(null)
   const [expanded, setExpanded] = useState(false)
   const [position, setPosition] = useState<{ left: number; top: number }>({
     left: 0,
@@ -142,13 +142,13 @@ export const EmojiReactionPicker = ({
         className="fixed inset-0 z-50"
         onClick={onClose}
       />
-      <div
+      <dialog
         aria-label="Emoji reaction picker"
         aria-modal="true"
-        className="fixed z-50 animate-picker-in"
+        className="fixed z-50 m-0 animate-picker-in border-0 bg-transparent p-0 text-inherit"
         onClick={(e) => e.stopPropagation()}
+        open
         ref={pickerRef}
-        role="dialog"
         style={{ left: position.left, top: position.top }}
       >
         {expanded ? (
@@ -200,7 +200,7 @@ export const EmojiReactionPicker = ({
             </button>
           </div>
         )}
-      </div>
+      </dialog>
     </>,
     document.body,
   )
