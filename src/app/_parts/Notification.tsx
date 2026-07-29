@@ -279,8 +279,8 @@ export const Notification = ({
       return (
         <div className="ml-1 mt-2 box-border border-b-2 border-l-2 border-orange-300 pl-2">
           <h3>
-            <div
-              className="flex"
+            <button
+              className="flex w-full cursor-pointer appearance-none border-0 bg-transparent p-0 text-left text-inherit"
               onClick={() => {
                 if (notification.account == null) return
                 setDetail({
@@ -291,6 +291,7 @@ export const Notification = ({
                   type: 'Account',
                 })
               }}
+              type="button"
             >
               {scrolling ? (
                 <AvatarPlaceholder />
@@ -303,23 +304,23 @@ export const Notification = ({
                   width={48}
                 />
               )}
-              <div className="w-[calc(100%-56px)] pl-2">
-                <p className="w-full truncate">
+              <span className="w-[calc(100%-56px)] pl-2">
+                <span className="block w-full truncate">
                   <span
                     // biome-ignore lint/security/noDangerouslySetInnerHtml: TODO
                     dangerouslySetInnerHTML={{
                       __html: displayName,
                     }}
                   />
-                </p>
-                <p
-                  className="w-full truncate text-gray-300"
+                </span>
+                <span
+                  className="block w-full truncate text-gray-300"
                   title={`@${notification.account?.acct ?? ''}`}
                 >
                   @{notification.account?.acct ?? ''}
-                </p>
-              </div>
-            </div>
+                </span>
+              </span>
+            </button>
             <div className="min-w-12  mr-2">
               <ReactionDisplay
                 reactionName={notification.reaction?.name}
