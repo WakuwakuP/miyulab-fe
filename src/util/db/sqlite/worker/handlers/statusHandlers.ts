@@ -139,6 +139,16 @@ type RegisterPostBackendAndTimelineParams = {
   collector?: WrittenTableCollector
 }
 
+type UpsertSingleStatusParams = {
+  serverId: number
+  localAccountId: number | null
+  now: number
+  timelineKey: string
+  uriCache?: Map<string, number>
+  collector?: WrittenTableCollector
+  skipProfileUpdate?: boolean
+}
+
 function lookupPostIdFromUri(
   db: DbExec,
   normalizedUri: string,
@@ -500,13 +510,15 @@ function syncPostRelatedData(
 function upsertSingleStatus(
   db: DbExec,
   status: Entity.Status,
-  serverId: number,
-  localAccountId: number | null,
-  now: number,
-  timelineKey: string,
-  uriCache?: Map<string, number>,
-  collector?: WrittenTableCollector,
-  skipProfileUpdate?: boolean,
+  {
+    serverId,
+    localAccountId,
+    now,
+    timelineKey,
+    uriCache,
+    collector,
+    skipProfileUpdate,
+  }: UpsertSingleStatusParams,
 ): number {
   const normalizedUri = status.uri?.trim() || ''
   const cols = extractPostColumns(status)
@@ -648,16 +660,13 @@ export function handleUpsertStatus(
     const localAccountId = resolveLocalAccountId(db, backendUrl)
     const timelineKey = buildTimelineKey(timelineType, { tag })
 
-    const postId = upsertSingleStatus(
-      db,
-      status,
-      serverId,
+    const postId = upsertSingleStatus(db, status, {
+      collector,
       localAccountId,
       now,
+      serverId,
       timelineKey,
-      undefined,
-      collector,
-    )
+    })
 
     // tag timeline から来た場合、ハッシュタグを確保する
     if (tag) {
@@ -700,17 +709,15 @@ export function handleBulkUpsertStatuses(
       try {
         const status = JSON.parse(sJson) as Entity.Status
 
-        const postId = upsertSingleStatus(
-          db,
-          status,
-          serverId,
+        const postId = upsertSingleStatus(db, status, {
+          collector,
           localAccountId,
           now,
+          serverId,
+          skipProfileUpdate,
           timelineKey,
           uriCache,
-          collector,
-          skipProfileUpdate,
-        )
+        })
 
         // tag timeline から来た場合、ハッシュタグを確保する
         if (tag) {
