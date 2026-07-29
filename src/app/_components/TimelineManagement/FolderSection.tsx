@@ -116,16 +116,27 @@ export const FolderSection = ({
               value={renameValue}
             />
           ) : (
-            <span
+            <button
+              aria-label={`Rename folder ${groupKey}`}
               className={`text-sm font-semibold ${colors.text}`}
+              onClick={(e) => e.stopPropagation()}
               onDoubleClick={(e) => {
                 e.stopPropagation()
                 setRenameValue(groupKey)
                 setIsRenaming(true)
               }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ' || e.key === 'F2') {
+                  e.preventDefault()
+                  e.stopPropagation()
+                  setRenameValue(groupKey)
+                  setIsRenaming(true)
+                }
+              }}
+              type="button"
             >
               {groupKey}
-            </span>
+            </button>
           )}
           <span className="text-xs text-gray-500">({memberCount})</span>
         </div>
