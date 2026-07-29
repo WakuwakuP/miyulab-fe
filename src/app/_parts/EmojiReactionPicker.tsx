@@ -146,7 +146,6 @@ export const EmojiReactionPicker = ({
         aria-label="Emoji reaction picker"
         aria-modal="true"
         className="fixed z-50 m-0 animate-picker-in border-0 bg-transparent p-0 text-inherit"
-        onClick={(e) => e.stopPropagation()}
         open
         ref={pickerRef}
         style={{ left: position.left, top: position.top }}
