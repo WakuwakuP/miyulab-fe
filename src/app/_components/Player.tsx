@@ -63,7 +63,9 @@ function toggleNativePlayback(
     return
   }
   if (el.paused) {
-    void el.play()
+    el.play().catch(() => {
+      setPlaying(false)
+    })
     setPlaying(true)
   } else {
     el.pause()
