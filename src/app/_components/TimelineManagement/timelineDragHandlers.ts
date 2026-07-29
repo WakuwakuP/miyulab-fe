@@ -1,6 +1,6 @@
 import type { Dispatch, SetStateAction } from 'react'
 
-import type { TimelineConfigV2, TimelineSettings } from 'types/types'
+import type { TimelineConfigV2, TimelineSettingsV2 } from 'types/types'
 
 export type TimelineColumn =
   | {
@@ -15,7 +15,7 @@ export type TimelineColumn =
       sortOrder: number
     }
 
-type SetTimeline = Dispatch<SetStateAction<TimelineSettings>>
+type SetTimeline = Dispatch<SetStateAction<TimelineSettingsV2>>
 type SetEmptyFolders = Dispatch<
   SetStateAction<{ key: string; sortOrder: number }[]>
 >
