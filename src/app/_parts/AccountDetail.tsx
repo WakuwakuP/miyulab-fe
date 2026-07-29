@@ -59,11 +59,15 @@ export const AccountDetail = ({ account }: { account: AccountAddAppIndex }) => {
     if (node.type === ElementType.Tag && node.name === 'a') {
       if (node.attribs.rel === 'tag') {
         return (
-          <a
-            {...attributesToProps(node.attribs)}
+          <button
+            className={[
+              'cursor-pointer border-0 bg-transparent p-0 text-blue-500',
+              node.attribs.class,
+            ]
+              .filter(Boolean)
+              .join(' ')}
             onClick={(e) => {
               e.stopPropagation()
-              e.preventDefault()
               setDetail({
                 content: e.currentTarget.innerText
                   .toLocaleLowerCase()
@@ -71,11 +75,11 @@ export const AccountDetail = ({ account }: { account: AccountAddAppIndex }) => {
                 type: 'Hashtag',
               })
             }}
-            rel="noopener noreferrer"
-            target="_blank"
+            title={node.attribs.title}
+            type="button"
           >
             {domToReact(node.children as DOMNode[])}
-          </a>
+          </button>
         )
       }
 
