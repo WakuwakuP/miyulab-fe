@@ -223,6 +223,7 @@ export const Status = ({
           <a
             {...attributesToProps(node.attribs)}
             className="line-clamp-2 break-all"
+            href={node.attribs.href ?? '#'}
             onClick={(e) => {
               e.stopPropagation()
               e.preventDefault()
