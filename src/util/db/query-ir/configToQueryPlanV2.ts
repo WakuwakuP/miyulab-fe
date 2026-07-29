@@ -48,12 +48,13 @@ export function configToQueryPlanV2(
   const isTag = config.type === 'tag'
 
   // タイムラインキーの決定
-  const timelineKeys =
-    !isNotification && !isTag
-      ? config.timelineTypes && config.timelineTypes.length > 0
+  let timelineKeys: string[] = []
+  if (!isNotification && !isTag) {
+    timelineKeys =
+      config.timelineTypes && config.timelineTypes.length > 0
         ? [...config.timelineTypes]
         : [config.type]
-      : []
+  }
 
   // composite: 複数の timelineTypes を持つ場合は Merge パターン
   const isComposite = !isNotification && !isTag && timelineKeys.length > 1
