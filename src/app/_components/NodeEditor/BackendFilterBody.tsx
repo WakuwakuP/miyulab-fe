@@ -1,7 +1,7 @@
 'use client'
 
 import { Checkbox } from 'components/ui/checkbox'
-import { useCallback } from 'react'
+import { useCallback, useId } from 'react'
 import type { ResolvedAccount } from 'util/accountResolver'
 import type { BackendFilter as IRBackendFilter } from 'util/db/query-ir/nodes'
 
@@ -14,6 +14,7 @@ export function BackendFilterBody({
   node: IRBackendFilter
   onUpdate: (n: IRBackendFilter) => void
 }) {
+  const idPrefix = useId()
   const accountEntries = accounts ? [...accounts.entries()] : []
 
   const toggleAccount = useCallback(
@@ -40,23 +41,23 @@ export function BackendFilterBody({
   return (
     <div className="space-y-1">
       {accountEntries.map(([url, resolved]) => (
-        <span
-          className="flex items-center gap-1.5 text-xs text-gray-300 cursor-pointer"
+        <div
+          className="flex items-center gap-1.5 text-xs text-gray-300"
           key={url}
-          onClick={() => toggleAccount(resolved.localAccountId)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ')
-              toggleAccount(resolved.localAccountId)
-          }}
         >
           <Checkbox
             checked={node.localAccountIds.includes(resolved.localAccountId)}
+            id={`${idPrefix}-backend-filter-${resolved.localAccountId}`}
             onCheckedChange={() => toggleAccount(resolved.localAccountId)}
           />
-          <span className="truncate" title={url}>
+          <label
+            className="truncate cursor-pointer"
+            htmlFor={`${idPrefix}-backend-filter-${resolved.localAccountId}`}
+            title={url}
+          >
             {new URL(url).hostname}
-          </span>
-        </span>
+          </label>
+        </div>
       ))}
     </div>
   )
