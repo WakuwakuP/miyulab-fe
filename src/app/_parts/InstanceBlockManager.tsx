@@ -160,14 +160,23 @@ export function InstanceBlockManager({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
-    >
-      <div className="w-full max-w-md rounded-lg border border-gray-600 bg-gray-800 p-4 shadow-xl">
-        <h3 className="mb-3 text-sm font-semibold text-gray-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <button
+        aria-label="Close blocked instances"
+        className="absolute inset-0 h-full w-full cursor-default bg-black/60 p-0"
+        onClick={onClose}
+        type="button"
+      />
+      <div
+        aria-labelledby="blocked-instances-title"
+        aria-modal="true"
+        className="relative w-full max-w-md rounded-lg border border-gray-600 bg-gray-800 p-4 shadow-xl"
+        role="dialog"
+      >
+        <h3
+          className="mb-3 text-sm font-semibold text-gray-200"
+          id="blocked-instances-title"
+        >
           Blocked Instances
         </h3>
 
