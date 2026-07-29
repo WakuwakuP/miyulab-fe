@@ -163,17 +163,29 @@ function deduplicateJoins(joins: JoinClause[]): JoinClause[] {
   })
 }
 
-function buildIdCollectSql(
-  plan: QueryPlan,
-  alias: string,
-  from: string,
-  orderBy: string,
-  sourceTable: string,
-  uniqueJoins: JoinClause[],
-  whereConditions: string[],
-  groupByNeeded: boolean,
-  havingClause: string,
-): string {
+type IdCollectSqlInput = {
+  alias: string
+  from: string
+  groupByNeeded: boolean
+  havingClause: string
+  orderBy: string
+  plan: QueryPlan
+  sourceTable: string
+  uniqueJoins: JoinClause[]
+  whereConditions: string[]
+}
+
+function buildIdCollectSql({
+  alias,
+  from,
+  groupByNeeded,
+  havingClause,
+  orderBy,
+  plan,
+  sourceTable,
+  uniqueJoins,
+  whereConditions,
+}: IdCollectSqlInput): string {
   const joinStr = buildJoinString(uniqueJoins)
   const whereStr =
     whereConditions.length > 0 ? `WHERE ${whereConditions.join(' AND ')}` : ''
@@ -253,17 +265,17 @@ export function compileSingleSource(plan: QueryPlan): ExecutionPlan {
   const groupByNeeded =
     composites.groupByNeeded || allJoins.some((j) => j.type === 'inner')
 
-  const sql = buildIdCollectSql(
-    plan,
+  const sql = buildIdCollectSql({
     alias,
     from,
-    orderBy,
-    sourceTable,
-    deduplicateJoins(allJoins),
-    whereConditions,
     groupByNeeded,
-    composites.havingClause,
-  )
+    havingClause: composites.havingClause,
+    orderBy,
+    plan,
+    sourceTable,
+    uniqueJoins: deduplicateJoins(allJoins),
+    whereConditions,
+  })
 
   const sourceType = sourceTable === 'notifications' ? 'notification' : 'post'
 
