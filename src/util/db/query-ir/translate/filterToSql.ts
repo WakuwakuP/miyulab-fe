@@ -384,12 +384,14 @@ export function compileOrGroup(
     }
   }
 
-  const sql =
-    branchSqls.length === 0
-      ? '1=1'
-      : branchSqls.length === 1
-        ? branchSqls[0]
-        : `(${branchSqls.join(' OR ')})`
+  let sql: string
+  if (branchSqls.length === 0) {
+    sql = '1=1'
+  } else if (branchSqls.length === 1) {
+    sql = branchSqls[0]
+  } else {
+    sql = `(${branchSqls.join(' OR ')})`
+  }
 
   return { binds: allBinds, joins: allJoins, sql }
 }
