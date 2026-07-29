@@ -33,51 +33,54 @@ export const UserInfo = ({
     [account],
   )
 
+  const openAccountDetail = () => {
+    setDetail({
+      content: account,
+      type: 'Account',
+    })
+  }
+
   return (
-    <h3
-      className="flex"
-      onClick={() => {
-        setDetail({
-          content: account,
-          type: 'Account',
-        })
-      }}
-    >
-      <div className="relative">
-        {scrolling ? (
-          <div
-            className={[
-              'rounded-lg object-contain flex-none bg-gray-600',
-              small ? 'w-6 h-6' : 'w-12 h-12',
-            ].join(' ')}
-          />
-        ) : (
-          <ProxyImage
-            alt="avatar"
-            className={[
-              'rounded-lg object-contain flex-none',
-              small ? 'w-6 h-6' : 'w-12 h-12',
-            ].join(' ')}
-            height={small ? 24 : 48}
-            src={account.avatar}
-            width={small ? 24 : 48}
-          />
-        )}
-        {account.bot === true && (
-          <RiRobotFill
-            className={[
-              'absolute text-blue-400 bg-gray-800 rounded-full p-0.5 bottom-0 right-0',
-              small ? 'w-3 h-3' : 'w-4 h-4',
-            ].join(' ')}
-            size={small ? 8 : 10}
-            title="Bot"
-          />
-        )}
-      </div>
-      {small ? (
-        <div className="w-[calc(100%-24px)] pl-2">
-          <div className="flex w-full justify-between truncate">
-            <p>
+    <h3 className="flex">
+      <button
+        className="flex w-full border-0 bg-transparent p-0 text-left font-[inherit] text-inherit"
+        onClick={openAccountDetail}
+        type="button"
+      >
+        <span className="relative block flex-none">
+          {scrolling ? (
+            <span
+              className={[
+                'block rounded-lg object-contain flex-none bg-gray-600',
+                small ? 'w-6 h-6' : 'w-12 h-12',
+              ].join(' ')}
+            />
+          ) : (
+            <ProxyImage
+              alt="avatar"
+              className={[
+                'rounded-lg object-contain flex-none',
+                small ? 'w-6 h-6' : 'w-12 h-12',
+              ].join(' ')}
+              height={small ? 24 : 48}
+              src={account.avatar}
+              width={small ? 24 : 48}
+            />
+          )}
+          {account.bot === true && (
+            <RiRobotFill
+              className={[
+                'absolute text-blue-400 bg-gray-800 rounded-full p-0.5 bottom-0 right-0',
+                small ? 'w-3 h-3' : 'w-4 h-4',
+              ].join(' ')}
+              size={small ? 8 : 10}
+              title="Bot"
+            />
+          )}
+        </span>
+        {small ? (
+          <span className="block w-[calc(100%-24px)] pl-2">
+            <span className="flex w-full justify-between truncate">
               <span>
                 <span
                   // biome-ignore lint/security/noDangerouslySetInnerHtml: TODO
@@ -85,29 +88,32 @@ export const UserInfo = ({
                     __html: getDisplayName,
                   }}
                 />
+                <span className="pl-1 text-gray-300">@{account.acct}</span>
               </span>
-              <span className="pl-1 text-gray-300">@{account.acct}</span>
-            </p>
-            <Visibility visibility={visibility} />
-          </div>
-        </div>
-      ) : (
-        <div className="w-[calc(100%-46px)] pl-2">
-          <p className="flex w-full justify-between [&>span]:inline-block">
+              <Visibility visibility={visibility} />
+            </span>
+          </span>
+        ) : (
+          <span className="block w-[calc(100%-46px)] pl-2">
+            <span className="flex w-full justify-between [&>span]:inline-block">
+              <span
+                className="truncate"
+                // biome-ignore lint/security/noDangerouslySetInnerHtml: TODO
+                dangerouslySetInnerHTML={{
+                  __html: getDisplayName,
+                }}
+              />
+              <Visibility visibility={visibility} />
+            </span>
             <span
-              className="truncate"
-              // biome-ignore lint/security/noDangerouslySetInnerHtml: TODO
-              dangerouslySetInnerHTML={{
-                __html: getDisplayName,
-              }}
-            />
-            <Visibility visibility={visibility} />
-          </p>
-          <p className="truncate text-gray-300" title={`@${account.acct}`}>
-            @{account.acct}
-          </p>
-        </div>
-      )}
+              className="block truncate text-gray-300"
+              title={`@${account.acct}`}
+            >
+              @{account.acct}
+            </span>
+          </span>
+        )}
+      </button>
     </h3>
   )
 }
