@@ -24,12 +24,14 @@ export const MergeFlowNodeV2 = memo(function MergeFlowNodeV2({
     [deleteNode, id],
   )
 
-  const stratLabel =
-    data.config.strategy === 'interleave-by-time'
-      ? '時間順'
-      : data.config.strategy === 'union'
-        ? 'union'
-        : 'intersect'
+  let stratLabel: string
+  if (data.config.strategy === 'interleave-by-time') {
+    stratLabel = '時間順'
+  } else if (data.config.strategy === 'union') {
+    stratLabel = 'union'
+  } else {
+    stratLabel = 'intersect'
+  }
 
   const isRunning = execStatus?.nodeStates[id] === 'running'
 
