@@ -635,14 +635,7 @@ describe('ensureReblogOriginalPost', () => {
       uri: 'https://example.com/users/alice/statuses/original-1',
     })
 
-    ensureReblogOriginalPost(
-      db,
-      originalStatus,
-      'https://example.com',
-      1,
-      Date.now(),
-      42,
-    )
+    ensureReblogOriginalPost(db, originalStatus, 1, Date.now(), 42)
 
     // INSERT INTO posts ( が呼ばれている（post_backend_ids 等は除外）
     const postInserts = calls.filter((c) =>
@@ -668,14 +661,7 @@ describe('ensureReblogOriginalPost', () => {
       uri: 'https://example.com/users/alice/statuses/555',
     })
 
-    ensureReblogOriginalPost(
-      db,
-      originalStatus,
-      'https://example.com',
-      1,
-      Date.now(),
-      42,
-    )
+    ensureReblogOriginalPost(db, originalStatus, 1, Date.now(), 42)
 
     // post_backend_ids への INSERT が呼ばれている
     const backendIdInserts = calls.filter((c) =>
@@ -702,14 +688,7 @@ describe('ensureReblogOriginalPost', () => {
       uri: 'https://example.com/users/alice/statuses/123',
     })
 
-    ensureReblogOriginalPost(
-      db,
-      originalStatus,
-      'https://example.com',
-      1,
-      Date.now(),
-      42,
-    )
+    ensureReblogOriginalPost(db, originalStatus, 1, Date.now(), 42)
 
     for (const call of calls) {
       expect(call.sql).not.toMatch(/\bposts_backends\b/)
@@ -732,14 +711,7 @@ describe('ensureReblogOriginalPost', () => {
       uri: 'https://example.com/users/alice/statuses/789',
     })
 
-    ensureReblogOriginalPost(
-      db,
-      originalStatus,
-      'https://example.com',
-      7,
-      Date.now(),
-      42,
-    )
+    ensureReblogOriginalPost(db, originalStatus, 7, Date.now(), 42)
 
     // ensureProfile が (db, account, serverId, collector, skipProfileUpdate) の5引数で呼ばれている
     expect(helpersModule.ensureProfile).toHaveBeenCalled()
@@ -766,14 +738,7 @@ describe('ensureReblogOriginalPost', () => {
       uri: 'https://example.com/users/alice/statuses/456',
     })
 
-    ensureReblogOriginalPost(
-      db,
-      originalStatus,
-      'https://example.com',
-      1,
-      Date.now(),
-      42,
-    )
+    ensureReblogOriginalPost(db, originalStatus, 1, Date.now(), 42)
 
     // profile_aliases テーブルへのアクセスがない
     for (const call of calls) {
@@ -797,14 +762,7 @@ describe('ensureReblogOriginalPost', () => {
       uri: 'https://example.com/users/alice/statuses/321',
     })
 
-    ensureReblogOriginalPost(
-      db,
-      originalStatus,
-      'https://example.com',
-      1,
-      Date.now(),
-      42,
-    )
+    ensureReblogOriginalPost(db, originalStatus, 1, Date.now(), 42)
 
     for (const call of calls) {
       expect(call.sql).not.toContain('posts_reblogs')
@@ -829,14 +787,7 @@ describe('ensureReblogOriginalPost', () => {
       uri: 'https://example.com/users/alice/statuses/engagement-1',
     })
 
-    ensureReblogOriginalPost(
-      db,
-      originalStatus,
-      'https://example.com',
-      1,
-      Date.now(),
-      42,
-    )
+    ensureReblogOriginalPost(db, originalStatus, 1, Date.now(), 42)
 
     // updateInteraction が呼ばれている
     expect(helpersModule.updateInteraction).toHaveBeenCalled()
@@ -847,14 +798,7 @@ describe('ensureReblogOriginalPost', () => {
 
     const originalStatus = createMockStatus({ uri: '' })
 
-    ensureReblogOriginalPost(
-      db,
-      originalStatus,
-      'https://example.com',
-      1,
-      Date.now(),
-      42,
-    )
+    ensureReblogOriginalPost(db, originalStatus, 1, Date.now(), 42)
 
     // DB アクセスが行われないことを確認
     expect(calls).toHaveLength(0)
@@ -876,14 +820,7 @@ describe('ensureReblogOriginalPost', () => {
       uri: 'https://example.com/users/alice/statuses/no-delay',
     })
 
-    ensureReblogOriginalPost(
-      db,
-      originalStatus,
-      'https://example.com',
-      1,
-      Date.now(),
-      42,
-    )
+    ensureReblogOriginalPost(db, originalStatus, 1, Date.now(), 42)
 
     // 遅延参照解決の SQL が呼ばれていない
     const delayedCalls = calls.filter(
@@ -911,14 +848,7 @@ describe('ensureReblogOriginalPost', () => {
       uri: 'https://example.com/users/alice/statuses/no-delay-repost',
     })
 
-    ensureReblogOriginalPost(
-      db,
-      originalStatus,
-      'https://example.com',
-      1,
-      Date.now(),
-      42,
-    )
+    ensureReblogOriginalPost(db, originalStatus, 1, Date.now(), 42)
 
     // 遅延リポスト解決の SQL が呼ばれていない
     const delayedCalls = calls.filter(

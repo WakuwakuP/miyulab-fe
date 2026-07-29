@@ -476,7 +476,6 @@ function syncReblogOriginalInteractions(
 export function ensureReblogOriginalPost(
   db: DbExec,
   originalStatus: Entity.Status,
-  _backendUrl: string,
   serverId: number,
   now: number,
   localAccountId: number | null,

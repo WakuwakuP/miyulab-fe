@@ -228,7 +228,6 @@ function applyStatusUpdate(
     ensureReblogOriginalPost(
       db,
       status.reblog,
-      backendUrl,
       serverId,
       now,
       localAccountId,
