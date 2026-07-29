@@ -160,51 +160,51 @@ describe('NOTIFICATION_BASE_JOINS', () => {
 
 // ─── rowToStoredNotification のテスト ────────────────────────────
 
-describe('rowToStoredNotification', () => {
-  /**
-   * 新スキーマのカラムレイアウト:
-   *   [0] id (notification PK)
-   *   [1] backendUrl (from local_accounts.backend_url)
-   *   [2] created_at_ms
-   *   [3] notification_type
-   *   [4] local_id
-   *   [5] is_read
-   *   [6] actor_acct        [7] actor_username    [8] actor_display_name
-   *   [9] actor_avatar      [10] actor_header     [11] actor_locked
-   *   [12] actor_bot        [13] actor_url
-   *   [14] rp_post_id       [15] rp_content       [16] rp_spoiler_text
-   *   [17] rp_url           [18] rp_uri           [19] rp_created_at_ms
-   *   [20] rp_sensitive     [21] rp_visibility     [22] rp_language
-   *   [23] rp_author_acct   [24] rp_author_username [25] rp_author_display_name
-   *   [26] rp_author_avatar [27] rp_author_url    [28] rp_local_id
-   *   [29] rp_in_reply_to_id [30] rp_edited_at_ms
-   *   [31] rp_status_emojis_json [32] rp_account_emojis_json
-   *   [33] rp_poll_json
-   *   [34] actor_emojis_json
-   *   [35] rp_emoji_reactions_json
-   *   [36] rp_media_json    [37] rp_mentions_json
-   *   [38] rp_voted         [39] rp_own_votes_json
-   *   [40] reaction_name    [41] reaction_url
-   */
-  function makeBaseRow(): (string | number | null)[] {
-    const row: (string | number | null)[] = new Array(42).fill(null)
-    row[0] = 1 // id
-    row[1] = 'https://example.com' // backendUrl
-    row[2] = 1700000000000 // created_at_ms
-    row[3] = 'favourite' // notification_type
-    row[4] = '12345' // local_id
-    row[5] = 0 // is_read
-    row[6] = 'user@example.com' // actor_acct
-    row[7] = 'user' // actor_username
-    row[8] = 'User Name' // actor_display_name
-    row[9] = 'https://example.com/avatar.png' // actor_avatar
-    row[10] = 'https://example.com/header.png' // actor_header
-    row[11] = 0 // actor_locked
-    row[12] = 0 // actor_bot
-    row[13] = 'https://example.com/@user' // actor_url
-    return row
-  }
+/**
+ * 新スキーマのカラムレイアウト:
+ *   [0] id (notification PK)
+ *   [1] backendUrl (from local_accounts.backend_url)
+ *   [2] created_at_ms
+ *   [3] notification_type
+ *   [4] local_id
+ *   [5] is_read
+ *   [6] actor_acct        [7] actor_username    [8] actor_display_name
+ *   [9] actor_avatar      [10] actor_header     [11] actor_locked
+ *   [12] actor_bot        [13] actor_url
+ *   [14] rp_post_id       [15] rp_content       [16] rp_spoiler_text
+ *   [17] rp_url           [18] rp_uri           [19] rp_created_at_ms
+ *   [20] rp_sensitive     [21] rp_visibility     [22] rp_language
+ *   [23] rp_author_acct   [24] rp_author_username [25] rp_author_display_name
+ *   [26] rp_author_avatar [27] rp_author_url    [28] rp_local_id
+ *   [29] rp_in_reply_to_id [30] rp_edited_at_ms
+ *   [31] rp_status_emojis_json [32] rp_account_emojis_json
+ *   [33] rp_poll_json
+ *   [34] actor_emojis_json
+ *   [35] rp_emoji_reactions_json
+ *   [36] rp_media_json    [37] rp_mentions_json
+ *   [38] rp_voted         [39] rp_own_votes_json
+ *   [40] reaction_name    [41] reaction_url
+ */
+function makeBaseRow(): (string | number | null)[] {
+  const row: (string | number | null)[] = new Array(42).fill(null)
+  row[0] = 1 // id
+  row[1] = 'https://example.com' // backendUrl
+  row[2] = 1700000000000 // created_at_ms
+  row[3] = 'favourite' // notification_type
+  row[4] = '12345' // local_id
+  row[5] = 0 // is_read
+  row[6] = 'user@example.com' // actor_acct
+  row[7] = 'user' // actor_username
+  row[8] = 'User Name' // actor_display_name
+  row[9] = 'https://example.com/avatar.png' // actor_avatar
+  row[10] = 'https://example.com/header.png' // actor_header
+  row[11] = 0 // actor_locked
+  row[12] = 0 // actor_bot
+  row[13] = 'https://example.com/@user' // actor_url
+  return row
+}
 
+describe('rowToStoredNotification', () => {
   it('backendUrl を local_accounts.backend_url から取得する', () => {
     const row = makeBaseRow()
     row[1] = 'https://mastodon.social'
