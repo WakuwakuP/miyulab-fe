@@ -141,18 +141,19 @@ export function MuteManager({ onClose }: { onClose: () => void }) {
   }, [])
 
   return (
-    <div
-      aria-label="Muted Accounts"
-      aria-modal="true"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose()
-      }}
-      role="dialog"
-    >
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <button
+        aria-label="Close muted accounts"
+        className="absolute inset-0 bg-black/60"
+        onClick={onClose}
+        type="button"
+      />
       <div
-        className="w-full max-w-md rounded-lg border border-gray-600 bg-gray-800 p-4 shadow-xl outline-none"
+        aria-label="Muted Accounts"
+        aria-modal="true"
+        className="relative w-full max-w-md rounded-lg border border-gray-600 bg-gray-800 p-4 shadow-xl outline-none"
         ref={dialogRef}
+        role="dialog"
         tabIndex={-1}
       >
         <h3 className="mb-3 text-sm font-semibold text-gray-200">
