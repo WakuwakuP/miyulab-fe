@@ -290,8 +290,8 @@ export const Status = ({
     <div className={statusClasses}>
       {status.reblog != null ? (
         <>
-          <div
-            className="flex mb-1 overflow-clip"
+          <button
+            className="flex mb-1 overflow-clip border-0 bg-transparent p-0 text-inherit"
             onClick={() => {
               setDetail({
                 content: {
@@ -301,6 +301,7 @@ export const Status = ({
                 type: 'Account',
               })
             }}
+            type="button"
           >
             <RiRepeatFill
               className="mr-2 block text-blue-400 flex-none"
@@ -315,14 +316,14 @@ export const Status = ({
               loading="lazy"
               src={toSecureResourceUrl(status.account.avatar)}
             />
-            <div
+            <span
               className="pl-2 whitespace-nowrap"
               // biome-ignore lint/security/noDangerouslySetInnerHtml: TODO
               dangerouslySetInnerHTML={{
                 __html: displayName,
               }}
             />
-          </div>
+          </button>
           <UserInfo
             account={{
               ...status.reblog.account,
