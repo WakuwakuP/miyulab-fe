@@ -77,7 +77,7 @@ function hashForReactKey(value: string): string {
 
   for (let i = 0; i < value.length; i++) {
     hash = (hash << 5) - hash + value.charCodeAt(i)
-    hash |= 0
+    hash = Math.trunc(hash)
   }
 
   return Math.abs(hash).toString(36)
