@@ -82,16 +82,10 @@ export const Media = ({
       )
     case 'audio':
       return (
-        <div
-          className={['relative h-16 p-0.5', className].join(' ')}
-          onClick={(e) => {
-            e.preventDefault()
-            e.stopPropagation()
-            if (onClick != null) onClick()
-          }}
-        >
+        <div className={['relative h-16 p-0.5', className].join(' ')}>
           <audio className="w-full" controls key={media.id} src={mediaUrl} />
           <button
+            aria-label={media.description || 'Open audio media'}
             className="absolute left-0 top-0 z-1 h-full w-full border-0 bg-transparent p-0"
             onClick={(e) => {
               e.preventDefault()
