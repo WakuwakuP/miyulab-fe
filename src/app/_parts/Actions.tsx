@@ -117,6 +117,15 @@ export const Actions = ({
   // Check if the status is private (either the status itself or the reblogged status)
   const statusVisibility = status.reblog?.visibility ?? status.visibility
   const isPrivate = statusVisibility === 'private'
+  let reblogIcon = <RiRepeatFill size={24} />
+
+  if (reblogged ?? false) {
+    reblogIcon = <RiRepeatFill className="text-blue-400" size={24} />
+  }
+
+  if (isPrivate) {
+    reblogIcon = <FaLock className="text-gray-400" size={24} />
+  }
 
   return (
     <div className="flex justify-between pt-2 [&>button]:mx-1">
@@ -157,13 +166,7 @@ export const Actions = ({
         }}
         type="button"
       >
-        {isPrivate ? (
-          <FaLock className="text-gray-400" size={24} />
-        ) : (reblogged ?? false) ? (
-          <RiRepeatFill className="text-blue-400" size={24} />
-        ) : (
-          <RiRepeatFill size={24} />
-        )}
+        {reblogIcon}
       </button>
       <button
         onClick={() => {
