@@ -140,7 +140,7 @@ function subscribe(listener: () => void) {
 }
 
 function getSnapshot() {
-  return window.location.pathname
+  return globalThis.location.pathname
 }
 
 function getServerSnapshot() {
