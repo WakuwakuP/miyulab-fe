@@ -125,8 +125,12 @@ export const MainPanel = () => {
   }
 
   useEffect(() => {
+    const replyAccountAcct = replyTo?.account.acct
+
     setVisibility(replyTo?.visibility ?? 'public')
-    setContent(replyTo?.account.acct != null ? `@${replyTo.account.acct} ` : '')
+    setContent(
+      typeof replyAccountAcct === 'string' ? `@${replyAccountAcct} ` : '',
+    )
   }, [replyTo])
 
   useEffect(() => {
