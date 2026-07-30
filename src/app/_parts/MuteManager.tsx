@@ -191,7 +191,7 @@ export function MuteManager({ onClose }: Readonly<{ onClose: () => void }>) {
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <button
         aria-label="Close muted accounts"
-        className="absolute inset-0 bg-black/60"
+        className="absolute inset-0 h-full w-full cursor-default bg-black/60 p-0"
         onClick={onClose}
         type="button"
       />
