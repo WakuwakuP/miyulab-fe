@@ -176,7 +176,6 @@ const PlayerController = () => {
   const { playerSize } = useContext(SettingContext)
 
   const player = useRef<HTMLVideoElement>(null)
-  const playerRootRef = useRef<HTMLDivElement>(null)
   const [playing, setPlaying] = useState(false)
   const [played, setPlayed] = useState(0)
   const [seeking, setSeeking] = useState(false)
@@ -281,7 +280,9 @@ const PlayerController = () => {
 
   useEffect(() => {
     if (currentUrl === '') return
-    playerRootRef.current?.focus({ preventScroll: true })
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur()
+    }
   }, [currentUrl])
 
   const handleSeekMouseUp: MouseEventHandler<HTMLInputElement> = () => {
@@ -340,8 +341,6 @@ const PlayerController = () => {
         classNamePlayerSize.wClass,
       ].join(' ')}
       data-player
-      ref={playerRootRef}
-      tabIndex={-1}
     >
       {controls.canPlayPause ? (
         <button
