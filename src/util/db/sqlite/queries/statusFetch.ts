@@ -49,7 +49,7 @@ export async function fetchStatusesByIds(
   // リブログ元の post_id を収集し、全 post_id のリストを作成
   const reblogPostIds: number[] = []
   for (const row of baseRows) {
-    const rbPostId = row[27] as number | null // rb_post_id
+    const rbPostId = row[25] as number | null // rb_post_id
     if (rbPostId !== null) {
       reblogPostIds.push(rbPostId)
     }

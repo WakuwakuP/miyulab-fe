@@ -916,3 +916,413 @@ describe('handleBulkUpsertStatuses', () => {
     expect(delayedCalls).toHaveLength(0)
   })
 })
+
+// ================================================================
+// 分岐・フォールバック動作
+// ================================================================
+
+describe('status handler branch behavior', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.mocked(helpersModule.ensureProfile).mockReturnValue(10)
+    vi.mocked(helpersModule.ensureServer).mockReturnValue(1)
+    vi.mocked(helpersModule.resolveEmojisFromDb).mockReturnValue([])
+    vi.mocked(helpersModule.resolveLocalAccountId).mockReturnValue(100)
+    vi.mocked(statusHelpersModule.deriveAccountDomain).mockReturnValue(
+      'example.com',
+    )
+    vi.mocked(statusHelpersModule.getLastInsertRowId).mockReturnValue(999)
+    vi.mocked(statusHelpersModule.resolvePostIdInternal).mockReturnValue(
+      undefined,
+    )
+    vi.mocked(statusHelpersModule.resolveRepostOfPostId).mockReturnValue(null)
+    vi.mocked(statusHelpersModule.resolveVisibilityId).mockReturnValue(1)
+  })
+
+  it('null interaction flags are treated as unavailable data', () => {
+    vi.mocked(statusHelpersModule.resolveVisibilityId).mockReturnValue(null)
+    const { db } = createMockDb()
+    const status = createMockStatus({
+      bookmarked: null,
+      favourited: null,
+      reblogged: null,
+      uri: '',
+    })
+
+    handleUpsertStatus(
+      db,
+      JSON.stringify(status),
+      'https://example.com',
+      'home',
+    )
+
+    expect(helpersModule.updateInteraction).not.toHaveBeenCalled()
+    expect(
+      vi.mocked(helpersModule.extractPostColumns).mock.calls.at(-1)?.[0].uri,
+    ).toBe('')
+  })
+
+  it('uses supplied post and profile emojis without database fallback', () => {
+    const postEmoji = {
+      shortcode: 'party',
+      static_url: 'https://example.com/party-static.png',
+      url: 'https://example.com/party.png',
+      visible_in_picker: true,
+    }
+    const profileEmoji = {
+      shortcode: 'wave',
+      static_url: 'https://example.com/wave-static.png',
+      url: 'https://example.com/wave.png',
+      visible_in_picker: true,
+    }
+    const status = createMockStatus({ emojis: [postEmoji] })
+    status.account.emojis = [profileEmoji]
+    const { db } = createMockDb()
+
+    handleUpsertStatus(
+      db,
+      JSON.stringify(status),
+      'https://example.com',
+      'home',
+    )
+
+    expect(helpersModule.resolveEmojisFromDb).not.toHaveBeenCalled()
+    expect(helpersModule.syncProfileCustomEmojis).toHaveBeenCalledWith(
+      db,
+      10,
+      1,
+      [profileEmoji],
+      expect.any(Set),
+    )
+    expect(helpersModule.syncPostCustomEmojis).toHaveBeenCalledWith(
+      db,
+      999,
+      1,
+      [postEmoji, profileEmoji],
+      expect.any(Set),
+    )
+  })
+
+  it('resolves missing emoji metadata with null text defaults', () => {
+    const status = createMockStatus()
+    status.plain_content = null
+    status.account.display_name = null as unknown as string
+    const { db } = createMockDb()
+
+    handleUpsertStatus(
+      db,
+      JSON.stringify(status),
+      'https://example.com',
+      'home',
+    )
+
+    expect(helpersModule.resolveEmojisFromDb).toHaveBeenCalledWith(
+      db,
+      1,
+      null,
+      'example.com',
+    )
+  })
+
+  it('skips profile emoji work during a profile-skipping bulk refresh', () => {
+    const status = createMockStatus()
+    status.account.emojis = [
+      {
+        shortcode: 'wave',
+        static_url: 'https://example.com/wave-static.png',
+        url: 'https://example.com/wave.png',
+        visible_in_picker: true,
+      },
+    ]
+    const { db } = createMockDb()
+
+    handleBulkUpsertStatuses(
+      db,
+      [JSON.stringify(status)],
+      'https://example.com',
+      'home',
+      undefined,
+      true,
+    )
+
+    expect(helpersModule.syncProfileCustomEmojis).not.toHaveBeenCalled()
+    expect(helpersModule.ensureProfile).toHaveBeenCalledWith(
+      db,
+      expect.anything(),
+      1,
+      expect.any(Set),
+      true,
+    )
+  })
+
+  it('does not create account mappings or interactions without a local account', () => {
+    vi.mocked(helpersModule.resolveLocalAccountId).mockReturnValue(null)
+    const { calls, db } = createMockDb()
+
+    handleUpsertStatus(
+      db,
+      JSON.stringify(createMockStatus()),
+      'https://example.com',
+      'public',
+    )
+
+    expect(
+      calls.some(
+        ({ sql }) =>
+          sql.includes('post_backend_ids') || sql.includes('timeline_entries'),
+      ),
+    ).toBe(false)
+    expect(statusHelpersModule.resolvePostIdInternal).not.toHaveBeenCalled()
+    expect(helpersModule.updateInteraction).not.toHaveBeenCalled()
+  })
+
+  it('reuses the bulk URI cache for duplicate status objects', () => {
+    const status = createMockStatus({
+      id: 'same',
+      uri: 'https://example.com/statuses/same',
+    })
+    const { calls, db } = createMockDb()
+
+    handleBulkUpsertStatuses(
+      db,
+      [JSON.stringify(status), JSON.stringify(status)],
+      'https://example.com',
+      'home',
+    )
+
+    const uriLookups = calls.filter(({ sql }) =>
+      sql.includes('SELECT id, is_reblog FROM posts'),
+    )
+    expect(uriLookups).toHaveLength(1)
+    expect(calls.some(({ sql }) => sql.includes('UPDATE posts SET'))).toBe(true)
+  })
+
+  it('inserts a reblog with an empty URI when it aliases the original', () => {
+    const original = createMockStatus({
+      id: 'original',
+      uri: 'https://example.com/statuses/original',
+    })
+    const reblog = createMockStatus({
+      id: 'reblog',
+      reblog: original,
+      uri: original.uri,
+    })
+    const { calls, db } = createMockDb()
+
+    handleBulkUpsertStatuses(
+      db,
+      [JSON.stringify(reblog)],
+      'https://example.com',
+      'home',
+    )
+
+    const insert = calls.find(({ sql }) => sql.includes('INSERT INTO posts ('))
+    expect(insert?.opts?.bind?.[0]).toBe('')
+  })
+
+  it('does not overwrite an original row when a reblog URI resolves to it', () => {
+    const original = createMockStatus({
+      id: 'original',
+      uri: 'https://example.com/statuses/original',
+    })
+    const reblog = createMockStatus({
+      id: 'reblog',
+      reblog: original,
+      uri: 'https://example.com/statuses/reblog',
+    })
+    const { calls, db } = createMockDb((sql) => {
+      if (sql.includes('SELECT id, is_reblog FROM posts')) return [[42, 0]]
+      if (sql.includes('JOIN profiles')) return []
+      return undefined
+    })
+
+    handleUpsertStatus(
+      db,
+      JSON.stringify(reblog),
+      'https://example.com',
+      'home',
+    )
+
+    const insert = calls.find(({ sql }) => sql.includes('INSERT INTO posts ('))
+    expect(insert?.opts?.bind?.[0]).toBe('')
+    expect(
+      calls.some(
+        ({ sql, opts }) =>
+          sql.includes('UPDATE posts SET') && opts?.bind?.at(-1) === 42,
+      ),
+    ).toBe(false)
+  })
+
+  it('deduplicates a reblog by author and backfills its canonical URI', () => {
+    const original = createMockStatus({
+      id: 'original',
+      uri: 'https://example.com/statuses/original',
+    })
+    const reblog = createMockStatus({
+      id: 'reblog',
+      reblog: original,
+      uri: 'https://example.com/statuses/reblog',
+    })
+    const { calls, db } = createMockDb((sql) => {
+      if (sql.includes('SELECT id, is_reblog FROM posts')) return []
+      if (sql.includes('JOIN profiles')) return [[77]]
+      return undefined
+    })
+
+    handleBulkUpsertStatuses(
+      db,
+      [JSON.stringify(reblog)],
+      'https://example.com',
+      'home',
+    )
+
+    expect(
+      calls.some(
+        ({ sql, opts }) =>
+          sql.includes("WHERE id = ? AND object_uri = ''") &&
+          opts?.bind?.[0] === reblog.uri &&
+          opts.bind[1] === 77,
+      ),
+    ).toBe(true)
+  })
+
+  it('skips author reblog lookup when an account domain cannot be derived', () => {
+    vi.mocked(statusHelpersModule.deriveAccountDomain).mockReturnValue('')
+    const original = createMockStatus({
+      id: 'original',
+      uri: 'https://example.com/statuses/original',
+    })
+    const reblog = createMockStatus({
+      id: 'reblog',
+      reblog: original,
+      uri: 'https://example.com/statuses/reblog',
+    })
+    const { calls, db } = createMockDb()
+
+    handleUpsertStatus(
+      db,
+      JSON.stringify(reblog),
+      'https://example.com',
+      'home',
+    )
+
+    expect(calls.some(({ sql }) => sql.includes('JOIN profiles'))).toBe(false)
+  })
+
+  it('uses extracted visibility when the visibility lookup misses', () => {
+    vi.mocked(statusHelpersModule.resolveVisibilityId).mockReturnValue(null)
+    const { calls, db } = createMockDb((sql) => {
+      if (sql.includes('SELECT id, is_reblog FROM posts')) return [[42, 0]]
+      return undefined
+    })
+
+    handleUpsertStatus(
+      db,
+      JSON.stringify(createMockStatus()),
+      'https://example.com',
+      'home',
+    )
+
+    const update = calls.find(({ sql }) => sql.includes('UPDATE posts SET'))
+    expect(update?.opts?.bind?.[1]).toBe(1)
+  })
+
+  it('links a normalized tag when the tag exists', () => {
+    const { calls, db } = createMockDb((sql) => {
+      if (sql.includes('SELECT id FROM hashtags')) return [[5]]
+      return []
+    })
+
+    const result = handleUpsertStatus(
+      db,
+      JSON.stringify(createMockStatus()),
+      'https://example.com',
+      'tag',
+      'TypeScript',
+    )
+
+    expect(
+      calls.some(
+        ({ sql, opts }) =>
+          sql.includes('post_hashtags') &&
+          opts?.bind?.[0] === 999 &&
+          opts.bind[1] === 5,
+      ),
+    ).toBe(true)
+    expect(result.changedTables).toEqual(
+      expect.arrayContaining(['hashtags', 'post_hashtags']),
+    )
+  })
+
+  it('continues a tagged bulk batch when a tag row cannot be resolved', () => {
+    const { calls, db } = createMockDb()
+
+    handleBulkUpsertStatuses(
+      db,
+      [JSON.stringify(createMockStatus())],
+      'https://example.com',
+      'tag',
+      'Missing',
+    )
+
+    expect(
+      calls.some(({ sql }) => sql.includes('INSERT INTO post_hashtags')),
+    ).toBe(false)
+    expect(calls.at(-1)?.sql).toBe('COMMIT;')
+  })
+
+  it('rolls back a single upsert when setup fails', () => {
+    vi.mocked(helpersModule.ensureServer).mockImplementationOnce(() => {
+      throw new Error('server lookup failed')
+    })
+    const { calls, db } = createMockDb()
+
+    expect(() =>
+      handleUpsertStatus(
+        db,
+        JSON.stringify(createMockStatus()),
+        'https://example.com',
+        'home',
+      ),
+    ).toThrow('server lookup failed')
+
+    expect(calls.map(({ sql }) => sql)).toEqual(['BEGIN;', 'ROLLBACK;'])
+  })
+
+  it('isolates malformed entries in a bulk upsert with a savepoint', () => {
+    const { calls, db } = createMockDb()
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    handleBulkUpsertStatuses(
+      db,
+      ['not-json', JSON.stringify(createMockStatus())],
+      'https://example.com',
+      'home',
+    )
+
+    expect(calls.some(({ sql }) => sql === 'ROLLBACK TO sp_status;')).toBe(true)
+    expect(calls.at(-1)?.sql).toBe('COMMIT;')
+    expect(error).toHaveBeenCalledWith(
+      'Failed to upsert single status, skipping:',
+      expect.any(SyntaxError),
+    )
+  })
+
+  it('rolls back the whole bulk transaction when shared setup fails', () => {
+    vi.mocked(helpersModule.ensureServer).mockImplementationOnce(() => {
+      throw new Error('server lookup failed')
+    })
+    const { calls, db } = createMockDb()
+
+    expect(() =>
+      handleBulkUpsertStatuses(
+        db,
+        [JSON.stringify(createMockStatus())],
+        'https://example.com',
+        'home',
+      ),
+    ).toThrow('server lookup failed')
+
+    expect(calls.map(({ sql }) => sql)).toEqual(['BEGIN;', 'ROLLBACK;'])
+  })
+})

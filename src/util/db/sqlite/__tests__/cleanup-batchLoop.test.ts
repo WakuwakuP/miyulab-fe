@@ -252,4 +252,165 @@ describe('enforceMaxLength — batch loop', () => {
 
     infoSpy.mockRestore()
   })
+
+  it('件数クエリが空でも各テーブルをゼロとしてログ出力する', async () => {
+    const sendCommand = vi.fn().mockResolvedValue(undefined)
+    const execAsync = vi.fn().mockResolvedValue([])
+    vi.mocked(getSqliteDb).mockResolvedValue({
+      cancelStaleRequests: vi.fn(),
+      execAsync,
+      execAsyncTimed: vi.fn(),
+      execBatch: vi.fn(),
+      executeFlatFetch: vi.fn(),
+      executeGraphPlan: vi.fn(),
+      executeQueryPlan: vi.fn(),
+      fetchTimeline: vi.fn(),
+      persistence: 'memory',
+      sendCommand,
+    })
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {})
+
+    await enforceMaxLength()
+
+    const countsLine = infoSpy.mock.calls.find((args) =>
+      String(args[0]).includes('table counts after'),
+    )
+    expect(countsLine?.[0]).toContain('timeline_entries=0')
+    expect(countsLine?.[0]).toContain('notifications=0')
+    expect(countsLine?.[0]).toContain('posts=0')
+  })
+
+  it('null のテーブル件数をゼロへ正規化する', async () => {
+    const sendCommand = vi.fn().mockResolvedValue({ hasMore: false })
+    const execAsync = vi.fn().mockResolvedValue([[null, null, null]])
+    vi.mocked(getSqliteDb).mockResolvedValue({
+      cancelStaleRequests: vi.fn(),
+      execAsync,
+      execAsyncTimed: vi.fn(),
+      execBatch: vi.fn(),
+      executeFlatFetch: vi.fn(),
+      executeGraphPlan: vi.fn(),
+      executeQueryPlan: vi.fn(),
+      fetchTimeline: vi.fn(),
+      persistence: 'memory',
+      sendCommand,
+    })
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {})
+
+    await enforceMaxLength()
+
+    expect(
+      infoSpy.mock.calls.find((args) =>
+        String(args[0]).includes('table counts after'),
+      )?.[0],
+    ).toContain(
+      'timeline_entries=0 (n/a), notifications=0 (n/a), posts=0 (n/a)',
+    )
+  })
+
+  it('複数バッチの phase timings を合計し最大値を記録する', async () => {
+    const phase = (total: number) => ({
+      notifications: total + 1,
+      phase1Total: total + 2,
+      phase2Total: total + 3,
+      postsCount: total + 4,
+      postsDelete: total + 5,
+      timeline: total + 6,
+      total: total + 7,
+    })
+    const sendCommand = vi
+      .fn()
+      .mockResolvedValueOnce({
+        hasMore: true,
+        phaseTimings: phase(20),
+      })
+      .mockResolvedValueOnce({
+        hasMore: false,
+        phaseTimings: phase(10),
+      })
+    const execAsync = vi.fn().mockResolvedValue([[0, 0, 0]])
+    vi.mocked(getSqliteDb).mockResolvedValue({
+      cancelStaleRequests: vi.fn(),
+      execAsync,
+      execAsyncTimed: vi.fn(),
+      execBatch: vi.fn(),
+      executeFlatFetch: vi.fn(),
+      executeGraphPlan: vi.fn(),
+      executeQueryPlan: vi.fn(),
+      fetchTimeline: vi.fn(),
+      persistence: 'memory',
+      sendCommand,
+    })
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {})
+
+    await enforceMaxLength()
+
+    const timingsLine = String(
+      infoSpy.mock.calls.find((args) =>
+        String(args[0]).includes('phase timings'),
+      )?.[0],
+    )
+    expect(timingsLine).toContain('phase2Total=36 (maxBatch=23)')
+    expect(timingsLine).toContain('postsDelete=40 (maxBatch=25)')
+    expect(timingsLine).toContain('workerTotal=44')
+  })
+
+  it('中断時も収集済み phase timings と件数を警告ログへ残す', async () => {
+    const sendCommand = vi
+      .fn()
+      .mockResolvedValueOnce({
+        hasMore: true,
+        phaseTimings: {
+          notifications: 1,
+          phase1Total: 2,
+          phase2Total: 3,
+          postsCount: 4,
+          postsDelete: 5,
+          timeline: 6,
+          total: 7,
+        },
+      })
+      .mockRejectedValueOnce(new Error('worker stopped'))
+    const execAsync = vi.fn().mockResolvedValue([[1, 2, 3]])
+    vi.mocked(getSqliteDb).mockResolvedValue({
+      cancelStaleRequests: vi.fn(),
+      execAsync,
+      execAsyncTimed: vi.fn(),
+      execBatch: vi.fn(),
+      executeFlatFetch: vi.fn(),
+      executeGraphPlan: vi.fn(),
+      executeQueryPlan: vi.fn(),
+      fetchTimeline: vi.fn(),
+      persistence: 'memory',
+      sendCommand,
+    })
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    await expect(enforceMaxLength()).rejects.toThrow('worker stopped')
+
+    expect(
+      warnSpy.mock.calls.some((args) =>
+        String(args[0]).includes('phase timings'),
+      ),
+    ).toBe(true)
+    expect(
+      warnSpy.mock.calls.some((args) =>
+        String(args[0]).includes('table counts after aborted'),
+      ),
+    ).toBe(true)
+  })
+
+  it('安全上限の100バッチで停止して次回継続を警告する', async () => {
+    const { sendCommand } = installMockHandle(
+      Array.from({ length: 100 }, () => ({ hasMore: true })),
+    )
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    await enforceMaxLength()
+
+    expect(sendCommand).toHaveBeenCalledTimes(100)
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('reached MAX_BATCH_ITERATIONS (100)'),
+    )
+  })
 })

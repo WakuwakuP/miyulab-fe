@@ -19,7 +19,7 @@ export async function getStatusesByTimelineType(
 ): Promise<SqliteStoredStatus[]> {
   const handle = await getSqliteDb()
 
-  const phase1Binds: (string | number)[] = []
+  const phase1Binds: (string | number)[] = [timelineType]
   let backendFilter = ''
   if (backendUrls && backendUrls.length > 0) {
     const placeholders = backendUrls.map(() => '?').join(',')
@@ -39,7 +39,7 @@ export async function getStatusesByTimelineType(
     ORDER BY p.created_at_ms DESC
     LIMIT ?;
   `
-  phase1Binds.push(timelineType, limit ?? MAX_QUERY_LIMIT)
+  phase1Binds.push(limit ?? MAX_QUERY_LIMIT)
 
   const idRows = (await handle.execAsync(phase1Sql, {
     bind: phase1Binds,
@@ -69,7 +69,7 @@ export async function getStatusesByTag(
 ): Promise<SqliteStoredStatus[]> {
   const handle = await getSqliteDb()
 
-  const phase1Binds: (string | number)[] = []
+  const phase1Binds: (string | number)[] = [tag]
   let backendFilter = ''
   if (backendUrls && backendUrls.length > 0) {
     const placeholders = backendUrls.map(() => '?').join(',')
@@ -89,7 +89,7 @@ export async function getStatusesByTag(
     ORDER BY p.created_at_ms DESC
     LIMIT ?;
   `
-  phase1Binds.push(tag, limit ?? MAX_QUERY_LIMIT)
+  phase1Binds.push(limit ?? MAX_QUERY_LIMIT)
 
   const idRows = (await handle.execAsync(phase1Sql, {
     bind: phase1Binds,

@@ -139,7 +139,13 @@ export default defineConfig({
     coverage: {
       include: ['src/util/db/sqlite/**'],
       provider: 'v8',
-      reporter: ['text', 'json', 'json-summary'],
+      reporter: ['text', 'json', 'json-summary', 'lcov'],
+      thresholds: {
+        branches: 90,
+        functions: 90,
+        lines: 90,
+        statements: 90,
+      },
     },
     environment: 'node',
     globals: true,
@@ -153,6 +159,8 @@ export default defineConfig({
 - **グローバル API**: `describe`, `it`, `expect` 等をインポートなしで使用可能
 - **パスエイリアス**: `tsconfig.json` の `baseUrl: "src"` に合わせたエイリアス設定
 - **カバレッジ対象**: `src/util/db/sqlite/` 配下に限定（V8 プロバイダー使用）
+- **カバレッジゲート**: statements / branches / functions / lines の全指標で 90% 以上
+- **SonarQube 連携**: `coverage/lcov.info` を生成し、解析ジョブへ渡す
 
 ### Biome リント・フォーマット設定
 
