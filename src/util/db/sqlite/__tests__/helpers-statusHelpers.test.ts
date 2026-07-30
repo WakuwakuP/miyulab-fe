@@ -80,6 +80,13 @@ describe('resolveVisibilityId', () => {
     expect(result).toBe(1)
     expect(db.exec).not.toHaveBeenCalled()
   })
+
+  it('未知の visibility は null を返しキャッシュしない', () => {
+    const db = createMockDb(() => [])
+
+    expect(resolveVisibilityId(db, 'unsupported')).toBeNull()
+    expect(visibilityCache.has('unsupported')).toBe(false)
+  })
 })
 
 // ================================================================
@@ -95,6 +102,41 @@ describe('resolveMediaTypeId', () => {
     expect(db.exec).toHaveBeenCalledWith(
       'SELECT id FROM media_types WHERE name = ?;',
       { bind: ['image'], returnValue: 'resultRows' },
+    )
+  })
+
+  it('キャッシュヒット時は DB にアクセスしない', () => {
+    mediaTypeCache.set('video', 2)
+    const db = createMockDb()
+
+    expect(resolveMediaTypeId(db, 'video')).toBe(2)
+    expect(db.exec).not.toHaveBeenCalled()
+  })
+
+  it('未知の media type は unknown の ID にフォールバックしてキャッシュする', () => {
+    const db = createMockDb((sql) =>
+      String(sql).includes("name = 'unknown'") ? [[9]] : [],
+    )
+
+    expect(resolveMediaTypeId(db, 'model')).toBe(9)
+    expect(mediaTypeCache.get('model')).toBe(9)
+  })
+
+  it('unknown の行も存在しない場合は明示的に失敗する', () => {
+    const db = createMockDb(() => [])
+
+    expect(() => resolveMediaTypeId(db, 'model')).toThrow(
+      "media_types table missing 'unknown' entry (lookup for: model)",
+    )
+  })
+
+  it('unknown の先頭行が欠けている場合も明示的に失敗する', () => {
+    const db = createMockDb((sql) =>
+      String(sql).includes('WHERE name = ?') ? [] : [undefined],
+    )
+
+    expect(() => resolveMediaTypeId(db, 'model')).toThrow(
+      "media_types table missing 'unknown' entry (lookup for: model)",
     )
   })
 })
@@ -113,6 +155,19 @@ describe('resolveReplyToPostId', () => {
       'SELECT post_id FROM post_backend_ids WHERE local_account_id = ? AND local_id = ? LIMIT 1;',
       { bind: [42, '99999'], returnValue: 'resultRows' },
     )
+  })
+
+  it('返信先 ID が空の場合は DB を参照せず null を返す', () => {
+    const db = createMockDb()
+
+    expect(resolveReplyToPostId(db, null, 42)).toBeNull()
+    expect(db.exec).not.toHaveBeenCalled()
+  })
+
+  it('対応する返信先がない場合は null を返す', () => {
+    const db = createMockDb(() => [])
+
+    expect(resolveReplyToPostId(db, 'missing', 42)).toBeNull()
   })
 })
 
@@ -136,6 +191,19 @@ describe('resolveRepostOfPostId', () => {
         returnValue: 'resultRows',
       },
     )
+  })
+
+  it('リポスト元 URI が空の場合は DB を参照せず null を返す', () => {
+    const db = createMockDb()
+
+    expect(resolveRepostOfPostId(db, null)).toBeNull()
+    expect(db.exec).not.toHaveBeenCalled()
+  })
+
+  it('対応するリポスト元がない場合は null を返す', () => {
+    const db = createMockDb(() => [])
+
+    expect(resolveRepostOfPostId(db, 'https://example.com/missing')).toBeNull()
   })
 })
 
@@ -190,5 +258,21 @@ describe('getLastInsertRowId', () => {
     expect(db.exec).toHaveBeenCalledWith('SELECT last_insert_rowid();', {
       returnValue: 'resultRows',
     })
+  })
+
+  it('SQLite が行を返さない場合は失敗する', () => {
+    const db = createMockDb(() => [])
+
+    expect(() => getLastInsertRowId(db)).toThrow(
+      'last_insert_rowid() returned no rows',
+    )
+  })
+
+  it('SQLite の先頭行が欠けている場合も失敗する', () => {
+    const db = createMockDb(() => [undefined])
+
+    expect(() => getLastInsertRowId(db)).toThrow(
+      'last_insert_rowid() returned no rows',
+    )
   })
 })

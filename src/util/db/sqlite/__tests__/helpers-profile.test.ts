@@ -290,6 +290,159 @@ describe('ensureProfile', () => {
     expect(bind[12]).toBe(1) // is_locked (locked: true → 1)
     expect(bind[13]).toBe(1) // is_bot (bot: true → 1)
   })
+
+  it('キャッシュにない server host を DB から解決して再利用する', () => {
+    serverHostCache.clear()
+    const calls: {
+      sql: string
+      opts?: Parameters<DbExecCompat['exec']>[1]
+    }[] = []
+    const db: DbExecCompat = {
+      exec: vi.fn((sql, opts) => {
+        calls.push({ opts, sql })
+        if (sql.includes('SELECT host FROM servers')) {
+          return [['resolved.example']]
+        }
+        if (sql.includes('SELECT id FROM profiles')) return [[17]]
+        return undefined
+      }),
+    }
+    const account = createMockAccount({
+      acct: 'local',
+      username: 'local',
+    })
+
+    expect(ensureProfile(db, account, 9)).toBe(17)
+    profileIdCache.clear()
+    expect(ensureProfile(db, account, 9)).toBe(17)
+
+    expect(
+      calls.filter(({ sql }) => sql.includes('SELECT host FROM servers')),
+    ).toHaveLength(1)
+    expect(serverHostCache.get(9)).toBe('resolved.example')
+  })
+
+  it('uses an empty host when the server cannot be resolved', () => {
+    serverHostCache.clear()
+    const db: DbExecCompat = {
+      exec: vi.fn((sql) => {
+        if (sql.includes('SELECT host FROM servers')) return []
+        if (sql.includes('SELECT id FROM profiles')) return [[21]]
+        return undefined
+      }),
+    }
+    const account = createMockAccount({
+      acct: 'local',
+      username: 'local',
+    })
+
+    expect(ensureProfile(db, account, 10)).toBe(21)
+    expect(profileIdCache.get('local@')).toBe(21)
+  })
+
+  it('skipUpdate returns a cached profile without writing', () => {
+    const { db, calls } = createMockDb()
+    profileIdCache.set('cached@example.com', 88)
+    const collector = { add: vi.fn() }
+
+    expect(
+      ensureProfile(
+        db,
+        createMockAccount({
+          acct: 'cached@example.com',
+          username: 'cached',
+        }),
+        1,
+        collector,
+        true,
+      ),
+    ).toBe(88)
+
+    expect(calls).toHaveLength(0)
+    expect(collector.add).not.toHaveBeenCalled()
+  })
+
+  it('skipUpdate inserts without overwriting and caches the selected id', () => {
+    const { db, calls } = createMockDb([[73]])
+    const collector = { add: vi.fn() }
+
+    expect(
+      ensureProfile(
+        db,
+        createMockAccount({
+          acct: 'new@example.com',
+          username: 'new',
+        }),
+        1,
+        collector,
+        true,
+      ),
+    ).toBe(73)
+
+    expect(calls[0].sql).toContain('INSERT OR IGNORE INTO profiles')
+    expect(calls[1].sql).toContain('SELECT id FROM profiles')
+    expect(collector.add).toHaveBeenCalledWith('profiles')
+    expect(profileIdCache.get('new@example.com')).toBe(73)
+  })
+
+  it('skipUpdate applies optional-field defaults and boolean flags', () => {
+    const { db, calls } = createMockDb([[74]])
+    const account = createMockAccount({
+      acct: 'defaults@example.com',
+      avatar: undefined as unknown as string,
+      avatar_static: undefined as unknown as string,
+      bot: true,
+      display_name: undefined as unknown as string,
+      header: undefined as unknown as string,
+      header_static: undefined as unknown as string,
+      locked: true,
+      note: undefined as unknown as string,
+      url: undefined as unknown as string,
+      username: 'defaults',
+    })
+
+    expect(ensureProfile(db, account, 1, undefined, true)).toBe(74)
+
+    expect(calls[0].opts?.bind).toEqual([
+      null,
+      'defaults',
+      1,
+      'defaults@example.com',
+      'defaults@example.com',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      '',
+      1,
+      1,
+      expect.any(Number),
+    ])
+  })
+
+  it('normal updates record the written table and default optional fields', () => {
+    const { db, calls } = createMockDb([[31]])
+    const collector = { add: vi.fn() }
+    const account = createMockAccount({
+      acct: 'defaults@example.com',
+      avatar: undefined as unknown as string,
+      avatar_static: undefined as unknown as string,
+      display_name: undefined as unknown as string,
+      header: undefined as unknown as string,
+      header_static: undefined as unknown as string,
+      note: undefined as unknown as string,
+      url: undefined as unknown as string,
+      username: 'defaults',
+    })
+
+    expect(ensureProfile(db, account, 1, collector)).toBe(31)
+
+    const bind = calls[0].opts?.bind
+    expect(bind?.slice(5, 12)).toEqual(['', '', '', '', '', '', ''])
+    expect(collector.add).toHaveBeenCalledWith('profiles')
+  })
 })
 
 // ─── syncProfileStats ───────────────────────────────────────────
@@ -318,6 +471,14 @@ describe('syncProfileStats', () => {
     expect(bind[2]).toBe(200) // following_count
     expect(bind[3]).toBe(500) // statuses_count
     expect(typeof bind[4]).toBe('number') // updated_at (Date.now())
+  })
+
+  it('欠けている統計値をゼロで保存する', () => {
+    const { db, calls } = createMockDb()
+
+    syncProfileStats(db, 10, {})
+
+    expect(calls[0].opts?.bind?.slice(0, 4)).toEqual([10, 0, 0, 0])
   })
 })
 
@@ -387,6 +548,19 @@ describe('syncProfileFields', () => {
     const bind = calls[3].opts?.bind as SqlValue[]
     expect(bind[2]).toBe('New Field')
     expect(bind[7]).toBe('Another Field')
+  })
+
+  it('空リストでは既存フィールドの削除だけを行う', () => {
+    const { db, calls } = createMockDb()
+
+    syncProfileFields(db, 5, [])
+
+    expect(calls).toEqual([
+      {
+        opts: { bind: [5] },
+        sql: 'DELETE FROM profile_fields WHERE profile_id = ?;',
+      },
+    ])
   })
 })
 
@@ -465,5 +639,29 @@ describe('syncProfileCustomEmojis', () => {
     )
     expect(deleteCalls).toHaveLength(1)
     expect(deleteCalls[0].opts?.bind).toEqual([10])
+  })
+
+  it('空リストの削除を collector に記録する', () => {
+    const { db } = createMockDb()
+    const collector = { add: vi.fn() }
+
+    syncProfileCustomEmojis(db, 10, 1, [], collector)
+
+    expect(collector.add).toHaveBeenCalledWith('profile_custom_emojis')
+  })
+
+  it('絵文字同期後のリンク更新を collector に記録する', () => {
+    const { db } = createMockDb()
+    const collector = { add: vi.fn() }
+
+    syncProfileCustomEmojis(
+      db,
+      10,
+      1,
+      [{ shortcode: 'wave', url: 'https://example.com/wave.png' }],
+      collector,
+    )
+
+    expect(collector.add).toHaveBeenCalledWith('profile_custom_emojis')
   })
 })

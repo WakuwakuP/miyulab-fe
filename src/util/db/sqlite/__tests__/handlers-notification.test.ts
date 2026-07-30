@@ -5,6 +5,8 @@ import {
   resolveLocalAccountId,
   resolvePostId,
   syncPollData,
+  syncPostCustomEmojis,
+  syncProfileCustomEmojis,
   updateInteraction,
 } from 'util/db/sqlite/helpers'
 import type { DbExecCompat } from 'util/db/sqlite/helpers/types'
@@ -323,6 +325,144 @@ describe('upsertNotification', () => {
     expect(bind).toContain(':blobcat:')
     expect(bind).toContain('https://example.com/emoji/blobcat.png')
   })
+
+  it('ローカルアカウントが未登録なら通知を保存しない', () => {
+    vi.mocked(resolveLocalAccountId).mockReturnValue(null)
+    const { db, calls } = createMockDb()
+
+    expect(
+      upsertNotification(db, makeNotification(), 'https://example.com'),
+    ).toBe(false)
+    expect(
+      calls.some((call) => call.sql.includes('INSERT INTO notifications')),
+    ).toBe(false)
+  })
+
+  it('actor が無い通知は actor_profile_id を null で保存する', () => {
+    const { db, calls } = createMockDb()
+
+    upsertNotification(
+      db,
+      makeNotification({ account: undefined }),
+      'https://example.com',
+    )
+
+    const insertCall = calls.find((call) =>
+      call.sql.includes('INSERT INTO notifications'),
+    )
+    expect(insertCall?.opts?.bind?.[4]).toBeNull()
+    expect(ensureProfile).not.toHaveBeenCalled()
+  })
+
+  it('actor のカスタム絵文字をプロフィールへ同期する', () => {
+    const notification = makeNotification()
+    const actorEmoji = {
+      shortcode: 'actor_emoji',
+      static_url: 'https://example.com/emoji/actor-static.webp',
+      url: 'https://example.com/emoji/actor.webp',
+      visible_in_picker: true,
+    }
+    if (notification.account === null) {
+      throw new Error('expected notification actor')
+    }
+    notification.account.emojis = [actorEmoji]
+    const { db } = createMockDb()
+
+    upsertNotification(db, notification, 'https://example.com')
+
+    expect(syncProfileCustomEmojis).toHaveBeenCalledWith(db, 10, 1, [
+      actorEmoji,
+    ])
+  })
+
+  it('URL 無しのカスタムリアクションを DB の static URL で補完する', () => {
+    const { db, calls } = createMockDb({
+      'SELECT url, static_url FROM custom_emojis': [
+        [
+          [
+            'https://example.com/emoji/blobcat.webp',
+            'https://example.com/emoji/blobcat-static.webp',
+          ],
+        ],
+      ],
+    })
+
+    upsertNotification(
+      db,
+      makeNotification({
+        reaction: {
+          name: ':blobcat:',
+          static_url: null,
+          url: null,
+        },
+        type: 'emoji_reaction',
+      }),
+      'https://example.com',
+    )
+
+    const lookup = calls.find((call) =>
+      call.sql.includes('SELECT url, static_url FROM custom_emojis'),
+    )
+    const insertCall = calls.find((call) =>
+      call.sql.includes('INSERT INTO notifications'),
+    )
+    expect(lookup?.opts?.bind).toEqual([1, 'blobcat'])
+    expect(insertCall?.opts?.bind?.[7]).toBe(
+      'https://example.com/emoji/blobcat-static.webp',
+    )
+  })
+
+  it('DB の static URL が null ならカスタムリアクションの通常 URL を使う', () => {
+    const { db, calls } = createMockDb({
+      'SELECT url, static_url FROM custom_emojis': [
+        [['https://example.com/emoji/blobfox.webp', null]],
+      ],
+    })
+
+    upsertNotification(
+      db,
+      makeNotification({
+        reaction: {
+          name: ':blobfox:',
+          static_url: null,
+          url: null,
+        },
+        type: 'emoji_reaction',
+      }),
+      'https://example.com',
+    )
+
+    const insertCall = calls.find((call) =>
+      call.sql.includes('INSERT INTO notifications'),
+    )
+    expect(insertCall?.opts?.bind?.[7]).toBe(
+      'https://example.com/emoji/blobfox.webp',
+    )
+  })
+
+  it('DB に無いカスタムリアクションは Misskey 形式の URL で補完する', () => {
+    const { db, calls } = createMockDb()
+
+    upsertNotification(
+      db,
+      makeNotification({
+        reaction: {
+          name: ':party cat:',
+          static_url: null,
+          url: null,
+        },
+        type: 'emoji_reaction',
+      }),
+      'https://example.com',
+    )
+
+    const insertCall = calls.find((call) =>
+      call.sql.includes('INSERT INTO notifications'),
+    )
+    expect(insertCall?.opts?.bind?.[7]).toBe(
+      'https://example.com/emoji/party%20cat.webp',
+    )
+  })
 })
 
 // ================================================================
@@ -453,6 +593,281 @@ describe('handleAddNotification', () => {
     expect(result.changedTables).toContain('posts')
     expect(syncPollData).toHaveBeenCalled()
   })
+
+  it('不正な backend URL はその文字列自体を host として扱う', () => {
+    const { db } = createMockDb()
+
+    handleAddNotification(db, JSON.stringify(makeNotification()), 'not a url')
+
+    expect(ensureServer).toHaveBeenCalledWith(db, 'not a url')
+  })
+
+  it('同じ URI の投稿を再利用して backend ID を対応付ける', () => {
+    vi.mocked(resolvePostId).mockReturnValue(undefined)
+    const { db, calls } = createMockDb({
+      'SELECT id FROM posts WHERE object_uri = ?;': [[[77]]],
+    })
+    const status = makeStatus({ id: 'uri-status' })
+
+    const result = handleAddNotification(
+      db,
+      JSON.stringify(makeNotification({ status })),
+      'https://example.com',
+    )
+
+    expect(result).toEqual({ changedTables: ['notifications'] })
+    expect(calls.some((call) => call.sql.includes('INSERT INTO posts'))).toBe(
+      false,
+    )
+    const mapping = calls.find((call) =>
+      call.sql.includes('INSERT OR IGNORE INTO post_backend_ids'),
+    )
+    expect(mapping?.opts?.bind).toEqual([42, 'uri-status', 77])
+    const notificationInsert = calls.find((call) =>
+      call.sql.includes('INSERT INTO notifications'),
+    )
+    expect(notificationInsert?.opts?.bind?.[5]).toBe(77)
+  })
+
+  it('同じ URI の既存投稿にも最新 poll を同期する', () => {
+    vi.mocked(resolvePostId).mockReturnValue(undefined)
+    const poll = {
+      expired: true,
+      expires_at: '2024-02-01T00:00:00.000Z',
+      id: 'poll-uri',
+      multiple: false,
+      options: [{ title: 'A', votes_count: 10 }],
+      votes_count: 10,
+    }
+    const { db } = createMockDb({
+      'SELECT id FROM posts WHERE object_uri = ?;': [[[78]]],
+    })
+
+    const result = handleAddNotification(
+      db,
+      JSON.stringify(
+        makeNotification({
+          status: makeStatus({ id: 'uri-poll-status', poll }),
+          type: 'poll_expired',
+        }),
+      ),
+      'https://example.com',
+    )
+
+    expect(syncPollData).toHaveBeenCalledWith(db, 78, poll)
+    expect(result).toEqual({ changedTables: ['notifications', 'posts'] })
+  })
+
+  it('新規投稿の絵文字・メディア・メンション・poll を同期する', () => {
+    vi.mocked(resolvePostId).mockReturnValue(undefined)
+    const profileEmoji = {
+      shortcode: 'profile_emoji',
+      static_url: 'https://example.com/profile-static.webp',
+      url: 'https://example.com/profile.webp',
+      visible_in_picker: true,
+    }
+    const postEmoji = {
+      shortcode: 'post_emoji',
+      static_url: 'https://example.com/post-static.webp',
+      url: 'https://example.com/post.webp',
+      visible_in_picker: true,
+    }
+    const poll = {
+      expired: false,
+      expires_at: '2024-02-01T00:00:00.000Z',
+      id: 'new-post-poll',
+      multiple: false,
+      options: [{ title: 'A', votes_count: 1 }],
+      votes_count: 1,
+    }
+    const baseAccount = makeStatus().account
+    if (baseAccount === null) {
+      throw new Error('expected status account')
+    }
+    const status = makeStatus({
+      account: {
+        ...baseAccount,
+        emojis: [profileEmoji],
+      },
+      emojis: [postEmoji],
+      id: 'rich-status',
+      media_attachments: [
+        {
+          blurhash: null,
+          description: 'image',
+          id: 'media-1',
+          meta: null,
+          preview_url: 'https://example.com/preview.webp',
+          remote_url: null,
+          static_url: 'https://example.com/image.webp',
+          type: 'image',
+          url: 'https://example.com/image.webp',
+        },
+      ],
+      mentions: [
+        {
+          acct: 'mentioned@example.net',
+          id: 'mentioned-1',
+          url: 'https://example.net/@mentioned',
+          username: 'mentioned',
+        },
+      ],
+      poll,
+      uri: '   ',
+    })
+    const { db, calls } = createMockDb({
+      last_insert_rowid: [[[91]]],
+      'SELECT id FROM media_types WHERE name = ?;': [[[1]]],
+    })
+
+    const result = handleAddNotification(
+      db,
+      JSON.stringify(makeNotification({ status })),
+      'https://example.com',
+    )
+
+    expect(syncProfileCustomEmojis).toHaveBeenCalledWith(db, 10, 1, [
+      profileEmoji,
+    ])
+    expect(syncPostCustomEmojis).toHaveBeenCalledWith(db, 91, 1, [postEmoji])
+    expect(syncPollData).toHaveBeenCalledWith(db, 91, poll)
+    expect(
+      calls.some((call) => call.sql.includes('INSERT INTO post_media')),
+    ).toBe(true)
+    expect(
+      calls.some((call) => call.sql.includes('INSERT INTO post_mentions')),
+    ).toBe(true)
+    expect(result).toEqual({ changedTables: ['notifications', 'posts'] })
+  })
+
+  it.each([
+    ['既存リブログ元', [[88]], 88],
+    ['未保存リブログ元', [], null],
+  ])(
+    '新規投稿の reblog_of_post_id を解決する: %s',
+    (_label, reblogRows, expectedReblogPostId) => {
+      vi.mocked(resolvePostId).mockReturnValue(undefined)
+      const original = makeStatus({
+        id: 'original-status',
+        poll: null,
+        uri: 'https://remote.example/notes/original',
+      })
+      const status = makeStatus({
+        id: 'wrapper-status',
+        reblog: original,
+        uri: ' ',
+      })
+      const { db, calls } = createMockDb({
+        last_insert_rowid: [[[92]]],
+        "object_uri != '' LIMIT 1": [reblogRows],
+      })
+
+      handleAddNotification(
+        db,
+        JSON.stringify(makeNotification({ status })),
+        'https://example.com',
+      )
+
+      const postInsert = calls.find((call) =>
+        call.sql.includes('INSERT INTO posts'),
+      )
+      expect(postInsert?.opts?.bind?.[14]).toBe(expectedReblogPostId)
+    },
+  )
+
+  it('リブログ元の既存投稿へ poll を同期する', () => {
+    const poll = {
+      expired: false,
+      expires_at: null,
+      id: 'reblog-poll',
+      multiple: false,
+      options: [{ title: 'A', votes_count: 2 }],
+      votes_count: 2,
+    }
+    vi.mocked(resolvePostId).mockReturnValueOnce(50).mockReturnValueOnce(60)
+    const { db } = createMockDb()
+    const status = makeStatus({
+      reblog: makeStatus({ id: 'original-status', poll }),
+    })
+
+    const result = handleAddNotification(
+      db,
+      JSON.stringify(makeNotification({ status })),
+      'https://example.com',
+    )
+
+    expect(syncPollData).toHaveBeenCalledWith(db, 60, poll)
+    expect(result).toEqual({ changedTables: ['notifications', 'posts'] })
+  })
+
+  it('リブログ元が未保存なら poll 付き投稿として追加する', () => {
+    const poll = {
+      expired: false,
+      expires_at: null,
+      id: 'new-reblog-poll',
+      multiple: false,
+      options: [{ title: 'A', votes_count: 3 }],
+      votes_count: 3,
+    }
+    vi.mocked(resolvePostId)
+      .mockReturnValueOnce(50)
+      .mockReturnValueOnce(undefined)
+      .mockReturnValueOnce(undefined)
+    const { db, calls } = createMockDb({
+      last_insert_rowid: [[[93]]],
+    })
+    const status = makeStatus({
+      reblog: makeStatus({
+        id: 'new-original-status',
+        poll,
+        uri: 'https://remote.example/notes/new-original',
+      }),
+    })
+
+    const result = handleAddNotification(
+      db,
+      JSON.stringify(makeNotification({ status })),
+      'https://example.com',
+    )
+
+    expect(calls.some((call) => call.sql.includes('INSERT INTO posts'))).toBe(
+      true,
+    )
+    expect(syncPollData).toHaveBeenCalledWith(db, 93, poll)
+    expect(result).toEqual({ changedTables: ['notifications', 'posts'] })
+  })
+
+  it('ラッパー投稿の poll 同期済みならリブログ元同期を短絡する', () => {
+    const wrapperPoll = {
+      expired: false,
+      expires_at: null,
+      id: 'wrapper-poll',
+      multiple: false,
+      options: [],
+      votes_count: 0,
+    }
+    const originalPoll = {
+      ...wrapperPoll,
+      id: 'original-poll',
+    }
+    vi.mocked(resolvePostId).mockReturnValue(50)
+    const { db } = createMockDb()
+    const status = makeStatus({
+      poll: wrapperPoll,
+      reblog: makeStatus({ id: 'original-status', poll: originalPoll }),
+    })
+
+    const result = handleAddNotification(
+      db,
+      JSON.stringify(makeNotification({ status })),
+      'https://example.com',
+    )
+
+    expect(resolvePostId).toHaveBeenCalledTimes(1)
+    expect(syncPollData).toHaveBeenCalledTimes(1)
+    expect(syncPollData).toHaveBeenCalledWith(db, 50, wrapperPoll)
+    expect(result).toEqual({ changedTables: ['notifications', 'posts'] })
+  })
 })
 
 // ================================================================
@@ -534,6 +949,34 @@ describe('handleBulkAddNotifications', () => {
 
     const rollback = calls.find((c) => c.sql === 'ROLLBACK;')
     expect(rollback).toBeDefined()
+  })
+
+  it('1件でも poll を同期した場合は posts も変更対象にする', () => {
+    vi.mocked(resolvePostId).mockReturnValue(50)
+    const poll = {
+      expired: false,
+      expires_at: null,
+      id: 'bulk-poll',
+      multiple: false,
+      options: [],
+      votes_count: 0,
+    }
+    const notifications = [
+      makeNotification({
+        id: 'bulk-poll-notification',
+        status: makeStatus({ id: 'poll-status', poll }),
+      }),
+      makeNotification({ id: 'bulk-follow', type: 'follow' }),
+    ]
+    const { db } = createMockDb()
+
+    const result = handleBulkAddNotifications(
+      db,
+      notifications.map((notification) => JSON.stringify(notification)),
+      'https://example.com',
+    )
+
+    expect(result).toEqual({ changedTables: ['notifications', 'posts'] })
   })
 })
 
@@ -642,6 +1085,22 @@ describe('handleUpdateNotificationStatusAction', () => {
       'https://example.com',
       'status-123',
       'favourited',
+      true,
+    )
+
+    expect(updateInteraction).not.toHaveBeenCalled()
+    expect(result).toEqual({ changedTables: [] })
+  })
+
+  it('未知のアクションは何もしない', () => {
+    vi.mocked(resolvePostId).mockReturnValue(100)
+    const { db } = createMockDb()
+
+    const result = handleUpdateNotificationStatusAction(
+      db,
+      'https://example.com',
+      'status-123',
+      'unknown' as 'favourited',
       true,
     )
 

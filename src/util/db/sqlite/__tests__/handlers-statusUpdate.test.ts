@@ -415,6 +415,38 @@ describe('handleUpdateStatus', () => {
     expect(result.changedTables).toHaveLength(0)
   })
 
+  it('解決した投稿 ID が posts に存在しない場合は更新しない', () => {
+    const { db, calls } = createMockDb((sql, opts) => {
+      if (sql.includes('object_uri')) return [[42]]
+      if (opts?.returnValue === 'resultRows') return []
+      return undefined
+    })
+
+    const result = handleUpdateStatus(
+      db,
+      JSON.stringify(createMockStatus()),
+      'https://example.com',
+    )
+
+    expect(result.changedTables).toEqual([])
+    expect(calls.some((call) => call.sql === 'BEGIN;')).toBe(false)
+  })
+
+  it('URI とローカルアカウントがない場合は投稿 ID を検索しない', () => {
+    vi.mocked(helpersModule.resolveLocalAccountId).mockReturnValue(null)
+    const { db } = createMockDb()
+    const status = createMockStatus({ uri: undefined })
+
+    const result = handleUpdateStatus(
+      db,
+      JSON.stringify(status),
+      'https://example.com',
+    )
+
+    expect(result.changedTables).toEqual([])
+    expect(statusHelpersModule.resolvePostIdInternal).not.toHaveBeenCalled()
+  })
+
   it('URI が空の場合 post_backend_ids で検索する', () => {
     vi.mocked(statusHelpersModule.resolvePostIdInternal).mockReturnValue(42)
 
@@ -480,6 +512,98 @@ describe('handleUpdateStatus', () => {
     handleUpdateStatus(db, JSON.stringify(status), 'https://example.com')
 
     expect(helpersModule.extractPostColumns).toHaveBeenCalled()
+  })
+
+  it('可視性 ID の解決に失敗した場合は抽出済み ID を使用する', () => {
+    vi.mocked(statusHelpersModule.resolveVisibilityId).mockReturnValue(null)
+    vi.mocked(helpersModule.extractPostColumns).mockReturnValue({
+      application_name: null,
+      canonical_url: null,
+      content_html: '',
+      created_at_ms: 1,
+      edited_at_ms: null,
+      in_reply_to_account_acct: null,
+      in_reply_to_uri: null,
+      is_local_only: 0,
+      is_sensitive: 0,
+      language: null,
+      object_uri: 'https://example.com/status/12345',
+      plain_content: '',
+      quote_state: null,
+      spoiler_text: '',
+      visibility_id: 7,
+    })
+    const { db, calls } = createDbWithExistingPost()
+
+    handleUpdateStatus(
+      db,
+      JSON.stringify(createMockStatus()),
+      'https://example.com',
+    )
+
+    const update = calls.find((call) => call.sql.includes('UPDATE posts SET'))
+    expect(update?.opts?.bind?.[1]).toBe(7)
+  })
+
+  it('プロフィール絵文字を同期し、投稿絵文字欠落時も処理する', () => {
+    const status = createMockStatus({
+      account: {
+        ...createMockStatus().account,
+        emojis: [
+          {
+            shortcode: 'wave',
+            static_url: 'https://example.com/emoji/wave.png',
+            url: 'https://example.com/emoji/wave.gif',
+            visible_in_picker: true,
+          },
+        ],
+      },
+      emojis: undefined,
+    })
+    const { db } = createDbWithExistingPost()
+
+    handleUpdateStatus(db, JSON.stringify(status), 'https://example.com')
+
+    expect(helpersModule.syncProfileCustomEmojis).toHaveBeenCalledWith(
+      db,
+      10,
+      1,
+      status.account.emojis,
+      expect.anything(),
+    )
+    expect(helpersModule.syncPostCustomEmojis).toHaveBeenCalledWith(
+      db,
+      42,
+      1,
+      status.account.emojis,
+      expect.anything(),
+    )
+  })
+
+  it('ローカルアカウントがなければインタラクションを同期しない', () => {
+    vi.mocked(helpersModule.resolveLocalAccountId).mockReturnValue(null)
+    const { db } = createDbWithExistingPost()
+
+    handleUpdateStatus(
+      db,
+      JSON.stringify(createMockStatus()),
+      'https://example.com',
+    )
+
+    expect(helpersModule.updateInteraction).not.toHaveBeenCalled()
+  })
+
+  it('未指定のインタラクション状態は同期しない', () => {
+    const { db } = createDbWithExistingPost()
+    const status = createMockStatus({
+      bookmarked: undefined,
+      favourited: undefined,
+      reblogged: undefined,
+    })
+
+    handleUpdateStatus(db, JSON.stringify(status), 'https://example.com')
+
+    expect(helpersModule.updateInteraction).not.toHaveBeenCalled()
   })
 
   it('posts PK が id であること（post_id ではない）', () => {
@@ -551,6 +675,24 @@ describe('handleUpdateStatus', () => {
     const commitCalls = calls.filter((c) => c.sql.includes('COMMIT'))
     expect(beginCalls).toHaveLength(1)
     expect(commitCalls).toHaveLength(1)
+  })
+
+  it('更新処理で例外が発生した場合はロールバックする', () => {
+    vi.mocked(postSyncModule.syncPostMedia).mockImplementationOnce(() => {
+      throw new Error('media sync failed')
+    })
+    const { db, calls } = createDbWithExistingPost()
+
+    expect(() =>
+      handleUpdateStatus(
+        db,
+        JSON.stringify(createMockStatus()),
+        'https://example.com',
+      ),
+    ).toThrow('media sync failed')
+
+    expect(calls.some((call) => call.sql === 'ROLLBACK;')).toBe(true)
+    expect(calls.some((call) => call.sql === 'COMMIT;')).toBe(false)
   })
 
   it('posts_reblogs テーブルを使用しない', () => {
