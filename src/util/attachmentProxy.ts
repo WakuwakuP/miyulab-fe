@@ -176,7 +176,7 @@ async function hmacSha256Base64Url(
   return btoa(binary)
     .replaceAll('+', '-')
     .replaceAll('/', '_')
-    .replace(/=+$/, '')
+    .replaceAll('=', '')
 }
 
 export async function createProxyAccessToken(): Promise<string | null> {

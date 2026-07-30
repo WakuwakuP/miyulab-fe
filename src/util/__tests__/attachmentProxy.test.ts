@@ -214,6 +214,7 @@ describe('attachmentProxy', () => {
     it('トークンを生成して検証できる', async () => {
       const token = await createProxyAccessToken()
       expect(token).toBeTruthy()
+      expect(token).not.toContain('=')
       await expect(verifyProxyAccessToken(token)).resolves.toBe(true)
     })
 
