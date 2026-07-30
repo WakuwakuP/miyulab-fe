@@ -418,7 +418,7 @@ const PlayerController = () => {
             min="0"
             onChange={(e) => {
               setPlayerSetting({
-                volume: parseFloat(e.target.value),
+                volume: Number.parseFloat(e.target.value),
               })
             }}
             step="0.01"
