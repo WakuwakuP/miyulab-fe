@@ -167,7 +167,7 @@ export function navigatePanel(path: string, state?: unknown) {
 
 /** replaceState で現在の URL を書き換える（履歴エントリ追加なし） */
 export function replacePanelUrl(path: string, state?: unknown) {
-  window.history.replaceState(state ?? null, '', path)
+  globalThis.history.replaceState(state ?? null, '', path)
 }
 
 /** Detail route かどうか判定する */
