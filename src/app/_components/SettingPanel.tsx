@@ -304,7 +304,12 @@ const ReactionEmojisSetting = () => {
               className="fixed inset-0 z-50 border-0 bg-transparent p-0"
               onClick={() => setShowPicker(false)}
               onKeyDown={(event) => {
-                if (event.key === 'Escape') {
+                if (
+                  event.key === 'Escape' ||
+                  event.key === 'Enter' ||
+                  event.key === ' '
+                ) {
+                  event.preventDefault()
                   setShowPicker(false)
                 }
               }}
