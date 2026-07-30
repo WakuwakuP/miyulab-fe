@@ -74,31 +74,32 @@ export const Poll = ({
           const barRedChannel = selected?.some((s) => s === index)
             ? '255'
             : '59'
+          const fallbackBackground =
+            'linear-gradient(rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.1) 100%)'
+          let backgroundImage = fallbackBackground
+          let votePercentage: string | number = 0
+
+          if (option.votes_count != null && poll.votes_count > 0) {
+            const percentage = (option.votes_count / poll.votes_count) * 100
+            backgroundImage = `linear-gradient(
+                    to right,
+                    rgba(${barRedChannel},130,246,0.5) ${percentage}%,
+                    rgba(255,255,255,0.1) ${percentage * 1.05}%,
+                    rgba(255,255,255,0.1) 100%
+                    )`
+            votePercentage = percentage.toFixed(1)
+          }
+
           return (
             <div className="w-full" key={option.title}>
               {showResults ? (
                 <div
                   className="my-0.5 flex flex-wrap rounded-md px-2"
-                  style={{
-                    backgroundImage:
-                      option.votes_count != null && poll.votes_count > 0
-                        ? `linear-gradient(
-                    to right,
-                    rgba(${barRedChannel},130,246,0.5) ${(option.votes_count / poll.votes_count) * 100}%,
-                    rgba(255,255,255,0.1) ${(option.votes_count / poll.votes_count) * 100 * 1.05}%,
-                    rgba(255,255,255,0.1) 100%
-                    )`
-                        : 'linear-gradient(rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.1) 100%)',
-                  }}
+                  style={{ backgroundImage }}
                 >
                   <span>{option.title}</span>
                   <span className="ml-2 text-white/50">
-                    {option.votes_count != null && poll.votes_count > 0
-                      ? ((option.votes_count / poll.votes_count) * 100).toFixed(
-                          1,
-                        )
-                      : 0}
-                    % ({option.votes_count})
+                    {votePercentage}% ({option.votes_count})
                   </span>
                 </div>
               ) : (
