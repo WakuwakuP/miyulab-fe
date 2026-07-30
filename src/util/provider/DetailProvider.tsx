@@ -114,11 +114,11 @@ export const DetailProvider = ({ children }: { children: ReactNode }) => {
     const route = parsePanelRoute(globalThis.location.pathname)
     if (isDetailRoute(route)) {
       const state = globalThis.history.state as SetDetailParams | null
-      if (state?.type != null) {
-        setDetailState(state)
-      } else {
+      if (state?.type == null) {
         // history.state がない (直接 URL アクセス) → ホームへフォールバック
         replacePanelUrl('/')
+      } else {
+        setDetailState(state)
       }
     }
   }, [])
