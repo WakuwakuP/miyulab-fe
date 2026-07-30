@@ -3,7 +3,7 @@ import assert from 'node:assert'
 import type { Backend } from 'types/types'
 
 const VERCEL_URL =
-  process.env.NEXT_PUBLIC_VERCEL_URL != null
+  typeof process.env.NEXT_PUBLIC_VERCEL_URL === 'string'
     ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
     : undefined
 
