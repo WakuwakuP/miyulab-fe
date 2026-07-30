@@ -266,15 +266,15 @@ export function rowToStoredNotification(
   const reactionName = row[40] as string | null
   const reactionUrl = row[41] as string | null
   const reaction: Entity.Reaction | undefined =
-    reactionName != null
-      ? {
+    reactionName == null
+      ? undefined
+      : {
           accounts: [],
           count: 1,
           me: false,
           name: reactionName,
           ...(reactionUrl ? { static_url: reactionUrl, url: reactionUrl } : {}),
         }
-      : undefined
 
   return {
     account: {
