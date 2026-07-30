@@ -264,6 +264,12 @@ export const Status = ({
                 index: 0,
               })
             }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                e.currentTarget.click()
+              }
+            }}
             rel={[node.attribs.rel, 'noopener noreferrer'].join(' ')}
             target="_blank"
           >
