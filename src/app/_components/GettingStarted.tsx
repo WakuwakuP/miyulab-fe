@@ -314,7 +314,7 @@ export const GettingStarted = () => {
                           'processingAppData',
                           JSON.stringify({ ...app, index }),
                         )
-                        window.location.href = app.appData.url as string
+                        globalThis.location.href = app.appData.url as string
                       }}
                       type="button"
                     >
