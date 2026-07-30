@@ -1,0 +1,92 @@
+name: Sonar Hotspot Diagnostic
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Show new Security Hotspots awaiting review
+        env:
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          SONAR_PROJECT_KEY: WakuwakuP_miyulab-fe_2b9f1381-5c7d-4b89-8aca-9a9a897900dc
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          response_file="$(mktemp)"
+          http_status="$(
+            curl --silent \
+              --user "${SONAR_TOKEN}:" \
+              --output "${response_file}" \
+              --write-out "%{http_code}" \
+              --get \
+              --data-urlencode "projectKey=${SONAR_PROJECT_KEY}" \
+              --data-urlencode "status=TO_REVIEW" \
+              --data-urlencode "sinceLeakPeriod=true" \
+              --data-urlencode "ps=500" \
+              "${SONAR_HOST_URL%/}/api/hotspots/search"
+          )"
+
+          if [[ "${http_status}" != "200" ]]; then
+            echo "::error::SonarQube Security Hotspot search returned HTTP ${http_status}."
+            exit 1
+          fi
+
+          jq '{
+            paging,
+            hotspots: [
+              .hotspots[]? |
+              {
+                key,
+                component,
+                line,
+                message,
+                securityCategory,
+                vulnerabilityProbability,
+                status,
+                resolution,
+                creationDate,
+                updateDate
+              }
+            ]
+          }' "${response_file}"
+
+          while IFS= read -r hotspot_key; do
+            detail_file="$(mktemp)"
+            detail_status="$(
+              curl --silent \
+                --user "${SONAR_TOKEN}:" \
+                --output "${detail_file}" \
+                --write-out "%{http_code}" \
+                --get \
+                --data-urlencode "hotspot=${hotspot_key}" \
+                "${SONAR_HOST_URL%/}/api/hotspots/show"
+            )"
+
+            if [[ "${detail_status}" != "200" ]]; then
+              echo "::warning::Could not load details for Security Hotspot ${hotspot_key} (HTTP ${detail_status})."
+              continue
+            fi
+
+            jq '{
+              key,
+              component,
+              line,
+              message,
+              status,
+              resolution,
+              rule: {
+                key: .rule.key,
+                name: .rule.name,
+                securityCategory: .rule.securityCategory,
+                vulnerabilityProbability: .rule.vulnerabilityProbability
+              }
+            }' "${detail_file}"
+          done < <(jq -r '.hotspots[]?.key' "${response_file}")
