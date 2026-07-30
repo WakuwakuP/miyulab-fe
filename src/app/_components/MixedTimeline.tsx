@@ -4,11 +4,7 @@ import { Notification } from 'app/_parts/Notification'
 import { Status } from 'app/_parts/Status'
 import { useMemo } from 'react'
 import type { TimelineViewModel } from 'types/timelineViewModel'
-import type {
-  NotificationAddAppIndex,
-  StatusAddAppIndex,
-  TimelineConfigV2,
-} from 'types/types'
+import type { StatusAddAppIndex, TimelineConfigV2 } from 'types/types'
 import { useOtherQueueProgress } from 'util/hooks/useOtherQueueProgress'
 import { useTimelineData } from 'util/hooks/useTimelineData'
 import { getDefaultTimelineName } from 'util/timelineDisplayName'
@@ -55,7 +51,7 @@ export const MixedTimeline = ({
           return (
             <Notification
               key={item.id}
-              notification={item as NotificationAddAppIndex}
+              notification={item}
               scrolling={scrolling}
             />
           )
