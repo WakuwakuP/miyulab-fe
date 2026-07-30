@@ -329,8 +329,6 @@ function buildCustomMixedQuery(
   if (refs.pbt) {
     statusJoinLines.push(
       'LEFT JOIN post_hashtags pht\n              ON p.id = pht.post_id',
-    )
-    statusJoinLines.push(
       'LEFT JOIN hashtags ht\n              ON pht.hashtag_id = ht.id',
     )
   }
