@@ -236,7 +236,7 @@ export const StatusRichTextarea = ({
   const mentionName = mentionMatch != null ? mentionMatch[1] : ''
   const emojiName = emojiMatch?.[1] ?? ''
 
-  const tagName = tagMatch != null ? tagMatch[1] : ''
+  const tagName = tagMatch?.[1] ?? ''
 
   const mentionFiltered = useMemo(
     () =>
