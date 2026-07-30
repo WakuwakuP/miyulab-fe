@@ -137,10 +137,11 @@ export const EmojiReactionPicker = ({
 
   return createPortal(
     <>
-      <div
-        aria-hidden="true"
-        className="fixed inset-0 z-50"
+      <button
+        aria-label="Close emoji reaction picker"
+        className="fixed inset-0 z-50 border-0 bg-transparent p-0"
         onClick={onClose}
+        type="button"
       />
       <dialog
         aria-label="Emoji reaction picker"
