@@ -287,12 +287,12 @@ export const Status = ({
 
   const poll = status.reblog?.poll ?? status.poll
   const pollAddAppIndex =
-    poll != null
-      ? {
+    poll == null
+      ? null
+      : {
           ...poll,
           appIndex: status.appIndex,
         }
-      : null
 
   return (
     <div className={statusClasses}>
