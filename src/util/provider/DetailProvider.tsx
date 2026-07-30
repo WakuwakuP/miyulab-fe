@@ -91,7 +91,7 @@ export const DetailProvider = ({ children }: { children: ReactNode }) => {
 
       if (isDetailRoute(route)) {
         // history.state から detail データを復元
-        const state = window.history.state as SetDetailParams | null
+        const state = globalThis.history.state as SetDetailParams | null
         if (state?.type != null) {
           setDetailState(state)
         } else {
