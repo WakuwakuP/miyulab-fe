@@ -226,7 +226,7 @@ const PlayerController = () => {
   }
 
   const handleSeekChange: ChangeEventHandler<HTMLInputElement> = (e) => {
-    setPlayed(parseFloat(e.target.value))
+    setPlayed(Number.parseFloat(e.target.value))
   }
 
   const onKeyDown = useEffectEvent((e: KeyboardEvent) => {
