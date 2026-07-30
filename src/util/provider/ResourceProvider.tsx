@@ -26,6 +26,9 @@ type PleromaInstance =
     })
   | null
 
+type ResourceUserField = 'id' | 'acct' | 'avatar' | 'display_name'
+type ResourceUser = Pick<Entity.Account, ResourceUserField>
+
 export const InstanceContext = createContext<PleromaInstance>(null)
 
 export const EmojiContext = createContext<Entity.Emoji[]>([])
@@ -40,16 +43,10 @@ export const EmojiCatalogContext = createContext<Map<string, Entity.Emoji[]>>(
   new Map(),
 )
 
-export const UsersContext = createContext<
-  Pick<Entity.Account, 'id' | 'acct' | 'avatar' | 'display_name'>[]
->([])
+export const UsersContext = createContext<ResourceUser[]>([])
 
 export const SetUsersContext = createContext<
-  Dispatch<
-    SetStateAction<
-      Pick<Entity.Account, 'id' | 'acct' | 'avatar' | 'display_name'>[]
-    >
-  >
+  Dispatch<SetStateAction<ResourceUser[]>>
 >(() => {})
 
 export const TagsContext = createContext<string[]>([])
@@ -86,9 +83,9 @@ export const ResourceProvider = ({
   const [emojiCatalog, setEmojiCatalog] = useState<Map<string, Entity.Emoji[]>>(
     () => new Map(),
   )
-  const [users, setUsers] = useState<
-    Pick<Entity.Account, 'id' | 'acct' | 'avatar' | 'display_name'>[]
-  >(JSON.parse(localStorage.getItem('users') ?? '[]'))
+  const [users, setUsers] = useState<ResourceUser[]>(
+    JSON.parse(localStorage.getItem('users') ?? '[]'),
+  )
 
   const [tags, setTags] = useState<string[]>(
     JSON.parse(localStorage.getItem('tags') ?? '[]'),
