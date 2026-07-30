@@ -62,10 +62,12 @@ export const Poll = ({
       })
   }
 
-  const pollClosed = poll != null ? isPollClosed(poll) : false
-  const showResults = poll != null && (poll.voted || voted || pollClosed)
+  if (poll == null) return null
 
-  return poll != null ? (
+  const pollClosed = isPollClosed(poll)
+  const showResults = poll.voted || voted || pollClosed
+
+  return (
     <div className="p-2">
       <div>
         {poll.options.map((option, index) => {
@@ -148,5 +150,5 @@ export const Poll = ({
         </div>
       </div>
     </div>
-  ) : null
+  )
 }
