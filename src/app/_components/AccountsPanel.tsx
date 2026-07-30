@@ -305,7 +305,7 @@ export const AccountsPanel = () => {
               <button
                 className="rounded-md border bg-gray-900 px-4 py-2"
                 onClick={() => {
-                  window.location.reload()
+                  globalThis.location.reload()
                 }}
                 type="button"
               >
