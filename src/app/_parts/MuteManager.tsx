@@ -72,7 +72,7 @@ async function unmuteAccount(
  * muted_accounts テーブルを直接操作して、
  * 指定バックエンドのミュートアカウントの一覧表示・追加・削除を行う。
  */
-export function MuteManager({ onClose }: { onClose: () => void }) {
+export function MuteManager({ onClose }: Readonly<{ onClose: () => void }>) {
   const apps = useContext(AppsContext)
   const [selectedBackendUrl, setSelectedBackendUrl] = useState<string>(
     apps[0]?.backendUrl ?? '',
