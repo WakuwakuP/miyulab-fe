@@ -164,9 +164,13 @@ export const Status = ({
         (!node.attribs.rel || node.attribs.rel !== 'tag')
       ) {
         return (
-          <a
-            {...attributesToProps(node.attribs)}
-            href={node.attribs.href ?? '#'}
+          <button
+            className={[
+              'inline cursor-pointer border-0 bg-transparent p-0 text-left font-[inherit] text-blue-400',
+              node.attribs.class,
+            ]
+              .filter(Boolean)
+              .join(' ')}
             onClick={(e) => {
               e.stopPropagation()
               e.preventDefault()
@@ -189,17 +193,11 @@ export const Status = ({
                 type: 'SearchUser',
               })
             }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault()
-                e.currentTarget.click()
-              }
-            }}
-            rel={[node.attribs.rel, 'noopener noreferrer'].join(' ')}
-            target="_blank"
+            title={node.attribs.href}
+            type="button"
           >
             {domToReact(node.children as DOMNode[])}
-          </a>
+          </button>
         )
       }
       if (
@@ -391,7 +389,7 @@ export const Status = ({
           onClick={openStatusDetail}
           type="button"
         />
-        <div className="pointer-events-none relative z-10 [&_a]:pointer-events-auto">
+        <div className="pointer-events-none relative z-10 [&_a]:pointer-events-auto [&_button]:pointer-events-auto">
           <EditedAt editedAt={status.edited_at} />
           {parse(contentFormatted, { replace })}
         </div>
