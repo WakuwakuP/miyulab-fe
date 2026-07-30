@@ -301,7 +301,7 @@ export async function buildExport(
       backends,
       dateRange: {
         earliest: events[0]?.capturedAt ?? '',
-        latest: events[events.length - 1]?.capturedAt ?? '',
+        latest: events.at(-1)?.capturedAt ?? '',
       },
       servers,
       totalEvents: events.length,
