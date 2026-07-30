@@ -337,6 +337,12 @@ export const Status = ({
                 type: 'Account',
               })
             }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                e.currentTarget.click()
+              }
+            }}
             type="button"
           >
             <RiRepeatFill
