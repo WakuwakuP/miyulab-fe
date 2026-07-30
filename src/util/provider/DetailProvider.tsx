@@ -92,12 +92,12 @@ export const DetailProvider = ({ children }: { children: ReactNode }) => {
       if (isDetailRoute(route)) {
         // history.state から detail データを復元
         const state = globalThis.history.state as SetDetailParams | null
-        if (state?.type != null) {
-          setDetailState(state)
-        } else {
+        if (state?.type == null) {
           // state がない場合 (直接 URL アクセス等) はホームへ
           replacePanelUrl('/')
           setDetailState({ content: null, type: null })
+        } else {
+          setDetailState(state)
         }
       } else {
         // GettingStarted 系のルートまたはホーム → detail をクリア
