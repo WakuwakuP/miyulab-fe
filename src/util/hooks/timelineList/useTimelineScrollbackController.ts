@@ -12,7 +12,7 @@
  * - 完了後の deferred streaming flush
  */
 
-import type { Dispatch, MutableRefObject, RefObject } from 'react'
+import type { Dispatch, RefObject } from 'react'
 import { useCallback } from 'react'
 
 import type { App, TimelineConfigV2 } from 'types/types'
@@ -36,7 +36,7 @@ type UseTimelineScrollbackControllerArgs = {
   apps: App[]
   config: TimelineConfigV2
   dispatch: Dispatch<TimelineListEvent>
-  exhaustedResourcesRef: MutableRefObject<ExhaustedResources>
+  exhaustedResourcesRef: RefObject<ExhaustedResources>
   fetchPage: (options?: FetchPageOptions) => Promise<FetchPageResult | null>
   includeNotifications: boolean
   recordDuration: (ms: number) => void

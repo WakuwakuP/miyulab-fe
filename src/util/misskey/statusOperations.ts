@@ -128,7 +128,7 @@ export async function getStatusContext(
       noteId: id,
     })
     ancestors = conversation
-      .reverse()
+      .toReversed()
       .map((n) => mapNoteToStatus(n, ctx.origin))
   } catch (e) {
     console.warn('Failed to fetch notes/conversation:', e)
@@ -421,15 +421,12 @@ export async function getEmojiReactions(
   const note = await ctx.client.request('notes/show', { noteId: id })
   const reactions: Record<string, number> = note.reactions ?? {}
   return wrapResponse(
-    Object.entries(reactions).map(
-      ([name, count]: [string, number]) =>
-        ({
-          accounts: [],
-          count,
-          me: note.myReaction === name,
-          name,
-        }) as Entity.Reaction,
-    ),
+    Object.entries(reactions).map(([name, count]: [string, number]) => ({
+      accounts: [],
+      count,
+      me: note.myReaction === name,
+      name,
+    })),
   )
 }
 
@@ -446,7 +443,7 @@ export async function getEmojiReaction(
       count: 0,
       me: false,
       name: emoji,
-    } as Entity.Reaction)
+    })
   }
   return wrapResponse(found)
 }

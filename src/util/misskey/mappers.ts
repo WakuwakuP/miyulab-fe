@@ -193,7 +193,7 @@ export function mapUserDetailedToAccount(
   instanceHost?: string,
 ): Entity.Account {
   const base = mapUserLiteToAccount(user, instanceHost)
-  const detailed = user as MisskeyUserDetailedWithExtensions
+  const detailed: MisskeyUserDetailedWithExtensions = user
 
   return {
     ...base,
@@ -300,7 +300,7 @@ export function mapReactions(
       name: r.name,
       // Only include static_url/url if it's a custom emoji with a known URL
       ...(r.url ? { static_url: r.url, url: r.url } : {}),
-    } as Entity.Reaction
+    }
   })
 }
 
@@ -454,15 +454,9 @@ export function mapNotification(
 
   // Handle different notification types
   if ('user' in notif && notif.user) {
-    const account = mapUserLiteToAccount(
-      notif.user as Misskey.entities.UserLite,
-      instanceHost,
-    )
+    const account = mapUserLiteToAccount(notif.user, instanceHost)
     if ('note' in notif && notif.note) {
-      const status = mapNoteToStatus(
-        notif.note as Misskey.entities.Note,
-        instanceHost,
-      )
+      const status = mapNoteToStatus(notif.note, instanceHost)
       if (notif.type === 'reaction' && 'reaction' in notif) {
         const rawReaction = (notif as { reaction: string }).reaction
         const reactionEmojis = notif.note.reactionEmojis

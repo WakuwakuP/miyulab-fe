@@ -8,7 +8,7 @@ import * as emoji from 'node-emoji'
 import type { KeyboardEvent } from 'react'
 import { useContext, useMemo } from 'react'
 import { RiStarFill } from 'react-icons/ri'
-import type { NotificationAddAppIndex, StatusAddAppIndex } from 'types/types'
+import type { NotificationAddAppIndex } from 'types/types'
 import { replaceEmojis } from 'util/emojiReplacer'
 import { escapeHtml } from 'util/escapeHtml'
 import { AppsContext } from 'util/provider/AppsProvider'
@@ -144,12 +144,10 @@ export const Notification = ({
           {notification.status != null && (
             <Status
               scrolling={scrolling}
-              status={
-                {
-                  ...notification.status,
-                  appIndex: notification.appIndex,
-                } as StatusAddAppIndex
-              }
+              status={{
+                ...notification.status,
+                appIndex: notification.appIndex,
+              }}
             />
           )}
         </div>
@@ -161,12 +159,10 @@ export const Notification = ({
           {notification.status != null && (
             <Status
               scrolling={scrolling}
-              status={
-                {
-                  ...notification.status,
-                  appIndex: notification.appIndex,
-                } as StatusAddAppIndex
-              }
+              status={{
+                ...notification.status,
+                appIndex: notification.appIndex,
+              }}
             />
           )}
         </div>
@@ -210,12 +206,10 @@ export const Notification = ({
             <Status
               scrolling={scrolling}
               small
-              status={
-                {
-                  ...notification.status,
-                  appIndex: notification.appIndex,
-                } as StatusAddAppIndex
-              }
+              status={{
+                ...notification.status,
+                appIndex: notification.appIndex,
+              }}
             />
           )}
         </div>
@@ -262,12 +256,10 @@ export const Notification = ({
             <Status
               scrolling={scrolling}
               small
-              status={
-                {
-                  ...notification.status,
-                  appIndex: notification.appIndex,
-                } as StatusAddAppIndex
-              }
+              status={{
+                ...notification.status,
+                appIndex: notification.appIndex,
+              }}
             />
           )}
         </div>
@@ -318,12 +310,10 @@ export const Notification = ({
             <Status
               scrolling={scrolling}
               small
-              status={
-                {
-                  ...notification.status,
-                  appIndex: notification.appIndex,
-                } as StatusAddAppIndex
-              }
+              status={{
+                ...notification.status,
+                appIndex: notification.appIndex,
+              }}
             />
           )}
         </div>

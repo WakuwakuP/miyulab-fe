@@ -264,7 +264,7 @@ export const GettingStarted = () => {
 
     client
       .getConversationTimeline({
-        max_id: conversations[appIndex][conversations[appIndex].length - 1].id,
+        max_id: conversations[appIndex].at(-1)?.id,
       })
       .then((res) => {
         const newItems = res.data.map((conversation) =>

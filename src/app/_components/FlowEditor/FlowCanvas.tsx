@@ -29,6 +29,7 @@ import {
 import '@xyflow/react/dist/style.css'
 import {
   createContext,
+  type RefObject,
   useCallback,
   useContext,
   useEffect,
@@ -153,7 +154,7 @@ type FlowCanvasProps = {
   onDeleteNode: (id: string) => void
   onUpdateNodeData: (id: string, data: FlowNode['data']) => void
   /** 親がビューポート中央のフロー座標を取得するための ref */
-  viewportCenterRef?: React.MutableRefObject<ViewportCenterFn | null>
+  viewportCenterRef?: RefObject<ViewportCenterFn | null>
   /** テスト実行の状態 */
   execStatus?: FlowExecStatus | null
 }
@@ -167,7 +168,7 @@ type FlowCanvasProps = {
 function ViewportCenterBridge({
   viewportCenterRef,
 }: {
-  viewportCenterRef?: React.MutableRefObject<ViewportCenterFn | null>
+  viewportCenterRef?: RefObject<ViewportCenterFn | null>
 }) {
   const { screenToFlowPosition } = useReactFlow()
 

@@ -346,7 +346,7 @@ export function upsertNotification(
       { bind: [serverId, shortcode], returnValue: 'resultRows' },
     ) as (string | null)[][]
     if (emojiRows.length > 0) {
-      reactionUrl = (emojiRows[0][1] ?? emojiRows[0][0]) as string
+      reactionUrl = emojiRows[0][1] ?? emojiRows[0][0]
     } else {
       // Misskey URL パターンフォールバック
       reactionUrl = `${backendUrl}/emoji/${encodeURIComponent(shortcode)}.webp`

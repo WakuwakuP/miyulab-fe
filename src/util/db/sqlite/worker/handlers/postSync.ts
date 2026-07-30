@@ -412,12 +412,7 @@ function syncReblogOriginalRelatedData(
   )
   syncPostHashtags(db, postId, originalStatus.tags, collector)
   syncPollData(db, postId, originalStatus.poll, collector)
-  syncLinkCard(
-    db,
-    postId,
-    originalStatus.card as Parameters<typeof syncLinkCard>[2],
-    collector,
-  )
+  syncLinkCard(db, postId, originalStatus.card, collector)
 }
 
 /** サーバーから返されたフラグをDBに反映する。 */
