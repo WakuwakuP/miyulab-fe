@@ -7,13 +7,13 @@ import {
   getSqliteDb,
   subscribe,
 } from 'util/db/sqlite/connection'
-import type { TimelineType } from 'util/db/sqlite/statusStore'
 import {
   buildSpbFilter,
   buildStatusBaseJoins,
   rowToStoredStatus,
   type SqliteStoredStatus,
   STATUS_SELECT,
+  type TimelineType,
 } from 'util/db/sqlite/statusStore'
 import { TIMELINE_QUERY_LIMIT } from 'util/environment'
 import { AppsContext } from 'util/provider/AppsProvider'
