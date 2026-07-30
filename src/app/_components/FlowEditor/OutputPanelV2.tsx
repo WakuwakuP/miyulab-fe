@@ -10,10 +10,10 @@ import {
 import type { FlowNodePanelProps } from './flowNodePanelTypes'
 import type { FlowNode, OutputFlowNodeDataV2 } from './types'
 
-type OutputPanelV2Props = {
+type OutputPanelV2Props = Readonly<{
   node: FlowNode
   onUpdate: FlowNodePanelProps['onUpdate']
-}
+}>
 
 export function OutputPanelV2({ node, onUpdate }: OutputPanelV2Props) {
   const data = node.data as OutputFlowNodeDataV2

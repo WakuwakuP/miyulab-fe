@@ -247,9 +247,10 @@ export function extractNotificationTypeCodes(
   }
 
   // 単一値: ntt.code = 'favourite' or ntt.name = 'favourite'
-  const singleMatch = whereClause.match(
-    /\b(?:ntt?|notification_types?)\.(?:code|name)\s*=\s*'([^']+)'/i,
-  )
+  const singleMatch =
+    /\b(?:ntt?|notification_types?)\.(?:code|name)\s*=\s*'([^']+)'/i.exec(
+      whereClause,
+    )
   if (singleMatch) return [singleMatch[1]]
 
   return null

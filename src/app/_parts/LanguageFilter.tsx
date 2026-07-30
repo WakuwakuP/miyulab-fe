@@ -15,10 +15,10 @@ const LANGUAGE_PRESETS = [
 export function LanguageFilter({
   onChange,
   value,
-}: {
+}: Readonly<{
   onChange: (filter: string[] | undefined) => void
   value: string[] | undefined
-}) {
+}>) {
   const [input, setInput] = useState('')
   const languages = value ?? []
 

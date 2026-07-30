@@ -5,11 +5,13 @@ import { Dropzone } from 'app/_parts/Dropzone'
 import { Panel } from 'app/_parts/Panel'
 import { StatusRichTextarea } from 'app/_parts/StatusRichTextarea'
 import { UserInfo } from 'app/_parts/UserInfo'
+import parse from 'html-react-parser'
 import type { Entity } from 'megalodon'
 import { useCallback, useContext, useEffect, useState } from 'react'
 import { RiCloseCircleLine, RiPlayFill } from 'react-icons/ri'
 import { containsHashtag } from 'util/containsHashtag'
 import { replaceEmojis } from 'util/emojiReplacer'
+import { escapeHtml } from 'util/escapeHtml'
 import { GetClient } from 'util/GetClient'
 import { canPlay } from 'util/PlayerUtils'
 import { AppsContext } from 'util/provider/AppsProvider'
@@ -76,7 +78,7 @@ export const MainPanel = () => {
 
   const getDisplayNameFormatted = (account: Entity.Account) =>
     replaceEmojis(
-      account.display_name,
+      escapeHtml(account.display_name),
       account.emojis,
       'min-w-4 h-4 inline-block',
     )
@@ -269,12 +271,9 @@ export const MainPanel = () => {
                     />
                     <div>
                       <div>
-                        <span
-                          // biome-ignore lint/security/noDangerouslySetInnerHtml: emoji replacement
-                          dangerouslySetInnerHTML={{
-                            __html: getDisplayNameFormatted(replyTo.account),
-                          }}
-                        />
+                        <span>
+                          {parse(getDisplayNameFormatted(replyTo.account))}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -289,13 +288,7 @@ export const MainPanel = () => {
                     </button>
                   </div>
                 </div>
-                <div
-                  className="content p-2"
-                  // biome-ignore lint/security/noDangerouslySetInnerHtml: TODO:
-                  dangerouslySetInnerHTML={{
-                    __html: contentFormatted(),
-                  }}
-                />
+                <div className="content p-2">{parse(contentFormatted())}</div>
               </div>
             )}
           </div>

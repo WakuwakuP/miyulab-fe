@@ -31,12 +31,12 @@ function isPrivateIpv6(hostname: string): boolean {
 
   if (host === '::1') return true
 
-  const ipv4Mapped = host.match(/^::ffff:(.+)$/i)
+  const ipv4Mapped = /^::ffff:(.+)$/i.exec(host)
   if (ipv4Mapped) {
     const mapped = ipv4Mapped[1]
     if (mapped.includes('.')) {
       if (isPrivateIpv4(mapped)) return true
-    } else if (mapped.replace(/:/g, '').toLowerCase() === '7f001') {
+    } else if (mapped.replaceAll(':', '').toLowerCase() === '7f001') {
       return true
     }
   }
@@ -149,7 +149,7 @@ function timingSafeEqualString(a: string, b: string): boolean {
   if (a.length !== b.length) return false
   let mismatch = 0
   for (let i = 0; i < a.length; i++) {
-    mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i)
+    mismatch |= (a.codePointAt(i) ?? 0) ^ (b.codePointAt(i) ?? 0)
   }
   return mismatch === 0
 }
@@ -172,8 +172,11 @@ async function hmacSha256Base64Url(
   )
   const bytes = new Uint8Array(signature)
   let binary = ''
-  for (const byte of bytes) binary += String.fromCharCode(byte)
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+  for (const byte of bytes) binary += String.fromCodePoint(byte)
+  return btoa(binary)
+    .replaceAll('+', '-')
+    .replaceAll('/', '_')
+    .replace(/=+$/, '')
 }
 
 export async function createProxyAccessToken(): Promise<string | null> {

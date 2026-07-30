@@ -5,6 +5,8 @@ import {
   assemblePostFromFlat,
 } from '../executor/flatFetchAssembler'
 
+type SqlValue = string | number | null
+
 // ================================================================
 // ヘルパー
 // ================================================================
@@ -55,8 +57,8 @@ function makePostRow(
     spoilerText: string
     visibility: string
   }> = {},
-): (string | number | null)[] {
-  const row: (string | number | null)[] = new Array(30).fill(null)
+): SqlValue[] {
+  const row: SqlValue[] = new Array(30).fill(null)
   row[0] = postId
   row[1] = overrides.objectUri ?? `https://example.com/objects/${postId}`
   row[2] = null // canonical_url
@@ -113,8 +115,8 @@ function makeNotifRow(
     reactionUrl: string | null
     relatedPostId: number | null
   }> = {},
-): (string | number | null)[] {
-  const row: (string | number | null)[] = new Array(19).fill(null)
+): SqlValue[] {
+  const row: SqlValue[] = new Array(19).fill(null)
   row[0] = id
   row[1] = overrides.localAccountId ?? 1
   row[2] = overrides.localId ?? `notif_${id}`
@@ -383,11 +385,13 @@ describe('assembleNotificationFromFlat', () => {
       })
       const result = assembleNotificationFromFlat(row, new Map(), new Map())
 
-      expect(result.account.acct).toBe('bob@mastodon.social')
-      expect(result.account.username).toBe('bob')
-      expect(result.account.display_name).toBe('Bob')
-      expect(result.account.avatar).toBe('https://example.com/bob.png')
-      expect(result.account.bot).toBe(false)
+      expect(result.account).toMatchObject({
+        acct: 'bob@mastodon.social',
+        avatar: 'https://example.com/bob.png',
+        bot: false,
+        display_name: 'Bob',
+        username: 'bob',
+      })
     })
 
     it('アクター絵文字Map にデータがあれば emojis がパースされる', () => {
@@ -411,8 +415,8 @@ describe('assembleNotificationFromFlat', () => {
         actorEmojisMap,
       )
 
-      expect(result.account.emojis).toHaveLength(1)
-      expect(result.account.emojis[0].shortcode).toBe('partyblob')
+      expect(result.account?.emojis).toHaveLength(1)
+      expect(result.account?.emojis[0].shortcode).toBe('partyblob')
     })
   })
 
@@ -428,7 +432,7 @@ describe('assembleNotificationFromFlat', () => {
       const result = assembleNotificationFromFlat(row, postMap, new Map())
 
       expect(result.status).toBeDefined()
-      expect((result.status as { post_id: number }).post_id).toBe(50)
+      expect(Reflect.get(result.status ?? {}, 'post_id')).toBe(50)
     })
 
     it('related_post_id が null の場合、status は undefined', () => {

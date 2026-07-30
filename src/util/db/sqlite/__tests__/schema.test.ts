@@ -11,7 +11,6 @@ import { createPostTables } from 'util/db/sqlite/schema/tables/posts'
 import { createProfileTables } from 'util/db/sqlite/schema/tables/profiles'
 import { createRegistryTables } from 'util/db/sqlite/schema/tables/registries'
 import { createTimelineTables } from 'util/db/sqlite/schema/tables/timeline'
-import type { SchemaDbHandle } from 'util/db/sqlite/worker/workerSchema'
 import { describe, expect, it, vi } from 'vitest'
 
 // ─── Mock DB factory ────────────────────────────────────────────
@@ -458,7 +457,7 @@ describe('スキーマ定義', () => {
   describe('createFreshSchema', () => {
     it('12個の create*Tables 関数をFK依存順に呼び出す', () => {
       const { db, execCalls } = createMockDb()
-      const handle = { db } as SchemaDbHandle
+      const handle = { db }
       createFreshSchema(handle)
 
       // FK 依存順を確認: lookup → registries → profiles → accounts → posts → ...
@@ -490,7 +489,7 @@ describe('スキーマ定義', () => {
 
     it('合計30テーブルの CREATE TABLE 文を生成する', () => {
       const { db, execCalls } = createMockDb()
-      const handle = { db } as SchemaDbHandle
+      const handle = { db }
       createFreshSchema(handle)
 
       const createTableCalls = execCalls.filter((sql) =>
@@ -504,7 +503,7 @@ describe('スキーマ定義', () => {
   describe('dropAllTables', () => {
     it('sqlite_master から全テーブル名を取得する', () => {
       const { db } = createMockDb()
-      const handle = { db } as SchemaDbHandle
+      const handle = { db }
       dropAllTables(handle)
 
       expect(db.exec).toHaveBeenCalledWith(
@@ -524,7 +523,7 @@ describe('スキーマ定義', () => {
           return undefined
         }),
       }
-      const handle = { db } as SchemaDbHandle
+      const handle = { db }
       dropAllTables(handle)
 
       const fkOffIdx = execCalls.indexOf('PRAGMA foreign_keys = OFF;')
@@ -551,7 +550,7 @@ describe('スキーマ定義', () => {
           return undefined
         }),
       }
-      const handle = { db } as SchemaDbHandle
+      const handle = { db }
       dropAllTables(handle)
 
       const dropIdx = execCalls.findIndex((sql) => sql.includes('DROP TABLE'))

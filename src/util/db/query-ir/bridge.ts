@@ -128,9 +128,9 @@ function resolveStep(
         // プレースホルダを実 SQL に置換 (interactions は scoped 版を使用)
         if (key === 'interactions') {
           resolved[key] =
-            BATCH_PLACEHOLDER_MAP[template] != null
-              ? scopedBatch.interactions
-              : template
+            BATCH_PLACEHOLDER_MAP[template] == null
+              ? template
+              : scopedBatch.interactions
         } else {
           resolved[key] = BATCH_PLACEHOLDER_MAP[template] ?? template
         }

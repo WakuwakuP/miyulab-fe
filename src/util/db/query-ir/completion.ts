@@ -37,10 +37,7 @@ export function getFilterableTables(
   const result: TableOption[] = []
   for (const entry of Object.values(TABLE_REGISTRY)) {
     // ソーステーブル自身、または joinPath が存在するテーブル
-    if (
-      entry.table === sourceTable ||
-      entry.joinPaths[sourceTable as keyof typeof entry.joinPaths]
-    ) {
+    if (entry.table === sourceTable || entry.joinPaths[sourceTable]) {
       result.push({ label: entry.label, table: entry.table })
     }
   }
@@ -84,7 +81,7 @@ export function getKnownValues(
 ): string[] | undefined {
   const entry = TABLE_REGISTRY[table]
   if (!entry) return undefined
-  return entry.columns[column]?.knownValues as string[] | undefined
+  return entry.columns[column]?.knownValues
 }
 
 /** テーブルのレジストリエントリを返す */
@@ -408,8 +405,7 @@ export function getExistsFilterTables(
   const result: TableOption[] = []
   for (const entry of Object.values(TABLE_REGISTRY)) {
     if (entry.table === sourceTable) continue
-    const joinPath =
-      entry.joinPaths[sourceTable as keyof typeof entry.joinPaths]
+    const joinPath = entry.joinPaths[sourceTable]
     if (joinPath) {
       result.push({ label: entry.label, table: entry.table })
     }

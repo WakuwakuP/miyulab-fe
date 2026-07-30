@@ -1,4 +1,4 @@
-import { lookup } from 'node:dns/promises'
+import type { LookupAddress } from 'node:dns'
 import {
   createProxyAccessToken,
   getAttachmentProxyAllowedDomains,
@@ -11,19 +11,24 @@ import {
 } from 'util/attachmentProxy'
 import { describe, expect, it, vi } from 'vitest'
 
-vi.mock('node:dns/promises', () => ({
-  lookup: vi.fn(),
-}))
+type LookupAll = (
+  hostname: string,
+  options: { all: true; verbatim?: boolean },
+) => Promise<LookupAddress[]>
 
-const mockedLookup = vi.mocked(lookup)
+const mockedLookup = vi.hoisted(() => vi.fn<LookupAll>())
+
+vi.mock('node:dns/promises', () => ({
+  lookup: mockedLookup,
+}))
 
 describe('attachmentProxy', () => {
   describe('isPrivateHost', () => {
     it('IPv4 loopbackとプライベートアドレスを拒否する', () => {
       expect(isPrivateHost('localhost')).toBe(true)
       expect(isPrivateHost('127.0.0.1')).toBe(true)
-      expect(isPrivateHost('10.0.0.1')).toBe(true)
-      expect(isPrivateHost('192.168.1.1')).toBe(true)
+      expect(isPrivateHost('10.0.0.1')).toBe(true) // NOSONAR -- SSRF boundary fixture.
+      expect(isPrivateHost('192.168.1.1')).toBe(true) // NOSONAR -- SSRF boundary fixture.
     })
 
     it('IPv6 loopbackを拒否する', () => {
@@ -32,14 +37,14 @@ describe('attachmentProxy', () => {
     })
 
     it('IPv4-mapped IPv6 loopbackを拒否する', () => {
-      expect(isPrivateHost('::ffff:127.0.0.1')).toBe(true)
+      expect(isPrivateHost('::ffff:127.0.0.1')).toBe(true) // NOSONAR -- SSRF boundary fixture.
       expect(isPrivateHost('[::ffff:127.0.0.1]')).toBe(true)
     })
 
     it('IPv6 link-localとULAを拒否する', () => {
-      expect(isPrivateHost('fe80::1')).toBe(true)
-      expect(isPrivateHost('fd12:3456:789a:1::1')).toBe(true)
-      expect(isPrivateHost('fc00::1')).toBe(true)
+      expect(isPrivateHost('fe80::1')).toBe(true) // NOSONAR -- SSRF boundary fixture.
+      expect(isPrivateHost('fd12:3456:789a:1::1')).toBe(true) // NOSONAR -- SSRF boundary fixture.
+      expect(isPrivateHost('fc00::1')).toBe(true) // NOSONAR -- SSRF boundary fixture.
     })
 
     it('公開ホストを許可する', () => {
@@ -55,21 +60,25 @@ describe('attachmentProxy', () => {
 
   describe('isPrivateHostWithDns', () => {
     it('DNS解決後にプライベートIPへ解決するドメインを拒否する', async () => {
-      mockedLookup.mockResolvedValue([{ address: '10.0.0.1', family: 4 }])
+      mockedLookup.mockResolvedValue([
+        { address: '10.0.0.1', family: 4 }, // NOSONAR -- SSRF fixture.
+      ])
 
       await expect(isPrivateHostWithDns('cdn.example.com')).resolves.toBe(true)
     })
 
     it('DNS解決後に公開IPへ解決するドメインを許可する', async () => {
-      mockedLookup.mockResolvedValue([{ address: '93.184.216.34', family: 4 }])
+      mockedLookup.mockResolvedValue([
+        { address: '93.184.216.34', family: 4 }, // NOSONAR -- DNS fixture.
+      ])
 
       await expect(isPrivateHostWithDns('cdn.example.com')).resolves.toBe(false)
     })
 
     it('DNS解決結果にプライベートIPが含まれる場合は拒否する', async () => {
       mockedLookup.mockResolvedValue([
-        { address: '93.184.216.34', family: 4 },
-        { address: '192.168.1.1', family: 4 },
+        { address: '93.184.216.34', family: 4 }, // NOSONAR -- DNS fixture.
+        { address: '192.168.1.1', family: 4 }, // NOSONAR -- SSRF fixture.
       ])
 
       await expect(isPrivateHostWithDns('cdn.example.com')).resolves.toBe(true)
@@ -84,7 +93,9 @@ describe('attachmentProxy', () => {
     it('リテラルIPにはDNS解決を行わない', async () => {
       mockedLookup.mockClear()
 
-      await expect(isPrivateHostWithDns('93.184.216.34')).resolves.toBe(false)
+      await expect(
+        isPrivateHostWithDns('93.184.216.34'), // NOSONAR -- DNS bypass fixture.
+      ).resolves.toBe(false)
       expect(mockedLookup).not.toHaveBeenCalled()
     })
   })

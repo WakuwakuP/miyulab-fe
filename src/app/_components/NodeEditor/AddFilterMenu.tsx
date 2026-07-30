@@ -370,10 +370,10 @@ export const PRESETS: Preset[] = [
 // Component
 // ---------------------------------------------------------------------------
 
-type AddFilterMenuProps = {
+type AddFilterMenuProps = Readonly<{
   onAddNode: (node: FilterNode) => void
   onApplyPreset: (nodes: FilterNode[]) => void
-}
+}>
 
 export function AddFilterMenu({
   onAddNode,

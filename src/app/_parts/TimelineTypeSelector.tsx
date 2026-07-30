@@ -15,11 +15,11 @@ export function TimelineTypeSelector({
   configType,
   onChange,
   value,
-}: {
+}: Readonly<{
   configType: TimelineConfigV2['type']
   onChange: (types: StatusTimelineType[] | undefined) => void
   value: StatusTimelineType[] | undefined
-}) {
+}>) {
   // 未設定時は config.type から推定
   const defaultTypes: StatusTimelineType[] =
     configType === 'home' || configType === 'local' || configType === 'public'

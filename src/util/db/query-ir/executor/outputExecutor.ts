@@ -19,7 +19,7 @@ import {
   buildScopedBatchTemplates,
   buildSpbFilter,
 } from '../../sqlite/queries/statusSelect'
-import type { OutputNodeV2 } from '../nodes'
+import type { BindValue, OutputNodeV2 } from '../nodes'
 import type { NodeOutputRow } from '../plan'
 import type { DisplayOrderEntry, GraphExecuteResult, NodeOutput } from './types'
 
@@ -28,6 +28,8 @@ const REBLOG_POST_ID_COLUMN_INDEX = 25
 
 /** Output ノードで受入可能なテーブル */
 const SUPPORTED_TABLES = new Set(['posts', 'notifications'])
+
+type DbRow = BindValue[]
 
 function applySortCursorAndPagination(
   rows: NodeOutputRow[],
@@ -113,13 +115,13 @@ export function executeOutput(
     postRows.length > 0
       ? executePostOutput(db, postRows, backendUrls)
       : {
-          batchResults: {} as Record<string, (string | number | null)[][]>,
-          detailRows: [] as (string | number | null)[][],
+          batchResults: {} as Record<string, DbRow[]>,
+          detailRows: [] as DbRow[],
         }
   const notifsResult =
     notifRows.length > 0
       ? executeNotificationOutput(db, notifRows)
-      : { detailRows: [] as (string | number | null)[][] }
+      : { detailRows: [] as DbRow[] }
 
   return {
     displayOrder,
@@ -150,8 +152,8 @@ function executePostOutput(
   rows: NodeOutputRow[],
   backendUrls: string[],
 ): {
-  detailRows: (string | number | null)[][]
-  batchResults: Record<string, (string | number | null)[][]>
+  detailRows: DbRow[]
+  batchResults: Record<string, DbRow[]>
 } {
   let postIds = rows.map((r) => r.id)
 
@@ -194,7 +196,7 @@ function executeNotificationOutput(
   db: DbExec,
   rows: NodeOutputRow[],
 ): {
-  detailRows: (string | number | null)[][]
+  detailRows: DbRow[]
 } {
   const notifIds = rows.map((r) => r.id)
   const placeholders = notifIds.map(() => '?').join(',')
@@ -226,11 +228,11 @@ function executeBatchQueries(
   db: DbExec,
   postIds: number[],
   templates: { [K in keyof typeof BATCH_SQL_TEMPLATES]: string },
-): Record<string, (string | number | null)[][]> {
+): Record<string, DbRow[]> {
   if (postIds.length === 0) return {}
 
   const placeholders = postIds.map(() => '?').join(',')
-  const results: Record<string, (string | number | null)[][]> = {}
+  const results: Record<string, DbRow[]> = {}
 
   for (const [key, sqlTemplate] of Object.entries(templates)) {
     const sql = sqlTemplate.replaceAll('{IDS}', placeholders)

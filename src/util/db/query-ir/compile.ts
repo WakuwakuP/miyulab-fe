@@ -310,14 +310,14 @@ export function compileMergeNode(mergeNode: MergeNode): ExecutionPlan {
     if (idStep) {
       const key = idCollectStepKey(idStep)
       const existing = stepKeyMap.get(key)
-      if (existing !== undefined) {
-        // 重複 SQL — 既存ステップのインデックスを再利用
-        stepIndices.push(existing)
-      } else {
+      if (existing === undefined) {
         const idx = steps.length
         stepKeyMap.set(key, idx)
         stepIndices.push(idx)
         steps.push(idStep)
+      } else {
+        // 重複 SQL — 既存ステップのインデックスを再利用
+        stepIndices.push(existing)
       }
     }
   }
@@ -348,7 +348,7 @@ export function compileMergeNode(mergeNode: MergeNode): ExecutionPlan {
   for (const target of targets) {
     steps.push({
       sqlTemplate: '{DETAIL_QUERY}',
-      target: target as 'posts' | 'notifications',
+      target,
       type: 'detail-fetch',
     } satisfies DetailFetchStep)
   }

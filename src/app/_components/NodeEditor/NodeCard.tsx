@@ -25,7 +25,7 @@ export function NodeCard({
   node,
   onRemove,
   onUpdate,
-}: NodeCardProps) {
+}: Readonly<NodeCardProps>) {
   const meta = getNodeMeta(node)
 
   const handleUpdate = useCallback(

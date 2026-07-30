@@ -96,7 +96,7 @@ function tryAccountFilter(cond: string): FilterNode | null {
   if (prInMatch) {
     const accts = prInMatch[1]
       .split(',')
-      .map((s) => s.trim().replace(/'/g, ''))
+      .map((s) => s.trim().replaceAll("'", ''))
       .filter(Boolean)
     return {
       column: 'acct',
@@ -107,11 +107,11 @@ function tryAccountFilter(cond: string): FilterNode | null {
     }
   }
   // W-1: NOT IN: pr.acct NOT IN ('a', 'b')
-  const prNotInMatch = cond.match(/^pr\.acct\s+NOT\s+IN\s*\(([^)]+)\)$/i)
+  const prNotInMatch = /^pr\.acct\s+NOT\s+IN\s*\(([^)]+)\)$/i.exec(cond)
   if (prNotInMatch) {
     const accts = prNotInMatch[1]
       .split(',')
-      .map((s) => s.trim().replace(/'/g, ''))
+      .map((s) => s.trim().replaceAll("'", ''))
       .filter(Boolean)
     return {
       column: 'acct',
@@ -127,10 +127,10 @@ function tryAccountFilter(cond: string): FilterNode | null {
 /** p.is_reblog = 0/1, p.is_sensitive = 0/1, p.spoiler_text = '', p.in_reply_to_uri IS NULL */
 function tryPropertyFilter(cond: string): FilterNode | null {
   // p.column = value
-  const eqMatch = cond.match(/^p\.(\w+)\s*=\s*('([^']*)'|(\d+))$/i)
+  const eqMatch = /^p\.(\w+)\s*=\s*('([^']*)'|(\d+))$/i.exec(cond)
   if (eqMatch) {
     const field = eqMatch[1]
-    const value = eqMatch[3] !== undefined ? eqMatch[3] : Number(eqMatch[4])
+    const value = eqMatch[3] ?? Number(eqMatch[4])
     return {
       column: field,
       kind: 'table-filter',
@@ -140,10 +140,10 @@ function tryPropertyFilter(cond: string): FilterNode | null {
     }
   }
   // p.column != value
-  const neqMatch = cond.match(/^p\.(\w+)\s*!=\s*('([^']*)'|(\d+))$/i)
+  const neqMatch = /^p\.(\w+)\s*!=\s*('([^']*)'|(\d+))$/i.exec(cond)
   if (neqMatch) {
     const field = neqMatch[1]
-    const value = neqMatch[3] !== undefined ? neqMatch[3] : Number(neqMatch[4])
+    const value = neqMatch[3] ?? Number(neqMatch[4])
     return {
       column: field,
       kind: 'table-filter',
@@ -153,7 +153,7 @@ function tryPropertyFilter(cond: string): FilterNode | null {
     }
   }
   // p.column IS NULL
-  const isNullMatch = cond.match(/^p\.(\w+)\s+IS\s+NULL$/i)
+  const isNullMatch = /^p\.(\w+)\s+IS\s+NULL$/i.exec(cond)
   if (isNullMatch) {
     return {
       column: isNullMatch[1],
@@ -163,7 +163,7 @@ function tryPropertyFilter(cond: string): FilterNode | null {
     }
   }
   // p.column IS NOT NULL
-  const isNotNullMatch = cond.match(/^p\.(\w+)\s+IS\s+NOT\s+NULL$/i)
+  const isNotNullMatch = /^p\.(\w+)\s+IS\s+NOT\s+NULL$/i.exec(cond)
   if (isNotNullMatch) {
     return {
       column: isNotNullMatch[1],
@@ -174,12 +174,12 @@ function tryPropertyFilter(cond: string): FilterNode | null {
   }
   // p.language = 'ja' — already covered by p.column = 'value'
   // p.language IN ('ja', 'en')
-  const langInMatch = cond.match(/^p\.(\w+)\s+IN\s*\(([^)]+)\)$/i)
+  const langInMatch = /^p\.(\w+)\s+IN\s*\(([^)]+)\)$/i.exec(cond)
   if (langInMatch) {
     const field = langInMatch[1]
     const values = langInMatch[2]
       .split(',')
-      .map((s) => s.trim().replace(/'/g, ''))
+      .map((s) => s.trim().replaceAll("'", ''))
       .filter(Boolean)
     return {
       column: field,
@@ -190,12 +190,12 @@ function tryPropertyFilter(cond: string): FilterNode | null {
     }
   }
   // W-1: p.column NOT IN ('a', 'b')
-  const notInMatch = cond.match(/^p\.(\w+)\s+NOT\s+IN\s*\(([^)]+)\)$/i)
+  const notInMatch = /^p\.(\w+)\s+NOT\s+IN\s*\(([^)]+)\)$/i.exec(cond)
   if (notInMatch) {
     const field = notInMatch[1]
     const values = notInMatch[2]
       .split(',')
-      .map((s) => s.trim().replace(/'/g, ''))
+      .map((s) => s.trim().replaceAll("'", ''))
       .filter(Boolean)
     return {
       column: field,
@@ -210,7 +210,7 @@ function tryPropertyFilter(cond: string): FilterNode | null {
 
 /** vt.name = 'public' or vt.name IN (...) */
 function tryVisibilityFilter(cond: string): FilterNode | null {
-  const single = cond.match(/^vt\.name\s*=\s*'([^']+)'$/i)
+  const single = /^vt\.name\s*=\s*'([^']+)'$/i.exec(cond)
   if (single) {
     return {
       column: 'name',
@@ -220,11 +220,11 @@ function tryVisibilityFilter(cond: string): FilterNode | null {
       value: [single[1]],
     }
   }
-  const multi = cond.match(/^vt\.name\s+IN\s*\(([^)]+)\)$/i)
+  const multi = /^vt\.name\s+IN\s*\(([^)]+)\)$/i.exec(cond)
   if (multi) {
     const types = multi[1]
       .split(',')
-      .map((s) => s.trim().replace(/'/g, ''))
+      .map((s) => s.trim().replaceAll("'", ''))
       .filter(Boolean)
     return {
       column: 'name',
@@ -239,7 +239,7 @@ function tryVisibilityFilter(cond: string): FilterNode | null {
 
 /** ps.favourites_count >= 10 etc. */
 function tryStatsFilter(cond: string): FilterNode | null {
-  const match = cond.match(/^ps\.(\w+)\s*(>=|<=|>|<|=|!=)\s*(\d+)$/i)
+  const match = /^ps\.(\w+)\s*(>=|<=|>|<|=|!=)\s*(\d+)$/i.exec(cond)
   if (match) {
     return {
       column: match[1],
@@ -254,7 +254,7 @@ function tryStatsFilter(cond: string): FilterNode | null {
 
 /** ht.name = 'photo' or ht.name IN (...) */
 function tryTagFilter(cond: string): FilterNode | null {
-  const single = cond.match(/^ht\.name\s*=\s*'([^']+)'$/i)
+  const single = /^ht\.name\s*=\s*'([^']+)'$/i.exec(cond)
   if (single) {
     return {
       column: 'name',
@@ -264,11 +264,11 @@ function tryTagFilter(cond: string): FilterNode | null {
       value: [single[1]],
     }
   }
-  const multi = cond.match(/^ht\.name\s+IN\s*\(([^)]+)\)$/i)
+  const multi = /^ht\.name\s+IN\s*\(([^)]+)\)$/i.exec(cond)
   if (multi) {
     const tags = multi[1]
       .split(',')
-      .map((s) => s.trim().replace(/'/g, ''))
+      .map((s) => s.trim().replaceAll("'", ''))
       .filter(Boolean)
     return {
       column: 'name',
@@ -284,9 +284,10 @@ function tryTagFilter(cond: string): FilterNode | null {
 /** W-4: EXISTS(SELECT 1 FROM <table> WHERE post_id = p.id) — ジェネリック */
 function tryExistsFilter(cond: string): FilterNode | null {
   // EXISTS: EXISTS(SELECT 1 FROM <table> WHERE post_id = p.id)
-  const existsMatch = cond.match(
-    /^EXISTS\s*\(\s*SELECT\s+1\s+FROM\s+(\w+)\s+WHERE\s+post_id\s*=\s*p\.id\s*\)$/i,
-  )
+  const existsMatch =
+    /^EXISTS\s*\(\s*SELECT\s+1\s+FROM\s+(\w+)\s+WHERE\s+post_id\s*=\s*p\.id\s*\)$/i.exec(
+      cond,
+    )
   if (existsMatch) {
     return {
       kind: 'exists-filter',
@@ -295,9 +296,10 @@ function tryExistsFilter(cond: string): FilterNode | null {
     } satisfies ExistsFilter
   }
   // NOT EXISTS: NOT EXISTS(SELECT 1 FROM <table> WHERE post_id = p.id)
-  const notExistsMatch = cond.match(
-    /^NOT\s+EXISTS\s*\(\s*SELECT\s+1\s+FROM\s+(\w+)\s+WHERE\s+post_id\s*=\s*p\.id\s*\)$/i,
-  )
+  const notExistsMatch =
+    /^NOT\s+EXISTS\s*\(\s*SELECT\s+1\s+FROM\s+(\w+)\s+WHERE\s+post_id\s*=\s*p\.id\s*\)$/i.exec(
+      cond,
+    )
   if (notExistsMatch) {
     return {
       kind: 'exists-filter',
@@ -310,9 +312,10 @@ function tryExistsFilter(cond: string): FilterNode | null {
 
 /** W-4+W-6: (SELECT COUNT(*) FROM <table> WHERE post_id = p.id) <op> N — ジェネリック */
 function tryCountFilter(cond: string): FilterNode | null {
-  const match = cond.match(
-    /^\(SELECT\s+COUNT\(\*\)\s+FROM\s+(\w+)\s+WHERE\s+post_id\s*=\s*p\.id\)\s*(>=|<=|=)\s*(\d+)$/i,
-  )
+  const match =
+    /^\(SELECT\s+COUNT\(\*\)\s+FROM\s+(\w+)\s+WHERE\s+post_id\s*=\s*p\.id\)\s*(>=|<=|=)\s*(\d+)$/i.exec(
+      cond,
+    )
   if (!match) return null
 
   const table = match[1]
@@ -344,7 +347,7 @@ function tryCountFilter(cond: string): FilterNode | null {
 
 /** pme.acct = 'user@example.com' (mention filter) */
 function tryMentionFilter(cond: string): FilterNode | null {
-  const single = cond.match(/^pme\.acct\s*=\s*'([^']+)'$/i)
+  const single = /^pme\.acct\s*=\s*'([^']+)'$/i.exec(cond)
   if (single) {
     return {
       column: 'acct',
@@ -354,11 +357,11 @@ function tryMentionFilter(cond: string): FilterNode | null {
       value: [single[1]],
     }
   }
-  const multi = cond.match(/^pme\.acct\s+IN\s*\(([^)]+)\)$/i)
+  const multi = /^pme\.acct\s+IN\s*\(([^)]+)\)$/i.exec(cond)
   if (multi) {
     const accts = multi[1]
       .split(',')
-      .map((s) => s.trim().replace(/'/g, ''))
+      .map((s) => s.trim().replaceAll("'", ''))
       .filter(Boolean)
     return {
       column: 'acct',
@@ -373,7 +376,7 @@ function tryMentionFilter(cond: string): FilterNode | null {
 
 /** pe.is_bookmarked = 1, pe.is_favourited = 1 etc. */
 function tryInteractionFilter(cond: string): FilterNode | null {
-  const match = cond.match(/^pe\.(is_\w+)\s*=\s*(\d+)$/i)
+  const match = /^pe\.(is_\w+)\s*=\s*(\d+)$/i.exec(cond)
   if (match) {
     return {
       column: match[1],

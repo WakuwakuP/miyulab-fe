@@ -128,9 +128,9 @@ export function resolveTableDependency(
         const entry = registry[table]
         if (!entry) {
           return {
-            cardinality: '1:1' as Cardinality,
+            cardinality: '1:1',
             joinPath: null,
-            strategy: 'direct' as JoinStrategy,
+            strategy: 'direct',
             table,
           }
         }

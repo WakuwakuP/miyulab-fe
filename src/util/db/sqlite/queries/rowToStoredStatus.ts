@@ -145,7 +145,7 @@ export function rowToStoredStatus(
       ),
       card: null,
       content: (row[34] as string) ?? '',
-      created_at: row[42] ? new Date(row[42] as number).toISOString() : '',
+      created_at: row[42] ? new Date(row[42]).toISOString() : '',
       edited_at: editedAtMsToIso(rbEditedAtMs),
       emoji_reactions: mergeLocalReaction(
         parseEmojiReactions(rbEmojiReactionsJson),

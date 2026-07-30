@@ -205,7 +205,7 @@ export function FlowCanvas({
   onUpdateNodeData,
   viewportCenterRef,
   execStatus,
-}: FlowCanvasProps) {
+}: Readonly<FlowCanvasProps>) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [didInitialFit, setDidInitialFit] = useState(false)
 

@@ -6,10 +6,10 @@ import type { AccountFilter, AccountFilterMode } from 'types/types'
 export function AccountFilterEditor({
   onChange,
   value,
-}: {
+}: Readonly<{
   onChange: (filter: AccountFilter | undefined) => void
   value: AccountFilter | undefined
-}) {
+}>) {
   const [input, setInput] = useState('')
   const mode: AccountFilterMode = value?.mode ?? 'exclude'
   const accts = value?.accts ?? []

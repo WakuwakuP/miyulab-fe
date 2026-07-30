@@ -1,5 +1,4 @@
 import { v2_0_6_migration } from 'util/db/sqlite/migrations/v2.0.6'
-import type { SchemaDbHandle } from 'util/db/sqlite/worker/workerSchema'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 function createMockDb(indexExists: boolean) {
@@ -24,7 +23,7 @@ function createMockDb(indexExists: boolean) {
       return undefined
     }),
   }
-  return { db, execCalls, handle: { db } as SchemaDbHandle }
+  return { db, execCalls, handle: { db } }
 }
 
 describe('v2.0.6 マイグレーション', () => {

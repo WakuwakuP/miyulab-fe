@@ -10,7 +10,6 @@ import { migrations, runMigrations } from 'util/db/sqlite/migrations'
 import { v2_0_0_migration } from 'util/db/sqlite/migrations/v2.0.0'
 import { createFreshSchema, dropAllTables } from 'util/db/sqlite/schema'
 import { encodeSemVer } from 'util/db/sqlite/schema/version'
-import type { SchemaDbHandle } from 'util/db/sqlite/worker/workerSchema'
 
 // ─── Mock DB factory ────────────────────────────────────────────
 function createMockDb(userVersion: number) {
@@ -26,7 +25,7 @@ function createMockDb(userVersion: number) {
       return undefined
     }),
   }
-  return { db, handle: { db } as SchemaDbHandle }
+  return { db, handle: { db } }
 }
 
 type V2MigrationMockState = {
@@ -150,7 +149,7 @@ function createV2MigrationMockDb(v2Encoded: number) {
       return undefined
     }),
   }
-  return { db, handle: { db } as SchemaDbHandle }
+  return { db, handle: { db } }
 }
 
 describe('v2.0.0 マイグレーション', () => {
@@ -245,7 +244,7 @@ describe('v2.0.0 マイグレーション', () => {
           return undefined
         }),
       }
-      const handle = { db } as SchemaDbHandle
+      const handle = { db }
       expect(v2_0_0_migration.validate).toBeDefined()
       expect(v2_0_0_migration.validate?.(handle)).toBe(true)
       // 28テーブル分のクエリが発行される
@@ -273,7 +272,7 @@ describe('v2.0.0 マイグレーション', () => {
           return undefined
         }),
       }
-      const handle = { db } as SchemaDbHandle
+      const handle = { db }
       expect(v2_0_0_migration.validate?.(handle)).toBe(false)
       expect(consoleSpy).toHaveBeenCalledWith(
         expect.stringContaining("table 'posts' not found"),

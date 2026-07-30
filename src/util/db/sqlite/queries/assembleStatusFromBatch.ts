@@ -111,7 +111,7 @@ export function assembleStatusFromBatch(
       bookmarked: rbInteractions?.is_bookmarked === 1,
       card: null,
       content: (row[26] as string) ?? '',
-      created_at: row[34] ? new Date(row[34] as number).toISOString() : '',
+      created_at: row[34] ? new Date(row[34]).toISOString() : '',
       edited_at: editedAtMsToIso(rbEditedAtMs),
       emoji_reactions: mergeLocalReaction(
         parseEmojiReactions(rbEmojiReactionsJson),

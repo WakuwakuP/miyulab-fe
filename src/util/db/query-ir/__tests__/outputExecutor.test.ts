@@ -34,7 +34,7 @@ function mockDb() {
     calls,
     exec: vi.fn(
       (sql: string, opts: { bind?: unknown[]; returnValue?: string }) => {
-        calls.push({ bind: (opts.bind ?? []) as unknown[], sql })
+        calls.push({ bind: opts.bind ?? [], sql })
         return [] as (string | number | null)[][]
       },
     ),

@@ -28,10 +28,10 @@ const TIME_WINDOW_OPTIONS = [
 export function AerialReplyBody({
   node,
   onUpdate,
-}: {
+}: Readonly<{
   node: AerialReplyFilter
   onUpdate: (n: AerialReplyFilter) => void
-}) {
+}>) {
   const idPrefix = useId()
   const toggleType = useCallback(
     (key: string) => {

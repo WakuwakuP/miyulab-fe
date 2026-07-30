@@ -437,7 +437,7 @@ function buildTagCondition(tagConfig: TagConfig): string {
  * SQL 文字列リテラル内の単純なエスケープ
  */
 function escapeSqlString(value: string): string {
-  return value.replace(/'/g, "''")
+  return value.replaceAll("'", "''")
 }
 
 /**

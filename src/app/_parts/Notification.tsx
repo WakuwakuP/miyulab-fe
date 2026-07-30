@@ -3,12 +3,14 @@
 import { ProxyImage } from 'app/_parts/ProxyImage'
 import { Status } from 'app/_parts/Status'
 
+import parse from 'html-react-parser'
 import * as emoji from 'node-emoji'
 import type { KeyboardEvent } from 'react'
 import { useContext, useMemo } from 'react'
 import { RiStarFill } from 'react-icons/ri'
 import type { NotificationAddAppIndex, StatusAddAppIndex } from 'types/types'
 import { replaceEmojis } from 'util/emojiReplacer'
+import { escapeHtml } from 'util/escapeHtml'
 import { AppsContext } from 'util/provider/AppsProvider'
 import { SetDetailContext } from 'util/provider/DetailProvider'
 import {
@@ -113,7 +115,7 @@ export const Notification = ({
   const displayName = useMemo(() => {
     if (notification.account == null) return ''
     return replaceEmojis(
-      notification.account.display_name,
+      escapeHtml(notification.account.display_name),
       notification.account.emojis,
     )
   }, [notification.account])
@@ -193,12 +195,7 @@ export const Notification = ({
               )}
               <span className="w-[calc(100%-56px)] pl-2">
                 <span className="block w-full truncate">
-                  <span
-                    // biome-ignore lint/security/noDangerouslySetInnerHtml: TODO
-                    dangerouslySetInnerHTML={{
-                      __html: displayName,
-                    }}
-                  />
+                  <span>{parse(displayName)}</span>
                 </span>
                 <span
                   className="block w-full truncate text-gray-300"
@@ -247,12 +244,7 @@ export const Notification = ({
               )}
               <span className="w-[calc(100%-56px)] pl-2">
                 <span className="block w-full truncate">
-                  <span
-                    // biome-ignore lint/security/noDangerouslySetInnerHtml: TODO
-                    dangerouslySetInnerHTML={{
-                      __html: displayName,
-                    }}
-                  />
+                  <span>{parse(displayName)}</span>
                 </span>
                 <span
                   className="block w-full truncate text-gray-300"
@@ -304,12 +296,7 @@ export const Notification = ({
               )}
               <span className="w-[calc(100%-56px)] pl-2">
                 <span className="block w-full truncate">
-                  <span
-                    // biome-ignore lint/security/noDangerouslySetInnerHtml: TODO
-                    dangerouslySetInnerHTML={{
-                      __html: displayName,
-                    }}
-                  />
+                  <span>{parse(displayName)}</span>
                 </span>
                 <span
                   className="block w-full truncate text-gray-300"
@@ -366,12 +353,7 @@ export const Notification = ({
               )}
               <span className="w-[calc(100%-56px)] pl-2">
                 <span className="block w-full truncate">
-                  <span
-                    // biome-ignore lint/security/noDangerouslySetInnerHtml: TODO
-                    dangerouslySetInnerHTML={{
-                      __html: displayName,
-                    }}
-                  />
+                  <span>{parse(displayName)}</span>
                 </span>
                 <span
                   className="block w-full truncate text-gray-300"
@@ -409,12 +391,7 @@ export const Notification = ({
               )}
               <span className="w-[calc(100%-56px)] pl-2">
                 <span className="block w-full truncate">
-                  <span
-                    // biome-ignore lint/security/noDangerouslySetInnerHtml: TODO
-                    dangerouslySetInnerHTML={{
-                      __html: displayName,
-                    }}
-                  />
+                  <span>{parse(displayName)}</span>
                 </span>
                 <span
                   className="block w-full truncate text-gray-300"

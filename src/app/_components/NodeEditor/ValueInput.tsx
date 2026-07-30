@@ -36,7 +36,7 @@ import type { FilterOp, FilterValue } from 'util/db/query-ir/nodes'
 // Types
 // ---------------------------------------------------------------------------
 
-type ValueInputProps = {
+type ValueInputProps = Readonly<{
   /** カラム名 */
   column: string
   /** カラム型 */
@@ -55,7 +55,7 @@ type ValueInputProps = {
   /** テーブル名 */
   table: string
   value: FilterValue
-}
+}>
 
 // ---------------------------------------------------------------------------
 // Async multi-select combobox (DB search backed)
@@ -68,7 +68,7 @@ function AsyncMultiCombobox({
   searchValues,
   table,
   value,
-}: {
+}: Readonly<{
   column: string
   onChange: (values: string[]) => void
   placeholder?: string
@@ -79,7 +79,7 @@ function AsyncMultiCombobox({
   ) => Promise<string[]>
   table: string
   value: string[]
-}) {
+}>) {
   const [searchResults, setSearchResults] = useState<string[]>([])
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -153,7 +153,7 @@ function AutocompleteInput({
   searchValues,
   table,
   value,
-}: {
+}: Readonly<{
   column: string
   onChange: (value: string) => void
   searchValues: (
@@ -163,7 +163,7 @@ function AutocompleteInput({
   ) => Promise<string[]>
   table: string
   value: string
-}) {
+}>) {
   const [searchResults, setSearchResults] = useState<string[]>([])
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -230,11 +230,11 @@ function StaticMultiCombobox({
   items,
   onChange,
   value,
-}: {
+}: Readonly<{
   items: string[]
   onChange: (values: string[]) => void
   value: string[]
-}) {
+}>) {
   return (
     <Combobox items={items} multiple onValueChange={onChange} value={value}>
       <ComboboxChips className="min-h-7 text-xs bg-gray-800 border-gray-600">
@@ -286,12 +286,12 @@ function KnownValuesInput({
   knownValues,
   onChange,
   value,
-}: {
+}: Readonly<{
   isArrayOp: boolean
   knownValues: string[]
   onChange: (value: FilterValue) => void
   value: FilterValue
-}) {
+}>) {
   if (isArrayOp) {
     const arrayVal = Array.isArray(value) ? (value as string[]) : []
     return (
@@ -326,14 +326,14 @@ function NumericValueInput({
   searchValues,
   table,
   value,
-}: {
+}: Readonly<{
   column: string
   isArrayOp: boolean
   onChange: (value: FilterValue) => void
   searchValues?: ValueInputProps['searchValues']
   table: string
   value: FilterValue
-}) {
+}>) {
   if (!isArrayOp) {
     return (
       <Input
@@ -385,14 +385,14 @@ function SearchValueInput({
   searchValues,
   table,
   value,
-}: {
+}: Readonly<{
   column: string
   isArrayOp: boolean
   onChange: (value: FilterValue) => void
   searchValues: NonNullable<ValueInputProps['searchValues']>
   table: string
   value: FilterValue
-}) {
+}>) {
   if (isArrayOp) {
     return (
       <AsyncMultiCombobox
@@ -420,11 +420,11 @@ function FallbackValueInput({
   isArrayOp,
   onChange,
   value,
-}: {
+}: Readonly<{
   isArrayOp: boolean
   onChange: (value: FilterValue) => void
   value: FilterValue
-}) {
+}>) {
   if (isArrayOp) {
     const arrayVal = toStringArray(value)
     return (

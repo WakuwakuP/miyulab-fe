@@ -31,7 +31,7 @@ export const EmojiReactions = ({
   const emojiUrlMap = useMemo(() => {
     const map = new Map<string, { url: string; static_url?: string }>()
     const statusApp =
-      status.appIndex != null ? apps[status.appIndex] : undefined
+      typeof status.appIndex === 'number' ? apps[status.appIndex] : undefined
     if (statusApp?.backendUrl) {
       const catalog = emojiCatalog.get(statusApp.backendUrl)
       const list = catalog && catalog.length > 0 ? catalog : emojiFallback

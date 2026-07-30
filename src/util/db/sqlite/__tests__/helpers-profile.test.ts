@@ -14,6 +14,8 @@ import {
 import type { DbExecCompat } from 'util/db/sqlite/helpers/types'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+type SqlValue = string | number | null
+
 // ─── Mock DB factory ────────────────────────────────────────────
 
 /**
@@ -154,7 +156,7 @@ describe('ensureProfile', () => {
     expect(calls[0].sql).not.toContain('"domain"')
 
     // bind パラメータの確認
-    const bind = calls[0].opts?.bind as (string | number | null)[]
+    const bind = calls[0].opts?.bind as SqlValue[]
     expect(bind[0]).toBe('https://example.com/@alice') // actor_uri
     expect(bind[1]).toBe('alice') // username
     expect(bind[2]).toBe(1) // server_id
@@ -206,7 +208,7 @@ describe('ensureProfile', () => {
     expect(calls).toHaveLength(4)
 
     // 2回目の UPSERT で新しい display_name が使われる
-    const secondBind = calls[2].opts?.bind as (string | number | null)[]
+    const secondBind = calls[2].opts?.bind as SqlValue[]
     expect(secondBind[5]).toBe('Bob v2') // display_name
     expect(secondBind[7]).toBe('https://example.com/bob_v2.png') // avatar_url
   })
@@ -248,7 +250,7 @@ describe('ensureProfile', () => {
     expect(id).toBe(5)
 
     // UPSERT の bind で server_id = 3 を使っている
-    const bind = calls[0].opts?.bind as (string | number | null)[]
+    const bind = calls[0].opts?.bind as SqlValue[]
     expect(bind[1]).toBe('localuser') // username
     expect(bind[2]).toBe(3) // server_id
     expect(bind[3]).toBe('localuser') // acct
@@ -278,7 +280,7 @@ describe('ensureProfile', () => {
     expect(id).toBe(11)
 
     // UPSERT bind に server_id が含まれる
-    const bind = calls[0].opts?.bind as (string | number | null)[]
+    const bind = calls[0].opts?.bind as SqlValue[]
     expect(bind[2]).toBe(42) // server_id
 
     // SELECT bind にも canonical_acct が含まれる
@@ -310,7 +312,7 @@ describe('syncProfileStats', () => {
     expect(calls[0].sql).toContain('statuses_count')
     expect(calls[0].sql).toContain('updated_at')
 
-    const bind = calls[0].opts?.bind as (string | number | null)[]
+    const bind = calls[0].opts?.bind as SqlValue[]
     expect(bind[0]).toBe(10) // profile_id
     expect(bind[1]).toBe(100) // followers_count
     expect(bind[2]).toBe(200) // following_count
@@ -346,7 +348,7 @@ describe('syncProfileFields', () => {
 
     // 2回目: multi-value INSERT
     expect(calls[1].sql).toContain('INSERT INTO profile_fields')
-    const bind = calls[1].opts?.bind as (string | number | null)[]
+    const bind = calls[1].opts?.bind as SqlValue[]
     // 1つ目のフィールド
     expect(bind[0]).toBe(10) // profile_id
     expect(bind[1]).toBe(0) // sort_order
@@ -382,7 +384,7 @@ describe('syncProfileFields', () => {
     expect(calls[2].opts?.bind).toEqual([5])
 
     // 2回目の multi-value INSERT で新しいフィールドが追加される
-    const bind = calls[3].opts?.bind as (string | number | null)[]
+    const bind = calls[3].opts?.bind as SqlValue[]
     expect(bind[2]).toBe('New Field')
     expect(bind[7]).toBe('Another Field')
   })

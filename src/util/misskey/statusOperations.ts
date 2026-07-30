@@ -106,7 +106,7 @@ export async function deleteStatus(
   id: string,
 ): Promise<Response<Record<string, never>>> {
   await ctx.client.request('notes/delete', { noteId: id })
-  return wrapResponse({} as Record<string, never>)
+  return wrapResponse({})
 }
 
 export async function getStatusContext(
@@ -290,7 +290,7 @@ export async function uploadMedia(
   },
 ): Promise<Response<Entity.Attachment | Entity.AsyncAttachment>> {
   const params: Record<string, unknown> = {
-    file: file as Blob,
+    file,
   }
   if (options?.description) {
     params.comment = options.description

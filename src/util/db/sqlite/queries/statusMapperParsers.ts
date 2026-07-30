@@ -238,7 +238,7 @@ export function parseBatchPoll(json: string): Entity.Poll {
  * edited_at_ms (INTEGER | null) を ISO 文字列 | null に変換する
  */
 export function editedAtMsToIso(ms: number | null): string | null {
-  return ms != null ? new Date(ms).toISOString() : null
+  return ms == null ? null : new Date(ms).toISOString()
 }
 
 /** interactions JSON をパースして返す（null なら null） */

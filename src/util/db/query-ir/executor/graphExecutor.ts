@@ -34,9 +34,7 @@ import { WorkerNodeCache } from './workerNodeCache'
 let globalCache: WorkerNodeCache | null = null
 
 function getCache(): WorkerNodeCache {
-  if (!globalCache) {
-    globalCache = new WorkerNodeCache()
-  }
+  globalCache ??= new WorkerNodeCache()
   return globalCache
 }
 
@@ -361,7 +359,7 @@ export function executeGraphPlan(
         runLookupRelatedNode(
           { cache, db, nodeStats, outputs },
           nodeId,
-          entry.node as LookupRelatedNode,
+          entry.node,
           incoming,
           nodeStart,
         )
@@ -371,7 +369,7 @@ export function executeGraphPlan(
           outputs,
           nodeStats,
           nodeId,
-          entry.node as MergeNodeV2,
+          entry.node,
           incoming,
           nodeStart,
         )
@@ -380,7 +378,7 @@ export function executeGraphPlan(
         return runOutputNode(
           { captureVersionsFn, db, nodeStats, options, outputs, start },
           nodeId,
-          entry.node as OutputNodeV2,
+          entry.node,
           incoming,
           nodeStart,
         )

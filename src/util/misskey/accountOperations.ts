@@ -6,7 +6,11 @@ import {
   NotImplementedError,
   wrapResponse,
 } from './helpers'
-import { mapUserDetailedToAccount, mapUserLiteToAccount } from './mappers'
+import {
+  mapNoteToStatus,
+  mapUserDetailedToAccount,
+  mapUserLiteToAccount,
+} from './mappers'
 
 // =============================================
 // OAuth / App Registration
@@ -179,12 +183,12 @@ export async function getAccountStatuses(
     ...(options?.max_id ? { untilId: options.max_id } : {}),
     ...(options?.since_id ? { sinceId: options.since_id } : {}),
     ...(options?.only_media ? { withFiles: true } : {}),
-    ...(options?.exclude_replies != null
-      ? { withReplies: !options.exclude_replies }
-      : {}),
-    ...(options?.exclude_reblogs != null
-      ? { withRenotes: !options.exclude_reblogs }
-      : {}),
+    ...(options?.exclude_replies == null
+      ? {}
+      : { withReplies: !options.exclude_replies }),
+    ...(options?.exclude_reblogs == null
+      ? {}
+      : { withRenotes: !options.exclude_reblogs }),
   })
   return wrapResponse(notes.map((n) => mapNoteToStatus(n, ctx.origin)))
 }
@@ -414,7 +418,7 @@ export async function searchAccount(
   },
 ): Promise<Response<Array<Entity.Account>>> {
   // acct 形式 (user@host) の場合は users/search-by-username-and-host を使用
-  const acctMatch = q.match(/^@?(\w[\w.-]*)@([\w.-]+\.\w+)$/)
+  const acctMatch = /^@?(\w[\w.-]*)@([\w.-]+\.\w+)$/.exec(q)
   if (acctMatch) {
     const username = acctMatch[1]
     const host = acctMatch[2]
@@ -512,6 +516,3 @@ export async function rejectFollowRequest(
   await ctx.client.request('following/requests/reject', { userId: id })
   return getRelationship(ctx, id)
 }
-
-// Re-export mapNoteToStatus for use in getAccountStatuses
-import { mapNoteToStatus } from './mappers'

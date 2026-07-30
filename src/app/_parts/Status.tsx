@@ -19,6 +19,7 @@ import { useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import { RiRepeatFill, RiVideoLine } from 'react-icons/ri'
 import type { PollAddAppIndex, StatusAddAppIndex } from 'types/types'
 import { replaceEmojis } from 'util/emojiReplacer'
+import { escapeHtml } from 'util/escapeHtml'
 import { canPlay } from 'util/PlayerUtils'
 import { AppsContext } from 'util/provider/AppsProvider'
 import { SetDetailContext } from 'util/provider/DetailProvider'
@@ -118,7 +119,7 @@ export const Status = ({
 
   const getDisplayName = useCallback(
     (account: Entity.Account) =>
-      replaceEmojis(account.display_name, account.emojis),
+      replaceEmojis(escapeHtml(account.display_name), account.emojis),
     [],
   )
 
@@ -355,13 +356,7 @@ export const Status = ({
               loading="lazy"
               src={toSecureResourceUrl(status.account.avatar)}
             />
-            <span
-              className="pl-2 whitespace-nowrap"
-              // biome-ignore lint/security/noDangerouslySetInnerHtml: TODO
-              dangerouslySetInnerHTML={{
-                __html: displayName,
-              }}
-            />
+            <span className="pl-2 whitespace-nowrap">{parse(displayName)}</span>
           </button>
           <UserInfo
             account={{

@@ -8,7 +8,7 @@ import {
   SelectValue,
 } from 'components/ui/select'
 import { Plus } from 'lucide-react'
-import { useEffect, useMemo, useRef } from 'react'
+import { useMemo } from 'react'
 import {
   getAllFilterableTables,
   getDefaultTimeColumn,
@@ -18,7 +18,6 @@ import {
   getOutputIdColumns,
   getTimeColumns,
 } from 'util/db/query-ir/completion'
-import { migrateInputBindings } from 'util/db/query-ir/migrateInputBindings'
 import type {
   ExistsCondition,
   FilterCondition,
@@ -30,12 +29,12 @@ import type { FlowNodePanelProps } from './flowNodePanelTypes'
 import { buildFlatColumns, isFilterCondition } from './flowNodePanelTypes'
 import type { FlowEdge, FlowNode, GetIdsFlowNodeData } from './types'
 
-type GetIdsPanelProps = {
+type GetIdsPanelProps = Readonly<{
   edges: FlowEdge[]
   node: FlowNode
   nodes: FlowNode[]
   onUpdate: FlowNodePanelProps['onUpdate']
-}
+}>
 
 export function GetIdsPanel({
   edges,
@@ -87,18 +86,6 @@ export function GetIdsPanel({
         .filter((n): n is FlowNode => n != null),
     [edges, nodes, node.id],
   )
-
-  // 旧 inputBindings → FilterCondition.upstreamSourceNodeId マイグレーション
-  const migratedRef = useRef(false)
-  useEffect(() => {
-    if (migratedRef.current) return
-    const bindings = data.config.inputBindings
-    if (!bindings || bindings.length === 0) return
-    migratedRef.current = true
-
-    const migrated = migrateInputBindings(data.config)
-    onUpdate(node.id, { ...data, config: migrated })
-  }, [data, node.id, onUpdate])
 
   function updateConfig(patch: Partial<typeof data.config>) {
     onUpdate(node.id, { ...data, config: { ...data.config, ...patch } })
@@ -160,8 +147,6 @@ export function GetIdsPanel({
         <Select
           onValueChange={(v) =>
             updateConfig({
-              inputBinding: undefined,
-              inputBindings: undefined,
               outputIdColumn: undefined,
               outputTimeColumn: undefined,
               table: v,

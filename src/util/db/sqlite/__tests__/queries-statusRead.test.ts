@@ -25,8 +25,8 @@ const source = [
 describe('Phase 1 クエリが timeline_entries を使用する', () => {
   it('getStatusesByTimelineType の Phase 1 SQL が timeline_entries を含む', () => {
     // getStatusesByTimelineType 関数のソースを抽出
-    const fnMatch = source.match(
-      /async function getStatusesByTimelineType[\s\S]*?^}/m,
+    const fnMatch = /async function getStatusesByTimelineType[\s\S]*?^}/m.exec(
+      source,
     )
     expect(fnMatch).not.toBeNull()
     const fnSource = fnMatch?.[0]
@@ -34,8 +34,8 @@ describe('Phase 1 クエリが timeline_entries を使用する', () => {
   })
 
   it('getStatusesByCustomQuery の ptt JOIN が timeline_entries を含む', () => {
-    const fnMatch = source.match(
-      /async function getStatusesByCustomQuery[\s\S]*?^}/m,
+    const fnMatch = /async function getStatusesByCustomQuery[\s\S]*?^}/m.exec(
+      source,
     )
     expect(fnMatch).not.toBeNull()
     const fnSource = fnMatch?.[0]
@@ -48,8 +48,8 @@ describe('Phase 1 クエリが timeline_entries を使用する', () => {
 
 describe('Phase 1 クエリが timeline_items を使用しない', () => {
   it('getStatusesByTimelineType が timeline_items を含まない', () => {
-    const fnMatch = source.match(
-      /async function getStatusesByTimelineType[\s\S]*?^}/m,
+    const fnMatch = /async function getStatusesByTimelineType[\s\S]*?^}/m.exec(
+      source,
     )
     expect(fnMatch).not.toBeNull()
     const fnSource = fnMatch?.[0]
@@ -57,8 +57,8 @@ describe('Phase 1 クエリが timeline_items を使用しない', () => {
   })
 
   it('getStatusesByCustomQuery が timeline_items を含まない', () => {
-    const fnMatch = source.match(
-      /async function getStatusesByCustomQuery[\s\S]*?^}/m,
+    const fnMatch = /async function getStatusesByCustomQuery[\s\S]*?^}/m.exec(
+      source,
     )
     expect(fnMatch).not.toBeNull()
     const fnSource = fnMatch?.[0]
@@ -70,8 +70,8 @@ describe('Phase 1 クエリが timeline_items を使用しない', () => {
 
 describe('getDistinctTimelineTypes が timeline_entries を使用する', () => {
   it('getDistinctTimelineTypes の SQL が timeline_entries を含む', () => {
-    const fnMatch = source.match(
-      /async function getDistinctTimelineTypes[\s\S]*?^}/m,
+    const fnMatch = /async function getDistinctTimelineTypes[\s\S]*?^}/m.exec(
+      source,
     )
     expect(fnMatch).not.toBeNull()
     const fnSource = fnMatch?.[0]
@@ -79,8 +79,8 @@ describe('getDistinctTimelineTypes が timeline_entries を使用する', () => 
   })
 
   it('getDistinctTimelineTypes が timeline_key を使用する（code ではない）', () => {
-    const fnMatch = source.match(
-      /async function getDistinctTimelineTypes[\s\S]*?^}/m,
+    const fnMatch = /async function getDistinctTimelineTypes[\s\S]*?^}/m.exec(
+      source,
     )
     expect(fnMatch).not.toBeNull()
     const fnSource = fnMatch?.[0]
@@ -88,8 +88,8 @@ describe('getDistinctTimelineTypes が timeline_entries を使用する', () => 
   })
 
   it('getDistinctTimelineTypes が channel_kinds を使用しない', () => {
-    const fnMatch = source.match(
-      /async function getDistinctTimelineTypes[\s\S]*?^}/m,
+    const fnMatch = /async function getDistinctTimelineTypes[\s\S]*?^}/m.exec(
+      source,
     )
     expect(fnMatch).not.toBeNull()
     const fnSource = fnMatch?.[0]
@@ -97,8 +97,8 @@ describe('getDistinctTimelineTypes が timeline_entries を使用する', () => 
   })
 
   it('getDistinctTimelineTypes が timelines テーブルを JOIN しない', () => {
-    const fnMatch = source.match(
-      /async function getDistinctTimelineTypes[\s\S]*?^}/m,
+    const fnMatch = /async function getDistinctTimelineTypes[\s\S]*?^}/m.exec(
+      source,
     )
     expect(fnMatch).not.toBeNull()
     const fnSource = fnMatch?.[0]
@@ -132,8 +132,8 @@ describe('post_engagements テーブルを使用しない', () => {
   })
 
   it('getBookmarkedStatuses が post_interactions を使用する', () => {
-    const fnMatch = source.match(
-      /async function getBookmarkedStatuses[\s\S]*?^}/m,
+    const fnMatch = /async function getBookmarkedStatuses[\s\S]*?^}/m.exec(
+      source,
     )
     expect(fnMatch).not.toBeNull()
     const fnSource = fnMatch?.[0]

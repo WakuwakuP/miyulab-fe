@@ -71,9 +71,7 @@ export const Poll = ({
     <div className="p-2">
       <div>
         {poll.options.map((option, index) => {
-          const barRedChannel = selected?.some((s) => s === index)
-            ? '255'
-            : '59'
+          const barRedChannel = selected.includes(index) ? '255' : '59'
           const fallbackBackground =
             'linear-gradient(rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.1) 100%)'
           let backgroundImage = fallbackBackground

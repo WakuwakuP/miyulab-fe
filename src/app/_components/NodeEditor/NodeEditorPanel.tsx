@@ -18,12 +18,12 @@ import { NodeCard } from './NodeCard'
 // Types
 // ---------------------------------------------------------------------------
 
-type NodeEditorPanelProps = {
+type NodeEditorPanelProps = Readonly<{
   /** 登録済みアカウント一覧 (BackendFilter 用) */
   accounts?: ReadonlyMap<string, ResolvedAccount>
   nodes: FilterNode[]
   onChange: (nodes: FilterNode[]) => void
-}
+}>
 
 type NodeKeyEntry = {
   key: string

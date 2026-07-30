@@ -35,10 +35,10 @@ const TOGGLE_FILTERS: {
 export function ToggleFilters({
   config,
   onChange,
-}: {
+}: Readonly<{
   config: TimelineConfigV2
   onChange: (updates: Partial<TimelineConfigV2>) => void
-}) {
+}>) {
   return (
     <div className="space-y-1">
       {TOGGLE_FILTERS.map((filter) => {

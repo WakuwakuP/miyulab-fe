@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { executeFlatFetch } from '../executor/flatFetchExecutor'
 import type { FlatFetchRequest } from '../executor/flatFetchTypes'
 
+type SqlValue = string | number | null
+
 // ================================================================
 // ヘルパー
 // ================================================================
@@ -12,8 +14,8 @@ import type { FlatFetchRequest } from '../executor/flatFetchTypes'
 function makePostRow(
   postId: number,
   overrides: Partial<{ reblogOfPostId: number | null }> = {},
-): (string | number | null)[] {
-  const row: (string | number | null)[] = new Array(30).fill(null)
+): SqlValue[] {
+  const row: SqlValue[] = new Array(30).fill(null)
   row[0] = postId
   row[1] = `https://example.com/objects/${postId}`
   row[3] = '<p>test</p>'
@@ -21,7 +23,7 @@ function makePostRow(
   row[7] = 0
   row[8] = ''
   row[10] = overrides.reblogOfPostId ?? null
-  row[11] = overrides.reblogOfPostId != null ? 1 : 0
+  row[11] = overrides.reblogOfPostId == null ? 0 : 1
   row[13] = 'public'
   row[14] = 100 + postId
   row[15] = `user${postId}@example.com`
@@ -50,8 +52,8 @@ function makeNotifRow(
     actorProfileId: number | null
     relatedPostId: number | null
   }> = {},
-): (string | number | null)[] {
-  const row: (string | number | null)[] = new Array(19).fill(null)
+): SqlValue[] {
+  const row: SqlValue[] = new Array(19).fill(null)
   row[0] = id
   row[1] = 1
   row[2] = `notif_${id}`
@@ -75,7 +77,7 @@ function makeNotifRow(
 /**
  * db.exec モック — 呼び出し順にレスポンスを返す
  */
-function mockDb(responses: Record<number, (string | number | null)[][]> = {}) {
+function mockDb(responses: Record<number, SqlValue[][]> = {}) {
   const calls: { bind: unknown[]; sql: string }[] = []
   let callIndex = 0
   return {
@@ -83,8 +85,8 @@ function mockDb(responses: Record<number, (string | number | null)[][]> = {}) {
     exec: vi.fn(
       (sql: string, opts: { bind?: unknown[]; returnValue?: string }) => {
         const idx = callIndex++
-        calls.push({ bind: (opts.bind ?? []) as unknown[], sql })
-        return responses[idx] ?? ([] as (string | number | null)[][])
+        calls.push({ bind: opts.bind ?? [], sql })
+        return responses[idx] ?? []
       },
     ),
   }
@@ -232,7 +234,7 @@ describe('executeFlatFetch', () => {
       expect(result.posts.has(99)).toBe(true)
       const reblogStatus = result.posts.get(1)
       expect(reblogStatus?.reblog).not.toBeNull()
-      expect((reblogStatus?.reblog as { post_id: number })?.post_id).toBe(99)
+      expect(Reflect.get(reblogStatus?.reblog ?? {}, 'post_id')).toBe(99)
     })
 
     it('reblog_of_post_id が入力 postIds に含まれる場合、追加クエリは不要', () => {
@@ -260,7 +262,7 @@ describe('executeFlatFetch', () => {
 
       const notif = result.notifications.get(10)
       expect(notif?.status).toBeDefined()
-      expect((notif.status as { post_id: number }).post_id).toBe(50)
+      expect(Reflect.get(notif?.status ?? {}, 'post_id')).toBe(50)
     })
   })
 

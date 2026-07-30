@@ -385,15 +385,15 @@ export function mapNoteToStatus(
         }
       : null,
     quote:
-      note.renote && !isRenote
-        ? {
+      isRenote || note.renote == null
+        ? null
+        : {
             quoted_status: mapNoteToStatus(note.renote, instanceHost),
             state: 'accepted' as Entity.QuoteState,
-          }
-        : null,
+          },
     quote_approval: null as unknown as Entity.Status['quote_approval'],
     reblog,
-    reblogged: ext.myRenoteId != null ? true : null,
+    reblogged: ext.myRenoteId == null ? null : true,
     reblogs_count: note.renoteCount ?? 0,
     replies_count: note.repliesCount ?? 0,
     sensitive: (note.files ?? []).some((f) => f.isSensitive),

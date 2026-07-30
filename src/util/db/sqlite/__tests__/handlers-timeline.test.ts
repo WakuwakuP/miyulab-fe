@@ -60,7 +60,7 @@ describe('handleRemoveFromTimeline', () => {
 
     // BEGIN + COMMIT
     expect(calls[0].sql).toBe('BEGIN;')
-    expect(calls[calls.length - 1].sql).toBe('COMMIT;')
+    expect(calls.at(-1)?.sql).toBe('COMMIT;')
 
     // DELETE FROM timeline_entries
     const deleteEntry = calls.find(
@@ -180,7 +180,7 @@ describe('handleDeleteEvent', () => {
 
     // BEGIN + COMMIT
     expect(calls[1].sql).toBe('BEGIN;')
-    expect(calls[calls.length - 1].sql).toBe('COMMIT;')
+    expect(calls.at(-1)?.sql).toBe('COMMIT;')
 
     // post_backend_ids からの DELETE
     const deleteBackend = calls.find(

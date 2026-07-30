@@ -11,7 +11,6 @@ import {
 } from 'util/db/sqlite/migrations/helpers'
 import type { Migration } from 'util/db/sqlite/migrations/types'
 import { encodeSemVer, LATEST_VERSION } from 'util/db/sqlite/schema/version'
-import type { SchemaDbHandle } from 'util/db/sqlite/worker/workerSchema'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // ─── Mock DB factory ────────────────────────────────────────────
@@ -30,7 +29,7 @@ function createMockDb(userVersion: number) {
       return undefined
     }),
   }
-  return { db, execCalls, handle: { db } as SchemaDbHandle }
+  return { db, execCalls, handle: { db } }
 }
 
 describe('runMigrations', () => {
