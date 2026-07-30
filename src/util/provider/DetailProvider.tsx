@@ -54,7 +54,7 @@ export const SetDetailContext = createContext<
 >(() => {})
 
 export const DetailProvider = ({ children }: { children: ReactNode }) => {
-  const [detail, setDetailRaw] = useState<SetDetailParams>({
+  const [detailState, setDetailState] = useState<SetDetailParams>({
     content: null,
     type: null,
   })
@@ -64,7 +64,7 @@ export const DetailProvider = ({ children }: { children: ReactNode }) => {
     (action) => {
       // updater function の場合はそのまま通す（実際には使われていない）
       if (typeof action === 'function') {
-        setDetailRaw(action)
+        setDetailState(action)
         return
       }
 
@@ -79,7 +79,7 @@ export const DetailProvider = ({ children }: { children: ReactNode }) => {
         replacePanelUrl(currentPath, action)
       }
 
-      setDetailRaw(action)
+      setDetailState(action)
     },
     [],
   )
@@ -93,15 +93,15 @@ export const DetailProvider = ({ children }: { children: ReactNode }) => {
         // history.state から detail データを復元
         const state = window.history.state as SetDetailParams | null
         if (state?.type != null) {
-          setDetailRaw(state)
+          setDetailState(state)
         } else {
           // state がない場合 (直接 URL アクセス等) はホームへ
           replacePanelUrl('/')
-          setDetailRaw({ content: null, type: null })
+          setDetailState({ content: null, type: null })
         }
       } else {
         // GettingStarted 系のルートまたはホーム → detail をクリア
-        setDetailRaw({ content: null, type: null })
+        setDetailState({ content: null, type: null })
       }
     }
 
@@ -115,7 +115,7 @@ export const DetailProvider = ({ children }: { children: ReactNode }) => {
     if (isDetailRoute(route)) {
       const state = window.history.state as SetDetailParams | null
       if (state?.type != null) {
-        setDetailRaw(state)
+        setDetailState(state)
       } else {
         // history.state がない (直接 URL アクセス) → ホームへフォールバック
         replacePanelUrl('/')
@@ -124,7 +124,7 @@ export const DetailProvider = ({ children }: { children: ReactNode }) => {
   }, [])
 
   return (
-    <DetailContext.Provider value={detail}>
+    <DetailContext.Provider value={detailState}>
       <SetDetailContext.Provider value={setDetail}>
         {children}
       </SetDetailContext.Provider>
