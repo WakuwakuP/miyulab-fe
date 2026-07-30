@@ -189,6 +189,12 @@ export const Status = ({
                 type: 'SearchUser',
               })
             }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                e.currentTarget.click()
+              }
+            }}
             rel={[node.attribs.rel, 'noopener noreferrer'].join(' ')}
             target="_blank"
           >
