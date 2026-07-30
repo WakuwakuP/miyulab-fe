@@ -4,6 +4,7 @@ import { ProxyImage } from 'app/_parts/ProxyImage'
 import { Status } from 'app/_parts/Status'
 
 import * as emoji from 'node-emoji'
+import type { KeyboardEvent } from 'react'
 import { useContext, useMemo } from 'react'
 import { RiStarFill } from 'react-icons/ri'
 import type { NotificationAddAppIndex, StatusAddAppIndex } from 'types/types'
@@ -117,6 +118,23 @@ export const Notification = ({
     )
   }, [notification.account])
 
+  const openAccountDetail = () => {
+    if (notification.account == null) return
+    setDetail({
+      content: {
+        ...notification.account,
+        appIndex: notification.appIndex,
+      },
+      type: 'Account',
+    })
+  }
+
+  const handleAccountKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    event.preventDefault()
+    openAccountDetail()
+  }
+
   switch (notification.type) {
     case 'poll_expired':
       return (
@@ -157,28 +175,8 @@ export const Notification = ({
           <h3>
             <button
               className="flex w-full cursor-pointer appearance-none border-0 bg-transparent p-0 text-left text-inherit"
-              onClick={() => {
-                if (notification.account == null) return
-                setDetail({
-                  content: {
-                    ...notification.account,
-                    appIndex: notification.appIndex,
-                  },
-                  type: 'Account',
-                })
-              }}
-              onKeyDown={(event) => {
-                if (event.key !== 'Enter' && event.key !== ' ') return
-                event.preventDefault()
-                if (notification.account == null) return
-                setDetail({
-                  content: {
-                    ...notification.account,
-                    appIndex: notification.appIndex,
-                  },
-                  type: 'Account',
-                })
-              }}
+              onClick={openAccountDetail}
+              onKeyDown={handleAccountKeyDown}
               type="button"
             >
               {scrolling ? (
@@ -230,28 +228,8 @@ export const Notification = ({
           <h3>
             <button
               className="flex w-full cursor-pointer appearance-none border-0 bg-transparent p-0 text-left text-inherit"
-              onClick={() => {
-                if (notification.account == null) return
-                setDetail({
-                  content: {
-                    ...notification.account,
-                    appIndex: notification.appIndex,
-                  },
-                  type: 'Account',
-                })
-              }}
-              onKeyDown={(event) => {
-                if (event.key !== 'Enter' && event.key !== ' ') return
-                event.preventDefault()
-                if (notification.account == null) return
-                setDetail({
-                  content: {
-                    ...notification.account,
-                    appIndex: notification.appIndex,
-                  },
-                  type: 'Account',
-                })
-              }}
+              onClick={openAccountDetail}
+              onKeyDown={handleAccountKeyDown}
               type="button"
             >
               {scrolling ? (
@@ -306,16 +284,8 @@ export const Notification = ({
           <h3>
             <button
               className="flex w-full cursor-pointer appearance-none border-0 bg-transparent p-0 text-left text-inherit"
-              onClick={() => {
-                if (notification.account == null) return
-                setDetail({
-                  content: {
-                    ...notification.account,
-                    appIndex: notification.appIndex,
-                  },
-                  type: 'Account',
-                })
-              }}
+              onClick={openAccountDetail}
+              onKeyDown={handleAccountKeyDown}
               type="button"
             >
               {scrolling ? (
@@ -375,16 +345,8 @@ export const Notification = ({
           <h3>
             <button
               className="flex w-full cursor-pointer appearance-none border-0 bg-transparent p-0 text-left text-inherit"
-              onClick={() => {
-                if (notification.account == null) return
-                setDetail({
-                  content: {
-                    ...notification.account,
-                    appIndex: notification.appIndex,
-                  },
-                  type: 'Account',
-                })
-              }}
+              onClick={openAccountDetail}
+              onKeyDown={handleAccountKeyDown}
               type="button"
             >
               {scrolling ? (
@@ -425,16 +387,8 @@ export const Notification = ({
           <h3>
             <button
               className="flex w-full cursor-pointer appearance-none border-0 bg-transparent p-0 text-left text-inherit"
-              onClick={() => {
-                if (notification.account == null) return
-                setDetail({
-                  content: {
-                    ...notification.account,
-                    appIndex: notification.appIndex,
-                  },
-                  type: 'Account',
-                })
-              }}
+              onClick={openAccountDetail}
+              onKeyDown={handleAccountKeyDown}
               type="button"
             >
               {scrolling ? (
