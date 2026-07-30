@@ -9,15 +9,10 @@ import {
   useState,
 } from 'react'
 
-import type { TimelineConfigV2 } from 'types/types'
+import type { TimelineSettingsV2 } from 'types/types'
 import { isV2Settings } from 'util/migration/migrateTimeline'
 
-type TimelineProviderSettings = {
-  timelines: TimelineConfigV2[]
-  version: 2
-}
-
-const initialTimelineSettings: TimelineProviderSettings = {
+const initialTimelineSettings: TimelineSettingsV2 = {
   timelines: [
     {
       backendFilter: { mode: 'all' },
@@ -55,7 +50,7 @@ const initialTimelineSettings: TimelineProviderSettings = {
     },
   ],
   version: 2,
-} as const
+}
 
 /**
  * 非 Advanced Query モードのタイムラインから customQuery を除去する。
@@ -67,8 +62,8 @@ const initialTimelineSettings: TimelineProviderSettings = {
  * customQuery は Advanced Query モード時のみ保持する。
  */
 function cleanupNonAdvancedCustomQuery(
-  settings: TimelineProviderSettings,
-): TimelineProviderSettings {
+  settings: TimelineSettingsV2,
+): TimelineSettingsV2 {
   let changed = false
   const timelines = settings.timelines.map((tl) => {
     if (!tl.advancedQuery && tl.customQuery != null) {
@@ -81,20 +76,21 @@ function cleanupNonAdvancedCustomQuery(
   return changed ? { ...settings, timelines } : settings
 }
 
-export const TimelineContext = createContext<TimelineProviderSettings>(
+export const TimelineContext = createContext<TimelineSettingsV2>(
   initialTimelineSettings,
 )
 
 export const SetTimelineContext = createContext<
-  Dispatch<SetStateAction<TimelineProviderSettings>>
+  Dispatch<SetStateAction<TimelineSettingsV2>>
 >(() => {})
 
 export const TimelineProvider = ({
   children,
 }: Readonly<{ children: ReactNode }>) => {
   const [storageLoading, setStorageLoading] = useState<boolean>(true)
-  const [timelineSettings, setTimelineSettings] =
-    useState<TimelineProviderSettings>(initialTimelineSettings)
+  const [timelineSettings, setTimelineSettings] = useState<TimelineSettingsV2>(
+    initialTimelineSettings,
+  )
 
   useEffect(() => {
     const timelineStr = localStorage.getItem('timelineSettings')
@@ -127,7 +123,7 @@ export const TimelineProvider = ({
     if (storageLoading) {
       return
     }
-    const toSave: TimelineProviderSettings = {
+    const toSave: TimelineSettingsV2 = {
       timelines: timelineSettings.timelines,
       version: 2,
     }
