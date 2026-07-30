@@ -240,6 +240,18 @@ export const Notification = ({
                   type: 'Account',
                 })
               }}
+              onKeyDown={(event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') return
+                event.preventDefault()
+                if (notification.account == null) return
+                setDetail({
+                  content: {
+                    ...notification.account,
+                    appIndex: notification.appIndex,
+                  },
+                  type: 'Account',
+                })
+              }}
               type="button"
             >
               {scrolling ? (
