@@ -147,14 +147,11 @@ export const Dropzone = ({
       {(attachments.length > 0 || uploading > 0) && (
         <div className="flex flex-wrap">
           {attachments.map((file) => {
-            switch (attachments.length) {
-              case 1:
-                return <Media className="w-full" key={file.id} media={file} />
-              default:
-                return (
-                  <Media className="h-32 w-1/2" key={file.id} media={file} />
-                )
+            if (attachments.length === 1) {
+              return <Media className="w-full" key={file.id} media={file} />
             }
+
+            return <Media className="h-32 w-1/2" key={file.id} media={file} />
           })}
           {(() => {
             const list = []
