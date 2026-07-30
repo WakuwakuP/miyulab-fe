@@ -15,22 +15,20 @@ export function normalizeBackendFilter(
 ): BackendFilter {
   if (filter == null) return { mode: 'all' }
 
-  const validUrls = apps.map((app) => app.backendUrl)
+  const validUrls = new Set(apps.map((app) => app.backendUrl))
 
   switch (filter.mode) {
     case 'all':
       return filter
 
     case 'single':
-      if (!validUrls.includes(filter.backendUrl)) {
+      if (!validUrls.has(filter.backendUrl)) {
         return { mode: 'all' }
       }
       return filter
 
     case 'composite': {
-      const filtered = filter.backendUrls.filter((url) =>
-        validUrls.includes(url),
-      )
+      const filtered = filter.backendUrls.filter((url) => validUrls.has(url))
       if (filtered.length === 0) return { mode: 'all' }
       if (filtered.length === 1)
         return { backendUrl: filtered[0], mode: 'single' }
