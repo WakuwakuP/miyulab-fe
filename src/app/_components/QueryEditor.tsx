@@ -246,10 +246,7 @@ export const QueryEditor = ({
 
     // テーブルエイリアス付きカラム名
     for (const alias of QUERY_COMPLETIONS.aliases) {
-      const cols =
-        QUERY_COMPLETIONS.columns[
-          alias as keyof typeof QUERY_COMPLETIONS.columns
-        ]
+      const cols = QUERY_COMPLETIONS.columns[alias]
       for (const col of cols) {
         items.push(`${alias}.${col}`)
       }
