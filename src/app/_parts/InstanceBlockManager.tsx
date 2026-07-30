@@ -86,7 +86,9 @@ async function unblockInstance(domain: string): Promise<void> {
  * blocked_instances テーブルを直接操作して、
  * ブロックしたインスタンスドメインの一覧表示・追加・削除を行う。
  */
-export function InstanceBlockManager({ onClose }: { onClose: () => void }) {
+export function InstanceBlockManager({
+  onClose,
+}: Readonly<{ onClose: () => void }>) {
   const [blockedInstances, setBlockedInstances] = useState<BlockedInstance[]>(
     [],
   )
