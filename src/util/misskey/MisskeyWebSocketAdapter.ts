@@ -122,7 +122,7 @@ export class MisskeyWebSocketAdapter
     } else {
       // biome-ignore lint/correctness/useHookAtTopLevel: useChannel は React hook ではなく misskey-js の Stream メソッド
       this.channel = this.stream.useChannel(
-        this.channelType as 'homeTimeline' | 'localTimeline' | 'globalTimeline',
+        this.channelType,
         this.channelParams as Record<string, never>,
       )
     }
