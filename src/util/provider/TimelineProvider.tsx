@@ -63,7 +63,7 @@ const initialTimelineSettings: TimelineProviderState = {
  * customQuery が設定されていると useTimelineData が useCustomQueryTimeline に
  * ルーティングし、LEFT JOIN ベースの重いクエリが実行される。
  * 通常モードでは個別の設定プロパティ（backendFilter, onlyMedia 等）が正であり、
- * 型別の最適化された Hook（useFilteredTimeline 等）を使用すべきため、
+ * 型別の最適化された取得経路を使用すべきため、
  * customQuery は Advanced Query モード時のみ保持する。
  */
 function cleanupNonAdvancedCustomQuery(
