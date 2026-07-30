@@ -10,7 +10,12 @@
 import type { ChangeHint } from './connection'
 import { logSlowQueryExplain } from './explainLogger'
 import { buildTimelineKey, resolveLocalAccountId } from './helpers'
-import type { SendCommandPayload, TableName } from './protocol'
+import type {
+  SendCommandPayload,
+  SqliteResultRow,
+  SqliteResultRows,
+  TableName,
+} from './protocol'
 import { loadSqliteWasmInitializer } from './sqliteWasmLoader'
 import type { DbHandle } from './types'
 import { resolvePostIdInternal } from './worker/handlers/statusHelpers'
@@ -291,11 +296,9 @@ async function initMainThreadFallback(
       const phase1Rows = db.exec(request.phase1.sql, {
         bind: request.phase1.bind ?? undefined,
         returnValue: 'resultRows',
-      }) as (string | number | null)[][]
+      }) as SqliteResultRows
 
-      const postIds = phase1Rows.map(
-        (row: (string | number | null)[]) => row[0] as number,
-      )
+      const postIds = phase1Rows.map((row: SqliteResultRow) => row[0] as number)
       if (postIds.length === 0) {
         return {
           batchResults: {
@@ -320,7 +323,7 @@ async function initMainThreadFallback(
       const phase2Rows = db.exec(phase2Sql, {
         bind: postIds,
         returnValue: 'resultRows',
-      }) as (string | number | null)[][]
+      }) as SqliteResultRows
 
       // reblog post_id を収集
       const reblogColIdx = request.reblogPostIdColumnIndex ?? 25
@@ -337,7 +340,7 @@ async function initMainThreadFallback(
         db.exec(sql.replaceAll('{IDS}', allPlaceholders), {
           bind: allPostIds,
           returnValue: 'resultRows',
-        }) as (string | number | null)[][]
+        }) as SqliteResultRows
 
       const batchResults = {
         belongingTags: runBatch(request.batchSqls.belongingTags),
