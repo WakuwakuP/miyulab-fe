@@ -105,15 +105,15 @@ export const DetailProvider = ({ children }: { children: ReactNode }) => {
       }
     }
 
-    window.addEventListener('popstate', handlePopState)
-    return () => window.removeEventListener('popstate', handlePopState)
+    globalThis.addEventListener('popstate', handlePopState)
+    return () => globalThis.removeEventListener('popstate', handlePopState)
   }, [])
 
   // 初期ロード時: URL が detail ルートなら history.state から復元
   useEffect(() => {
-    const route = parsePanelRoute(window.location.pathname)
+    const route = parsePanelRoute(globalThis.location.pathname)
     if (isDetailRoute(route)) {
-      const state = window.history.state as SetDetailParams | null
+      const state = globalThis.history.state as SetDetailParams | null
       if (state?.type != null) {
         setDetailState(state)
       } else {
