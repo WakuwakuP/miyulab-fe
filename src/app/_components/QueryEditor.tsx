@@ -354,9 +354,7 @@ export const QueryEditor = ({
       }
 
       // 比較演算子補完の場合: alias.column の後のスペース + 部分入力
-      const operatorMatch = beforeCursor.match(
-        COMPARISON_OPERATOR_COMPLETION_RE,
-      )
+      const operatorMatch = COMPARISON_OPERATOR_COMPLETION_RE.exec(beforeCursor)
       if (
         operatorMatch &&
         comparisonOperators.some((op) =>
