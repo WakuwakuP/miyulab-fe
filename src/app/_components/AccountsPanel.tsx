@@ -78,7 +78,7 @@ const AddAccountModal = ({ onClose }: { onClose: () => void }) => {
         JSON.stringify(processingAppData),
       )
 
-      window.location.href = processingAppData.appData.url
+      globalThis.location.href = processingAppData.appData.url
     }
   }
 
