@@ -112,7 +112,7 @@ export function detailToPath(params: SetDetailParams): string {
       return `/profile/@${params.content.acct}`
     case 'SearchUser':
       // SearchUser は中間状態（すぐ Account に解決される）なので URL を変えない
-      return window.location.pathname
+      return globalThis.location.pathname
     case 'Hashtag':
       return `/hashtag/${encodeURIComponent(params.content ?? '')}`
     case null:
