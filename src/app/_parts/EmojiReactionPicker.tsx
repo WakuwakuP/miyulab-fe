@@ -80,8 +80,8 @@ export const EmojiReactionPicker = ({
     let left = triggerRect.left + triggerRect.width / 2 - currentWidth / 2
     if (left < PICKER_MARGIN) {
       left = PICKER_MARGIN
-    } else if (left + currentWidth > window.innerWidth - PICKER_MARGIN) {
-      left = window.innerWidth - currentWidth - PICKER_MARGIN
+    } else if (left + currentWidth > globalThis.innerWidth - PICKER_MARGIN) {
+      left = globalThis.innerWidth - currentWidth - PICKER_MARGIN
     }
 
     setPosition({ left, top })
