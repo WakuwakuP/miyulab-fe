@@ -155,7 +155,7 @@ export const ResourceProvider = ({
     client
       .getInstance()
       .then((res) => {
-        setInstance(res.data as PleromaInstance)
+        setInstance(res.data)
       })
       .catch((error) => {
         console.error('Failed to fetch instance:', error)

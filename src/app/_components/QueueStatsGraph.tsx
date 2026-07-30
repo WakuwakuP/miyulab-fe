@@ -122,8 +122,7 @@ export const QueueStatsGraph = () => {
 
   // 時間範囲
   const timeMin = snapshots.length > 0 ? snapshots[0].time : 0
-  const timeLast =
-    snapshots.length > 0 ? snapshots[snapshots.length - 1].time : 0
+  const timeLast = snapshots.at(-1)?.time ?? 0
   const timeRange = timeLast - timeMin
 
   // Y 軸のグリッド線 (0, maxY/2, maxY)
@@ -131,7 +130,7 @@ export const QueueStatsGraph = () => {
 
   // 処理済み数（直近 vs 最初のスナップショット）
   const firstSnap = snapshots[0]
-  const lastSnap = snapshots[snapshots.length - 1]
+  const lastSnap = snapshots.at(-1)
   const writeDelta =
     firstSnap && lastSnap
       ? lastSnap.otherProcessed - firstSnap.otherProcessed

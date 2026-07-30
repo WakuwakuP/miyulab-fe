@@ -242,7 +242,7 @@ export const StreamingManagerProvider = ({
     // apps 変更検出: バックエンド構成が変わった場合のみリセット
     const currentAppsKey = apps
       .map((a) => a.backendUrl)
-      .sort()
+      .sort((a, b) => a.localeCompare(b))
       .join('\0')
     if (currentAppsKey !== prevAppsKeyRef.current) {
       prevAppsKeyRef.current = currentAppsKey

@@ -2,15 +2,7 @@
 
 import { X } from 'lucide-react'
 import { useCallback } from 'react'
-import type {
-  AerialReplyFilter,
-  ExistsFilter,
-  FilterNode,
-  BackendFilter as IRBackendFilter,
-  RawSQLFilter,
-  TableFilter,
-  TimelineScope,
-} from 'util/db/query-ir/nodes'
+import type { FilterNode } from 'util/db/query-ir/nodes'
 import { AerialReplyBody } from './AerialReplyBody'
 import { BackendFilterBody } from './BackendFilterBody'
 import { ExistsFilterBody } from './ExistsFilterBody'
@@ -54,34 +46,22 @@ export function NodeCard({
 
       {/* Body — kind-specific */}
       {node.kind === 'timeline-scope' && (
-        <TimelineScopeBody
-          node={node}
-          onUpdate={handleUpdate as (n: TimelineScope) => void}
-        />
+        <TimelineScopeBody node={node} onUpdate={handleUpdate} />
       )}
       {node.kind === 'table-filter' && (
-        <TableFilterBody
-          node={node}
-          onUpdate={handleUpdate as (n: TableFilter) => void}
-        />
+        <TableFilterBody node={node} onUpdate={handleUpdate} />
       )}
       {node.kind === 'exists-filter' && (
-        <ExistsFilterBody
-          node={node}
-          onUpdate={handleUpdate as (n: ExistsFilter) => void}
-        />
+        <ExistsFilterBody node={node} onUpdate={handleUpdate} />
       )}
       {node.kind === 'raw-sql-filter' && (
-        <RawSQLBody
-          node={node}
-          onUpdate={handleUpdate as (n: RawSQLFilter) => void}
-        />
+        <RawSQLBody node={node} onUpdate={handleUpdate} />
       )}
       {node.kind === 'backend-filter' && (
         <BackendFilterBody
           accounts={accounts}
           node={node}
-          onUpdate={handleUpdate as (n: IRBackendFilter) => void}
+          onUpdate={handleUpdate}
         />
       )}
       {node.kind === 'moderation-filter' && (
@@ -90,10 +70,7 @@ export function NodeCard({
         </div>
       )}
       {node.kind === 'aerial-reply-filter' && (
-        <AerialReplyBody
-          node={node}
-          onUpdate={handleUpdate as (n: AerialReplyFilter) => void}
-        />
+        <AerialReplyBody node={node} onUpdate={handleUpdate} />
       )}
     </div>
   )

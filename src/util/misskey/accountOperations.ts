@@ -78,7 +78,7 @@ export async function verifyAppCredentials(): Promise<
 > {
   return wrapResponse({
     name: 'Misskey',
-  } as Entity.Application)
+  })
 }
 
 export async function registerAccount(
@@ -120,12 +120,7 @@ export async function getAccount(
 ): Promise<Response<Entity.Account>> {
   try {
     const user = await ctx.client.request('users/show', { userId: id })
-    return wrapResponse(
-      mapUserDetailedToAccount(
-        user as unknown as Misskey.entities.UserDetailed,
-        ctx.origin,
-      ),
-    )
+    return wrapResponse(mapUserDetailedToAccount(user, ctx.origin))
   } catch (e) {
     // NO_SUCH_USER (404) の場合のみ username として検索をフォールバック
     const err = e as {
@@ -148,12 +143,7 @@ export async function getAccount(
         { limit: 1, username: id },
       )
       if (users.length > 0) {
-        return wrapResponse(
-          mapUserLiteToAccount(
-            users[0] as unknown as Misskey.entities.UserLite,
-            ctx.origin,
-          ),
-        )
+        return wrapResponse(mapUserLiteToAccount(users[0], ctx.origin))
       }
     } catch {
       // フォールバックも失敗した場合は元のエラーをスロー
@@ -390,7 +380,7 @@ export async function getRelationship(
     notifying: false,
     requested: rel.hasPendingFollowRequestFromYou ?? false,
     showing_reblogs: true,
-  } as unknown as Entity.Relationship)
+  })
 }
 
 export async function getRelationships(
@@ -430,28 +420,14 @@ export async function searchAccount(
         username,
       },
     )
-    return wrapResponse(
-      users.map((u) =>
-        mapUserLiteToAccount(
-          u as unknown as Misskey.entities.UserLite,
-          ctx.origin,
-        ),
-      ),
-    )
+    return wrapResponse(users.map((u) => mapUserLiteToAccount(u, ctx.origin)))
   }
 
   const users = await ctx.client.request('users/search', {
     limit: options?.limit ?? 20,
     query: q,
   })
-  return wrapResponse(
-    users.map((u) =>
-      mapUserLiteToAccount(
-        u as unknown as Misskey.entities.UserLite,
-        ctx.origin,
-      ),
-    ),
-  )
+  return wrapResponse(users.map((u) => mapUserLiteToAccount(u, ctx.origin)))
 }
 
 export async function lookupAccount(
@@ -470,12 +446,7 @@ export async function lookupAccount(
   if (users.length === 0) {
     throw new Error(`Account not found: ${acct}`)
   }
-  return wrapResponse(
-    mapUserLiteToAccount(
-      users[0] as unknown as Misskey.entities.UserLite,
-      ctx.origin,
-    ),
-  )
+  return wrapResponse(mapUserLiteToAccount(users[0], ctx.origin))
 }
 
 // =============================================

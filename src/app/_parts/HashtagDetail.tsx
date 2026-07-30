@@ -56,7 +56,7 @@ export const HashtagDetail = ({ hashtag }: { hashtag?: string }) => {
     client
       .getTagTimeline(hashtag, {
         limit: 50,
-        max_id: statuses[statuses.length - 1].id,
+        max_id: statuses.at(-1)?.id,
       })
       .then((res) => {
         const newStatuses = res.data.map(toStatusWithAppIndex)

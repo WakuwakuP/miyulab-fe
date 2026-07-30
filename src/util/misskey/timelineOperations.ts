@@ -1,5 +1,4 @@
 import type { Entity, Response } from 'megalodon'
-import type * as Misskey from 'misskey-js'
 import {
   type MisskeyClientContext,
   NotImplementedError,
@@ -141,14 +140,11 @@ export async function getLists(
 ): Promise<Response<Array<Entity.List>>> {
   const lists = await ctx.client.request('users/lists/list', {})
   return wrapResponse(
-    lists.map(
-      (l) =>
-        ({
-          id: l.id,
-          replies_policy: null,
-          title: l.name,
-        }) as unknown as Entity.List,
-    ),
+    lists.map((l) => ({
+      id: l.id,
+      replies_policy: null,
+      title: l.name,
+    })),
   )
 }
 
@@ -247,12 +243,7 @@ export async function search(
       limit: options?.limit ?? 20,
       query: q,
     })
-    results.accounts = users.map((u) =>
-      mapUserLiteToAccount(
-        u as unknown as Misskey.entities.UserLite,
-        ctx.origin,
-      ),
-    )
+    results.accounts = users.map((u) => mapUserLiteToAccount(u, ctx.origin))
   }
 
   if (!options?.type || options.type === 'statuses') {

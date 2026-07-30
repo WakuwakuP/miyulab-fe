@@ -32,8 +32,52 @@ jobs:
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-      - uses: SonarSource/sonarqube-quality-gate-action@cf038b0e0cdecfa9e56c198bbb7d21d751d62c3b # v1.2.0
+      - id: quality-gate
+        uses: SonarSource/sonarqube-quality-gate-action@cf038b0e0cdecfa9e56c198bbb7d21d751d62c3b # v1.2.0
         timeout-minutes: 5
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+      - name: Show failed Quality Gate conditions
+        if: ${{ always() && steps.quality-gate.outcome == 'failure' }}
+        env:
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          SONAR_PROJECT_KEY: WakuwakuP_miyulab-fe_2b9f1381-5c7d-4b89-8aca-9a9a897900dc
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          response_file="$(mktemp)"
+          if ! http_status="$(
+            curl --silent \
+              --user "${SONAR_TOKEN}:" \
+              --output "${response_file}" \
+              --write-out "%{http_code}" \
+              --get \
+              --data-urlencode "projectKey=${SONAR_PROJECT_KEY}" \
+              "${SONAR_HOST_URL%/}/api/qualitygates/project_status"
+          )"; then
+            echo "::warning::Could not request SonarQube Quality Gate details."
+            exit 0
+          fi
+
+          if [[ "${http_status}" != "200" ]]; then
+            echo "::warning::SonarQube Quality Gate API returned HTTP ${http_status}."
+            exit 0
+          fi
+
+          if ! jq '{
+            projectStatus: {
+              status: .projectStatus.status,
+              conditions: [
+                .projectStatus.conditions[]? |
+                {
+                  status,
+                  metricKey,
+                  comparator,
+                  errorThreshold,
+                  actualValue
+                }
+              ]
+            }
+          }' "${response_file}"; then
+            echo "::warning::SonarQube Quality Gate response was not valid JSON."
+          fi

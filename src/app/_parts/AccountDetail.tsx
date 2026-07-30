@@ -195,7 +195,7 @@ export const AccountDetail = ({ account }: { account: AccountAddAppIndex }) => {
     client
       .getAccountStatuses(account.id, {
         limit: 40,
-        max_id: toots[toots.length - 1].id,
+        max_id: toots.at(-1)?.id,
       })
       .then((res) => {
         setToots((prev) => [...prev, ...res.data])
@@ -213,7 +213,7 @@ export const AccountDetail = ({ account }: { account: AccountAddAppIndex }) => {
     client
       .getAccountStatuses(account.id, {
         limit: 40,
-        max_id: media[media.length - 1].id,
+        max_id: media.at(-1)?.id,
         only_media: true,
       })
       .then((res) => {
