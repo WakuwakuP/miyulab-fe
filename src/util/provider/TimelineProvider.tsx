@@ -123,9 +123,9 @@ export const TimelineProvider = ({
     if (storageLoading) {
       return
     }
-    const toSave: TimelineSettingsV2 = {
+    const toSave = {
       timelines: timelineSettings.timelines,
-      version: 2,
+      version: timelineSettings.version,
     }
     localStorage.setItem('timelineSettings', JSON.stringify(toSave))
   }, [timelineSettings, storageLoading])
