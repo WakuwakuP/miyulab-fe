@@ -14,79 +14,54 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Show new Security Hotspots awaiting review
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+      - run: corepack enable yarn
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: yarn
+      - name: Install dependencies
+        run: yarn --immutable
+      - name: Run tests with coverage
+        run: yarn test:coverage
+      - name: Generate and retain the SonarQube scanner report
+        uses: SonarSource/sonarqube-scan-action@fd88b7d7ccbaefd23d8f36f73b59db7a3d246602 # v6.0.0
+        with:
+          args: -Dsonar.scanner.keepReport=true
         env:
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-          SONAR_PROJECT_KEY: WakuwakuP_miyulab-fe_2b9f1381-5c7d-4b89-8aca-9a9a897900dc
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+      - name: Show issue records from the scanner report
         run: |
-          response_file="$(mktemp)"
-          http_status="$(
-            curl --silent \
-              --user "${SONAR_TOKEN}:" \
-              --output "${response_file}" \
-              --write-out "%{http_code}" \
-              --get \
-              --data-urlencode "projectKey=${SONAR_PROJECT_KEY}" \
-              --data-urlencode "status=TO_REVIEW" \
-              --data-urlencode "sinceLeakPeriod=true" \
-              --data-urlencode "ps=500" \
-              "${SONAR_HOST_URL%/}/api/hotspots/search"
-          )"
-
-          if [[ "${http_status}" != "200" ]]; then
-            echo "::error::SonarQube Security Hotspot search returned HTTP ${http_status}."
+          report_dir=".scannerwork/scanner-report"
+          if [[ ! -d "${report_dir}" ]]; then
+            echo "::error::The retained SonarQube scanner report was not found."
             exit 1
           fi
 
-          jq '{
-            paging,
-            hotspots: [
-              .hotspots[]? |
-              {
-                key,
-                component,
-                line,
-                message,
-                securityCategory,
-                vulnerabilityProbability,
-                status,
-                resolution,
-                creationDate,
-                updateDate
-              }
-            ]
-          }' "${response_file}"
+          issue_count=0
+          while IFS= read -r -d '' issue_file; do
+            issue_count=$((issue_count + 1))
+            component_id="${issue_file##*/issues-}"
+            component_id="${component_id%.pb}"
+            component_file="${report_dir}/component-${component_id}.pb"
 
-          while IFS= read -r hotspot_key; do
-            detail_file="$(mktemp)"
-            detail_status="$(
-              curl --silent \
-                --user "${SONAR_TOKEN}:" \
-                --output "${detail_file}" \
-                --write-out "%{http_code}" \
-                --get \
-                --data-urlencode "hotspot=${hotspot_key}" \
-                "${SONAR_HOST_URL%/}/api/hotspots/show"
-            )"
-
-            if [[ "${detail_status}" != "200" ]]; then
-              echo "::warning::Could not load details for Security Hotspot ${hotspot_key} (HTTP ${detail_status})."
-              continue
+            echo "::group::SonarQube issue component ${component_id}"
+            if [[ -f "${component_file}" ]]; then
+              strings "${component_file}"
             fi
+            strings "${issue_file}"
+            echo "::endgroup::"
+          done < <(
+            find "${report_dir}" \
+              -type f \
+              -name 'issues-*.pb' \
+              -size +0c \
+              -print0 \
+              | sort -z
+          )
 
-            jq '{
-              key,
-              component,
-              line,
-              message,
-              status,
-              resolution,
-              rule: {
-                key: .rule.key,
-                name: .rule.name,
-                securityCategory: .rule.securityCategory,
-                vulnerabilityProbability: .rule.vulnerabilityProbability
-              }
-            }' "${detail_file}"
-          done < <(jq -r '.hotspots[]?.key' "${response_file}")
+          echo "Non-empty issue report files: ${issue_count}"
