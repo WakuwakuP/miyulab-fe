@@ -7,14 +7,16 @@ import {
   getSqliteDb,
   subscribe,
 } from 'util/db/sqlite/connection'
+import { rowToStoredStatus } from 'util/db/sqlite/queries/rowToStoredStatus'
+import type {
+  SqliteStoredStatus,
+  TimelineType,
+} from 'util/db/sqlite/queries/statusMapperTypes'
 import {
   buildSpbFilter,
   buildStatusBaseJoins,
-  rowToStoredStatus,
-  type SqliteStoredStatus,
   STATUS_SELECT,
-  type TimelineType,
-} from 'util/db/sqlite/statusStore'
+} from 'util/db/sqlite/queries/statusSelect'
 import { TIMELINE_QUERY_LIMIT } from 'util/environment'
 import { AppsContext } from 'util/provider/AppsProvider'
 
