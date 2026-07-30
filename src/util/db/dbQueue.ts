@@ -105,7 +105,7 @@ const FIXED_PRESETS: Record<Exclude<QueuePriorityPreset, 'auto'>, number> = {
  * 上から順に評価し、最初にマッチしたものを採用する。
  */
 const ADAPTIVE_TABLE: readonly { minRatio: number; value: number }[] = [
-  { minRatio: 3.0, value: 8 },
+  { minRatio: 3, value: 8 },
   { minRatio: 1.5, value: 6 },
   { minRatio: 0.67, value: 4 },
   { minRatio: 0.33, value: 2 },
