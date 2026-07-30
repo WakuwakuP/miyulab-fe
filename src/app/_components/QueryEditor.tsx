@@ -335,9 +335,8 @@ export const QueryEditor = ({
       const afterCursor = text.slice(cursorPos)
 
       // 汎用カラム値補完の場合
-      const genericColumnValueMatch = beforeCursor.match(
-        COLUMN_VALUE_COMPLETION_RE,
-      )
+      const genericColumnValueMatch =
+        COLUMN_VALUE_COMPLETION_RE.exec(beforeCursor)
       if (genericColumnValueMatch) {
         const matchedPartial = genericColumnValueMatch[3]
         const replaceStart = beforeCursor.length - matchedPartial.length
