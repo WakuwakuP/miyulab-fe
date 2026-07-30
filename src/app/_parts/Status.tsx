@@ -223,6 +223,12 @@ export const Status = ({
                 type: 'Hashtag',
               })
             }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                e.currentTarget.click()
+              }
+            }}
             rel={[node.attribs.rel, 'noopener noreferrer'].join(' ')}
             target="_blank"
             title={`#${node.attribs.href}`}
