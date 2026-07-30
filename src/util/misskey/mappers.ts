@@ -465,8 +465,7 @@ export function mapNotification(
       )
       if (notif.type === 'reaction' && 'reaction' in notif) {
         const rawReaction = (notif as { reaction: string }).reaction
-        const reactionEmojis = (notif.note as Misskey.entities.Note | undefined)
-          ?.reactionEmojis
+        const reactionEmojis = notif.note.reactionEmojis
         const r = normalizeReaction(rawReaction, reactionEmojis, instanceHost)
         return {
           ...base,
