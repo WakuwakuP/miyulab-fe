@@ -316,7 +316,7 @@ export function downloadJson(data: RawCaptureExport): void {
 
   const timestamp = new Date()
     .toISOString()
-    .replace(/:/g, '-')
+    .replaceAll(':', '-')
     .replace(/\.\d+Z$/, '')
 
   const a = document.createElement('a')
