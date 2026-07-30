@@ -9,13 +9,10 @@ import {
   useState,
 } from 'react'
 
-import type { TimelineConfigV2 } from 'types/types'
+import type { TimelineSettingsV2 } from 'types/types'
 import { isV2Settings } from 'util/migration/migrateTimeline'
 
-type TimelineProviderSettings = {
-  timelines: TimelineConfigV2[]
-  version: 2
-}
+type TimelineProviderSettings = TimelineSettingsV2
 
 const initialTimelineSettings: TimelineProviderSettings = {
   timelines: [
