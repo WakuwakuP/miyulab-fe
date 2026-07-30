@@ -208,11 +208,11 @@ export function InstanceBlockManager({ onClose }: { onClose: () => void }) {
         onClick={onClose}
         type="button"
       />
-      <div
+      <dialog
         aria-labelledby="blocked-instances-title"
         aria-modal="true"
-        className="relative w-full max-w-md rounded-lg border border-gray-600 bg-gray-800 p-4 shadow-xl"
-        role="dialog"
+        className="relative m-0 w-full max-w-md rounded-lg border border-gray-600 bg-gray-800 p-4 shadow-xl outline-none"
+        open
       >
         <h3
           className="mb-3 text-sm font-semibold text-gray-200"
@@ -269,7 +269,7 @@ export function InstanceBlockManager({ onClose }: { onClose: () => void }) {
             Close
           </button>
         </div>
-      </div>
+      </dialog>
     </div>
   )
 }
