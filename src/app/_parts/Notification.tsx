@@ -185,6 +185,7 @@ export const Notification = ({
                 <ProxyImage
                   alt="avatar"
                   className="h-12 w-12 flex-none rounded-lg object-contain"
+                  disableContextMenu
                   height={48}
                   src={notification.account?.avatar ?? ''}
                   width={48}
@@ -238,6 +239,7 @@ export const Notification = ({
                 <ProxyImage
                   alt="avatar"
                   className="h-12 w-12 flex-none rounded-lg object-contain"
+                  disableContextMenu
                   height={48}
                   src={notification.account?.avatar ?? ''}
                   width={48}
@@ -294,6 +296,7 @@ export const Notification = ({
                 <ProxyImage
                   alt="avatar"
                   className="h-12 w-12 flex-none rounded-lg object-contain"
+                  disableContextMenu
                   height={48}
                   src={notification.account?.avatar ?? ''}
                   width={48}
@@ -355,6 +358,7 @@ export const Notification = ({
                 <ProxyImage
                   alt="avatar"
                   className="h-12 w-12 flex-none rounded-lg object-contain"
+                  disableContextMenu
                   height={48}
                   src={notification.account?.avatar ?? ''}
                   width={48}
@@ -397,6 +401,7 @@ export const Notification = ({
                 <ProxyImage
                   alt="avatar"
                   className="h-12 w-12 flex-none rounded-lg object-contain"
+                  disableContextMenu
                   height={48}
                   src={notification.account?.avatar ?? ''}
                   width={48}
