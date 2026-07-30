@@ -227,7 +227,7 @@ export const StatusRichTextarea = ({
   const [isEmoji, setIsEmoji] = useState(false)
   const [isTag, setIsTag] = useState(false)
 
-  const targetText = pos != null ? text.slice(0, pos.caret) : text
+  const targetText = pos === null ? text : text.slice(0, pos.caret)
 
   const mentionMatch = pos != null ? targetText.match(MENTION_REG) : null
   const emojiMatch = pos != null ? targetText.match(EMOJI_REG) : null
