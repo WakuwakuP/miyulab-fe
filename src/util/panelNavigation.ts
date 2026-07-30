@@ -128,8 +128,8 @@ function emitChange() {
   for (const fn of listeners) fn()
 }
 
-if (typeof globalThis.window !== 'undefined') {
-  globalThis.window.addEventListener('popstate', emitChange)
+if (typeof globalThis.addEventListener === 'function') {
+  globalThis.addEventListener('popstate', emitChange)
 }
 
 function subscribe(listener: () => void) {
