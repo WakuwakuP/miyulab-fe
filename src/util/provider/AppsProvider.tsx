@@ -92,13 +92,13 @@ export const AppsProvider = ({
             tokenData: tokenData,
           }
 
-          if (processingAppData?.index != null) {
+          if (processingAppData?.index == null) {
+            updateApps([...apps, newApp])
+          } else {
             const index = processingAppData.index as number
             const newApps = [...apps]
             newApps[index] = newApp
             updateApps(newApps)
-          } else {
-            updateApps([...apps, newApp])
           }
 
           setFinishLoading(true)
