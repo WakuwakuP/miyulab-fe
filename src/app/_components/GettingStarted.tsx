@@ -301,16 +301,7 @@ export const GettingStarted = () => {
   return (
     <Panel name={title}>
       <div className="box-border">
-        {selected !== null ? (
-          <button
-            className="flex rounded-md border pr-4 text-xl text-blue-500"
-            onClick={() => navigatePanel('/')}
-            type="button"
-          >
-            <RiArrowLeftSLine size={30} />
-            <span>戻る</span>
-          </button>
-        ) : (
+        {selected === null ? (
           <>
             {indexedApps.map(({ app, index, key }) => (
               <Fragment key={key}>
@@ -379,6 +370,15 @@ export const GettingStarted = () => {
             </button>
             <HashtagHistory />
           </>
+        ) : (
+          <button
+            className="flex rounded-md border pr-4 text-xl text-blue-500"
+            onClick={() => navigatePanel('/')}
+            type="button"
+          >
+            <RiArrowLeftSLine size={30} />
+            <span>戻る</span>
+          </button>
         )}
       </div>
       {indexedApps.map(({ index, key }) => (
