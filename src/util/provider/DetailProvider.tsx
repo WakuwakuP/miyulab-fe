@@ -87,7 +87,7 @@ export const DetailProvider = ({ children }: { children: ReactNode }) => {
   // popstate (ブラウザの戻る/進む) をハンドリング
   useEffect(() => {
     const handlePopState = () => {
-      const route = parsePanelRoute(window.location.pathname)
+      const route = parsePanelRoute(globalThis.location.pathname)
 
       if (isDetailRoute(route)) {
         // history.state から detail データを復元
