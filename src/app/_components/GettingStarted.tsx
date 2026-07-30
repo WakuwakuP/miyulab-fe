@@ -153,7 +153,7 @@ export const GettingStarted = () => {
         .map((link: string) => {
           const [url, rel] = link.split(';')
           return {
-            rel: rel.replace(/"/g, '').replace('rel=', '').trim(),
+            rel: rel.replaceAll('"', '').replace('rel=', '').trim(),
             url: url.replace(/[<>]/g, '').trim(),
           }
         })
