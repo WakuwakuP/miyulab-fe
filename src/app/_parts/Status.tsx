@@ -360,21 +360,17 @@ export const Status = ({
           })}
         </div>
       )}
-      {/* biome-ignore lint/a11y/useSemanticElements: status content can contain links, so a native button would create invalid nested interactive HTML. */}
-      <div
-        className="content"
-        onClick={openStatusDetail}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault()
-            openStatusDetail()
-          }
-        }}
-        role="button"
-        tabIndex={0}
-      >
-        <EditedAt editedAt={status.edited_at} />
-        {parse(contentFormatted, { replace })}
+      <div className="content relative">
+        <button
+          aria-label="Open status detail"
+          className="absolute inset-0 h-full w-full cursor-pointer border-0 bg-transparent p-0 text-left"
+          onClick={openStatusDetail}
+          type="button"
+        />
+        <div className="pointer-events-none relative z-10 [&_a]:pointer-events-auto">
+          <EditedAt editedAt={status.edited_at} />
+          {parse(contentFormatted, { replace })}
+        </div>
       </div>
 
       <Poll
