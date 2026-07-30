@@ -354,7 +354,7 @@ export function mapNoteToStatus(
       instanceHost,
     ),
     emojis: mapEmojis(note.emojis),
-    favourited: note.myReaction != null ? true : null,
+    favourited: note.myReaction == null ? null : true,
     favourites_count: note.reactionCount ?? 0,
     id: note.id,
     in_reply_to_account_id: note.reply?.userId ?? null,
