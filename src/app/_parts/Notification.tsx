@@ -80,9 +80,9 @@ export const Notification = ({
 
     const shortcode = name.slice(1, -1)
     const backendUrl =
-      notification.appIndex != null
-        ? apps[notification.appIndex]?.backendUrl
-        : undefined
+      notification.appIndex == null
+        ? undefined
+        : apps[notification.appIndex]?.backendUrl
 
     if (backendUrl) {
       const catalog = emojiCatalog.get(backendUrl)
