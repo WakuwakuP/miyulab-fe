@@ -73,7 +73,7 @@ export const DetailProvider = ({ children }: { children: ReactNode }) => {
 
       if (newPath !== currentPath) {
         // 新しいパスへ遷移
-        navigatePanel(newPath, action.type != null ? action : null)
+        navigatePanel(newPath, action.type == null ? null : action)
       } else if (action.type != null) {
         // 同じ URL だがデータが変わった場合 (SearchUser → Account 等)
         replacePanelUrl(currentPath, action)
