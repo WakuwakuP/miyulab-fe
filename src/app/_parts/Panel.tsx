@@ -29,7 +29,7 @@ export const Panel = ({
 
   return (
     <section>
-      {name === undefined ? null : (
+      {typeof name === 'string' ? (
         <h2 className="h-8 bg-slate-800 text-center" title={durationTitle}>
           {onClickHeader == null ? (
             <span className="block p-1">{name}</span>
@@ -43,7 +43,7 @@ export const Panel = ({
             </button>
           )}
         </h2>
-      )}
+      ) : null}
       <div className={className} ref={ref} style={{ height: mainAreaHeight }}>
         {children}
       </div>
