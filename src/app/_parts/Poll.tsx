@@ -104,7 +104,7 @@ export const Poll = ({
               ) : (
                 <label htmlFor={internalId + option.title}>
                   <input
-                    checked={selected?.some((s) => s === index)}
+                    checked={selected?.includes(index)}
                     className="mr-1"
                     id={internalId + option.title}
                     name={internalId + poll.id}
