@@ -9,11 +9,11 @@ export function BackendFilterBody({
   accounts,
   node,
   onUpdate,
-}: {
+}: Readonly<{
   accounts?: ReadonlyMap<string, ResolvedAccount>
   node: IRBackendFilter
   onUpdate: (n: IRBackendFilter) => void
-}) {
+}>) {
   const idPrefix = useId()
   const accountEntries = accounts ? [...accounts.entries()] : []
 

@@ -8,6 +8,8 @@ import {
 import type { DbExec } from 'util/db/sqlite/worker/handlers/types'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+type SqlValue = string | number | null
+
 // ================================================================
 // ヘルパー
 // ================================================================
@@ -16,18 +18,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 function createMockDb(
   execImpl?: (
     sql: string,
-    opts?: { bind?: (string | number | null)[]; returnValue?: 'resultRows' },
+    opts?: { bind?: SqlValue[]; returnValue?: 'resultRows' },
   ) => unknown,
 ): {
   db: DbExec
   calls: {
     sql: string
-    opts?: { bind?: (string | number | null)[]; returnValue?: 'resultRows' }
+    opts?: { bind?: SqlValue[]; returnValue?: 'resultRows' }
   }[]
 } {
   const calls: {
     sql: string
-    opts?: { bind?: (string | number | null)[]; returnValue?: 'resultRows' }
+    opts?: { bind?: SqlValue[]; returnValue?: 'resultRows' }
   }[] = []
 
   const db: DbExec = {
@@ -35,7 +37,7 @@ function createMockDb(
       (
         sql: string,
         opts?: {
-          bind?: (string | number | null)[]
+          bind?: SqlValue[]
           returnValue?: 'resultRows'
         },
       ) => {
@@ -66,15 +68,20 @@ function createMockStatus(
       fields: [],
       followers_count: 10,
       following_count: 20,
+      group: null,
       header: 'https://example.com/header.png',
       header_static: 'https://example.com/header_static.png',
       id: 'account-1',
+      limited: null,
       locked: false,
+      moved: null,
+      noindex: null,
       note: '',
       statuses_count: 100,
+      suspended: null,
       url: 'https://example.com/@alice',
       username: 'alice',
-    } as Entity.Account,
+    },
     bookmarked: false,
     content: '<p>Hello, world!</p>',
     created_at: '2024-06-15T12:30:00.000Z',
@@ -347,7 +354,7 @@ describe('syncPostMedia', () => {
     expect(insertCalls).toHaveLength(1)
 
     // width, height が null として渡される
-    const bind = insertCalls[0].opts?.bind as (string | number | null)[]
+    const bind = insertCalls[0].opts?.bind as SqlValue[]
     // url の後に width, height が来る。null が含まれていることを確認
     const nullCount = bind.filter((v) => v === null).length
     expect(nullCount).toBeGreaterThanOrEqual(2) // width=null, height=null (最低限)
@@ -440,7 +447,7 @@ describe('syncPostMedia', () => {
     expect(insertCalls).toHaveLength(1)
 
     // bind に sort_order 0 と 1 が含まれる
-    const bind = insertCalls[0].opts?.bind as (string | number | null)[]
+    const bind = insertCalls[0].opts?.bind as SqlValue[]
     expect(bind).toContain(0) // sort_order for first
     expect(bind).toContain(1) // sort_order for second
     expect(bind).toContain('media-1')
@@ -498,7 +505,7 @@ describe('syncPostStats', () => {
     const sql = calls[0].sql
     expect(sql).toContain('emoji_reactions_json')
 
-    const bind = calls[0].opts?.bind as (string | number | null)[]
+    const bind = calls[0].opts?.bind as SqlValue[]
     // emoji_reactions_json が JSON 文字列として bind に含まれる
     const jsonBind = bind.find((v) => typeof v === 'string' && v.includes('👍'))
     expect(jsonBind).toBeDefined()
@@ -514,7 +521,7 @@ describe('syncPostStats', () => {
 
     syncPostStats(db, 100, status)
 
-    const bind = calls[0].opts?.bind as (string | number | null)[]
+    const bind = calls[0].opts?.bind as SqlValue[]
     // emoji_reactions_json は空JSON配列文字列
     // post_id(100), replies_count, reblogs_count, favourites_count, emoji_reactions_json, updated_at
     // '[]' が含まれていることを確認（emoji_reactions_json 位置）

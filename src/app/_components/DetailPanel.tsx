@@ -36,7 +36,7 @@ const normalizeSearchQuery = (rawQuery: string): string => {
 
   try {
     const url = new URL(rawQuery)
-    const pathMatch = url.pathname.match(/^\/(?:@|users\/)([^/@]+)\/?$/)
+    const pathMatch = /^\/(?:@|users\/)([^/@]+)\/?$/.exec(url.pathname)
     if (pathMatch?.[1]) {
       return `${pathMatch[1]}@${url.host}`
     }

@@ -16,12 +16,9 @@ function parseQuotedList(raw: string): string[] {
     .filter(Boolean)
 }
 
-function matchFirst(
-  query: string,
-  patterns: RegExp[],
-): RegExpMatchArray | null {
+function matchFirst(query: string, patterns: RegExp[]): RegExpExecArray | null {
   for (const pattern of patterns) {
-    const match = query.match(pattern)
+    const match = pattern.exec(query)
     if (match) return match
   }
   return null
@@ -66,10 +63,11 @@ function applyMediaFilters(
     result.onlyMedia = true
   }
 
-  const mediaCountMatchV2 = query.match(
-    /\(\s*SELECT\s+COUNT\s*\(\s*\*\s*\)\s+FROM\s+post_media\b[^)]*\)\s*>=\s*(\d+)/i,
-  )
-  const mediaCountMatch = query.match(/p\.media_count\s*>=\s*(\d+)/i)
+  const mediaCountMatchV2 =
+    /\(\s*SELECT\s+COUNT\s*\(\s*\*\s*\)\s+FROM\s+post_media\b[^)]*\)\s*>=\s*(\d+)/i.exec(
+      query,
+    )
+  const mediaCountMatch = /p\.media_count\s*>=\s*(\d+)/i.exec(query)
   const mediaCountResult = mediaCountMatchV2 ?? mediaCountMatch
   if (!mediaCountResult) return
 
@@ -87,11 +85,11 @@ function applyVisibilityFilter(
   result: Partial<TimelineConfigV2>,
 ): void {
   const visibilityResult =
-    query.match(
-      /vt\.name\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
+    /vt\.name\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i.exec(
+      query,
     ) ??
-    query.match(
-      /p\.visibility\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
+    /p\.visibility\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i.exec(
+      query,
     )
   if (!visibilityResult) return
 
@@ -106,9 +104,10 @@ function applyLanguageFilter(
   query: string,
   result: Partial<TimelineConfigV2>,
 ): void {
-  const languageMatch = query.match(
-    /p\.language\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i,
-  )
+  const languageMatch =
+    /p\.language\s+IN\s*\(\s*('(?:[^']|'')+'\s*(?:,\s*'(?:[^']|'')+'\s*)*)\)/i.exec(
+      query,
+    )
   if (!languageMatch) return
 
   const languages = parseQuotedList(languageMatch[1])
@@ -206,7 +205,7 @@ function applyBackendFilter(
 
   const urls = backendInMatch[1]
     .split(',')
-    .map((v) => v.trim().replace(/^'|'$/g, '').replace(/''/g, "'"))
+    .map((v) => v.trim().replace(/^'|'$/g, '').replaceAll("''", "'"))
     .filter(Boolean)
 
   if (urls.length === 1) {

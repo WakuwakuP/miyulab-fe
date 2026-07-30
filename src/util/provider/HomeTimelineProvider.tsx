@@ -119,6 +119,19 @@ export const HomeTimelineProvider = ({ children }: { children: ReactNode }) => {
     onFirstFetch: onNotifFirstFetch,
   })
 
+  const homeStatuses = useMemo(
+    () =>
+      homeTimeline.filter((item): item is StatusAddAppIndex => 'uri' in item),
+    [homeTimeline],
+  )
+  const notificationItems = useMemo(
+    () =>
+      notifications.filter(
+        (item): item is NotificationAddAppIndex => 'type' in item,
+      ),
+    [notifications],
+  )
+
   // 既存APIとの互換性を保つためのラッパー
   // appIndex → backendUrl への変換をここで行う
   const setReblogged = useCallback(
@@ -157,10 +170,8 @@ export const HomeTimelineProvider = ({ children }: { children: ReactNode }) => {
   )
 
   return (
-    <HomeTimelineContext.Provider value={homeTimeline as StatusAddAppIndex[]}>
-      <NotificationsContext.Provider
-        value={notifications as NotificationAddAppIndex[]}
-      >
+    <HomeTimelineContext.Provider value={homeStatuses}>
+      <NotificationsContext.Provider value={notificationItems}>
         <SetActionsContext.Provider value={setActionsValue}>
           {children}
         </SetActionsContext.Provider>

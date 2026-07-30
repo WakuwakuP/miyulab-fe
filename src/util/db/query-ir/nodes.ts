@@ -425,10 +425,10 @@ export function queryPlanV2ReferencedTables(plan: QueryPlanV2): Set<string> {
   for (const entry of plan.nodes) {
     switch (entry.node.kind) {
       case 'get-ids':
-        tables.add((entry.node as GetIdsNode).table)
+        tables.add(entry.node.table)
         break
       case 'lookup-related':
-        tables.add((entry.node as LookupRelatedNode).lookupTable)
+        tables.add(entry.node.lookupTable)
         break
     }
   }

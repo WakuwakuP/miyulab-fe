@@ -11,8 +11,6 @@ import type {
   BindValue,
   ExistsFilter,
   FilterNode,
-  FilterOp,
-  FilterValue,
   GetIdsFilter,
   GetIdsNode,
   TableFilter,
@@ -29,22 +27,22 @@ function getIdsFilterToFilterNode(f: GetIdsFilter): FilterNode {
     return {
       column: f.column,
       kind: 'table-filter',
-      op: f.op as FilterOp,
+      op: f.op,
       table: f.table,
-      value: f.value as FilterValue,
+      value: f.value,
     } satisfies TableFilter
   }
   return {
-    countValue: (f as ExistsFilter).countValue,
-    innerFilters: (f as ExistsFilter).innerFilters?.map((inner) => ({
+    countValue: f.countValue,
+    innerFilters: f.innerFilters?.map((inner) => ({
       column: inner.column,
       kind: 'table-filter' as const,
-      op: inner.op as FilterOp,
+      op: inner.op,
       table: inner.table,
-      value: inner.value as FilterValue,
+      value: inner.value,
     })),
     kind: 'exists-filter',
-    mode: (f as ExistsFilter).mode,
+    mode: f.mode,
     table: f.table,
   } satisfies ExistsFilter
 }
@@ -244,9 +242,9 @@ export function compileGetIds(
   const alias = getSourceAlias(node.table)
   const idCol = node.outputIdColumn ?? 'id'
   const timeCol =
-    node.outputTimeColumn !== null
-      ? (node.outputTimeColumn ?? getDefaultTimeColumn(node.table))
-      : null
+    node.outputTimeColumn === null
+      ? null
+      : (node.outputTimeColumn ?? getDefaultTimeColumn(node.table))
 
   const tsj = node.timeSourceJoin
   const tsjAlias = tsj ? '_time_src' : null
@@ -296,7 +294,7 @@ export function compileGetIds(
       ? `WHERE ${ctx.whereConditions.join(' AND ')}`
       : ''
   const groupByStr = needsGroupBy ? `GROUP BY ${alias}.${idCol}` : ''
-  const limitStr = limit != null ? `LIMIT ${limit}` : ''
+  const limitStr = limit == null ? '' : `LIMIT ${limit}`
 
   const sql = buildSelectSql({
     alias,

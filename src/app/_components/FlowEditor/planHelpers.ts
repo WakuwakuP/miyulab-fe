@@ -2,6 +2,7 @@ import type { BackendFilter, TimelineConfigV2 } from 'types/types'
 import { resolveBackendUrlFromAccountId } from 'util/accountResolver'
 import type { ConfigToNodesContext } from 'util/db/query-ir/compat/configToNodes'
 import { configToQueryPlan } from 'util/db/query-ir/compat/configToNodes'
+import { migrateQueryPlanInputBindings } from 'util/db/query-ir/migrateInputBindings'
 import type { GetIdsFilter, QueryPlanV2 } from 'util/db/query-ir/nodes'
 import { isQueryPlanV2 } from 'util/db/query-ir/nodes'
 import { migrateQueryPlanV1ToV2 } from 'util/db/query-ir/v2/migrateV1ToV2'
@@ -40,16 +41,20 @@ export function createDefaultQueryPlanV2(): QueryPlanV2 {
 export function planFromConfig(config: TimelineConfigV2): QueryPlanV2 {
   if (config.queryPlan) {
     if (isQueryPlanV2(config.queryPlan)) {
-      return config.queryPlan
+      return migrateQueryPlanInputBindings(config.queryPlan)
     }
-    return migrateQueryPlanV1ToV2(config.queryPlan)
+    return migrateQueryPlanInputBindings(
+      migrateQueryPlanV1ToV2(config.queryPlan),
+    )
   }
   const ctx: ConfigToNodesContext = {
     localAccountIds: [],
     queryLimit: 50,
     serverIds: [],
   }
-  return migrateQueryPlanV1ToV2(configToQueryPlan(config, ctx))
+  return migrateQueryPlanInputBindings(
+    migrateQueryPlanV1ToV2(configToQueryPlan(config, ctx)),
+  )
 }
 
 // --------------- V2 plan analysis helpers ---------------

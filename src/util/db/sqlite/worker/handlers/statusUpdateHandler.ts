@@ -151,7 +151,7 @@ function applyStatusUpdate(
     )
   }
 
-  const isReblog = status.reblog != null ? 1 : 0
+  const isReblog = status.reblog == null ? 0 : 1
   const reblogOfUri = status.reblog?.uri ?? null
   const reblogOfPostId =
     isReblog === 1 ? resolveRepostOfPostId(db, reblogOfUri) : null

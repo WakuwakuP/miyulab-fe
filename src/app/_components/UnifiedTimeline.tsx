@@ -28,13 +28,7 @@ export const UnifiedTimeline = ({
   headerOffset?: string
 }) => {
   const { data, hasMoreOlder, isLoadingOlder, loadOlder, queryDuration } =
-    useTimelineData(config) as {
-      data: StatusAddAppIndex[]
-      hasMoreOlder: boolean
-      isLoadingOlder: boolean
-      loadOlder: () => Promise<void>
-      queryDuration: number | null
-    }
+    useTimelineData(config)
   const { initializing } = useOtherQueueProgress()
 
   const displayName = useMemo(() => {

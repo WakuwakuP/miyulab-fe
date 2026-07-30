@@ -266,7 +266,9 @@ export const STATUS_BASE_SELECT = `
  */
 export function buildSpbFilter(backendUrls: string[]): string {
   if (backendUrls.length === 0) return ''
-  const quoted = backendUrls.map((u) => `'${u.replace(/'/g, "''")}'`).join(',')
+  const quoted = backendUrls
+    .map((u) => `'${u.replaceAll("'", "''")}'`)
+    .join(',')
   return `AND spb_min.server_id IN (SELECT la.server_id FROM local_accounts la WHERE la.backend_url IN (${quoted}))`
 }
 
@@ -288,7 +290,9 @@ export function buildScopedEngagementsSql(
       ? BATCH_SQL_TEMPLATES.interactions
       : BATCH_INTERACTIONS_SQL
   }
-  const quoted = backendUrls.map((u) => `'${u.replace(/'/g, "''")}'`).join(',')
+  const quoted = backendUrls
+    .map((u) => `'${u.replaceAll("'", "''")}'`)
+    .join(',')
   return `
   SELECT pi.post_id,
     json_object(

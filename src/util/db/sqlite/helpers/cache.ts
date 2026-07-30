@@ -18,11 +18,17 @@ export const emojiIdCache = new Map<string, number>()
 /** backend_url → local_accounts.id | null */
 export const localAccountIdCache = new Map<string, number | null>()
 
+const allCaches: { clear(): void }[] = [
+  serverIdCache,
+  serverHostCache,
+  profileIdCache,
+  emojiIdCache,
+  localAccountIdCache,
+]
+
 /** 全キャッシュをクリアする */
 export function clearAllCaches(): void {
-  serverIdCache.clear()
-  serverHostCache.clear()
-  profileIdCache.clear()
-  emojiIdCache.clear()
-  localAccountIdCache.clear()
+  for (const cache of allCaches) {
+    cache.clear()
+  }
 }

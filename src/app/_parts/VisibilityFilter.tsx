@@ -12,10 +12,10 @@ const VISIBILITY_OPTIONS: { label: string; value: VisibilityType }[] = [
 export function VisibilityFilter({
   onChange,
   value,
-}: {
+}: Readonly<{
   onChange: (filter: VisibilityType[] | undefined) => void
   value: VisibilityType[] | undefined
-}) {
+}>) {
   // 未設定 = 全て選択状態
   const selected: VisibilityType[] = value ?? [
     'public',

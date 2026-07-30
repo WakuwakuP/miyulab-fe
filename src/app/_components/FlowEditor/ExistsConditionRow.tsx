@@ -12,12 +12,12 @@ import type { TableOption } from 'util/db/query-ir/completion'
 import type { ExistsCondition } from 'util/db/query-ir/nodes'
 import { EXISTS_MODES } from './flowNodePanelTypes'
 
-type ExistsConditionRowProps = {
+type ExistsConditionRowProps = Readonly<{
   filter: ExistsCondition
   existsTables: TableOption[]
   onUpdate: (f: ExistsCondition) => void
   onDelete: () => void
-}
+}>
 
 export function ExistsConditionRow({
   filter,

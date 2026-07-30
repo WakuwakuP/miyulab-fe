@@ -42,10 +42,13 @@ function flushQueue(): void {
   // Worker 環境のみ postMessage を使用する
   // Window 環境（fallback DB 実装）では window.postMessage となり
   // targetOrigin 引数が必須のため、ここでは送信せずにキューを破棄する。
-  if (typeof window !== 'undefined' && self === window) {
+  if (
+    typeof globalThis.window !== 'undefined' &&
+    globalThis === globalThis.window
+  ) {
     return
   }
-  self.postMessage(message)
+  globalThis.postMessage(message)
 }
 
 /**
@@ -66,7 +69,7 @@ function sanitizeSql(sql: string): string {
   // Bearer トークンや長い文字列リテラルをマスクする
   const masked = normalized
     // e.g. "Authorization: Bearer abcdef..." のようなパターン
-    .replace(/\bBearer\s+[A-Za-z0-9._~+/\\-]+=*/gi, 'Bearer [REDACTED]')
+    .replace(/\bBearer\s+[A-Z0-9._~+/\\-]+=*/gi, 'Bearer [REDACTED]')
     // シングルクォートで囲まれた不自然に長いリテラル
     .replace(/'[^']{50,}'/g, "'[REDACTED]'")
     // ダブルクォートで囲まれた不自然に長いリテラル
@@ -141,7 +144,9 @@ export function logSlowQueryExplain(
     sql: sanitizeSql(sql),
     timestamp: new Date().toISOString(),
     userAgent:
-      typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown',
+      typeof globalThis.navigator === 'undefined'
+        ? 'unknown'
+        : globalThis.navigator.userAgent,
   }
   logQueue.push(entry)
 

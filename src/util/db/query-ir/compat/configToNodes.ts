@@ -155,7 +155,7 @@ function buildLanguageFilter(
     return undefined
   }
   const inList = config.languageFilter
-    .map((l) => `'${l.replace(/'/g, "''")}'`)
+    .map((l) => `'${l.replaceAll("'", "''")}'`)
     .join(',')
   return {
     kind: 'raw-sql-filter',

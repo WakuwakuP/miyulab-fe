@@ -71,8 +71,6 @@ function buildJoinOnsAndExtraJoins(
       const pLt = `_p_lt${riIdx}`
       extraJoinStrs.push(
         `JOIN profiles ${pLt} ON ${lt}.${jc.lookupColumn} = ${pLt}.id`,
-      )
-      extraJoinStrs.push(
         `JOIN profiles ${pSrc} ON ${pLt}.canonical_acct = ${pSrc}.canonical_acct`,
       )
       joinOns.push(`${src}.${inputCol} = ${pSrc}.id`)
@@ -95,14 +93,12 @@ function appendTimeWindowConditions(
   if (tc.afterInput) {
     conditions.push(
       `${lt}.${tc.lookupTimeColumn} >= ${src}.${tc.inputTimeColumn}`,
-    )
-    conditions.push(
       `${lt}.${tc.lookupTimeColumn} <= ${src}.${tc.inputTimeColumn} + ${tc.windowMs}`,
     )
     return
   }
-  conditions.push(`${lt}.${tc.lookupTimeColumn} < ${src}.${tc.inputTimeColumn}`)
   conditions.push(
+    `${lt}.${tc.lookupTimeColumn} < ${src}.${tc.inputTimeColumn}`,
     `${lt}.${tc.lookupTimeColumn} >= ${src}.${tc.inputTimeColumn} - ${tc.windowMs}`,
   )
 }

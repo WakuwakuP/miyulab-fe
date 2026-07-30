@@ -441,8 +441,8 @@ function buildCustomStatusQuery(
   if (refs.pbt) {
     joinLines.push(
       'LEFT JOIN post_hashtags pht\n          ON p.id = pht.post_id',
+      'LEFT JOIN hashtags ht\n          ON pht.hashtag_id = ht.id',
     )
-    joinLines.push('LEFT JOIN hashtags ht\n          ON pht.hashtag_id = ht.id')
   }
   if (refs.pme)
     joinLines.push(

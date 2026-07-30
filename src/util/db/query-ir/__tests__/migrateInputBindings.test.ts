@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { migrateInputBindings } from '../migrateInputBindings'
-import type { FilterCondition, GetIdsNode } from '../nodes'
+import {
+  migrateInputBindings,
+  migrateQueryPlanInputBindings,
+} from '../migrateInputBindings'
+import type { FilterCondition, GetIdsNode, QueryPlanV2 } from '../nodes'
 
 type GetIdsConfig = Pick<
   GetIdsNode,
@@ -279,7 +282,7 @@ describe('migrateInputBindings', () => {
       const result = migrateInputBindings(config)
 
       // Assert
-      expect(result.inputBindings).toBeUndefined()
+      expect(Reflect.get(result, 'inputBindings')).toBeUndefined()
     })
 
     it('変換後に inputBinding が undefined になること', () => {
@@ -295,7 +298,7 @@ describe('migrateInputBindings', () => {
       const result = migrateInputBindings(config)
 
       // Assert
-      expect(result.inputBinding).toBeUndefined()
+      expect(Reflect.get(result, 'inputBinding')).toBeUndefined()
     })
 
     it('旧 inputBinding (column のみ) がある場合もクリアされること', () => {
@@ -311,8 +314,8 @@ describe('migrateInputBindings', () => {
       const result = migrateInputBindings(config)
 
       // Assert
-      expect(result.inputBinding).toBeUndefined()
-      expect(result.inputBindings).toBeUndefined()
+      expect(Reflect.get(result, 'inputBinding')).toBeUndefined()
+      expect(Reflect.get(result, 'inputBindings')).toBeUndefined()
     })
 
     it('inputBindings が空配列の場合でも inputBindings と inputBinding がクリアされること', () => {
@@ -328,8 +331,8 @@ describe('migrateInputBindings', () => {
       const result = migrateInputBindings(config)
 
       // Assert
-      expect(result.inputBindings).toBeUndefined()
-      expect(result.inputBinding).toBeUndefined()
+      expect(Reflect.get(result, 'inputBindings')).toBeUndefined()
+      expect(Reflect.get(result, 'inputBinding')).toBeUndefined()
     })
   })
 
@@ -382,6 +385,69 @@ describe('migrateInputBindings', () => {
     expect(originalFilter.op).toBe('=')
     expect(originalFilter.value).toBe('123')
     expect(originalFilter.upstreamSourceNodeId).toBeUndefined()
-    expect(config.inputBindings).toHaveLength(1)
+    expect(Reflect.get(config, 'inputBindings')).toHaveLength(1)
+  })
+})
+
+describe('migrateQueryPlanInputBindings', () => {
+  it('プラン内のすべての GetIds ノードを移行し、他のノードを維持すること', () => {
+    const outputNode: QueryPlanV2['nodes'][number] = {
+      id: 'output',
+      node: {
+        kind: 'output-v2',
+        pagination: { limit: 20 },
+        sort: { direction: 'DESC', field: 'created_at_ms' },
+      },
+    }
+    const plan: QueryPlanV2 = {
+      edges: [
+        { source: 'source-1', target: 'output' },
+        { source: 'source-2', target: 'output' },
+      ],
+      nodes: [
+        {
+          id: 'source-1',
+          node: {
+            filters: [],
+            inputBindings: [{ column: 'user_id', sourceNodeId: 'upstream-1' }],
+            kind: 'get-ids',
+            table: 'posts',
+          },
+        },
+        {
+          id: 'source-2',
+          node: {
+            filters: [],
+            inputBindings: [
+              { column: 'account_id', sourceNodeId: 'upstream-2' },
+            ],
+            kind: 'get-ids',
+            table: 'notifications',
+          },
+        },
+        outputNode,
+      ],
+      version: 2,
+    }
+
+    const result = migrateQueryPlanInputBindings(plan)
+
+    const firstSource = result.nodes[0]?.node
+    const secondSource = result.nodes[1]?.node
+    expect(firstSource?.kind).toBe('get-ids')
+    expect(secondSource?.kind).toBe('get-ids')
+    if (firstSource?.kind !== 'get-ids' || secondSource?.kind !== 'get-ids') {
+      throw new Error('Expected GetIds nodes')
+    }
+    expect(firstSource.filters[0]).toMatchObject({
+      column: 'user_id',
+      upstreamSourceNodeId: 'upstream-1',
+    })
+    expect(secondSource.filters[0]).toMatchObject({
+      column: 'account_id',
+      upstreamSourceNodeId: 'upstream-2',
+    })
+    expect(result.nodes[2]).toBe(outputNode)
+    expect(plan.nodes[0]?.node).toHaveProperty('inputBindings')
   })
 })

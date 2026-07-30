@@ -129,7 +129,7 @@ export async function fetchMoreData(
 
         let tagMaxId = maxId
         if (rows.length > 0) {
-          tagMaxId = rows[0][0] as string
+          tagMaxId = rows[0][0]
         }
 
         const res = await client.getTagTimeline(tag, {

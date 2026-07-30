@@ -6,7 +6,6 @@ import type {
   FilterCondition,
   FilterNode,
   GetIdsFilter,
-  OrGroup,
   TableFilter,
   TimelineScope,
 } from '../nodes'
@@ -84,7 +83,7 @@ export function partitionOrGroups(filters: FilterNode[]): {
   const orBranches: FilterNode[][] = []
   for (const f of filters) {
     if (isOrGroup(f)) {
-      orBranches.push(...(f as OrGroup).branches)
+      orBranches.push(...f.branches)
     } else {
       base.push(f)
     }

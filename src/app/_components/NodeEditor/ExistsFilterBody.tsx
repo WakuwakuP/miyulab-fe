@@ -23,10 +23,10 @@ const EXISTS_MODES = [
 export function ExistsFilterBody({
   node,
   onUpdate,
-}: {
+}: Readonly<{
   node: ExistsFilter
   onUpdate: (n: ExistsFilter) => void
-}) {
+}>) {
   const isCountMode = node.mode.startsWith('count-')
   const existsTableOptions = useMemo(() => getExistsFilterTables(), [])
 

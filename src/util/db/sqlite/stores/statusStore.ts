@@ -94,11 +94,9 @@ export async function upsertStatus(
   }
 
   // タイマーが未設定なら設定
-  if (flushTimer === null) {
-    flushTimer = setTimeout(() => {
-      flushAllBuffers()
-    }, FLUSH_INTERVAL_MS)
-  }
+  flushTimer ??= setTimeout(() => {
+    flushAllBuffers()
+  }, FLUSH_INTERVAL_MS)
 }
 
 /**

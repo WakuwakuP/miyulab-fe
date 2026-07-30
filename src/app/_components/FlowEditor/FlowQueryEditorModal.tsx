@@ -40,7 +40,6 @@ import {
 } from 'react'
 import type { TimelineConfigV2 } from 'types/types'
 import { topoSort } from 'util/db/query-ir/executor/topoSort'
-import type { SerializedGraphPlan } from 'util/db/query-ir/executor/types'
 import type { QueryPlanV2 } from 'util/db/query-ir/nodes'
 import { validateQueryPlanV2 } from 'util/db/query-ir/v2/validateV2'
 import { getSqliteDb } from 'util/db/sqlite'
@@ -68,17 +67,18 @@ import type {
   FlowExecStatus,
   FlowGraphState,
   FlowNode,
+  NodeExecState,
 } from './types'
 
 // --------------- Props ---------------
 
-type FlowQueryEditorModalProps = {
+type FlowQueryEditorModalProps = Readonly<{
   open: boolean
   onOpenChange: (open: boolean) => void
   /** 編集対象のタイムライン設定 */
   config: TimelineConfigV2
   onSave: (updates: Partial<TimelineConfigV2>) => void
-}
+}>
 
 // --------------- Component ---------------
 
@@ -255,7 +255,7 @@ export function FlowQueryEditorModal({
     }
 
     // 初期状態: 全ノード idle
-    const initStates: Record<string, 'idle' | 'running' | 'done' | 'error'> = {}
+    const initStates: Record<string, NodeExecState> = {}
     for (const nId of order) initStates[nId] = 'idle'
 
     setExecStatus({
@@ -280,14 +280,10 @@ export function FlowQueryEditorModal({
       const backendUrls = resolveBackendUrls(normalized, apps)
 
       const handle = await getSqliteDb()
-      const result = await handle.executeGraphPlan(
-        plan as unknown as SerializedGraphPlan,
-        { backendUrls },
-      )
+      const result = await handle.executeGraphPlan(plan, { backendUrls })
 
       // 結果から各ノードの状態を構築
-      const doneStates: Record<string, 'idle' | 'running' | 'done' | 'error'> =
-        {}
+      const doneStates: Record<string, NodeExecState> = {}
       for (const nId of order) {
         doneStates[nId] = result.meta.nodeStats[nId] ? 'done' : 'idle'
       }

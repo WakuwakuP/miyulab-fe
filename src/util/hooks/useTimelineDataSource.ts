@@ -17,7 +17,7 @@ import type {
   TimelineConfigV2,
 } from 'types/types'
 import { configToQueryPlanV2 } from 'util/db/query-ir/configToQueryPlanV2'
-import type { SerializedGraphPlan } from 'util/db/query-ir/executor/types'
+import { migrateQueryPlanInputBindings } from 'util/db/query-ir/migrateInputBindings'
 import {
   isQueryPlanV2,
   type PaginationCursor,
@@ -29,6 +29,7 @@ import {
   patchPlanForFetch,
   patchPlanForStreamingFetch,
 } from 'util/db/query-ir/patchPlanForFetch'
+import { migrateQueryPlanV1ToV2 } from 'util/db/query-ir/v2/migrateV1ToV2'
 import {
   type ChangeHint,
   getSqliteDb,
@@ -116,7 +117,10 @@ export function useTimelineDataSource(
   // biome-ignore lint/correctness/useExhaustiveDependencies: refreshToken は外部からの設定変更を検知するために必要
   const basePlan: QueryPlanV2 | null = useMemo(() => {
     if (config.queryPlan) {
-      return config.queryPlan as QueryPlanV2
+      const queryPlanV2 = isQueryPlanV2(config.queryPlan)
+        ? config.queryPlan
+        : migrateQueryPlanV1ToV2(config.queryPlan)
+      return migrateQueryPlanInputBindings(queryPlanV2)
     }
     if (localAccountIds.length === 0) return null
     return configToQueryPlanV2(config, {
@@ -192,7 +196,7 @@ export function useTimelineDataSource(
       try {
         const handle = await getSqliteDb()
         const result = await handle.executeGraphPlan(
-          plan as unknown as SerializedGraphPlan,
+          plan,
           { backendUrls: targetBackendUrls },
           fetchOptions?.sessionTag,
         )

@@ -2,9 +2,9 @@
 
 import type { DebugNodeResult, DebugResultItem } from './types'
 
-type Props = {
+type Props = Readonly<{
   nodeResults: DebugNodeResult[]
-}
+}>
 
 export function DebugResultPanel({ nodeResults }: Props) {
   if (nodeResults.length === 0) {
@@ -20,7 +20,9 @@ export function DebugResultPanel({ nodeResults }: Props) {
   )
 }
 
-function NodeSection({ nodeResult }: { nodeResult: DebugNodeResult }) {
+function NodeSection({
+  nodeResult,
+}: Readonly<{ nodeResult: DebugNodeResult }>) {
   const { items, nodeLabel } = nodeResult
   const postCount = items.filter((r) => r.table === 'posts').length
   const notifCount = items.filter((r) => r.table === 'notifications').length
@@ -53,9 +55,9 @@ function NodeSection({ nodeResult }: { nodeResult: DebugNodeResult }) {
 
 function PostRow({
   item,
-}: {
+}: Readonly<{
   item: Extract<DebugResultItem, { table: 'posts' }>
-}) {
+}>) {
   return (
     <div className="text-[10px] font-mono text-gray-300 flex items-start gap-1 leading-tight">
       <span className="shrink-0">{item.isReblog ? '🔁' : '📝'}</span>
@@ -72,9 +74,9 @@ function PostRow({
 
 function NotificationRow({
   item,
-}: {
+}: Readonly<{
   item: Extract<DebugResultItem, { table: 'notifications' }>
-}) {
+}>) {
   return (
     <div className="text-[10px] font-mono text-gray-300 flex items-start gap-1 leading-tight">
       <span className="shrink-0">🔔</span>

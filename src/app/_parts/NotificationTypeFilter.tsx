@@ -19,10 +19,10 @@ const NOTIFICATION_TYPE_OPTIONS: {
 export function NotificationTypeFilter({
   onChange,
   value,
-}: {
+}: Readonly<{
   onChange: (filter: NotificationType[] | undefined) => void
   value: NotificationType[] | undefined
-}) {
+}>) {
   // 未設定 = 全てオフ状態（通知を取得しない）
   const selected: NotificationType[] = value ?? []
 

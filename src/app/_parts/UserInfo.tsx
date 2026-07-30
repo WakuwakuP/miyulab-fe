@@ -4,11 +4,13 @@
 import { ProxyImage } from 'app/_parts/ProxyImage'
 import { Visibility } from 'app/_parts/Visibility'
 
+import parse from 'html-react-parser'
 import type { Entity } from 'megalodon'
 import { useContext, useMemo } from 'react'
 import { RiRobotFill } from 'react-icons/ri'
 import type { AccountAddAppIndex } from 'types/types'
 import { replaceEmojis } from 'util/emojiReplacer'
+import { escapeHtml } from 'util/escapeHtml'
 import { SetDetailContext } from 'util/provider/DetailProvider'
 
 export const UserInfo = ({
@@ -26,7 +28,7 @@ export const UserInfo = ({
   const getDisplayName = useMemo(
     () =>
       replaceEmojis(
-        account.display_name,
+        escapeHtml(account.display_name),
         account.emojis,
         'min-w-5 h-5 inline-block',
       ),
@@ -82,12 +84,7 @@ export const UserInfo = ({
           <span className="block w-[calc(100%-24px)] pl-2">
             <span className="flex w-full justify-between truncate">
               <span>
-                <span
-                  // biome-ignore lint/security/noDangerouslySetInnerHtml: TODO
-                  dangerouslySetInnerHTML={{
-                    __html: getDisplayName,
-                  }}
-                />
+                <span>{parse(getDisplayName)}</span>
                 <span className="pl-1 text-gray-300">@{account.acct}</span>
               </span>
               <Visibility visibility={visibility} />
@@ -96,13 +93,7 @@ export const UserInfo = ({
         ) : (
           <span className="block w-[calc(100%-46px)] pl-2">
             <span className="flex w-full justify-between [&>span]:inline-block">
-              <span
-                className="truncate"
-                // biome-ignore lint/security/noDangerouslySetInnerHtml: TODO
-                dangerouslySetInnerHTML={{
-                  __html: getDisplayName,
-                }}
-              />
+              <span className="truncate">{parse(getDisplayName)}</span>
               <Visibility visibility={visibility} />
             </span>
             <span

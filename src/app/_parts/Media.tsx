@@ -3,6 +3,32 @@ import type { HTMLProps } from 'react'
 import { RiPlayCircleLine } from 'react-icons/ri'
 import { toSecureResourceUrl } from 'util/secureResourceUrl'
 
+const toWellFormedText = (value: string): string => {
+  let result = ''
+  for (const character of value) {
+    const codePoint = character.codePointAt(0) ?? 0
+    if (codePoint >= 0xd800 && codePoint <= 0xdfff) {
+      result += '\uFFFD'
+    } else {
+      result += character
+    }
+  }
+  return result
+}
+
+const descriptionTrackUrl = (description: string): string => {
+  const cueText = toWellFormedText(description)
+    .replaceAll(/[\r\n]+/g, ' ')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+  const captions = `WEBVTT
+
+00:00:00.000 --> 99:59:59.999
+${cueText}`
+  return `data:text/vtt;charset=utf-8,${encodeURIComponent(captions)}`
+}
+
 export const Media = ({
   media,
   onClick,
@@ -107,7 +133,17 @@ export const Media = ({
     case 'audio':
       return (
         <div className={['relative h-16 p-0.5', className].join(' ')}>
-          <audio className="w-full" controls key={media.id} src={mediaUrl} />
+          <audio className="w-full" controls key={media.id} src={mediaUrl}>
+            {media.description && (
+              <track
+                default
+                kind="descriptions"
+                label="Attachment description"
+                src={descriptionTrackUrl(media.description)}
+                srcLang="und"
+              />
+            )}
+          </audio>
           <button
             aria-label={media.description || 'Open audio media'}
             className="absolute left-0 top-0 z-1 h-full w-full border-0 bg-transparent p-0"

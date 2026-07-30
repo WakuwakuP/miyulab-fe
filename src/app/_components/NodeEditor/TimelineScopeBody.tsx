@@ -14,10 +14,10 @@ const TIMELINE_KEYS = [
 export function TimelineScopeBody({
   node,
   onUpdate,
-}: {
+}: Readonly<{
   node: TimelineScope
   onUpdate: (n: TimelineScope) => void
-}) {
+}>) {
   const idPrefix = useId()
   const toggle = useCallback(
     (key: string) => {

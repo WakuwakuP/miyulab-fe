@@ -11,6 +11,8 @@ import {
 } from 'util/db/sqlite/worker/handlers/accountHandlers'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+type SqlValue = string | number | null
+
 // ─── Mock DB factory ────────────────────────────────────────────
 
 type ExecCall = { sql: string; opts?: Parameters<DbExecCompat['exec']>[1] }
@@ -32,7 +34,7 @@ function createMockDb(selectResults: unknown[] = []): {
       if (opts?.returnValue === 'resultRows') {
         const result = selectResults[selectIndex]
         selectIndex++
-        return result !== undefined ? [[result]] : []
+        return result === undefined ? [] : [[result]]
       }
       return undefined
     }),
@@ -102,7 +104,7 @@ describe('handleEnsureLocalAccount', () => {
     expect(localAccountUpsert?.sql).toContain('remote_account_id')
 
     // bind にバックエンドURL, アカウント情報が含まれる
-    const bind = localAccountUpsert?.opts?.bind as (string | number | null)[]
+    const bind = localAccountUpsert?.opts?.bind as SqlValue[]
     expect(bind).toContain(1) // server_id
     expect(bind).toContain('https://mastodon.social') // backend_url
     expect(bind).toContain('testuser@mastodon.social') // acct
@@ -143,7 +145,7 @@ describe('handleEnsureLocalAccount', () => {
     expect(localAccountUpsert).toBeDefined()
     expect(localAccountUpsert?.sql).toContain('profile_id')
 
-    const bind = localAccountUpsert?.opts?.bind as (string | number | null)[]
+    const bind = localAccountUpsert?.opts?.bind as SqlValue[]
     expect(bind).toContain(42) // profile_id from ensureProfile
   })
 
@@ -167,7 +169,7 @@ describe('handleEnsureLocalAccount', () => {
     const localAccountUpsert = calls.find(
       (c) => c.sql.includes('INSERT') && c.sql.includes('local_accounts'),
     )
-    const bind = localAccountUpsert?.opts?.bind as (string | number | null)[]
+    const bind = localAccountUpsert?.opts?.bind as SqlValue[]
     expect(bind).toContain(99) // server_id
   })
 })
@@ -207,7 +209,7 @@ describe('handleBulkUpsertCustomEmojis', () => {
 
     // BEGIN + COMMIT が呼ばれる
     expect(calls[0].sql).toBe('BEGIN;')
-    expect(calls[calls.length - 1].sql).toBe('COMMIT;')
+    expect(calls.at(-1)?.sql).toBe('COMMIT;')
 
     // ensureCustomEmoji で custom_emojis に INSERT される
     const emojiInserts = calls.filter(

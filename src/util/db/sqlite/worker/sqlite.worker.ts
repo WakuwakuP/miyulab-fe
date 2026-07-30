@@ -372,7 +372,7 @@ function dispatchWorkerRequest(msg: WorkerRequest, db: WorkerDb): void {
   }
 }
 
-self.onmessage = (
+globalThis.onmessage = (
   event: MessageEvent<WorkerRequest | { type: '__init'; origin: string }>,
 ) => {
   const msg = event.data

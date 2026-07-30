@@ -5,6 +5,7 @@
  */
 
 import type { getSqliteDb } from '../connection'
+import type { SqliteResultRows } from '../protocol'
 
 // ================================================================
 // SqliteHandle 型
@@ -250,14 +251,14 @@ export const BATCH_SQL_TEMPLATES = {
 
 /** FetchTimelineResult.batchResults の型（Worker からの生行データ） */
 export type BatchResultRows = {
-  interactions: (string | number | null)[][]
-  media: (string | number | null)[][]
-  mentions: (string | number | null)[][]
-  timelineTypes: (string | number | null)[][]
-  belongingTags: (string | number | null)[][]
-  customEmojis: (string | number | null)[][]
-  profileEmojis: (string | number | null)[][]
-  polls: (string | number | null)[][]
+  interactions: SqliteResultRows
+  media: SqliteResultRows
+  mentions: SqliteResultRows
+  timelineTypes: SqliteResultRows
+  belongingTags: SqliteResultRows
+  customEmojis: SqliteResultRows
+  profileEmojis: SqliteResultRows
+  polls: SqliteResultRows
 }
 
 // ================================================================
@@ -418,32 +419,32 @@ export async function executeBatchQueries(
         kind: 'timeline',
         returnValue: 'resultRows',
       },
-    ) as Promise<(string | number | null)[][]>,
+    ) as Promise<SqliteResultRows>,
     handle.execAsync(replacePlaceholders(BATCH_MEDIA_SQL, count), {
       bind: allPostIds,
       kind: 'timeline',
       returnValue: 'resultRows',
-    }) as Promise<(string | number | null)[][]>,
+    }) as Promise<SqliteResultRows>,
     handle.execAsync(replacePlaceholders(BATCH_MENTIONS_SQL, count), {
       bind: allPostIds,
       kind: 'timeline',
       returnValue: 'resultRows',
-    }) as Promise<(string | number | null)[][]>,
+    }) as Promise<SqliteResultRows>,
     handle.execAsync(replacePlaceholders(BATCH_TIMELINE_TYPES_SQL, count), {
       bind: allPostIds,
       kind: 'timeline',
       returnValue: 'resultRows',
-    }) as Promise<(string | number | null)[][]>,
+    }) as Promise<SqliteResultRows>,
     handle.execAsync(replacePlaceholders(BATCH_BELONGING_TAGS_SQL, count), {
       bind: allPostIds,
       kind: 'timeline',
       returnValue: 'resultRows',
-    }) as Promise<(string | number | null)[][]>,
+    }) as Promise<SqliteResultRows>,
     handle.execAsync(replacePlaceholders(BATCH_CUSTOM_EMOJIS_SQL, count), {
       bind: allPostIds,
       kind: 'timeline',
       returnValue: 'resultRows',
-    }) as Promise<(string | number | null)[][]>,
+    }) as Promise<SqliteResultRows>,
     handle.execAsync(
       replacePlaceholders(BATCH_PROFILE_CUSTOM_EMOJIS_SQL, count),
       {
@@ -451,12 +452,12 @@ export async function executeBatchQueries(
         kind: 'timeline',
         returnValue: 'resultRows',
       },
-    ) as Promise<(string | number | null)[][]>,
+    ) as Promise<SqliteResultRows>,
     handle.execAsync(replacePlaceholders(BATCH_POLLS_SQL, count), {
       bind: pollsBind,
       kind: 'timeline',
       returnValue: 'resultRows',
-    }) as Promise<(string | number | null)[][]>,
+    }) as Promise<SqliteResultRows>,
   ])
 
   // 結果を Map に変換

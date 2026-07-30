@@ -18,7 +18,7 @@ export function FlowNodePanel({
   onUpdate,
   onDelete,
   onClose,
-}: FlowNodePanelProps) {
+}: Readonly<FlowNodePanelProps>) {
   const data = node.data as { nodeType: string }
 
   return (

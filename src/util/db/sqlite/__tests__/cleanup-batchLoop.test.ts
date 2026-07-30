@@ -65,9 +65,17 @@ function installMockHandle(
   })
 
   vi.mocked(getSqliteDb).mockResolvedValue({
+    cancelStaleRequests: vi.fn(),
     execAsync,
+    execAsyncTimed: vi.fn(),
+    execBatch: vi.fn(),
+    executeFlatFetch: vi.fn(),
+    executeGraphPlan: vi.fn(),
+    executeQueryPlan: vi.fn(),
+    fetchTimeline: vi.fn(),
+    persistence: 'memory',
     sendCommand,
-  } as unknown as Awaited<ReturnType<typeof getSqliteDb>>)
+  })
   return { calls, execAsync, sendCommand }
 }
 
@@ -154,9 +162,17 @@ describe('enforceMaxLength — batch loop', () => {
     })
     const execAsync = vi.fn(async () => [[0, 0, 0]])
     vi.mocked(getSqliteDb).mockResolvedValue({
+      cancelStaleRequests: vi.fn(),
       execAsync,
+      execAsyncTimed: vi.fn(),
+      execBatch: vi.fn(),
+      executeFlatFetch: vi.fn(),
+      executeGraphPlan: vi.fn(),
+      executeQueryPlan: vi.fn(),
+      fetchTimeline: vi.fn(),
+      persistence: 'memory',
       sendCommand,
-    } as unknown as Awaited<ReturnType<typeof getSqliteDb>>)
+    })
 
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
 

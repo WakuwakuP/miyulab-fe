@@ -152,7 +152,7 @@ export function stampSchemaVersion(
   try {
     db.exec(
       `INSERT OR REPLACE INTO schema_version (version, applied_at, description)
-       VALUES ('${formatSemVer(version)}', ${Date.now()}, '${description.replace(/'/g, "''")}')`,
+       VALUES ('${formatSemVer(version)}', ${Date.now()}, '${description.replaceAll("'", "''")}')`,
     )
   } catch {
     // schema_version テーブルがまだ存在しない場合は無視

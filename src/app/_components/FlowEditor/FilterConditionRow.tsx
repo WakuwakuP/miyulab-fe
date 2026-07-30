@@ -27,13 +27,13 @@ import {
 import type { FlowNode } from './types'
 import { getNodeLabelV2 } from './types'
 
-type FilterConditionRowProps = {
+type FilterConditionRowProps = Readonly<{
   filter: FilterCondition
   flatColumns: FlatColumnOption[]
   upstreamNodes: FlowNode[]
   onUpdate: (f: FilterCondition) => void
   onDelete: () => void
-}
+}>
 
 export function FilterConditionRow({
   filter,

@@ -1,15 +1,16 @@
+import { describe, expect, it } from 'vitest'
 import type { SerializedExecutionPlan } from '../../protocol'
 import type { DbExec } from '../executionEngine'
 import { executeQueryPlan } from '../executionEngine'
 
-function createMockDb(
-  responses: Map<string, (string | number | null)[][]>,
-): DbExec {
+type SqlValue = string | number | null
+
+function createMockDb(responses: Map<string, SqlValue[][]>): DbExec {
   return {
     exec: (
       sql: string,
       _opts: {
-        bind?: (string | number | null)[]
+        bind?: SqlValue[]
         returnValue: 'resultRows'
       },
     ) => {
@@ -26,7 +27,7 @@ function createMockDb(
 describe('executeQueryPlan', () => {
   describe('IdCollectStep', () => {
     it('Phase1 クエリを実行して行データを返す', () => {
-      const mockRawRows: (string | number | null)[][] = [
+      const mockRawRows: SqlValue[][] = [
         [1, 1000],
         [2, 2000],
         [3, 3000],
@@ -60,7 +61,7 @@ describe('executeQueryPlan', () => {
     })
 
     it('バインドパラメータ付きクエリを実行する', () => {
-      let capturedBinds: (string | number | null)[] | undefined
+      let capturedBinds: SqlValue[] | undefined
       const db: DbExec = {
         exec: (_sql, opts) => {
           capturedBinds = opts.bind ?? undefined

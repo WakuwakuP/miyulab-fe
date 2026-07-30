@@ -24,7 +24,13 @@ export const GetIdsFlowNode = memo(function GetIdsFlowNode({
     [deleteNode, id],
   )
 
-  const bindings = data.config.inputBindings ?? []
+  const upstreamColumns = data.config.filters.flatMap((filter) =>
+    'column' in filter &&
+    'upstreamSourceNodeId' in filter &&
+    filter.upstreamSourceNodeId
+      ? [filter.column]
+      : [],
+  )
   const outputIdColumn = data.config.outputIdColumn
   const outputTimeColumn = data.config.outputTimeColumn
 
@@ -80,9 +86,9 @@ export const GetIdsFlowNode = memo(function GetIdsFlowNode({
             .join(', ')}
         </div>
       )}
-      {bindings.length > 0 && (
+      {upstreamColumns.length > 0 && (
         <div className="text-[10px] text-sky-400 mt-0.5">
-          ← {bindings.map((b) => b.column).join(', ')}
+          ← {upstreamColumns.join(', ')}
         </div>
       )}
       <NodeExecBadge execStatus={execStatus} nodeId={id} />

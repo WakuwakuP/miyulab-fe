@@ -20,9 +20,9 @@ export const Panel = ({
   const ref = useRef<HTMLDivElement>(null)
   const offset = headerOffset ?? '0px'
   const mainAreaHeight =
-    name === undefined
-      ? `calc(100vh - 0.75rem - ${offset})`
-      : `calc(100vh - 0.75rem - 2rem - ${offset})`
+    name !== undefined
+      ? `calc(100vh - 0.75rem - 2rem - ${offset})`
+      : `calc(100vh - 0.75rem - ${offset})`
 
   const durationTitle =
     queryDuration != null ? `Query: ${queryDuration.toFixed(2)} ms` : undefined

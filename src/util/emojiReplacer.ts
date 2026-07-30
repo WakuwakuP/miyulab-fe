@@ -23,5 +23,5 @@ export function replaceEmojis(
 }
 
 function escapeForRegex(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  return s.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`)
 }

@@ -51,7 +51,7 @@ function childrenToHtml(node: { children?: MfmNode[] }, host: string): string {
 function nodeToHtml(node: MfmNode, host: string): string {
   switch (node.type) {
     case 'text':
-      return escapeHtml(node.props.text).replace(/\n/g, '<br>')
+      return escapeHtml(node.props.text).replaceAll('\n', '<br>')
     case 'bold':
       return `<strong>${childrenToHtml(node, host)}</strong>`
     case 'italic':
@@ -140,7 +140,7 @@ function renderAnimationFn(
 
 function renderSpinFn(args: MfmFnArgs, children: string): string {
   const speed = sanitizeDuration(args.speed) ?? '1.5s'
-  const direction = args.alternate != null ? 'alternate' : 'normal'
+  const direction = args.alternate == null ? 'normal' : 'alternate'
   const axis = getSpinAxis(args)
   const cls = axis ? `mfm-spin-${axis}` : 'mfm-spin'
   return `<span class="${cls}" style="animation-duration:${speed};animation-direction:${direction}">${children}</span>`
@@ -254,30 +254,28 @@ const fnHtmlRenderers: Partial<Record<string, FnHtmlRenderer>> = {
 
 // escapeHtml is imported from util/escapeHtml
 
+type MfmFnArgValue = string | true | undefined
+
 /** CSS duration (e.g. "1s", "500ms", "0.5s") を検証 */
-function sanitizeDuration(
-  value: string | true | undefined,
-): string | undefined {
+function sanitizeDuration(value: MfmFnArgValue): string | undefined {
   if (value == null || value === true) return undefined
   return /^\d+(\.\d+)?(s|ms)$/.test(value) ? value : undefined
 }
 
 /** 数値文字列を検証 (負数・小数を許容) */
-function sanitizeNumber(value: string | true | undefined): string | undefined {
+function sanitizeNumber(value: MfmFnArgValue): string | undefined {
   if (value == null || value === true) return undefined
   return /^-?\d+(\.\d+)?$/.test(value) ? value : undefined
 }
 
 /** CSS カラー値を検証 (hex のみ許容) */
-function sanitizeColor(value: string | true | undefined): string | undefined {
+function sanitizeColor(value: MfmFnArgValue): string | undefined {
   if (value == null || value === true) return undefined
   return /^[0-9a-fA-F]{3,8}$/.test(value) ? `#${value}` : undefined
 }
 
 /** border-style を検証 */
-function sanitizeBorderStyle(
-  value: string | true | undefined,
-): string | undefined {
+function sanitizeBorderStyle(value: MfmFnArgValue): string | undefined {
   if (value == null || value === true) return undefined
   const allowed = ['solid', 'dashed', 'dotted', 'double', 'none', 'hidden']
   return allowed.includes(value) ? value : undefined

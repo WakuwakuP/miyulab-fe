@@ -48,7 +48,7 @@ export async function dismissNotifications(
   ctx: MisskeyClientContext,
 ): Promise<Response<Record<string, never>>> {
   await ctx.client.request('notifications/mark-all-as-read', {})
-  return wrapResponse({} as Record<string, never>)
+  return wrapResponse({})
 }
 
 export async function dismissNotification(
@@ -65,7 +65,7 @@ export async function readNotifications(
   },
 ): Promise<Response<Record<string, never>>> {
   await ctx.client.request('notifications/mark-all-as-read', {})
-  return wrapResponse({} as Record<string, never>)
+  return wrapResponse({})
 }
 
 // =============================================

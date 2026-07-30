@@ -542,7 +542,7 @@ function upsertSingleStatus(
     collector,
   )
 
-  const isReblog = status.reblog != null ? 1 : 0
+  const isReblog = status.reblog == null ? 0 : 1
   const reblogOfUri = status.reblog?.uri ?? null
 
   if (isReblog === 1 && status.reblog) {
@@ -575,18 +575,7 @@ function upsertSingleStatus(
     isReblog === 1 ? resolveRepostOfPostId(db, reblogOfUri) : null
 
   let postId: number
-  if (existingPostId !== undefined) {
-    updateExistingPostRow(
-      db,
-      existingPostId,
-      now,
-      visibilityId,
-      cols,
-      isReblog,
-      reblogOfPostId,
-    )
-    postId = existingPostId
-  } else {
+  if (existingPostId === undefined) {
     postId = insertNewPostRow(db, {
       cols,
       existingIsOriginal,
@@ -598,6 +587,17 @@ function upsertSingleStatus(
       serverId,
       visibilityId,
     })
+  } else {
+    updateExistingPostRow(
+      db,
+      existingPostId,
+      now,
+      visibilityId,
+      cols,
+      isReblog,
+      reblogOfPostId,
+    )
+    postId = existingPostId
   }
   collector?.add('posts')
 

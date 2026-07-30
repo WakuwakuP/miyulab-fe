@@ -149,7 +149,7 @@ describe('topoSort', () => {
       expect(result.indexOf('getIds1')).toBeLessThan(mergeIdx)
       expect(result.indexOf('getIds2')).toBeLessThan(mergeIdx)
       expect(mergeIdx).toBeLessThan(outputIdx)
-      expect(result[result.length - 1]).toBe('output1')
+      expect(result.at(-1)).toBe('output1')
     })
 
     it('3つのGetIds → Merge → Output の扇型DAGの時、すべてのGetIdsがMergeより前に来ること', () => {
@@ -178,7 +178,7 @@ describe('topoSort', () => {
       expect(result.indexOf('g1')).toBeLessThan(mergeIdx)
       expect(result.indexOf('g2')).toBeLessThan(mergeIdx)
       expect(result.indexOf('g3')).toBeLessThan(mergeIdx)
-      expect(result[result.length - 1]).toBe('output1')
+      expect(result.at(-1)).toBe('output1')
     })
 
     it('GetIds → LookupRelated → Merge → Output のチェーンの時、依存順に並んで返ること', () => {
@@ -236,7 +236,7 @@ describe('topoSort', () => {
           result.indexOf(edge.target),
         )
       }
-      expect(result[result.length - 1]).toBe('output1')
+      expect(result.at(-1)).toBe('output1')
       expect(result).toHaveLength(6)
     })
   })
@@ -253,7 +253,7 @@ describe('topoSort', () => {
       const result = topoSort(plan)
 
       // Assert
-      expect(result[result.length - 1]).toBe('output1')
+      expect(result.at(-1)).toBe('output1')
     })
 
     it('Outputノードに依存するエッジが無い孤立Outputと他ノードがある時、Outputが最後に来ること', () => {
@@ -267,7 +267,7 @@ describe('topoSort', () => {
       const result = topoSort(plan)
 
       // Assert
-      expect(result[result.length - 1]).toBe('output1')
+      expect(result.at(-1)).toBe('output1')
       expect(result).toHaveLength(2)
       expect(result).toContain('getIds1')
     })
@@ -370,7 +370,7 @@ describe('topoSort', () => {
 
       // Assert
       expect(result).toHaveLength(3)
-      expect(result[result.length - 1]).toBe('output1')
+      expect(result.at(-1)).toBe('output1')
       expect(result).toContain('g1')
       expect(result).toContain('merge1')
     })
@@ -561,7 +561,7 @@ describe('topoSort', () => {
       // 最初に見つかった output が最後に来る
       // Kahn のアルゴリズムで入次数0のノードがすべて処理され、
       // findIndex で最初の output-v2 が最後に移動される
-      const lastElement = result[result.length - 1]
+      const lastElement = result.at(-1)
       expect(
         lastElement === 'output-first' || lastElement === 'output-second',
       ).toBe(true)
@@ -605,7 +605,7 @@ describe('topoSort', () => {
       const result = topoSort(plan)
 
       // Assert
-      expect(result[result.length - 1]).toBe('output1')
+      expect(result.at(-1)).toBe('output1')
       expect(result).toHaveLength(4)
     })
 
@@ -626,7 +626,7 @@ describe('topoSort', () => {
 
       // Assert
       expect(result).toHaveLength(4)
-      expect(result[result.length - 1]).toBe('output1')
+      expect(result.at(-1)).toBe('output1')
       expect(result).toContain('g1')
       expect(result).toContain('merge1')
       expect(result).toContain('lookup1')
@@ -699,7 +699,7 @@ describe('topoSort', () => {
       expect(idxA).toBeLessThan(idxC)
       expect(idxB).toBeLessThan(idxD)
       expect(idxC).toBeLessThan(idxD)
-      expect(result[result.length - 1]).toBe('output1')
+      expect(result.at(-1)).toBe('output1')
     })
   })
 
@@ -728,7 +728,7 @@ describe('topoSort', () => {
       const mergeIdx = result.indexOf('merge-union')
       expect(result.indexOf('getIds-posts')).toBeLessThan(mergeIdx)
       expect(result.indexOf('getIds-notifs')).toBeLessThan(mergeIdx)
-      expect(result[result.length - 1]).toBe('output1')
+      expect(result.at(-1)).toBe('output1')
       expect(result).toHaveLength(4)
     })
 
@@ -762,7 +762,7 @@ describe('topoSort', () => {
           result.indexOf(edge.target),
         )
       }
-      expect(result[result.length - 1]).toBe('output1')
+      expect(result.at(-1)).toBe('output1')
       expect(result).toHaveLength(5)
     })
 

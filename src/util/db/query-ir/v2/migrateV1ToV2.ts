@@ -41,10 +41,10 @@ function appendFilterConversion(
     return
   }
   const g = filterNodeToGetIdsFilter(f)
-  if (g != null) {
-    filters.push(g)
-  } else {
+  if (g === null) {
     overlay.push(f)
+  } else {
+    filters.push(g)
   }
 }
 

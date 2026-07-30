@@ -10,10 +10,10 @@ import {
 import type { FlowNodePanelProps } from './flowNodePanelTypes'
 import type { FlowNode, MergeFlowNodeDataV2 } from './types'
 
-type MergePanelV2Props = {
+type MergePanelV2Props = Readonly<{
   node: FlowNode
   onUpdate: FlowNodePanelProps['onUpdate']
-}
+}>
 
 export function MergePanelV2({ node, onUpdate }: MergePanelV2Props) {
   const data = node.data as MergeFlowNodeDataV2

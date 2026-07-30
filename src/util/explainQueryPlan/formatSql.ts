@@ -10,7 +10,7 @@ export function formatSql(sql: string): string {
   // 空行を除いた各行の先頭スペース数を取得し、最小値を共通インデントとする
   const indents = lines
     .filter((l) => l.trim().length > 0)
-    .map((l) => l.match(/^(\s*)/)?.[1].length ?? 0)
+    .map((l) => /^(\s*)/.exec(l)?.[1].length ?? 0)
   const minIndent = indents.length > 0 ? Math.min(...indents) : 0
 
   return lines

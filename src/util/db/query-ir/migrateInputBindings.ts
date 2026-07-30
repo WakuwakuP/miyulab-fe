@@ -1,9 +1,16 @@
-import type { FilterCondition, GetIdsNode } from './nodes'
-
-type GetIdsConfig = Pick<
+import type {
+  FilterCondition,
+  GetIdsInputBinding,
   GetIdsNode,
-  'filters' | 'inputBinding' | 'inputBindings' | 'table'
->
+  QueryPlanV2,
+} from './nodes'
+
+type GetIdsConfig = {
+  filters: GetIdsNode['filters']
+  inputBinding?: { column: string }
+  inputBindings?: GetIdsInputBinding[]
+  table: GetIdsNode['table']
+}
 
 /**
  * 旧 inputBindings を FilterCondition.upstreamSourceNodeId に変換する。
@@ -47,5 +54,17 @@ export function migrateInputBindings<T extends GetIdsConfig>(config: T): T {
     filters: nextFilters,
     inputBinding: undefined,
     inputBindings: undefined,
+  }
+}
+
+/** QueryPlanV2 内の全 GetIds ノードから旧 inputBindings を移行する。 */
+export function migrateQueryPlanInputBindings(plan: QueryPlanV2): QueryPlanV2 {
+  return {
+    ...plan,
+    nodes: plan.nodes.map((entry) =>
+      entry.node.kind === 'get-ids'
+        ? { ...entry, node: migrateInputBindings(entry.node) }
+        : entry,
+    ),
   }
 }

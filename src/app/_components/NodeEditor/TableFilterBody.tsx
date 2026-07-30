@@ -36,10 +36,10 @@ const FILTER_OPS: { label: string; value: FilterOp }[] = [
 export function TableFilterBody({
   node,
   onUpdate,
-}: {
+}: Readonly<{
   node: TableFilter
   onUpdate: (n: TableFilter) => void
-}) {
+}>) {
   const isNullOp = node.op === 'IS NULL' || node.op === 'IS NOT NULL'
 
   // テーブル一覧

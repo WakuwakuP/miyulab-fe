@@ -39,7 +39,7 @@ const TABLE_TO_ALIAS: Record<string, string> = {
 
 /** SQL 文字列リテラル用エスケープ: ' → '' */
 function escapeSql(value: string): string {
-  return value.replace(/'/g, "''")
+  return value.replaceAll("'", "''")
 }
 
 function timelineScopeToSql(node: TimelineScope): string {

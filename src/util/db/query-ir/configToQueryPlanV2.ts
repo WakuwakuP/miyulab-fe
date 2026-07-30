@@ -91,8 +91,7 @@ function buildCompositeGraph(
   const edges: QueryPlanV2Edge[] = []
 
   // 各 timelineKey に対して GetIds ノードを生成
-  for (let i = 0; i < timelineKeys.length; i++) {
-    const key = timelineKeys[i]
+  for (const key of timelineKeys) {
     const singleConfig = {
       ...config,
       timelineTypes: undefined,

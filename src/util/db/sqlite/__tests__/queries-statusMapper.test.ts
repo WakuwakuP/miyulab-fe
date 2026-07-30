@@ -12,6 +12,8 @@ import {
 } from 'util/db/sqlite/queries/statusMapper'
 import { describe, expect, it } from 'vitest'
 
+type SqlValue = string | number | null
+
 // ─── helpers ────────────────────────────────────────────────────
 
 /**
@@ -45,8 +47,8 @@ import { describe, expect, it } from 'vitest'
  *   [62] author_account_id [63] rb_author_account_id
  *   [64] emoji_reactions_json [65] rb_emoji_reactions_json
  */
-function makeRow(): (string | number | null)[] {
-  const row: (string | number | null)[] = new Array(66).fill(null)
+function makeRow(): SqlValue[] {
+  const row: SqlValue[] = new Array(66).fill(null)
   // 最低限のデフォルト値（nullish-safety）
   row[0] = 42 // post_id
   row[1] = 'https://example.com' // backendUrl
@@ -95,8 +97,8 @@ function makeRow(): (string | number | null)[] {
  *   [47] rb_local_id     [48] author_account_id [49] rb_author_account_id
  *   [50] emoji_reactions_json [51] rb_emoji_reactions_json
  */
-function makeBaseRow(): (string | number | null)[] {
-  const row: (string | number | null)[] = new Array(52).fill(null)
+function makeBaseRow(): SqlValue[] {
+  const row: SqlValue[] = new Array(52).fill(null)
   row[0] = 42 // post_id
   row[1] = 'https://example.com' // backendUrl
   row[2] = '12345' // local_id

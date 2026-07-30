@@ -233,7 +233,7 @@ export const StatusRichTextarea = ({
   const emojiMatch = pos ? EMOJI_REG.exec(targetText) : null
   const tagMatch = pos !== null ? TAG_REG.exec(targetText) : null
 
-  const mentionName = mentionMatch == null ? '' : mentionMatch[1]
+  const mentionName = mentionMatch?.[1] ?? ''
   const emojiName = emojiMatch?.[1] ?? ''
 
   const tagName = tagMatch?.[1] ?? ''

@@ -1,3 +1,4 @@
+import type { Entity } from 'megalodon'
 import {
   ensureProfile,
   ensureServer,
@@ -94,27 +95,35 @@ function createMockDb(queryMap: Record<string, unknown[][][]> = {}): {
 
 function makeNotification(
   overrides: Record<string, unknown> = {},
-): Record<string, unknown> {
+): Entity.Notification {
   return {
     account: {
       acct: 'actor@example.com',
       avatar: '',
       avatar_static: '',
       bot: false,
+      created_at: '2024-01-01T00:00:00.000Z',
       display_name: 'Actor',
       emojis: [],
+      fields: [],
+      followers_count: 0,
+      following_count: 0,
+      group: null,
       header: '',
       header_static: '',
       id: 'actor-1',
+      limited: null,
       locked: false,
+      moved: null,
+      noindex: null,
       note: '',
+      statuses_count: 0,
+      suspended: null,
       url: 'https://example.com/@actor',
       username: 'actor',
     },
     created_at: '2024-01-15T10:00:00.000Z',
     id: 'notif-1',
-    reaction: null,
-    status: null,
     type: 'favourite',
     ...overrides,
   }
@@ -221,11 +230,7 @@ describe('upsertNotification', () => {
 
     const notification = makeNotification()
 
-    const result = upsertNotification(
-      db,
-      notification as never,
-      'https://example.com',
-    )
+    const result = upsertNotification(db, notification, 'https://example.com')
 
     expect(typeof result).toBe('boolean')
 
@@ -256,7 +261,7 @@ describe('upsertNotification', () => {
 
     const notification = makeNotification()
 
-    upsertNotification(db, notification as never, 'https://example.com')
+    upsertNotification(db, notification, 'https://example.com')
 
     // UPSERT SQL を確認: ON CONFLICT(local_account_id, local_id) DO UPDATE
     const insertCall = calls.find((c) =>
@@ -281,7 +286,7 @@ describe('upsertNotification', () => {
 
     const notification = makeNotification()
 
-    upsertNotification(db, notification as never, 'https://example.com')
+    upsertNotification(db, notification, 'https://example.com')
 
     // INSERT SQL に server_id が含まれないことを確認
     const insertCall = calls.find((c) =>
@@ -307,7 +312,7 @@ describe('upsertNotification', () => {
       },
       type: 'emoji_reaction',
     })
-    upsertNotification(db, notification as never, 'https://example.com')
+    upsertNotification(db, notification, 'https://example.com')
 
     const insertCall = calls.find((c) =>
       c.sql.includes('INSERT INTO notifications'),
@@ -475,7 +480,7 @@ describe('handleBulkAddNotifications', () => {
 
     // BEGIN + COMMIT が呼ばれる
     expect(calls[0].sql).toBe('BEGIN;')
-    expect(calls[calls.length - 1].sql).toBe('COMMIT;')
+    expect(calls.at(-1)?.sql).toBe('COMMIT;')
 
     // 3件の通知 INSERT が発行される
     const notifInserts = calls.filter((c) =>

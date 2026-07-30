@@ -7,12 +7,12 @@ export function MuteBlockControls({
   onChange,
   onOpenBlockManager,
   onOpenMuteManager,
-}: {
+}: Readonly<{
   config: TimelineConfigV2
   onChange: (updates: Partial<TimelineConfigV2>) => void
   onOpenBlockManager: () => void
   onOpenMuteManager: () => void
-}) {
+}>) {
   return (
     <div className="space-y-1">
       <label className="flex items-center gap-2 text-xs cursor-pointer">

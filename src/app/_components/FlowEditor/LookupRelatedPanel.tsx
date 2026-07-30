@@ -31,12 +31,12 @@ function defaultTimeCondition(
   }
 }
 
-type LookupRelatedPanelProps = {
+type LookupRelatedPanelProps = Readonly<{
   edges: FlowEdge[]
   node: FlowNode
   nodes: FlowNode[]
   onUpdate: FlowNodePanelProps['onUpdate']
-}
+}>
 
 export function LookupRelatedPanel({
   edges,
@@ -331,9 +331,9 @@ export function LookupRelatedPanel({
                 </button>
                 <button
                   className={`rounded px-1.5 py-0.5 text-[10px] border transition-colors ${
-                    !data.config.timeCondition.afterInput
-                      ? 'bg-sky-900/50 border-sky-700 text-sky-300'
-                      : 'bg-gray-700 border-gray-600 text-gray-400'
+                    data.config.timeCondition.afterInput
+                      ? 'bg-gray-700 border-gray-600 text-gray-400'
+                      : 'bg-sky-900/50 border-sky-700 text-sky-300'
                   }`}
                   onClick={() => updateTimeCondition({ afterInput: false })}
                   type="button"
@@ -395,9 +395,9 @@ export function LookupRelatedPanel({
             <div className="flex gap-1">
               <button
                 className={`rounded px-1.5 py-0.5 text-[10px] border transition-colors ${
-                  data.config.perLimitOrder !== 'nearest'
-                    ? 'bg-sky-900/50 border-sky-700 text-sky-300'
-                    : 'bg-gray-700 border-gray-600 text-gray-400'
+                  data.config.perLimitOrder === 'nearest'
+                    ? 'bg-gray-700 border-gray-600 text-gray-400'
+                    : 'bg-sky-900/50 border-sky-700 text-sky-300'
                 }`}
                 onClick={() => updateConfig({ perLimitOrder: 'furthest' })}
                 type="button"

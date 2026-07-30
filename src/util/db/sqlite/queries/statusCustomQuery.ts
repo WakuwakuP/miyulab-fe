@@ -36,7 +36,7 @@ export function sanitizeWhereClause(input: string): string {
   return (
     input
       // セミコロンを除去（複文実行防止）
-      .replace(/;/g, '')
+      .replaceAll(';', '')
       // LIMIT/OFFSET を除去（自動設定のため）
       .replace(/\bLIMIT\b\s+\d+/gi, '')
       .replace(/\bOFFSET\b\s+\d+/gi, '')

@@ -1,4 +1,8 @@
-import type { WrittenTableCollector } from '../protocol'
+import type {
+  BindValue,
+  SqliteResultRows,
+  WrittenTableCollector,
+} from '../protocol'
 import { emojiIdCache } from './cache'
 
 /**
@@ -9,7 +13,7 @@ export function ensureCustomEmoji(
     exec: (
       sql: string,
       opts?: {
-        bind?: (string | number | null)[]
+        bind?: BindValue[]
         returnValue?: 'resultRows'
       },
     ) => unknown
@@ -63,7 +67,7 @@ export function syncPostCustomEmojis(
     exec: (
       sql: string,
       opts?: {
-        bind?: (string | number | null)[]
+        bind?: BindValue[]
         returnValue?: 'resultRows'
       },
     ) => unknown
@@ -112,7 +116,7 @@ export function syncPostCustomEmojis(
 // ================================================================
 
 /** :shortcode: または :shortcode@host: パターンを抽出する正規表現 */
-export const CUSTOM_EMOJI_RE = /:([a-zA-Z0-9_]+)(?:@[\w.-]+)?:/g
+export const CUSTOM_EMOJI_RE = /:(\w+)(?:@[\w.-]+)?:/g
 
 /**
  * テキスト中の :shortcode: パターンから DB 上のカスタム絵文字を解決する。
@@ -126,7 +130,7 @@ export function resolveEmojisFromDb(
     exec: (
       sql: string,
       opts?: {
-        bind?: (string | number | null)[]
+        bind?: BindValue[]
         returnValue?: 'resultRows'
       },
     ) => unknown
@@ -158,7 +162,7 @@ export function resolveEmojisFromDb(
     const rows = db.exec(
       'SELECT url, static_url, visible_in_picker FROM custom_emojis WHERE server_id = ? AND shortcode = ?;',
       { bind: [serverId, shortcode], returnValue: 'resultRows' },
-    ) as (string | number | null)[][]
+    ) as SqliteResultRows
 
     if (rows.length > 0) {
       result.push({

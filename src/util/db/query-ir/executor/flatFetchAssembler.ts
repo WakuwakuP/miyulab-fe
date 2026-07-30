@@ -212,24 +212,24 @@ export function assembleNotificationFromFlat(
   actorEmojisMap: Map<number, string>,
 ): SqliteStoredNotification {
   const relatedPostId = row[N.RELATED_POST_ID] as number | null
-  const status = relatedPostId != null ? postMap.get(relatedPostId) : undefined
+  const status = relatedPostId == null ? undefined : postMap.get(relatedPostId)
 
   const actorProfileId = row[N.ACTOR_PROFILE_ID] as number | null
   const actorEmojisJson =
-    actorProfileId != null ? (actorEmojisMap.get(actorProfileId) ?? null) : null
+    actorProfileId == null ? null : (actorEmojisMap.get(actorProfileId) ?? null)
 
   const reactionName = row[N.REACTION_NAME] as string | null
   const reactionUrl = row[N.REACTION_URL] as string | null
   const reaction: Entity.Reaction | undefined =
-    reactionName != null
-      ? {
+    reactionName == null
+      ? undefined
+      : {
           accounts: [],
           count: 1,
           me: false,
           name: reactionName,
           ...(reactionUrl ? { static_url: reactionUrl, url: reactionUrl } : {}),
         }
-      : undefined
 
   return {
     account: {

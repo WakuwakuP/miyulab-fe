@@ -5,10 +5,10 @@ import type { TimelineConfigV2 } from 'types/types'
 export function MediaFilterControls({
   config,
   onChange,
-}: {
+}: Readonly<{
   config: TimelineConfigV2
   onChange: (updates: Partial<TimelineConfigV2>) => void
-}) {
+}>) {
   return (
     <div className="space-y-1">
       <label className="flex items-center space-x-2 cursor-pointer text-xs">

@@ -6,11 +6,11 @@ export function CollapsibleSection({
   children,
   defaultOpen = false,
   title,
-}: {
+}: Readonly<{
   children: React.ReactNode
   defaultOpen?: boolean
   title: string
-}) {
+}>) {
   const [isOpen, setIsOpen] = useState(defaultOpen)
 
   return (

@@ -73,7 +73,7 @@ function createMockDb(
             ? selectResults({ opts, selectIndex, sql })
             : selectResults[selectIndex]
         selectIndex++
-        return result !== undefined ? result : []
+        return result ?? []
       }
       return undefined
     }),

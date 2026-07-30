@@ -2,20 +2,22 @@ import type { Entity } from 'megalodon'
 import type { DbExec } from 'util/db/sqlite/worker/handlers/types'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+type SqlValue = string | number | null
+
 // ================================================================
 // ヘルパー
 // ================================================================
 
 type ExecCall = {
   sql: string
-  opts?: { bind?: (string | number | null)[]; returnValue?: 'resultRows' }
+  opts?: { bind?: SqlValue[]; returnValue?: 'resultRows' }
 }
 
 /** db.exec のモックを作成する */
 function createMockDb(
   execImpl?: (
     sql: string,
-    opts?: { bind?: (string | number | null)[]; returnValue?: 'resultRows' },
+    opts?: { bind?: SqlValue[]; returnValue?: 'resultRows' },
   ) => unknown,
 ): {
   db: DbExec
@@ -28,7 +30,7 @@ function createMockDb(
       (
         sql: string,
         opts?: {
-          bind?: (string | number | null)[]
+          bind?: SqlValue[]
           returnValue?: 'resultRows'
         },
       ) => {
@@ -59,15 +61,20 @@ function createMockStatus(
       fields: [],
       followers_count: 10,
       following_count: 20,
+      group: null,
       header: 'https://example.com/header.png',
       header_static: 'https://example.com/header_static.png',
       id: 'account-1',
+      limited: null,
       locked: false,
+      moved: null,
+      noindex: null,
       note: '',
       statuses_count: 100,
+      suspended: null,
       url: 'https://example.com/@alice',
       username: 'alice',
-    } as Entity.Account,
+    },
     bookmarked: false,
     content: '<p>Hello, world!</p>',
     created_at: '2024-06-15T12:30:00.000Z',
@@ -270,7 +277,7 @@ describe('handleUpdateStatus', () => {
     expect(updateSql).not.toContain('reblog_of_uri')
 
     // bind に新カラムの値が含まれること
-    const bind = updateCalls[0].opts?.bind as (string | number | null)[]
+    const bind = updateCalls[0].opts?.bind as SqlValue[]
     expect(bind).toContain(1718460000000) // edited_at_ms
     expect(bind).toContain('Edited content') // plain_content
     expect(bind).toContain('bob@remote.example') // in_reply_to_account_acct
