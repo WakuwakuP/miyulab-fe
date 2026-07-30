@@ -296,7 +296,17 @@ export const Status = ({
 
   return (
     <div className={statusClasses}>
-      {status.reblog != null ? (
+      {status.reblog == null ? (
+        <UserInfo
+          account={{
+            ...status.account,
+            appIndex: status.appIndex,
+          }}
+          scrolling={scrolling}
+          small={small}
+          visibility={status.visibility}
+        />
+      ) : (
         <>
           <button
             className="flex mb-1 overflow-clip border-0 bg-transparent p-0 text-inherit"
@@ -342,16 +352,6 @@ export const Status = ({
             visibility={status.reblog.visibility}
           />
         </>
-      ) : (
-        <UserInfo
-          account={{
-            ...status.account,
-            appIndex: status.appIndex,
-          }}
-          scrolling={scrolling}
-          small={small}
-          visibility={status.visibility}
-        />
       )}
       {(status.reblog?.spoiler_text ?? status.spoiler_text) !== '' && (
         <div className="border-b-2 border-b-gray-600 py-2 text-gray-400">
