@@ -10,10 +10,10 @@ import { VisibilityFilter } from './VisibilityFilter'
 
 export { MuteBlockControls } from './MuteBlockControls'
 
-type FilterControlsProps = {
+type FilterControlsProps = Readonly<{
   config: TimelineConfigV2
   onChange: (updates: Partial<TimelineConfigV2>) => void
-}
+}>
 
 export function FilterControls({ config, onChange }: FilterControlsProps) {
   return (
