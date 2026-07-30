@@ -44,7 +44,7 @@ export const EmojiReactions = ({
 
   if (reactions.length === 0) return null
 
-  const statusApp = status.appIndex != null ? apps[status.appIndex] : undefined
+  const statusApp = status.appIndex == null ? undefined : apps[status.appIndex]
   const canReact =
     statusApp != null && REACTION_BACKENDS.includes(statusApp.backend)
 
