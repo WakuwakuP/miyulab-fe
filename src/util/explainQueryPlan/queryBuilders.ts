@@ -286,7 +286,7 @@ function buildCustomQuery(config: TimelineConfigV2): {
   }
   const sanitized = upgradeQueryToV2(
     customQuery
-      .replace(/;/g, '')
+      .replaceAll(';', '')
       .replace(/\bLIMIT\b\s+\d+/gi, '')
       .replace(/\bOFFSET\b\s+\d+/gi, '')
       .trim(),
