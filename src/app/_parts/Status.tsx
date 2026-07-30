@@ -294,7 +294,7 @@ export const Status = ({
     'leading-7',
     className,
     small ? 'max-h-24 overflow-clip' : '',
-    status.reblog != null ? 'border-l-4 border-blue-400 pl-2 mb-2' : '',
+    status.reblog == null ? '' : 'border-l-4 border-blue-400 pl-2 mb-2',
   ].join(' ')
 
   const poll = status.reblog?.poll ?? status.poll
