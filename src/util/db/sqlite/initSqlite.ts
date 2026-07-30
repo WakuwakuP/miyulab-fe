@@ -162,7 +162,7 @@ async function initMainThreadFallback(
 
   // スキーマ初期化
   const { ensureSchema } = await import('./schema')
-  ensureSchema({ db: rawDb } as import('./worker/workerSchema').SchemaDbHandle)
+  ensureSchema({ db: rawDb })
 
   console.warn(
     'SQLite: using in-memory fallback (no Worker). Data will not persist.',
