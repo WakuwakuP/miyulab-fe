@@ -167,7 +167,23 @@ async function initMainThreadFallback(
 
   // スキーマ初期化
   const { ensureSchema } = await import('./schema')
-  ensureSchema({ db: rawDb })
+  // sqlite-wasm の exec は戻り値ごとの overload なので、
+  // スキーマ層が使う狭いインターフェースへ明示的に変換する。
+  const schemaDb: import('./worker/workerSchema').SchemaDbHandle['db'] = {
+    exec: (sql, opts) => {
+      if (opts?.returnValue === 'resultRows') {
+        return rawDb.exec(sql, {
+          bind: opts.bind,
+          returnValue: 'resultRows',
+        })
+      }
+      if (opts?.bind !== undefined) {
+        return rawDb.exec(sql, { bind: opts.bind })
+      }
+      return rawDb.exec(sql)
+    },
+  }
+  ensureSchema({ db: schemaDb })
 
   console.warn(
     'SQLite: using in-memory fallback (no Worker). Data will not persist.',
