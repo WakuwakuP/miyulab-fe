@@ -161,7 +161,7 @@ export function usePanelRoute(): PanelRoute {
 
 /** pushState で URL を変更し、サブスクライバーに通知する */
 export function navigatePanel(path: string, state?: unknown) {
-  window.history.pushState(state ?? null, '', path)
+  globalThis.history.pushState(state ?? null, '', path)
   emitChange()
 }
 
