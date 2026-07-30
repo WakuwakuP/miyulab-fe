@@ -42,10 +42,7 @@ function flushQueue(): void {
   // Worker 環境のみ postMessage を使用する
   // Window 環境（fallback DB 実装）では window.postMessage となり
   // targetOrigin 引数が必須のため、ここでは送信せずにキューを破棄する。
-  if (
-    typeof globalThis.window !== 'undefined' &&
-    globalThis === globalThis.window
-  ) {
+  if (globalThis.window !== undefined && globalThis === globalThis.window) {
     return
   }
   globalThis.postMessage(message)
@@ -144,7 +141,7 @@ export function logSlowQueryExplain(
     sql: sanitizeSql(sql),
     timestamp: new Date().toISOString(),
     userAgent:
-      typeof globalThis.navigator === 'undefined'
+      globalThis.navigator === undefined
         ? 'unknown'
         : globalThis.navigator.userAgent,
   }
