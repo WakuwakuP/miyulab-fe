@@ -174,8 +174,8 @@ export const AppsProvider = ({
           if (await detectMisskey(backendUrl)) {
             return 'misskey' as Backend
           }
-        } catch (e2) {
-          console.error('Failed to detect Misskey:', e2)
+        } catch (error_) {
+          console.error('Failed to detect Misskey:', error_)
         }
         return null
       }
