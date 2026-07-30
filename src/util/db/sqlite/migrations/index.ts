@@ -135,9 +135,9 @@ function resetSchema(
     createFreshSchema(handle)
     db.exec(`PRAGMA user_version = ${encodeSemVer(LATEST_VERSION)};`)
     db.exec('COMMIT;')
-  } catch (e2) {
+  } catch (error_) {
     db.exec('ROLLBACK;')
-    throw e2
+    throw error_
   }
 }
 
