@@ -69,7 +69,7 @@ export const DetailProvider = ({ children }: { children: ReactNode }) => {
       }
 
       const newPath = detailToPath(action)
-      const currentPath = window.location.pathname
+      const currentPath = globalThis.location.pathname
 
       if (newPath !== currentPath) {
         // 新しいパスへ遷移
