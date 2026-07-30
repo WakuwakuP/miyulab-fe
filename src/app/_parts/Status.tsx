@@ -58,8 +58,7 @@ export const Status = ({
 
   // status が属するサーバの絵文字一覧を取得（カタログ優先、フォールバックで旧 EmojiContext）
   const serverEmojis = useMemo(() => {
-    const backendUrl =
-      status.appIndex != null ? apps[status.appIndex]?.backendUrl : undefined
+    const backendUrl = apps[status.appIndex]?.backendUrl
     if (backendUrl) {
       const catalog = emojiCatalog.get(backendUrl)
       if (catalog && catalog.length > 0) return catalog
