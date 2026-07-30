@@ -4,7 +4,6 @@
 import type { Entity } from 'megalodon'
 import React, {
   type ChangeEventHandler,
-  type KeyboardEventHandler,
   type MouseEventHandler,
   useContext,
   useEffect,
@@ -215,15 +214,6 @@ const PlayerController = () => {
     toggleNativePlayback(player, setPlaying)
   }
 
-  const handleMediaKeyDown: KeyboardEventHandler<HTMLDivElement> = (e) => {
-    if (!controls.canPlayPause || e.currentTarget !== e.target) return
-    if (e.key !== 'Enter' && e.key !== ' ') return
-
-    e.preventDefault()
-    e.stopPropagation()
-    onClickPlay()
-  }
-
   const onClickClose = () => {
     setPlaying(false)
     setAttachment({
@@ -353,22 +343,28 @@ const PlayerController = () => {
       ref={playerRootRef}
       tabIndex={-1}
     >
-      <div
-        className="bg-black"
-        onClick={controls.canPlayPause ? onClickPlay : undefined}
-        onKeyDown={controls.canPlayPause ? handleMediaKeyDown : undefined}
-        role={controls.canPlayPause ? 'button' : undefined}
-        tabIndex={controls.canPlayPause ? 0 : undefined}
-      >
-        {playableMedia}
-        {currentAttachment.type === 'image' && (
-          <img
-            alt={currentAttachment.description ?? ''}
-            className="h-full w-full object-contain"
-            src={currentUrl}
-          />
-        )}
-      </div>
+      {controls.canPlayPause ? (
+        <button
+          aria-label={playing ? 'Pause media' : 'Play media'}
+          aria-pressed={playing}
+          className="block w-full appearance-none border-0 bg-black p-0"
+          onClick={onClickPlay}
+          type="button"
+        >
+          {playableMedia}
+        </button>
+      ) : (
+        <div className="bg-black">
+          {playableMedia}
+          {currentAttachment.type === 'image' && (
+            <img
+              alt={currentAttachment.description ?? ''}
+              className="h-full w-full object-contain"
+              src={currentUrl}
+            />
+          )}
+        </div>
+      )}
       <div className="box-border flex h-12 items-center space-x-px bg-gray-500 pt-[2px]">
         <button
           className="flex h-12 w-12 shrink-0 items-center justify-center bg-gray-800 hover:bg-gray-500 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-gray-800"
