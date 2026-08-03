@@ -52,7 +52,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          branch_name="cursor/weekly-package-upgrade-${GITHUB_RUN_ID}"
+          branch_name="cursor/weekly-package-upgrade-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           git switch -c "$branch_name"
           echo "name=$branch_name" >> "$GITHUB_OUTPUT"
 

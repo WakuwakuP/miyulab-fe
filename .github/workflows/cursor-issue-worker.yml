@@ -99,7 +99,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          branch_name="cursor/issue-${ISSUE_NUMBER}-${GITHUB_RUN_ID}"
+          branch_name="cursor/issue-${ISSUE_NUMBER}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           git switch -c "$branch_name"
           echo "name=$branch_name" >> "$GITHUB_OUTPUT"
 
@@ -215,6 +215,7 @@ jobs:
           fi
 
       - name: Publish pull request and update issue
+        id: publish
         env:
           BRANCH_NAME: ${{ steps.branch.outputs.name }}
           GH_TOKEN: ${{ secrets.GH_AW_GITHUB_TOKEN || github.token }}
@@ -252,35 +253,44 @@ jobs:
             --title "$pr_title" \
             --body-file "$pr_body" \
             >/dev/null
+          echo "pr_created=true" >> "$GITHUB_OUTPUT"
           pr_url="$(gh pr view "$BRANCH_NAME" --repo "$GITHUB_REPOSITORY" --json url --jq '.url')"
-          gh pr edit "$pr_url" --repo "$GITHUB_REPOSITORY" --add-label agent-created
 
-          success_issue="$RUNNER_TEMP/cursor-success-${ISSUE_NUMBER}.json"
-          gh api "repos/${GITHUB_REPOSITORY}/issues/${ISSUE_NUMBER}" > "$success_issue"
-          remove_labels="$(jq -r '
-            [.labels[].name]
-            | map(select(
-                . == "agent:in-progress" or
-                . == "agent:claimed" or
-                . == "agent:blocked" or
-                . == "symphony/failed"
-              ))
-            | join(",")
-          ' "$success_issue")"
-          if [[ -n "$remove_labels" ]]; then
+          # Labeling/comments must not fail the job after a PR already exists;
+          # otherwise Mark failed would wrongly apply a failure label.
+          if ! (
+            set -euo pipefail
+            gh pr edit "$pr_url" --repo "$GITHUB_REPOSITORY" --add-label agent-created
+
+            success_issue="$RUNNER_TEMP/cursor-success-${ISSUE_NUMBER}.json"
+            gh api "repos/${GITHUB_REPOSITORY}/issues/${ISSUE_NUMBER}" > "$success_issue"
+            remove_labels="$(jq -r '
+              [.labels[].name]
+              | map(select(
+                  . == "agent:in-progress" or
+                  . == "agent:claimed" or
+                  . == "agent:blocked" or
+                  . == "symphony/failed"
+                ))
+              | join(",")
+            ' "$success_issue")"
+            if [[ -n "$remove_labels" ]]; then
+              gh issue edit "$ISSUE_NUMBER" \
+                --repo "$GITHUB_REPOSITORY" \
+                --remove-label "$remove_labels"
+            fi
             gh issue edit "$ISSUE_NUMBER" \
               --repo "$GITHUB_REPOSITORY" \
-              --remove-label "$remove_labels"
+              --add-label agent:review
+            gh issue comment "$ISSUE_NUMBER" \
+              --repo "$GITHUB_REPOSITORY" \
+              --body "✅ 実装 Pull Request を作成しました: ${pr_url}"
+          ); then
+            echo "::warning::Pull request was created, but post-publish updates failed: ${pr_url}"
           fi
-          gh issue edit "$ISSUE_NUMBER" \
-            --repo "$GITHUB_REPOSITORY" \
-            --add-label agent:review
-          gh issue comment "$ISSUE_NUMBER" \
-            --repo "$GITHUB_REPOSITORY" \
-            --body "✅ 実装 Pull Request を作成しました: ${pr_url}"
 
       - name: Mark failed implementation
-        if: ${{ always() && steps.claim.outcome == 'success' && job.status != 'success' }}
+        if: ${{ always() && steps.claim.outcome == 'success' && job.status != 'success' && steps.publish.outputs.pr_created != 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GH_AW_GITHUB_TOKEN || github.token }}
         run: |
