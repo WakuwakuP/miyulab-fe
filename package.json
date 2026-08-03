@@ -56,8 +56,8 @@
     "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "^26.1.2",
     "@types/pg": "^8.20.0",
-    "@types/react": "^19.2.17",
-    "@types/react-dom": "^19.2.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
     "@types/slick-carousel": "^1.6.40",
     "@vitest/coverage-v8": "^4.1.10",
     "@zenstackhq/cli": "^3.8.3",
@@ -75,8 +75,8 @@
   "packageManager": "yarn@4.17.0",
   "private": true,
   "resolutions": {
-    "@types/react": "19.2.17",
-    "@types/react-dom": "19.2.3"
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4"
   },
   "scripts": {
     "build": "yarn copy:sqlite-wasm && next build",
