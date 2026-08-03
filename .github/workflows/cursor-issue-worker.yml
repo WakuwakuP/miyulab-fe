@@ -187,6 +187,9 @@ jobs:
           # Deliberately use GITHUB_TOKEN so this untrusted-input workflow does
           # not trigger PR workflows that would execute generated code.
           GH_TOKEN: ${{ github.token }}
+          # PAT so applying agent:review can trigger cursor-agent-review.yml;
+          # GITHUB_TOKEN label events do not start downstream workflows.
+          REVIEW_LABEL_TOKEN: ${{ secrets.GH_AW_GITHUB_TOKEN || github.token }}
         run: |
           set -euo pipefail
 
@@ -257,7 +260,7 @@ jobs:
                 post_publish_failed=1
               fi
             fi
-            if ! gh issue edit "$ISSUE_NUMBER" \
+            if ! GH_TOKEN="$REVIEW_LABEL_TOKEN" gh issue edit "$ISSUE_NUMBER" \
               --repo "$GITHUB_REPOSITORY" \
               --add-label agent:review; then
               echo "::warning::Failed to add agent:review to issue #${ISSUE_NUMBER}"
