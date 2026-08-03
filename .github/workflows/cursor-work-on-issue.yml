@@ -1,0 +1,155 @@
+name: Cursor Work on Issue
+run-name: Cursor work on issue #${{ github.event.issue.number }}
+
+on:
+  issue_comment:
+    types: [created, edited]
+  issues:
+    types: [opened, edited, reopened]
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: cursor-work-on-issue-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  authorize:
+    name: Validate slash command and actor
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    outputs:
+      issue_number: ${{ steps.authorize.outputs.issue_number }}
+
+    steps:
+      - name: Require Cursor API key
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "$CURSOR_API_KEY" ]]; then
+            echo "::error::Repository secret CURSOR_API_KEY is not configured"
+            exit 1
+          fi
+
+      - name: Authorize request
+        id: authorize
+        env:
+          ACTOR: ${{ github.actor }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+          GH_TOKEN: ${{ secrets.GH_AW_GITHUB_TOKEN || github.token }}
+        run: |
+          set -euo pipefail
+
+          if jq -e '.issue | has("pull_request")' "$GITHUB_EVENT_PATH" >/dev/null; then
+            echo "Ignoring /work-on-this on a pull request." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if [[ "$(jq -r '.issue.state' "$GITHUB_EVENT_PATH")" != "open" ]]; then
+            echo "Ignoring /work-on-this on a closed issue." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          first_line="$(
+            jq -r '(.comment.body // .issue.body // "") | split("\n")[0] | sub("\r$"; "")' \
+              "$GITHUB_EVENT_PATH"
+          )"
+          # Match exact /work-on-this or "/work-on-this " plus optional args
+          # (same activation surface as the legacy gh-aw workflow).
+          case "$first_line" in
+            "/work-on-this"|"/work-on-this "*) ;;
+            *) exit 0 ;;
+          esac
+
+          permission="$(
+            gh api \
+              "repos/${GITHUB_REPOSITORY}/collaborators/${ACTOR}/permission" \
+              --jq '.permission' 2>/dev/null || true
+          )"
+          case "$permission" in
+            admin|maintain|write) ;;
+            *)
+              echo "::warning::Actor $ACTOR does not have write permission"
+              exit 0
+              ;;
+          esac
+
+          issue_number="$(jq -r '.issue.number' "$GITHUB_EVENT_PATH")"
+          issue_api="$RUNNER_TEMP/cursor-command-issue-${issue_number}.json"
+          gh api "repos/${GITHUB_REPOSITORY}/issues/${issue_number}" > "$issue_api"
+          if jq -e '
+            [.labels[].name]
+            | any(
+                . == "agent:in-progress" or
+                . == "agent:claimed" or
+                . == "agent:review" or
+                . == "agent:done"
+              )
+          ' "$issue_api" >/dev/null; then
+            echo "Issue #$issue_number is already being handled." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          owner="$GITHUB_REPOSITORY_OWNER"
+          repository_name="${GITHUB_REPOSITORY#*/}"
+          linked_pr_count="$(
+            gh api graphql \
+              -f query='query($owner: String!, $name: String!, $number: Int!) {
+                repository(owner: $owner, name: $name) {
+                  issue(number: $number) {
+                    closedByPullRequestsReferences(first: 1) { totalCount }
+                  }
+                }
+              }' \
+              -F owner="$owner" \
+              -F name="$repository_name" \
+              -F number="$issue_number" \
+              --jq '.data.repository.issue.closedByPullRequestsReferences.totalCount // 0'
+          )"
+          if [[ "$linked_pr_count" != "0" ]]; then
+            echo "Issue #$issue_number already has a linked pull request." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          case "$GITHUB_EVENT_NAME" in
+            issue_comment)
+              reaction_endpoint="repos/${GITHUB_REPOSITORY}/issues/comments/${COMMENT_ID}/reactions"
+              ;;
+            issues)
+              reaction_endpoint="repos/${GITHUB_REPOSITORY}/issues/${issue_number}/reactions"
+              ;;
+            *)
+              echo "::error::Unsupported event: $GITHUB_EVENT_NAME"
+              exit 1
+              ;;
+          esac
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            "$reaction_endpoint" \
+            -f content=eyes \
+            >/dev/null
+          echo "issue_number=$issue_number" >> "$GITHUB_OUTPUT"
+
+  implement:
+    name: Implement requested issue
+    needs: authorize
+    if: ${{ needs.authorize.outputs.issue_number != '' }}
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    uses: ./.github/workflows/cursor-issue-worker.yml
+    with:
+      issue_number: ${{ needs.authorize.outputs.issue_number }}
+      additional_context: Requested by an authorized /work-on-this command in an issue body or comment.
+    secrets:
+      CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+      GH_AW_GITHUB_TOKEN: ${{ secrets.GH_AW_GITHUB_TOKEN }}

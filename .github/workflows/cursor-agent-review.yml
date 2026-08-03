@@ -1,0 +1,251 @@
+name: "Cursor: Code Review Agent"
+
+"on":
+  issues:
+    types: [labeled]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+concurrency:
+  group: cursor-agent-review-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  review:
+    if: >-
+      ${{
+        github.event.label.name == 'agent:review' ||
+        github.event.label.name == 'agent-review'
+      }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Authorize triggering actor
+        id: authorize
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          permission="$(
+            gh api \
+              "repos/${GITHUB_REPOSITORY}/collaborators/${GITHUB_ACTOR}/permission" \
+              --jq '.permission' 2>/dev/null || true
+          )"
+
+          case "$permission" in
+            admin|maintain|write)
+              echo "authorized=true" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              echo "authorized=false" >> "$GITHUB_OUTPUT"
+              echo "Actor ${GITHUB_ACTOR} does not have write permission; skipping."
+              ;;
+          esac
+
+      # agent:review is the handoff signal. Clear a leftover agent:in-progress
+      # so best-effort post-publish cleanup failures cannot skip review.
+      - name: Clear stale in-progress label
+        if: steps.authorize.outputs.authorized == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+
+          if jq -e '
+            [.issue.labels[].name]
+            | any(. == "agent:in-progress")
+          ' "$GITHUB_EVENT_PATH" >/dev/null; then
+            if ! gh issue edit "$ISSUE_NUMBER" \
+              --repo "$GITHUB_REPOSITORY" \
+              --remove-label agent:in-progress; then
+              echo "::warning::Failed to remove stale agent:in-progress from issue #${ISSUE_NUMBER}; continuing review"
+            fi
+          fi
+
+      - name: Checkout repository
+        if: steps.authorize.outputs.authorized == 'true'
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Fetch issue and associated pull request context
+        if: steps.authorize.outputs.authorized == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p .cursor-input .cursor-output
+
+          gh issue view "$ISSUE_NUMBER" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json number,title,body,url,author,labels,comments \
+            > .cursor-input/agent-review-issue.json
+
+          : > .cursor-input/agent-review-pr-candidates.txt
+
+          # Accept only explicit pull request URLs for this repository.
+          {
+            jq -r '.body // empty, .comments[]?.body // empty' \
+              .cursor-input/agent-review-issue.json |
+              grep -Eo 'https://github.com/[^/[:space:]]+/[^/[:space:]]+/pull/[0-9]+' || true
+          } | while IFS= read -r url; do
+            prefix="https://github.com/${GITHUB_REPOSITORY}/pull/"
+            case "$url" in
+              "$prefix"*) printf '%s\n' "${url#"$prefix"}" ;;
+            esac
+          done >> .cursor-input/agent-review-pr-candidates.txt
+
+          # Cross-references are a strong signal that the issue and PR are linked.
+          gh api --paginate \
+            -H 'Accept: application/vnd.github+json' \
+            "repos/${GITHUB_REPOSITORY}/issues/${ISSUE_NUMBER}/timeline" \
+            --jq '.[] | select(.event == "cross-referenced" and .source.issue.pull_request != null) | .source.issue.number' \
+            >> .cursor-input/agent-review-pr-candidates.txt || true
+
+          owner="${GITHUB_REPOSITORY%%/*}"
+          repository="${GITHUB_REPOSITORY#*/}"
+          if gh api graphql \
+            -F owner="$owner" \
+            -F name="$repository" \
+            -f query='query($owner: String!, $name: String!) {
+              repository(owner: $owner, name: $name) {
+                pullRequests(first: 100, states: [OPEN], orderBy: {field: UPDATED_AT, direction: DESC}) {
+                  nodes {
+                    number
+                    closingIssuesReferences(first: 20) { nodes { number } }
+                  }
+                }
+              }
+            }' \
+            > .cursor-input/agent-review-closing-prs.json; then
+            jq -r --argjson issue "$ISSUE_NUMBER" '
+              .data.repository.pullRequests.nodes[]?
+              | select(.closingIssuesReferences.nodes | any(.number == $issue))
+              | .number
+            ' .cursor-input/agent-review-closing-prs.json \
+              >> .cursor-input/agent-review-pr-candidates.txt
+          fi
+
+          # Recognize only conventional branch names with an issue/fix prefix.
+          gh pr list \
+            --repo "$GITHUB_REPOSITORY" \
+            --state open \
+            --limit 100 \
+            --json number,headRefName \
+            > .cursor-input/agent-review-open-prs.json
+          jq -r --arg issue "$ISSUE_NUMBER" '
+            .[]
+            | select(
+                .headRefName
+                | test("(^|[/_-])(issue|fix|bug|feature|feat)[/_-]?" + $issue + "($|[/_-])"; "i")
+              )
+            | .number
+          ' .cursor-input/agent-review-open-prs.json \
+            >> .cursor-input/agent-review-pr-candidates.txt
+
+          sort -n -u .cursor-input/agent-review-pr-candidates.txt |
+            awk 'NF' > .cursor-input/agent-review-pr-candidates.sorted.txt
+          jq -Rsc '
+            split("\n")
+            | map(select(length > 0) | tonumber)
+          ' .cursor-input/agent-review-pr-candidates.sorted.txt \
+            > .cursor-input/agent-review-pr-candidates.json
+
+          candidate_count="$(
+            jq 'length' .cursor-input/agent-review-pr-candidates.json
+          )"
+          diff_available=false
+          diff_truncated=false
+          printf 'null\n' > .cursor-input/agent-review-pr.json
+          : > .cursor-input/agent-review-pr.diff
+
+          if [[ "$candidate_count" == "1" ]]; then
+            pr_number="$(
+              jq -r '.[0]' .cursor-input/agent-review-pr-candidates.json
+            )"
+            if gh pr view "$pr_number" \
+              --repo "$GITHUB_REPOSITORY" \
+              --json number,title,body,url,state,isDraft,author,baseRefName,headRefName,additions,deletions,changedFiles,files,commits,reviews,comments \
+              > .cursor-input/agent-review-pr.json; then
+              if gh pr diff "$pr_number" \
+                --repo "$GITHUB_REPOSITORY" \
+                > .cursor-input/agent-review-pr.full.diff; then
+                diff_available=true
+                diff_bytes="$(
+                  wc -c < .cursor-input/agent-review-pr.full.diff
+                )"
+                if (( diff_bytes > 200000 )); then
+                  diff_truncated=true
+                fi
+                head -c 200000 .cursor-input/agent-review-pr.full.diff \
+                  > .cursor-input/agent-review-pr.diff
+              fi
+            fi
+          fi
+
+          jq -n \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg generated_at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            --argjson candidate_count "$candidate_count" \
+            --argjson diff_available "$diff_available" \
+            --argjson diff_truncated "$diff_truncated" \
+            --slurpfile issue .cursor-input/agent-review-issue.json \
+            --slurpfile pull_request .cursor-input/agent-review-pr.json \
+            --slurpfile candidates .cursor-input/agent-review-pr-candidates.json \
+            --rawfile diff .cursor-input/agent-review-pr.diff \
+            '{
+              repository: $repository,
+              generated_at: $generated_at,
+              issue: $issue[0],
+              pull_request: $pull_request[0],
+              pull_request_candidates: $candidates[0],
+              pull_request_candidate_count: $candidate_count,
+              pull_request_diff: $diff,
+              pull_request_diff_available: $diff_available,
+              pull_request_diff_truncated: $diff_truncated
+            }' > .cursor-input/agent-review.json
+
+      - name: Review with Cursor
+        if: steps.authorize.outputs.authorized == 'true'
+        uses: ./.github/actions/run-cursor
+        with:
+          prompt-file: .github/cursor/prompts/agent-review.md
+          mode: analysis
+          output-file: .cursor-output/agent-review.json
+          model: ${{ vars.CURSOR_AGENT_MODEL }}
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+
+      - name: Validate and post review comment
+        if: steps.authorize.outputs.authorized == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GH_AW_GITHUB_TOKEN || github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+
+          jq -e '
+            type == "object"
+            and (keys == ["comment"])
+            and (
+              .comment
+              | type == "string"
+                and length > 0
+                and length <= 50000
+                and test("[ぁ-んァ-ヶ一-龠々ー]")
+            )
+          ' .cursor-output/agent-review.json > /dev/null
+
+          jq -r '.comment' .cursor-output/agent-review.json \
+            > .cursor-output/agent-review-comment.md
+          gh issue comment "$ISSUE_NUMBER" \
+            --repo "$GITHUB_REPOSITORY" \
+            --body-file .cursor-output/agent-review-comment.md

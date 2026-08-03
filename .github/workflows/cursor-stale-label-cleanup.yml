@@ -1,0 +1,290 @@
+name: "Cursor: Stale Label Cleanup"
+
+"on":
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+
+concurrency:
+  group: cursor-stale-label-cleanup
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Fetch cleanup candidates and active workflow runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          mkdir -p .cursor-input .cursor-output
+
+          for label in agent:in-progress agent:claimed agent:retry-queued; do
+            filename="${label//:/-}"
+            gh issue list \
+              --repo "$GITHUB_REPOSITORY" \
+              --state open \
+              --label "$label" \
+              --limit 100 \
+              --json number,title,url,labels,updatedAt \
+              > ".cursor-input/candidates-${filename}.json"
+          done
+
+          jq -s '
+            add
+            | unique_by(.number)
+            | sort_by(.updatedAt, .number)
+            | .[:50]
+          ' .cursor-input/candidates-agent-*.json \
+            > .cursor-input/stale-label-candidates.json
+
+          gh run list \
+            --repo "$GITHUB_REPOSITORY" \
+            --status queued \
+            --limit 100 \
+            --json databaseId,workflowName,displayTitle,event,status,createdAt,updatedAt,url,headBranch \
+            > .cursor-input/active-runs-queued.json
+          gh run list \
+            --repo "$GITHUB_REPOSITORY" \
+            --status in_progress \
+            --limit 100 \
+            --json databaseId,workflowName,displayTitle,event,status,createdAt,updatedAt,url,headBranch \
+            > .cursor-input/active-runs-in-progress.json
+          jq -s '
+            add
+            | unique_by(.databaseId)
+            | sort_by(.updatedAt)
+            | reverse
+          ' .cursor-input/active-runs-*.json \
+            > .cursor-input/stale-label-active-runs.json
+
+          jq -n \
+            --arg repository "$GITHUB_REPOSITORY" \
+            --arg generated_at "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            --slurpfile candidates .cursor-input/stale-label-candidates.json \
+            --slurpfile runs .cursor-input/stale-label-active-runs.json '
+            ($runs[0]) as $active_runs
+            | {
+                repository: $repository,
+                generated_at: $generated_at,
+                policy: {
+                  maximum_cleanups: 10,
+                  maximum_comments: 5,
+                  removable_labels: [
+                    "agent:in-progress",
+                    "agent:claimed",
+                    "agent:retry-queued"
+                  ]
+                },
+                candidates: (
+                  $candidates[0]
+                  | map(
+                      . as $candidate
+                      | . + {
+                          active_run_matches: [
+                            $active_runs[]
+                            | select(
+                                .workflowName == "Cursor Daily Work"
+                                or .displayTitle == $candidate.title
+                                or (
+                                  ((.displayTitle // "") + "\n" + (.headBranch // ""))
+                                  | test(
+                                      "(^|[^0-9])#?"
+                                      + ($candidate.number | tostring)
+                                      + "([^0-9]|$)";
+                                      "i"
+                                    )
+                                )
+                              )
+                          ]
+                        }
+                    )
+                ),
+                active_runs: $active_runs
+              }
+          ' > .cursor-input/stale-label-cleanup.json
+
+      - name: Analyze stale labels with Cursor
+        uses: ./.github/actions/run-cursor
+        with:
+          prompt-file: .github/cursor/prompts/stale-label-cleanup.md
+          mode: analysis
+          output-file: .cursor-output/stale-label-cleanup.json
+          model: ${{ vars.CURSOR_AGENT_MODEL }}
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+
+      - name: Validate cleanup plan
+        run: |
+          set -euo pipefail
+
+          jq -e --slurpfile context .cursor-input/stale-label-cleanup.json '
+            ($context[0].candidates) as $candidates
+            | type == "object"
+            and (keys == ["cleanups"])
+            and (.cleanups | type == "array" and length <= 10)
+            and (
+              [.cleanups[].number]
+              | length == (unique | length)
+            )
+            and (
+              [.cleanups[] | select(.comment | type == "string" and length > 0)]
+              | length <= 5
+            )
+            and all(
+              .cleanups[];
+              . as $cleanup
+              | ($cleanup | type == "object")
+              and ($cleanup | keys == ["comment", "labels", "number"])
+              and ($cleanup.number | type == "number" and floor == .)
+              and (
+                $cleanup.labels
+                | type == "array"
+                  and length > 0
+                  and length <= 3
+                  and length == (unique | length)
+                  and all(
+                    .[];
+                    . == "agent:in-progress"
+                    or . == "agent:claimed"
+                    or . == "agent:retry-queued"
+                  )
+              )
+              and (
+                $cleanup.comment
+                | type == "string"
+                  and length <= 10000
+                  and (
+                    length == 0
+                    or test("[ぁ-んァ-ヶ一-龠々ー]")
+                  )
+              )
+              and (
+                ([$candidates[] | select(.number == $cleanup.number)][0]) as $candidate
+                | $candidate != null
+                  and ($candidate.active_run_matches | length == 0)
+                  and all(
+                    $cleanup.labels[];
+                    . as $label
+                    | any($candidate.labels[]; .name == $label)
+                  )
+              )
+            )
+          ' .cursor-output/stale-label-cleanup.json > /dev/null
+
+      - name: Recheck and apply cleanup plan
+        env:
+          GH_TOKEN: ${{ secrets.GH_AW_GITHUB_TOKEN || github.token }}
+        run: |
+          set -euo pipefail
+
+          gh run list \
+            --repo "$GITHUB_REPOSITORY" \
+            --status queued \
+            --limit 100 \
+            --json databaseId,workflowName,displayTitle,headBranch \
+            > .cursor-input/current-runs-queued.json
+          gh run list \
+            --repo "$GITHUB_REPOSITORY" \
+            --status in_progress \
+            --limit 100 \
+            --json databaseId,workflowName,displayTitle,headBranch \
+            > .cursor-input/current-runs-in-progress.json
+          jq -s 'add | unique_by(.databaseId)' \
+            .cursor-input/current-runs-*.json \
+            > .cursor-input/current-active-runs.json
+
+          jq -c '.cleanups[]' .cursor-output/stale-label-cleanup.json |
+            while IFS= read -r cleanup; do
+              number="$(jq -r '.number' <<< "$cleanup")"
+              gh issue view "$number" \
+                --repo "$GITHUB_REPOSITORY" \
+                --json state,title,labels \
+                > .cursor-input/current-issue.json
+              if [[ "$(jq -r '.state' .cursor-input/current-issue.json)" != "OPEN" ]]; then
+                echo "Skipping issue #${number}: it is no longer open."
+                continue
+              fi
+              title="$(jq -r '.title' .cursor-input/current-issue.json)"
+
+              if jq -e \
+                --arg title "$title" \
+                --arg number "$number" '
+                  any(
+                    .[];
+                    .workflowName == "Cursor Daily Work"
+                    or .displayTitle == $title
+                    or (
+                      ((.displayTitle // "") + "\n" + (.headBranch // ""))
+                      | test(
+                          "(^|[^0-9])#?" + $number + "([^0-9]|$)";
+                          "i"
+                        )
+                    )
+                  )
+                ' .cursor-input/current-active-runs.json > /dev/null; then
+                echo "Skipping issue #${number}: an active run now appears to match."
+                continue
+              fi
+
+              owner="$GITHUB_REPOSITORY_OWNER"
+              repository_name="${GITHUB_REPOSITORY#*/}"
+              linked_pr_count="$(
+                gh api graphql \
+                  -f query='query($owner: String!, $name: String!, $number: Int!) {
+                    repository(owner: $owner, name: $name) {
+                      issue(number: $number) {
+                        closedByPullRequestsReferences(first: 1) { totalCount }
+                      }
+                    }
+                  }' \
+                  -F owner="$owner" \
+                  -F name="$repository_name" \
+                  -F number="$number" \
+                  --jq '.data.repository.issue.closedByPullRequestsReferences.totalCount // 0'
+              )"
+              if [[ "$linked_pr_count" != "0" ]]; then
+                echo "Skipping issue #${number}: a linked pull request still exists."
+                continue
+              fi
+
+              if ! jq -e --argjson cleanup "$cleanup" '
+                . as $issue
+                |
+                all(
+                  $cleanup.labels[];
+                  . as $label
+                  | any($issue.labels[]; .name == $label)
+                )
+              ' .cursor-input/current-issue.json > /dev/null; then
+                echo "Skipping issue #${number}: labels changed after analysis."
+                continue
+              fi
+
+              labels="$(jq -r '.labels | join(",")' <<< "$cleanup")"
+              gh issue edit "$number" \
+                --repo "$GITHUB_REPOSITORY" \
+                --remove-label "$labels"
+
+              comment="$(jq -r '.comment' <<< "$cleanup")"
+              if [[ -n "$comment" ]]; then
+                printf '%s\n' "$comment" > .cursor-output/stale-label-comment.md
+                gh issue comment "$number" \
+                  --repo "$GITHUB_REPOSITORY" \
+                  --body-file .cursor-output/stale-label-comment.md
+              fi
+            done

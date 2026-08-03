@@ -1,0 +1,182 @@
+name: Cursor - Issue Triage
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: cursor-issue-triage-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  triage:
+    if: ${{ !contains(github.event.issue.labels.*.name, 'agentic-workflows') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Require Cursor API key
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${CURSOR_API_KEY:-}" ]]; then
+            echo "CURSOR_API_KEY secret is required." >&2
+            exit 1
+          fi
+
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Prepare issue context
+        id: context
+        env:
+          GH_TOKEN: ${{ secrets.GH_AW_GITHUB_TOKEN || github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          mkdir -p .cursor-input .cursor-output
+
+          gh issue view "$ISSUE_NUMBER" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json number,title,body,author,labels,comments,createdAt,url \
+            | jq --arg repository "$GITHUB_REPOSITORY" \
+                '{repository: $repository, issue: .}' \
+                > .cursor-input/issue-triage.json
+
+          if jq -e '.issue.labels | any(.[]; .name == "agentic-workflows")' \
+            .cursor-input/issue-triage.json >/dev/null; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          gh api --method POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "repos/${GITHUB_REPOSITORY}/issues/${ISSUE_NUMBER}/reactions" \
+            -f content=eyes >/dev/null
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+
+      - name: Classify issue with Cursor
+        if: ${{ steps.context.outputs.skip != 'true' }}
+        uses: ./.github/actions/run-cursor
+        with:
+          prompt-file: .github/cursor/prompts/issue-triage.md
+          mode: analysis
+          output-file: .cursor-output/issue-triage.json
+          model: ${{ vars.CURSOR_AGENT_MODEL }}
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+
+      - name: Validate Cursor output
+        if: ${{ steps.context.outputs.skip != 'true' }}
+        run: |
+          set -euo pipefail
+          jq -e '
+            def in_list($values):
+              . as $value | $values | index($value) != null;
+
+            (type == "object") and
+            ((keys | sort) == ["areas", "category", "comment", "priority"]) and
+            (.category | in_list([
+              "bug", "feature", "question", "documentation",
+              "performance", "accessibility", "maintenance"
+            ])) and
+            (.areas as $areas |
+              ($areas | type == "array") and
+              ($areas | length >= 1 and length <= 6) and
+              (($areas | unique | length) == ($areas | length)) and
+              all($areas[]; in_list([
+                "area:timeline", "area:sqlite", "area:ui",
+                "area:auth", "area:api", "area:build"
+              ]))) and
+            (.priority | in_list([
+              "priority:critical", "priority:high",
+              "priority:medium", "priority:low"
+            ])) and
+            (.comment |
+              type == "string" and
+              length >= 1 and length <= 4000 and
+              test("[ぁ-んァ-ヶ一-龠]"))
+          ' .cursor-output/issue-triage.json >/dev/null
+
+      - name: Apply labels and comment
+        if: ${{ steps.context.outputs.skip != 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GH_AW_GITHUB_TOKEN || github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+
+          repository_labels="$(
+            gh label list \
+              --repo "$GITHUB_REPOSITORY" \
+              --limit 1000 \
+              --json name
+          )"
+          if ! jq -e 'any(.[]; .name == "triaged")' \
+            <<<"$repository_labels" >/dev/null; then
+            echo "Required repository label 'triaged' does not exist." >&2
+            exit 1
+          fi
+
+          current_issue="$(
+            gh issue view "$ISSUE_NUMBER" \
+              --repo "$GITHUB_REPOSITORY" \
+              --json state,labels
+          )"
+          if [[ "$(jq -r '.state' <<<"$current_issue")" != "OPEN" ]]; then
+            echo "Issue #${ISSUE_NUMBER} is no longer open; skipping."
+            exit 0
+          fi
+          if jq -e '
+            .labels |
+            any(.[]; .name == "agentic-workflows" or .name == "triaged")
+          ' <<<"$current_issue" >/dev/null; then
+            echo "Issue #${ISSUE_NUMBER} is already handled or excluded; skipping."
+            exit 0
+          fi
+
+          desired_labels="$(
+            jq -c '[.category, .areas[], .priority, "triaged"]' \
+              .cursor-output/issue-triage.json
+          )"
+          label_plan="$(
+            jq -cn \
+              --argjson desired "$desired_labels" \
+              --argjson available "$repository_labels" '
+                ($available | map(.name)) as $available_names |
+                {
+                  available: [
+                    $desired[] |
+                    . as $label |
+                    select($available_names | index($label) != null)
+                  ],
+                  missing: [
+                    $desired[] |
+                    . as $label |
+                    select(($available_names | index($label)) == null)
+                  ]
+                }
+              '
+          )"
+          jq -r '
+            .missing[] |
+            "::warning::Repository label does not exist; omitting \(.)"
+          ' <<<"$label_plan"
+          labels="$(jq -r '.available | join(",")' <<<"$label_plan")"
+          gh issue edit "$ISSUE_NUMBER" \
+            --repo "$GITHUB_REPOSITORY" \
+            --add-label "$labels"
+
+          comment_file="${RUNNER_TEMP}/cursor-issue-triage-${ISSUE_NUMBER}.md"
+          jq -r '.comment' .cursor-output/issue-triage.json > "$comment_file"
+          gh issue comment "$ISSUE_NUMBER" \
+            --repo "$GITHUB_REPOSITORY" \
+            --body-file "$comment_file"
