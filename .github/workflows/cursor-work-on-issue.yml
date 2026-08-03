@@ -3,7 +3,9 @@ run-name: Cursor work on issue #${{ github.event.issue.number }}
 
 on:
   issue_comment:
-    types: [created]
+    types: [created, edited]
+  issues:
+    types: [opened, edited, reopened]
 
 permissions:
   contents: write
@@ -56,7 +58,7 @@ jobs:
           fi
 
           first_line="$(
-            jq -r '(.comment.body // "") | split("\n")[0] | sub("\r$"; "")' \
+            jq -r '(.comment.body // .issue.body // "") | split("\n")[0] | sub("\r$"; "")' \
               "$GITHUB_EVENT_PATH"
           )"
           # Match exact /work-on-this or "/work-on-this " plus optional args
@@ -116,10 +118,22 @@ jobs:
             exit 0
           fi
 
+          case "$GITHUB_EVENT_NAME" in
+            issue_comment)
+              reaction_endpoint="repos/${GITHUB_REPOSITORY}/issues/comments/${COMMENT_ID}/reactions"
+              ;;
+            issues)
+              reaction_endpoint="repos/${GITHUB_REPOSITORY}/issues/${issue_number}/reactions"
+              ;;
+            *)
+              echo "::error::Unsupported event: $GITHUB_EVENT_NAME"
+              exit 1
+              ;;
+          esac
           gh api \
             --method POST \
             -H "Accept: application/vnd.github+json" \
-            "repos/${GITHUB_REPOSITORY}/issues/comments/${COMMENT_ID}/reactions" \
+            "$reaction_endpoint" \
             -f content=eyes \
             >/dev/null
           echo "issue_number=$issue_number" >> "$GITHUB_OUTPUT"
@@ -135,7 +149,7 @@ jobs:
     uses: ./.github/workflows/cursor-issue-worker.yml
     with:
       issue_number: ${{ needs.authorize.outputs.issue_number }}
-      additional_context: Requested by an authorized /work-on-this issue comment.
+      additional_context: Requested by an authorized /work-on-this command in an issue body or comment.
     secrets:
       CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
       GH_AW_GITHUB_TOKEN: ${{ secrets.GH_AW_GITHUB_TOKEN }}
