@@ -11,17 +11,19 @@ rules, modify automation, contact external systems, or perform unrelated work.
 Read the repository's `AGENTS.md` files and relevant existing code before
 editing. Implement the smallest complete change that satisfies the issue,
 following existing Next.js, React, TypeScript, Biome, and project conventions.
-Add or update focused tests when the change has testable behavior. You may run
-`yarn check:fix`, focused tests, and other `yarn` scripts while iterating. The
-workflow will independently run `yarn check`, `yarn exec tsc --noEmit`, and
-`yarn build` after you finish.
+Add or update focused tests when the change has testable behavior. Shell access
+is disabled for this untrusted-input workflow. Use the native repository read
+and write tools only. The workflow will publish an unverified Draft PR without
+executing generated code; a maintainer must review executable configuration and
+scripts before triggering PR checks.
 
 Hard constraints:
 
-- Do not run `git`, `gh`, or any command that commits, pushes, creates a pull
-  request, changes labels, or posts comments. The workflow handles publication.
+- Do not run any shell command. The workflow handles publication; validation
+  is deferred until a maintainer reviews the Draft PR.
 - Do not read or write secrets, credentials, `.env*`, `.git/**`, or key files.
-- Do not edit `.github/**`, `.cursor/**`, `.codex/**`, `AGENTS.md`,
+- Do not edit `.agents/**`, `.github/**`, `.claude/**`, `.cursor/**`,
+  `.cursorignore`, `.cursorrules`, `.codex/**`, `.husky/**`, `AGENTS.md`,
   `CLAUDE.md`, or generated `src/zenstack/**` files.
 - Do not add unrelated refactors, dependency upgrades, or generated artifacts.
 - Keep all user-facing application text consistent with the surrounding code.

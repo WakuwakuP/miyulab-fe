@@ -60,7 +60,7 @@ jobs:
         uses: ./.github/actions/run-cursor
         with:
           prompt-file: .github/cursor/prompts/weekly-package-upgrade.md
-          mode: coding
+          mode: maintenance
           output-file: .cursor-output/weekly-package-upgrade.txt
           model: ${{ vars.CURSOR_AGENT_MODEL }}
         env:
@@ -72,9 +72,14 @@ jobs:
           set -euo pipefail
 
           automation_changes="$(git status --porcelain --untracked-files=all -- \
+            .agents \
             .github \
+            .claude \
             .cursor \
+            .cursorignore \
+            .cursorrules \
             .codex \
+            .husky \
             AGENTS.md \
             ':(glob)**/AGENTS.md' \
             CLAUDE.md \
@@ -112,9 +117,14 @@ jobs:
           set -euo pipefail
 
           protected_changes="$(git status --porcelain --untracked-files=all -- \
+            .agents \
             .github \
+            .claude \
             .cursor \
+            .cursorignore \
+            .cursorrules \
             .codex \
+            .husky \
             AGENTS.md \
             ':(glob)**/AGENTS.md' \
             CLAUDE.md \
@@ -153,9 +163,9 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "chore: weekly package upgrade ${upgrade_date}"
+          git -c core.hooksPath=/dev/null commit -m "chore: weekly package upgrade ${upgrade_date}"
           gh auth setup-git
-          git push --set-upstream origin "$BRANCH_NAME"
+          git -c core.hooksPath=/dev/null push --set-upstream origin "$BRANCH_NAME"
 
           base_branch="$(gh repo view "$GITHUB_REPOSITORY" --json defaultBranchRef --jq '.defaultBranchRef.name')"
           gh pr create \

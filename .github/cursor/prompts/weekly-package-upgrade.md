@@ -31,7 +31,8 @@ Hard constraints:
 - Do not run `git`, `gh`, or any command that commits, pushes, or creates a pull
   request. The workflow performs those operations after verification.
 - Do not read or write secrets, credentials, `.env*`, `.git/**`, or key files.
-- Do not edit `.github/**`, `.cursor/**`, `.codex/**`, `AGENTS.md`,
+- Do not edit `.agents/**`, `.github/**`, `.claude/**`, `.cursor/**`,
+  `.cursorignore`, `.cursorrules`, `.codex/**`, `.husky/**`, `AGENTS.md`,
   `CLAUDE.md`, or generated `src/zenstack/**` files.
 - Do not make product changes unrelated to compatibility with an upgrade.
 - Do not use npm, npx, pnpm, or another package manager.

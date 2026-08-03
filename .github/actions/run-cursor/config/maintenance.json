@@ -1,7 +1,7 @@
 {
   "channel": "static",
   "permissions": {
-    "allow": ["Read(**)", "Write(**)"],
+    "allow": ["Read(**)", "Write(**)", "Shell(true)", "Shell(yarn)"],
     "deny": [
       "Read(.env*)",
       "Read(**/.env*)",
@@ -85,7 +85,21 @@
       "Write(**/*.key)",
       "Write(*.pem)",
       "Write(**/*.pem)",
-      "Shell(*)"
+      "Shell(bash)",
+      "Shell(curl)",
+      "Shell(env)",
+      "Shell(fish)",
+      "Shell(gh)",
+      "Shell(git)",
+      "Shell(npm)",
+      "Shell(npx)",
+      "Shell(openssl)",
+      "Shell(pnpm)",
+      "Shell(printenv)",
+      "Shell(sh)",
+      "Shell(ssh)",
+      "Shell(wget)",
+      "Shell(zsh)"
     ]
   }
 }

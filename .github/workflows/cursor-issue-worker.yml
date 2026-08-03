@@ -140,17 +140,6 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --body "🤖 Cursor Agent がこの Issue の実装を開始しました。"
 
-      - name: Set up Node.js
-        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
-        with:
-          node-version: "24"
-
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Install dependencies
-        run: yarn install --immutable
-
       - name: Implement with Cursor
         uses: ./.github/actions/run-cursor
         with:
@@ -166,9 +155,14 @@ jobs:
           set -euo pipefail
 
           automation_changes="$(git status --porcelain --untracked-files=all -- \
+            .agents \
             .github \
+            .claude \
             .cursor \
+            .cursorignore \
+            .cursorrules \
             .codex \
+            .husky \
             AGENTS.md \
             ':(glob)**/AGENTS.md' \
             CLAUDE.md \
@@ -186,39 +180,13 @@ jobs:
             exit 1
           fi
 
-      - name: Run formatter and linter check
-        run: yarn check
-
-      - name: Run TypeScript check
-        run: yarn exec tsc --noEmit
-
-      - name: Run production build
-        run: yarn build
-
-      - name: Recheck protected files after verification
-        run: |
-          set -euo pipefail
-
-          protected_changes="$(git status --porcelain --untracked-files=all -- \
-            .github \
-            .cursor \
-            .codex \
-            AGENTS.md \
-            ':(glob)**/AGENTS.md' \
-            CLAUDE.md \
-            ':(glob)**/CLAUDE.md' \
-            src/zenstack)"
-          if [[ -n "$protected_changes" ]]; then
-            echo "::error::Verification modified protected files"
-            printf '%s\n' "$protected_changes"
-            exit 1
-          fi
-
       - name: Publish pull request and update issue
         id: publish
         env:
           BRANCH_NAME: ${{ steps.branch.outputs.name }}
-          GH_TOKEN: ${{ secrets.GH_AW_GITHUB_TOKEN || github.token }}
+          # Deliberately use GITHUB_TOKEN so this untrusted-input workflow does
+          # not trigger PR workflows that would execute generated code.
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
@@ -230,7 +198,8 @@ jobs:
 
           printf '%s\n\n' "Cursor Agent が Issue #${ISSUE_NUMBER} を実装しました。" > "$pr_body"
           printf 'Closes #%s\n\n' "$ISSUE_NUMBER" >> "$pr_body"
-          printf '%s\n' "検証: \`yarn check\`, \`yarn exec tsc --noEmit\`, \`yarn build\`" >> "$pr_body"
+          printf '%s\n\n' "状態: 未検証の Draft PR" >> "$pr_body"
+          printf '%s\n' "安全のため、この GitHub Actions Job は生成コードを実行せず、PR 用 Actions も自動起動しません。Vercel Preview は通常の Git 連携設定に従います。実行可能な設定・スクリプトを Maintainer がレビューし、Draft 解除後にレビュー済み commit の push または PR の reopen で Actions を起動してください。" >> "$pr_body"
           printf '%s\n' "Workflow: ${run_url}" >> "$pr_body"
 
           git add --all
@@ -241,9 +210,9 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "fix: resolve issue #${ISSUE_NUMBER}"
+          git -c core.hooksPath=/dev/null commit -m "fix: resolve issue #${ISSUE_NUMBER}"
           gh auth setup-git
-          git push --set-upstream origin "$BRANCH_NAME"
+          git -c core.hooksPath=/dev/null push --set-upstream origin "$BRANCH_NAME"
 
           base_branch="$(gh repo view "$GITHUB_REPOSITORY" --json defaultBranchRef --jq '.defaultBranchRef.name')"
           gh pr create \
@@ -252,6 +221,7 @@ jobs:
             --head "$BRANCH_NAME" \
             --title "$pr_title" \
             --body-file "$pr_body" \
+            --draft \
             >/dev/null
           echo "pr_created=true" >> "$GITHUB_OUTPUT"
           pr_url="$(gh pr view "$BRANCH_NAME" --repo "$GITHUB_REPOSITORY" --json url --jq '.url')"
@@ -292,7 +262,7 @@ jobs:
       - name: Mark failed implementation
         if: ${{ always() && steps.claim.outcome == 'success' && job.status != 'success' && steps.publish.outputs.pr_created != 'true' }}
         env:
-          GH_TOKEN: ${{ secrets.GH_AW_GITHUB_TOKEN || github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
