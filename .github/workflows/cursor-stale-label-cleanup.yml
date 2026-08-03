@@ -241,6 +241,27 @@ jobs:
                 continue
               fi
 
+              owner="$GITHUB_REPOSITORY_OWNER"
+              repository_name="${GITHUB_REPOSITORY#*/}"
+              linked_pr_count="$(
+                gh api graphql \
+                  -f query='query($owner: String!, $name: String!, $number: Int!) {
+                    repository(owner: $owner, name: $name) {
+                      issue(number: $number) {
+                        closedByPullRequestsReferences(first: 1) { totalCount }
+                      }
+                    }
+                  }' \
+                  -F owner="$owner" \
+                  -F name="$repository_name" \
+                  -F number="$number" \
+                  --jq '.data.repository.issue.closedByPullRequestsReferences.totalCount // 0'
+              )"
+              if [[ "$linked_pr_count" != "0" ]]; then
+                echo "Skipping issue #${number}: a linked pull request still exists."
+                continue
+              fi
+
               if ! jq -e --argjson cleanup "$cleanup" '
                 . as $issue
                 |

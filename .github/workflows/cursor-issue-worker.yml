@@ -228,12 +228,17 @@ jobs:
 
           # Labeling/comments must not fail the job after a PR already exists;
           # otherwise Mark failed would wrongly apply a failure label.
-          if ! (
-            set -euo pipefail
-            gh pr edit "$pr_url" --repo "$GITHUB_REPOSITORY" --add-label agent-created
+          # Run each update independently so one failure cannot skip clearing
+          # agent:in-progress or applying agent:review.
+          post_publish_failed=0
 
-            success_issue="$RUNNER_TEMP/cursor-success-${ISSUE_NUMBER}.json"
-            gh api "repos/${GITHUB_REPOSITORY}/issues/${ISSUE_NUMBER}" > "$success_issue"
+          if ! gh pr edit "$pr_url" --repo "$GITHUB_REPOSITORY" --add-label agent-created; then
+            echo "::warning::Failed to add agent-created label to ${pr_url}"
+            post_publish_failed=1
+          fi
+
+          success_issue="$RUNNER_TEMP/cursor-success-${ISSUE_NUMBER}.json"
+          if gh api "repos/${GITHUB_REPOSITORY}/issues/${ISSUE_NUMBER}" > "$success_issue"; then
             remove_labels="$(jq -r '
               [.labels[].name]
               | map(select(
@@ -245,17 +250,32 @@ jobs:
               | join(",")
             ' "$success_issue")"
             if [[ -n "$remove_labels" ]]; then
-              gh issue edit "$ISSUE_NUMBER" \
+              if ! gh issue edit "$ISSUE_NUMBER" \
                 --repo "$GITHUB_REPOSITORY" \
-                --remove-label "$remove_labels"
+                --remove-label "$remove_labels"; then
+                echo "::warning::Failed to remove orchestration labels from issue #${ISSUE_NUMBER}"
+                post_publish_failed=1
+              fi
             fi
-            gh issue edit "$ISSUE_NUMBER" \
+            if ! gh issue edit "$ISSUE_NUMBER" \
               --repo "$GITHUB_REPOSITORY" \
-              --add-label agent:review
-            gh issue comment "$ISSUE_NUMBER" \
-              --repo "$GITHUB_REPOSITORY" \
-              --body "✅ 実装 Pull Request を作成しました: ${pr_url}"
-          ); then
+              --add-label agent:review; then
+              echo "::warning::Failed to add agent:review to issue #${ISSUE_NUMBER}"
+              post_publish_failed=1
+            fi
+          else
+            echo "::warning::Failed to load issue #${ISSUE_NUMBER} for post-publish label updates"
+            post_publish_failed=1
+          fi
+
+          if ! gh issue comment "$ISSUE_NUMBER" \
+            --repo "$GITHUB_REPOSITORY" \
+            --body "✅ 実装 Pull Request を作成しました: ${pr_url}"; then
+            echo "::warning::Failed to comment on issue #${ISSUE_NUMBER}"
+            post_publish_failed=1
+          fi
+
+          if [[ "$post_publish_failed" -ne 0 ]]; then
             echo "::warning::Pull request was created, but post-publish updates failed: ${pr_url}"
           fi
 
