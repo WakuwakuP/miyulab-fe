@@ -1,0 +1,173 @@
+name: Cursor Weekly Package Upgrade
+
+on:
+  schedule:
+    - cron: "41 22 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: cursor-weekly-package-upgrade
+  cancel-in-progress: false
+
+jobs:
+  upgrade:
+    name: Upgrade packages with Cursor
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Validate Cursor secret
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "$CURSOR_API_KEY" ]]; then
+            echo "::error::Repository secret CURSOR_API_KEY is not configured"
+            exit 1
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: "24"
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --immutable
+
+      - name: Create isolated working branch
+        id: branch
+        run: |
+          set -euo pipefail
+
+          branch_name="cursor/weekly-package-upgrade-${GITHUB_RUN_ID}"
+          git switch -c "$branch_name"
+          echo "name=$branch_name" >> "$GITHUB_OUTPUT"
+
+      - name: Upgrade packages with Cursor
+        uses: ./.github/actions/run-cursor
+        with:
+          prompt-file: .github/cursor/prompts/weekly-package-upgrade.md
+          mode: coding
+          output-file: .cursor-output/weekly-package-upgrade.txt
+          model: ${{ vars.CURSOR_AGENT_MODEL }}
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+
+      - name: Validate Cursor changes
+        id: changes
+        run: |
+          set -euo pipefail
+
+          automation_changes="$(git status --porcelain --untracked-files=all -- \
+            .github \
+            .cursor \
+            .codex \
+            AGENTS.md \
+            ':(glob)**/AGENTS.md' \
+            CLAUDE.md \
+            ':(glob)**/CLAUDE.md' \
+            src/zenstack)"
+          if [[ -n "$automation_changes" ]]; then
+            echo "::error::Cursor modified protected automation files"
+            printf '%s\n' "$automation_changes"
+            exit 1
+          fi
+
+          rm -rf -- .cursor-output
+          if [[ -z "$(git status --porcelain --untracked-files=all)" ]]; then
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            echo "All packages are already up to date; no pull request was created." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run formatter and linter check
+        if: ${{ steps.changes.outputs.has_changes == 'true' }}
+        run: yarn check
+
+      - name: Run TypeScript check
+        if: ${{ steps.changes.outputs.has_changes == 'true' }}
+        run: yarn exec tsc --noEmit
+
+      - name: Run production build
+        if: ${{ steps.changes.outputs.has_changes == 'true' }}
+        run: yarn build
+
+      - name: Recheck protected files after verification
+        if: ${{ steps.changes.outputs.has_changes == 'true' }}
+        run: |
+          set -euo pipefail
+
+          protected_changes="$(git status --porcelain --untracked-files=all -- \
+            .github \
+            .cursor \
+            .codex \
+            AGENTS.md \
+            ':(glob)**/AGENTS.md' \
+            CLAUDE.md \
+            ':(glob)**/CLAUDE.md' \
+            src/zenstack)"
+          if [[ -n "$protected_changes" ]]; then
+            echo "::error::Verification modified protected files"
+            printf '%s\n' "$protected_changes"
+            exit 1
+          fi
+
+      - name: Publish package upgrade pull request
+        if: ${{ steps.changes.outputs.has_changes == 'true' }}
+        env:
+          BRANCH_NAME: ${{ steps.branch.outputs.name }}
+          GH_TOKEN: ${{ secrets.GH_AW_GITHUB_TOKEN || github.token }}
+        run: |
+          set -euo pipefail
+
+          upgrade_date="$(date -u +%F)"
+          pr_body="$RUNNER_TEMP/cursor-package-upgrade-pr.md"
+          run_url="https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          diff_stat="$(git diff --stat)"
+
+          printf '%s\n\n' "Cursor Agent が依存パッケージを更新しました。" > "$pr_body"
+          printf '%s\n\n' "変更概要:" >> "$pr_body"
+          printf '%s\n%s\n%s\n\n' '```text' "$diff_stat" '```' >> "$pr_body"
+          printf '%s\n' "検証: \`yarn check\`, \`yarn exec tsc --noEmit\`, \`yarn build\`" >> "$pr_body"
+          printf '%s\n' "Workflow: ${run_url}" >> "$pr_body"
+
+          git add --all
+          if git diff --cached --quiet; then
+            echo "::error::No package changes remain to publish"
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: weekly package upgrade ${upgrade_date}"
+          gh auth setup-git
+          git push --set-upstream origin "$BRANCH_NAME"
+
+          base_branch="$(gh repo view "$GITHUB_REPOSITORY" --json defaultBranchRef --jq '.defaultBranchRef.name')"
+          gh pr create \
+            --repo "$GITHUB_REPOSITORY" \
+            --base "$base_branch" \
+            --head "$BRANCH_NAME" \
+            --title "📦 Weekly Package Upgrade (${upgrade_date})" \
+            --body-file "$pr_body" \
+            >/dev/null
+          pr_url="$(gh pr view "$BRANCH_NAME" --repo "$GITHUB_REPOSITORY" --json url --jq '.url')"
+          gh pr edit "$pr_url" \
+            --repo "$GITHUB_REPOSITORY" \
+            --add-label dependencies \
+            --add-label maintenance \
+            --add-label automated

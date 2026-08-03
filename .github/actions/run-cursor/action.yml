@@ -1,0 +1,154 @@
+name: Run Cursor Agent
+description: Run Cursor CLI with repository-specific CI permissions
+
+inputs:
+  prompt-file:
+    description: Prompt file path, relative to the repository root
+    required: true
+  mode:
+    description: Either analysis (read-only, JSON response) or coding (working-tree edits)
+    required: true
+  output-file:
+    description: File that receives the final Cursor response
+    required: true
+  model:
+    description: Optional Cursor model ID
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Validate Cursor inputs
+      shell: bash
+      env:
+        CURSOR_MODE: ${{ inputs.mode }}
+        CURSOR_OUTPUT_FILE: ${{ inputs.output-file }}
+        CURSOR_PROMPT_FILE: ${{ inputs.prompt-file }}
+      run: |
+        set -euo pipefail
+
+        case "$CURSOR_MODE" in
+          analysis|coding) ;;
+          *)
+            echo "::error::mode must be 'analysis' or 'coding'"
+            exit 1
+            ;;
+        esac
+
+        for path in "$CURSOR_PROMPT_FILE" "$CURSOR_OUTPUT_FILE"; do
+          case "$path" in
+            ""|/*|../*|*/../*|*/..)
+              echo "::error::Cursor paths must stay inside the repository: $path"
+              exit 1
+              ;;
+          esac
+        done
+
+        test -f "$CURSOR_PROMPT_FILE" || {
+          echo "::error::Prompt file not found: $CURSOR_PROMPT_FILE"
+          exit 1
+        }
+
+        if [[ -f .cursor/mcp.json ]]; then
+          echo "::error::.cursor/mcp.json is not allowed in Cursor CI workflows; review and remove it first"
+          exit 1
+        fi
+
+        if [[ -z "${CURSOR_API_KEY:-}" ]]; then
+          echo "::error::Repository secret CURSOR_API_KEY is not configured"
+          exit 1
+        fi
+
+    - name: Install Cursor CLI
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        installer="$RUNNER_TEMP/install-cursor.sh"
+        env -i \
+          HOME="$HOME" \
+          PATH="$PATH" \
+          LANG="${LANG:-C.UTF-8}" \
+          curl \
+          --proto '=https' \
+          --tlsv1.2 \
+          --fail \
+          --silent \
+          --show-error \
+          https://cursor.com/install \
+          --output "$installer"
+        env -i \
+          HOME="$HOME" \
+          PATH="$PATH" \
+          LANG="${LANG:-C.UTF-8}" \
+          bash "$installer"
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+    - name: Configure Cursor permissions
+      shell: bash
+      env:
+        CURSOR_MODE: ${{ inputs.mode }}
+      run: |
+        set -euo pipefail
+
+        mkdir -p "$HOME/.cursor"
+        cp \
+          "$GITHUB_ACTION_PATH/config/$CURSOR_MODE.json" \
+          "$HOME/.cursor/cli-config.json"
+
+    - name: Run Cursor Agent
+      shell: bash
+      env:
+        CURSOR_MODE: ${{ inputs.mode }}
+        CURSOR_MODEL: ${{ inputs.model }}
+        CURSOR_OUTPUT_FILE: ${{ inputs.output-file }}
+        CURSOR_PROMPT_FILE: ${{ inputs.prompt-file }}
+      run: |
+        set -euo pipefail
+
+        export PATH="$HOME/.local/bin:$PATH"
+        env -i \
+          HOME="$HOME" \
+          PATH="$PATH" \
+          LANG="${LANG:-C.UTF-8}" \
+          CI=true \
+          cursor-agent --version
+
+        mkdir -p "$(dirname "$CURSOR_OUTPUT_FILE")"
+        raw_result="$RUNNER_TEMP/cursor-result-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.json"
+        prompt="$(<"$CURSOR_PROMPT_FILE")"
+
+        args=(--print --output-format json)
+        if [[ "$CURSOR_MODE" == "coding" ]]; then
+          args+=(--force)
+        fi
+        if [[ -n "$CURSOR_MODEL" ]]; then
+          args+=(--model "$CURSOR_MODEL")
+        fi
+
+        # Do not inherit runner credentials (including Actions runtime tokens).
+        # Cursor receives only its own key and the minimum process environment.
+        env -i \
+          HOME="$HOME" \
+          PATH="$PATH" \
+          LANG="${LANG:-C.UTF-8}" \
+          SHELL=/bin/bash \
+          TMPDIR="$RUNNER_TEMP" \
+          CI=true \
+          CURSOR_API_KEY="$CURSOR_API_KEY" \
+          cursor-agent "${args[@]}" "$prompt" > "$raw_result"
+        jq -e '
+          .type == "result" and
+          .subtype == "success" and
+          .is_error == false and
+          (.result | type == "string")
+        ' "$raw_result" >/dev/null
+        jq -r '.result' "$raw_result" > "$CURSOR_OUTPUT_FILE"
+
+        if [[ "$CURSOR_MODE" == "analysis" ]]; then
+          jq -e . "$CURSOR_OUTPUT_FILE" >/dev/null || {
+            echo "::error::Analysis prompts must return exactly one valid JSON value"
+            exit 1
+          }
+        fi
