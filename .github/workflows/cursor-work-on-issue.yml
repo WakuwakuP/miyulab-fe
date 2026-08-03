@@ -59,9 +59,12 @@ jobs:
             jq -r '(.comment.body // "") | split("\n")[0] | sub("\r$"; "")' \
               "$GITHUB_EVENT_PATH"
           )"
-          if [[ "$first_line" != "/work-on-this" ]]; then
-            exit 0
-          fi
+          # Match exact /work-on-this or "/work-on-this " plus optional args
+          # (same activation surface as the legacy gh-aw workflow).
+          case "$first_line" in
+            "/work-on-this"|"/work-on-this "*) ;;
+            *) exit 0 ;;
+          esac
 
           permission="$(
             gh api \

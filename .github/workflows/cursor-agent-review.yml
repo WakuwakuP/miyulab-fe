@@ -17,8 +17,8 @@ jobs:
   review:
     if: >-
       ${{
-        (github.event.label.name == 'agent:review' || github.event.label.name == 'agent-review') &&
-        !contains(github.event.issue.labels.*.name, 'agent:in-progress')
+        github.event.label.name == 'agent:review' ||
+        github.event.label.name == 'agent-review'
       }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -46,6 +46,27 @@ jobs:
               echo "Actor ${GITHUB_ACTOR} does not have write permission; skipping."
               ;;
           esac
+
+      # agent:review is the handoff signal. Clear a leftover agent:in-progress
+      # so best-effort post-publish cleanup failures cannot skip review.
+      - name: Clear stale in-progress label
+        if: steps.authorize.outputs.authorized == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+
+          if jq -e '
+            [.issue.labels[].name]
+            | any(. == "agent:in-progress")
+          ' "$GITHUB_EVENT_PATH" >/dev/null; then
+            if ! gh issue edit "$ISSUE_NUMBER" \
+              --repo "$GITHUB_REPOSITORY" \
+              --remove-label agent:in-progress; then
+              echo "::warning::Failed to remove stale agent:in-progress from issue #${ISSUE_NUMBER}; continuing review"
+            fi
+          fi
 
       - name: Checkout repository
         if: steps.authorize.outputs.authorized == 'true'
