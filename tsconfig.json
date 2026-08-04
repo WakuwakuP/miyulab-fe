@@ -24,7 +24,7 @@
     "strict": true,
     "target": "ES2017"
   },
-  "exclude": ["node_modules"],
+  "exclude": ["node_modules", "**/*.test.ts", "**/__tests__/**"],
   "include": [
     "next-env.d.ts",
     "**/*.ts",
