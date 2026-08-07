@@ -30,7 +30,8 @@ export const UserInfo = ({
       replaceEmojis(
         escapeHtml(account.display_name),
         account.emojis,
-        'min-w-5 h-5 inline-block',
+        // min-width 付き絵文字は truncate 行の intrinsic 幅を押し広げる
+        'h-5 w-5 inline-block',
       ),
     [account],
   )
@@ -43,67 +44,75 @@ export const UserInfo = ({
   }
 
   return (
-    <h3 className="flex min-w-0">
+    <h3 className="min-w-0 max-w-full">
       <button
-        className="flex w-full min-w-0 border-0 bg-transparent p-0 text-left font-[inherit] text-inherit"
+        className="w-full min-w-0 max-w-full border-0 bg-transparent p-0 text-left font-[inherit] text-inherit"
         onClick={openAccountDetail}
         type="button"
       >
-        <span className="relative block flex-none">
-          {scrolling ? (
-            <span
-              className={[
-                'block flex-none rounded-lg bg-gray-600 object-contain',
-                small ? 'h-6 w-6' : 'h-12 w-12',
-              ].join(' ')}
-            />
+        <span className="flex w-full min-w-0 max-w-full items-start overflow-hidden">
+          <span className="relative block shrink-0">
+            {scrolling ? (
+              <span
+                className={[
+                  'block rounded-lg bg-gray-600 object-contain',
+                  small ? 'h-6 w-6' : 'h-12 w-12',
+                ].join(' ')}
+              />
+            ) : (
+              <ProxyImage
+                alt="avatar"
+                className={[
+                  'rounded-lg object-contain',
+                  small ? 'h-6 w-6' : 'h-12 w-12',
+                ].join(' ')}
+                height={small ? 24 : 48}
+                src={account.avatar}
+                width={small ? 24 : 48}
+              />
+            )}
+            {account.bot === true && (
+              <RiRobotFill
+                className={[
+                  'absolute bottom-0 right-0 rounded-full bg-gray-800 p-0.5 text-blue-400',
+                  small ? 'h-3 w-3' : 'h-4 w-4',
+                ].join(' ')}
+                size={small ? 8 : 10}
+                title="Bot"
+              />
+            )}
+          </span>
+          {small ? (
+            <span className="min-w-0 flex-1 overflow-hidden pl-2">
+              <span className="flex w-full min-w-0 items-center justify-between gap-1">
+                <span className="min-w-0 flex-1 truncate">
+                  <span>{parse(getDisplayName)}</span>
+                  <span className="pl-1 text-gray-300">@{account.acct}</span>
+                </span>
+                <span className="shrink-0">
+                  <Visibility visibility={visibility} />
+                </span>
+              </span>
+            </span>
           ) : (
-            <ProxyImage
-              alt="avatar"
-              className={[
-                'flex-none rounded-lg object-contain',
-                small ? 'h-6 w-6' : 'h-12 w-12',
-              ].join(' ')}
-              height={small ? 24 : 48}
-              src={account.avatar}
-              width={small ? 24 : 48}
-            />
-          )}
-          {account.bot === true && (
-            <RiRobotFill
-              className={[
-                'absolute bottom-0 right-0 rounded-full bg-gray-800 p-0.5 text-blue-400',
-                small ? 'h-3 w-3' : 'h-4 w-4',
-              ].join(' ')}
-              size={small ? 8 : 10}
-              title="Bot"
-            />
+            <span className="min-w-0 flex-1 overflow-hidden pl-2">
+              <span className="flex w-full min-w-0 items-center justify-between gap-1">
+                <span className="min-w-0 flex-1 truncate">
+                  {parse(getDisplayName)}
+                </span>
+                <span className="shrink-0">
+                  <Visibility visibility={visibility} />
+                </span>
+              </span>
+              <span
+                className="block truncate text-gray-300"
+                title={`@${account.acct}`}
+              >
+                @{account.acct}
+              </span>
+            </span>
           )}
         </span>
-        {small ? (
-          <span className="block min-w-0 flex-1 pl-2">
-            <span className="flex w-full justify-between truncate">
-              <span className="min-w-0 truncate">
-                <span>{parse(getDisplayName)}</span>
-                <span className="pl-1 text-gray-300">@{account.acct}</span>
-              </span>
-              <Visibility visibility={visibility} />
-            </span>
-          </span>
-        ) : (
-          <span className="block min-w-0 flex-1 pl-2">
-            <span className="flex w-full justify-between [&>span]:inline-block">
-              <span className="min-w-0 truncate">{parse(getDisplayName)}</span>
-              <Visibility visibility={visibility} />
-            </span>
-            <span
-              className="block truncate text-gray-300"
-              title={`@${account.acct}`}
-            >
-              @{account.acct}
-            </span>
-          </span>
-        )}
       </button>
     </h3>
   )
