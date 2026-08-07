@@ -294,6 +294,7 @@ export const Status = ({
   const statusClasses = [
     'box-border',
     'w-full',
+    'min-w-0',
     'p-2',
     'leading-7',
     className,
@@ -325,7 +326,7 @@ export const Status = ({
       ) : (
         <>
           <button
-            className="flex mb-1 overflow-clip border-0 bg-transparent p-0 text-inherit"
+            className="mb-1 flex w-full min-w-0 max-w-full items-center overflow-hidden border-0 bg-transparent p-0 text-inherit"
             onClick={() => {
               setDetail({
                 content: {
@@ -344,19 +345,19 @@ export const Status = ({
             type="button"
           >
             <RiRepeatFill
-              className="mr-2 block text-blue-400 flex-none"
-              size={24}
+              className="mr-2 block flex-none text-blue-400"
+              size={small ? 16 : 24}
             />
             <img
               alt="avatar"
               className={[
-                'rounded-lg object-contain flex-none block shrink-0',
-                small ? 'w-3 h-3' : 'w-6 h-6',
+                'block shrink-0 flex-none rounded-lg object-contain',
+                small ? 'h-3 w-3' : 'h-6 w-6',
               ].join(' ')}
               loading="lazy"
               src={toSecureResourceUrl(status.account.avatar)}
             />
-            <span className="pl-2 whitespace-nowrap">{parse(displayName)}</span>
+            <span className="min-w-0 truncate pl-2">{parse(displayName)}</span>
           </button>
           <UserInfo
             account={{
