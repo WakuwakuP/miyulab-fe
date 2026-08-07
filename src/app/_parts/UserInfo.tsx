@@ -43,9 +43,9 @@ export const UserInfo = ({
   }
 
   return (
-    <h3 className="flex">
+    <h3 className="flex min-w-0">
       <button
-        className="flex w-full border-0 bg-transparent p-0 text-left font-[inherit] text-inherit"
+        className="flex w-full min-w-0 border-0 bg-transparent p-0 text-left font-[inherit] text-inherit"
         onClick={openAccountDetail}
         type="button"
       >
@@ -53,16 +53,16 @@ export const UserInfo = ({
           {scrolling ? (
             <span
               className={[
-                'block rounded-lg object-contain flex-none bg-gray-600',
-                small ? 'w-6 h-6' : 'w-12 h-12',
+                'block flex-none rounded-lg bg-gray-600 object-contain',
+                small ? 'h-6 w-6' : 'h-12 w-12',
               ].join(' ')}
             />
           ) : (
             <ProxyImage
               alt="avatar"
               className={[
-                'rounded-lg object-contain flex-none',
-                small ? 'w-6 h-6' : 'w-12 h-12',
+                'flex-none rounded-lg object-contain',
+                small ? 'h-6 w-6' : 'h-12 w-12',
               ].join(' ')}
               height={small ? 24 : 48}
               src={account.avatar}
@@ -72,8 +72,8 @@ export const UserInfo = ({
           {account.bot === true && (
             <RiRobotFill
               className={[
-                'absolute text-blue-400 bg-gray-800 rounded-full p-0.5 bottom-0 right-0',
-                small ? 'w-3 h-3' : 'w-4 h-4',
+                'absolute bottom-0 right-0 rounded-full bg-gray-800 p-0.5 text-blue-400',
+                small ? 'h-3 w-3' : 'h-4 w-4',
               ].join(' ')}
               size={small ? 8 : 10}
               title="Bot"
@@ -81,9 +81,9 @@ export const UserInfo = ({
           )}
         </span>
         {small ? (
-          <span className="block w-[calc(100%-24px)] pl-2">
+          <span className="block min-w-0 flex-1 pl-2">
             <span className="flex w-full justify-between truncate">
-              <span>
+              <span className="min-w-0 truncate">
                 <span>{parse(getDisplayName)}</span>
                 <span className="pl-1 text-gray-300">@{account.acct}</span>
               </span>
@@ -91,9 +91,9 @@ export const UserInfo = ({
             </span>
           </span>
         ) : (
-          <span className="block w-[calc(100%-46px)] pl-2">
+          <span className="block min-w-0 flex-1 pl-2">
             <span className="flex w-full justify-between [&>span]:inline-block">
-              <span className="truncate">{parse(getDisplayName)}</span>
+              <span className="min-w-0 truncate">{parse(getDisplayName)}</span>
               <Visibility visibility={visibility} />
             </span>
             <span
