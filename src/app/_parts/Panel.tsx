@@ -28,7 +28,7 @@ export const Panel = ({
     queryDuration == null ? undefined : `Query: ${queryDuration.toFixed(2)} ms`
 
   return (
-    <section>
+    <section className="min-w-0 max-w-full overflow-x-hidden">
       {typeof name === 'string' ? (
         <h2 className="h-8 bg-slate-800 text-center" title={durationTitle}>
           {onClickHeader == null ? (

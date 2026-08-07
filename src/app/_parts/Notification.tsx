@@ -140,7 +140,7 @@ export const Notification = ({
   switch (notification.type) {
     case 'poll_expired':
       return (
-        <div className="ml-1 mt-2 box-border border-b-2 border-l-2 border-teal-300 pl-2">
+        <div className="ml-1 mt-2 box-border min-w-0 max-w-full overflow-x-hidden border-b-2 border-l-2 border-teal-300 pl-2">
           {notification.status != null && (
             <Status
               scrolling={scrolling}
@@ -155,7 +155,7 @@ export const Notification = ({
     case 'mention':
     case 'status':
       return (
-        <div className="ml-1 mt-2 box-border border-b-2 border-l-2 border-green-500 pl-2">
+        <div className="ml-1 mt-2 box-border min-w-0 max-w-full overflow-x-hidden border-b-2 border-l-2 border-green-500 pl-2">
           {notification.status != null && (
             <Status
               scrolling={scrolling}
@@ -169,10 +169,10 @@ export const Notification = ({
       )
     case 'reblog':
       return (
-        <div className="ml-1 mt-2 box-border border-b-2 border-l-2 border-blue-500 pl-2">
-          <h3>
+        <div className="ml-1 mt-2 box-border min-w-0 max-w-full overflow-x-hidden border-b-2 border-l-2 border-blue-500 pl-2">
+          <h3 className="min-w-0 max-w-full">
             <button
-              className="flex w-full cursor-pointer appearance-none border-0 bg-transparent p-0 text-left text-inherit"
+              className="flex w-full min-w-0 max-w-full cursor-pointer appearance-none border-0 bg-transparent p-0 text-left text-inherit"
               onClick={openAccountDetail}
               onKeyDown={handleAccountKeyDown}
               type="button"
@@ -189,7 +189,7 @@ export const Notification = ({
                   width={48}
                 />
               )}
-              <span className="w-[calc(100%-56px)] pl-2">
+              <span className="min-w-0 flex-1 overflow-hidden pl-2">
                 <span className="block w-full truncate">
                   <span>{parse(displayName)}</span>
                 </span>
@@ -216,10 +216,10 @@ export const Notification = ({
       )
     case 'favourite':
       return (
-        <div className="ml-1 mt-2 box-border border-b-2 border-l-2 border-orange-300 pl-2">
-          <h3>
+        <div className="ml-1 mt-2 box-border min-w-0 max-w-full overflow-x-hidden border-b-2 border-l-2 border-orange-300 pl-2">
+          <h3 className="min-w-0 max-w-full">
             <button
-              className="flex w-full cursor-pointer appearance-none border-0 bg-transparent p-0 text-left text-inherit"
+              className="flex w-full min-w-0 max-w-full cursor-pointer appearance-none border-0 bg-transparent p-0 text-left text-inherit"
               onClick={openAccountDetail}
               onKeyDown={handleAccountKeyDown}
               type="button"
@@ -236,7 +236,7 @@ export const Notification = ({
                   width={48}
                 />
               )}
-              <span className="w-[calc(100%-56px)] pl-2">
+              <span className="min-w-0 flex-1 overflow-hidden pl-2">
                 <span className="block w-full truncate">
                   <span>{parse(displayName)}</span>
                 </span>
@@ -266,10 +266,10 @@ export const Notification = ({
       )
     case 'emoji_reaction':
       return (
-        <div className="ml-1 mt-2 box-border border-b-2 border-l-2 border-orange-300 pl-2">
-          <h3>
+        <div className="ml-1 mt-2 box-border min-w-0 max-w-full overflow-x-hidden border-b-2 border-l-2 border-orange-300 pl-2">
+          <h3 className="flex min-w-0 max-w-full items-start gap-2">
             <button
-              className="flex w-full cursor-pointer appearance-none border-0 bg-transparent p-0 text-left text-inherit"
+              className="flex min-w-0 flex-1 max-w-full cursor-pointer appearance-none border-0 bg-transparent p-0 text-left text-inherit"
               onClick={openAccountDetail}
               onKeyDown={handleAccountKeyDown}
               type="button"
@@ -286,7 +286,7 @@ export const Notification = ({
                   width={48}
                 />
               )}
-              <span className="w-[calc(100%-56px)] pl-2">
+              <span className="min-w-0 flex-1 overflow-hidden pl-2">
                 <span className="block w-full truncate">
                   <span>{parse(displayName)}</span>
                 </span>
@@ -298,7 +298,7 @@ export const Notification = ({
                 </span>
               </span>
             </button>
-            <div className="min-w-12  mr-2">
+            <div className="mr-2 w-12 shrink-0">
               <ReactionDisplay
                 reactionName={notification.reaction?.name}
                 resolvedReactionUrl={resolvedReactionUrl}
@@ -320,11 +320,11 @@ export const Notification = ({
       )
     case 'follow':
       return (
-        <div className="ml-1 mt-2 box-border border-b-2 border-l-2 border-pink-300 pl-2">
+        <div className="ml-1 mt-2 box-border min-w-0 max-w-full overflow-x-hidden border-b-2 border-l-2 border-pink-300 pl-2">
           <p>Follow</p>
-          <h3>
+          <h3 className="min-w-0 max-w-full">
             <button
-              className="flex w-full cursor-pointer appearance-none border-0 bg-transparent p-0 text-left text-inherit"
+              className="flex w-full min-w-0 max-w-full cursor-pointer appearance-none border-0 bg-transparent p-0 text-left text-inherit"
               onClick={openAccountDetail}
               onKeyDown={handleAccountKeyDown}
               type="button"
@@ -341,7 +341,7 @@ export const Notification = ({
                   width={48}
                 />
               )}
-              <span className="w-[calc(100%-56px)] pl-2">
+              <span className="min-w-0 flex-1 overflow-hidden pl-2">
                 <span className="block w-full truncate">
                   <span>{parse(displayName)}</span>
                 </span>
@@ -358,11 +358,11 @@ export const Notification = ({
       )
     case 'follow_request':
       return (
-        <div className="ml-1 mt-2 box-border border-b-2 border-l-2 border-pink-500 pl-2">
+        <div className="ml-1 mt-2 box-border min-w-0 max-w-full overflow-x-hidden border-b-2 border-l-2 border-pink-500 pl-2">
           <p>Follow request</p>
-          <h3>
+          <h3 className="min-w-0 max-w-full">
             <button
-              className="flex w-full cursor-pointer appearance-none border-0 bg-transparent p-0 text-left text-inherit"
+              className="flex w-full min-w-0 max-w-full cursor-pointer appearance-none border-0 bg-transparent p-0 text-left text-inherit"
               onClick={openAccountDetail}
               onKeyDown={handleAccountKeyDown}
               type="button"
@@ -379,7 +379,7 @@ export const Notification = ({
                   width={48}
                 />
               )}
-              <span className="w-[calc(100%-56px)] pl-2">
+              <span className="min-w-0 flex-1 overflow-hidden pl-2">
                 <span className="block w-full truncate">
                   <span>{parse(displayName)}</span>
                 </span>

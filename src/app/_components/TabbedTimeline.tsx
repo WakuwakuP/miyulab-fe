@@ -48,10 +48,10 @@ export const TabbedTimeline = ({
   }
 
   return (
-    <section>
+    <section className="min-w-0 max-w-full overflow-x-hidden">
       {/* タブヘッダー */}
       <div
-        className="flex bg-slate-800 overflow-x-auto h-8 items-end"
+        className="flex h-8 items-end overflow-x-auto bg-slate-800"
         role="tablist"
       >
         {configs.map((config, index) => {

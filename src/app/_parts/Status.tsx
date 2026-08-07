@@ -119,7 +119,12 @@ export const Status = ({
 
   const getDisplayName = useCallback(
     (account: Entity.Account) =>
-      replaceEmojis(escapeHtml(account.display_name), account.emojis),
+      replaceEmojis(
+        escapeHtml(account.display_name),
+        account.emojis,
+        // min-width 付き絵文字は truncate 行の intrinsic 幅を押し広げるため使わない
+        'h-4 w-4 inline-block',
+      ),
     [],
   )
 
@@ -295,10 +300,12 @@ export const Status = ({
     'box-border',
     'w-full',
     'min-w-0',
+    'max-w-full',
     'p-2',
     'leading-7',
     className,
-    small ? 'max-h-24 overflow-clip' : '',
+    // 列は固定幅のため、はみ出しはここで止めて main の横スクロールを増やさない
+    small ? 'max-h-24 overflow-clip' : 'overflow-x-clip',
     status.reblog == null ? '' : 'border-l-4 border-blue-400 pl-2 mb-2',
   ].join(' ')
 
@@ -326,7 +333,7 @@ export const Status = ({
       ) : (
         <>
           <button
-            className="mb-1 flex w-full min-w-0 max-w-full items-center overflow-hidden border-0 bg-transparent p-0 text-inherit"
+            className="mb-1 w-full min-w-0 max-w-full border-0 bg-transparent p-0 text-left text-inherit"
             onClick={() => {
               setDetail({
                 content: {
@@ -344,20 +351,25 @@ export const Status = ({
             }}
             type="button"
           >
-            <RiRepeatFill
-              className="mr-2 block flex-none text-blue-400"
-              size={small ? 16 : 24}
-            />
-            <img
-              alt="avatar"
-              className={[
-                'block shrink-0 flex-none rounded-lg object-contain',
-                small ? 'h-3 w-3' : 'h-6 w-6',
-              ].join(' ')}
-              loading="lazy"
-              src={toSecureResourceUrl(status.account.avatar)}
-            />
-            <span className="min-w-0 truncate pl-2">{parse(displayName)}</span>
+            {/* button 自体の overflow はブラウザで効きにくいので内側で clip する */}
+            <span className="flex w-full min-w-0 max-w-full items-center overflow-hidden">
+              <RiRepeatFill
+                className="mr-2 block shrink-0 text-blue-400"
+                size={small ? 16 : 24}
+              />
+              <img
+                alt="avatar"
+                className={[
+                  'block shrink-0 rounded-lg object-contain',
+                  small ? 'h-3 w-3' : 'h-6 w-6',
+                ].join(' ')}
+                loading="lazy"
+                src={toSecureResourceUrl(status.account.avatar)}
+              />
+              <span className="min-w-0 flex-1 truncate pl-2">
+                {parse(displayName)}
+              </span>
+            </span>
           </button>
           <UserInfo
             account={{
