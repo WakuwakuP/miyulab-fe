@@ -15,7 +15,14 @@ import parse, {
   domToReact,
 } from 'html-react-parser'
 import type { Entity } from 'megalodon'
-import { useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import {
+  type MouseEvent,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react'
 import { RiRepeatFill, RiVideoLine } from 'react-icons/ri'
 import type { PollAddAppIndex, StatusAddAppIndex } from 'types/types'
 import { replaceEmojis } from 'util/emojiReplacer'
@@ -160,6 +167,16 @@ export const Status = ({
       type: 'Status',
     })
   }, [setDetail, status])
+
+  const handleContentClick = useCallback(
+    (e: MouseEvent<HTMLDivElement>) => {
+      if ((e.target as HTMLElement).closest('a, button')) return
+      const selection = window.getSelection()
+      if (selection != null && selection.toString().length > 0) return
+      openStatusDetail()
+    },
+    [openStatusDetail],
+  )
 
   const replace = (node: DOMNode) => {
     if (node.type === ElementType.Tag && node.name === 'a') {
@@ -389,17 +406,9 @@ export const Status = ({
           })}
         </div>
       )}
-      <div className="content relative">
-        <button
-          aria-label="Open status detail"
-          className="absolute inset-0 h-full w-full cursor-pointer border-0 bg-transparent p-0 text-left"
-          onClick={openStatusDetail}
-          type="button"
-        />
-        <div className="pointer-events-none relative z-10 [&_a]:pointer-events-auto [&_button]:pointer-events-auto">
-          <EditedAt editedAt={status.edited_at} />
-          {parse(contentFormatted, { replace })}
-        </div>
+      <div className="content cursor-text" onClick={handleContentClick}>
+        <EditedAt editedAt={status.edited_at} />
+        {parse(contentFormatted, { replace })}
       </div>
 
       <Poll
