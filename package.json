@@ -91,7 +91,8 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:run": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "typecheck": "next typegen && tsc --noEmit"
   },
   "version": "0.1.0",
   "zenstack": {

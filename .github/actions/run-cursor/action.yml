@@ -6,7 +6,7 @@ inputs:
     description: Prompt file path, relative to the repository root
     required: true
   mode:
-    description: analysis (read-only JSON), coding (edits without shell), or maintenance (trusted scheduled edits)
+    description: maintenance (trusted scheduled package upgrades only)
     required: true
   output-file:
     description: File directly under .cursor-output that receives the final Cursor response
@@ -28,13 +28,10 @@ runs:
       run: |
         set -euo pipefail
 
-        case "$CURSOR_MODE" in
-          analysis|coding|maintenance) ;;
-          *)
-            echo "::error::mode must be 'analysis', 'coding', or 'maintenance'"
-            exit 1
-            ;;
-        esac
+        if [[ "$CURSOR_MODE" != "maintenance" ]]; then
+          echo "::error::mode must be 'maintenance'"
+          exit 1
+        fi
 
         for path in "$CURSOR_PROMPT_FILE" "$CURSOR_OUTPUT_FILE"; do
           case "$path" in
@@ -77,9 +74,8 @@ runs:
             ;;
         esac
 
-        if [[ "$CURSOR_MODE" == "maintenance" \
-          && "$CURSOR_PROMPT_FILE" != ".github/cursor/prompts/weekly-package-upgrade.md" ]]; then
-          echo "::error::maintenance mode is reserved for the trusted weekly package-upgrade prompt"
+        if [[ "$CURSOR_PROMPT_FILE" != ".github/cursor/prompts/weekly-package-upgrade.md" ]]; then
+          echo "::error::this action is reserved for the trusted weekly package-upgrade prompt"
           exit 1
         fi
 
@@ -313,10 +309,3 @@ runs:
         jq -r '.result' "$raw_result" > "$output_tmp"
         mv --no-target-directory -- "$output_tmp" "$output_path"
         output_tmp=""
-
-        if [[ "$CURSOR_MODE" == "analysis" ]]; then
-          jq -e . "$output_path" >/dev/null || {
-            echo "::error::Analysis prompts must return exactly one valid JSON value"
-            exit 1
-          }
-        fi

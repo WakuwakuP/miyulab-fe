@@ -19,7 +19,7 @@ miyulab-fe/
 |-- src/components/ui/    # shadcn-generated UI; excluded from Biome edits
 |-- docs/domain/          # Current domain model extracted from implementation
 |-- docs/timeline/        # Timeline architecture and data-flow references
-|-- .github/workflows/    # CI plus issue/review automation workflows
+|-- .github/workflows/    # PR gates, main build, and weekly package upgrade
 `-- scripts/              # Build helpers such as SQLite WASM asset copy
 ```
 
@@ -86,6 +86,7 @@ TypeScript LSP and codegraph were unavailable in this harness; refs below are fr
 
 ```bash
 yarn check        # Biome lint and format check
+yarn typecheck    # next typegen + tsc (next-env.d.ts is gitignored)
 yarn test:run     # Vitest run
 yarn build        # Production build; prebuild may need DATABASE_URL
 yarn dev          # HTTPS dev server, includes SQLite WASM copy
