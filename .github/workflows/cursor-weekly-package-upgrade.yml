@@ -57,6 +57,7 @@ jobs:
           echo "name=$branch_name" >> "$GITHUB_OUTPUT"
 
       - name: Upgrade packages with Cursor
+        id: upgrade
         uses: ./.github/actions/run-cursor
         with:
           prompt-file: .github/cursor/prompts/weekly-package-upgrade.md
@@ -65,6 +66,16 @@ jobs:
           model: ${{ vars.CURSOR_AGENT_MODEL }}
         env:
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+
+      - name: Preserve Cursor output
+        if: ${{ always() && steps.upgrade.outcome != 'skipped' }}
+        run: |
+          set -euo pipefail
+
+          if [[ -f .cursor-output/weekly-package-upgrade.txt ]]; then
+            cp -- .cursor-output/weekly-package-upgrade.txt \
+              "$RUNNER_TEMP/weekly-package-upgrade.txt"
+          fi
 
       - name: Validate Cursor changes
         id: changes
@@ -105,7 +116,11 @@ jobs:
 
       - name: Run TypeScript check
         if: ${{ steps.changes.outputs.has_changes == 'true' }}
-        run: yarn exec tsc --noEmit
+        run: yarn typecheck
+
+      - name: Run tests
+        if: ${{ steps.changes.outputs.has_changes == 'true' }}
+        run: yarn test:run
 
       - name: Run production build
         if: ${{ steps.changes.outputs.has_changes == 'true' }}
@@ -152,7 +167,7 @@ jobs:
           printf '%s\n\n' "Cursor Agent が依存パッケージを更新しました。" > "$pr_body"
           printf '%s\n\n' "変更概要:" >> "$pr_body"
           printf '%s\n%s\n%s\n\n' '```text' "$diff_stat" '```' >> "$pr_body"
-          printf '%s\n' "検証: \`yarn check\`, \`yarn exec tsc --noEmit\`, \`yarn build\`" >> "$pr_body"
+          printf '%s\n' "検証: \`yarn check\`, \`yarn typecheck\`, \`yarn test:run\`, \`yarn build\`" >> "$pr_body"
           printf '%s\n' "Workflow: ${run_url}" >> "$pr_body"
 
           git add --all
@@ -181,3 +196,33 @@ jobs:
             --add-label dependencies \
             --add-label maintenance \
             --add-label automated
+
+      - name: Write run summary
+        if: ${{ always() }}
+        run: |
+          set -euo pipefail
+
+          {
+            echo "## Cursor Weekly Package Upgrade"
+            echo
+            echo "- Cursor step: \`${{ steps.upgrade.outcome }}\`"
+            echo "- Changes: \`${{ steps.changes.outputs.has_changes || 'unknown' }}\`"
+            echo
+            if [[ -f "$RUNNER_TEMP/weekly-package-upgrade.txt" ]]; then
+              echo "### Cursor output"
+              echo
+              echo '```text'
+              cat -- "$RUNNER_TEMP/weekly-package-upgrade.txt"
+              echo
+              echo '```'
+              echo
+            fi
+            if [[ "${{ job.status }}" != "success" ]]; then
+              echo "### Working tree after failure"
+              echo
+              echo '```text'
+              git status --porcelain --untracked-files=all || true
+              git diff --stat || true
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

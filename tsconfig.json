@@ -27,6 +27,7 @@
   "exclude": ["node_modules", "**/*.test.ts", "**/__tests__/**"],
   "include": [
     "next-env.d.ts",
+    "src/types/next-image.d.ts",
     "**/*.ts",
     "**/*.tsx",
     ".next/types/**/*.ts",

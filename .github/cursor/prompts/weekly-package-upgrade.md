@@ -22,9 +22,23 @@ and `public/sqlite3.wasm` stay synchronized. The project's `yarn build` invokes
 the repository's SQLite WASM copy script; verify that the resulting binary is
 left in the working tree together with `package.json` and `yarn.lock`.
 
-After each package group, use `yarn check:fix` as needed and investigate any
-type, lint, or build breakage. The workflow will independently run, in order,
-`yarn check`, `yarn exec tsc --noEmit`, and `yarn build` before publishing.
+`next-env.d.ts` is gitignored. Use `yarn typecheck` (it runs `next typegen`
+then `tsc --noEmit`) so image and route types resolve. Do not commit
+`next-env.d.ts` or `.next/**`.
+
+After each package group, use `yarn check:fix` as needed and verify with this
+exact sequence:
+
+1. `yarn check`
+2. `yarn typecheck`
+3. `yarn test:run`
+4. `yarn build`
+
+If a group fails verification, undo only that group by restoring the previous
+`package.json`, `yarn.lock`, and `public/sqlite3.wasm` contents you observed
+before the upgrade, then run `yarn install --immutable`. Leave the working tree
+passing the verification sequence above. Never leave a broken tree for the
+workflow to sort out.
 
 Hard constraints:
 
@@ -39,4 +53,5 @@ Hard constraints:
 
 If everything is already current, leave the working tree unchanged and say so
 in the final response. Otherwise, make the upgrades and compatibility fixes;
-do not merely describe them.
+do not merely describe them. End with a short list of upgraded packages and
+any groups you reverted.

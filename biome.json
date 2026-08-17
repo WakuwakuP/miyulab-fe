@@ -33,6 +33,7 @@
       "!**/out",
       "!**/build",
       "!**/next-env.d.ts",
+      "!**/src/types/next-image.d.ts",
       "!**/src/components/ui/**/*",
       "!**/v0/**/*",
       "!**/tests/**/*",
