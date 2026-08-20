@@ -16,6 +16,7 @@ import parse, {
 } from 'html-react-parser'
 import type { Entity } from 'megalodon'
 import {
+  type KeyboardEvent,
   type MouseEvent,
   useCallback,
   useContext,
@@ -171,8 +172,18 @@ export const Status = ({
   const handleContentClick = useCallback(
     (e: MouseEvent<HTMLDivElement>) => {
       if ((e.target as HTMLElement).closest('a, button')) return
-      const selection = window.getSelection()
+      const selection = globalThis.getSelection()
       if (selection != null && selection.toString().length > 0) return
+      openStatusDetail()
+    },
+    [openStatusDetail],
+  )
+
+  const handleContentKeyDown = useCallback(
+    (e: KeyboardEvent<HTMLDivElement>) => {
+      if (e.key !== 'Enter' && e.key !== ' ') return
+      if ((e.target as HTMLElement).closest('a, button')) return
+      e.preventDefault()
       openStatusDetail()
     },
     [openStatusDetail],
@@ -406,7 +417,14 @@ export const Status = ({
           })}
         </div>
       )}
-      <div className="content cursor-text" onClick={handleContentClick}>
+      {/* biome-ignore lint/a11y/useSemanticElements: parsed status HTML may contain nested buttons */}
+      <div
+        className="content cursor-text"
+        onClick={handleContentClick}
+        onKeyDown={handleContentKeyDown}
+        role="button"
+        tabIndex={0}
+      >
         <EditedAt editedAt={status.edited_at} />
         {parse(contentFormatted, { replace })}
       </div>
