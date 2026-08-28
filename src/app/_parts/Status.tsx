@@ -7,6 +7,7 @@ import { EditedAt } from 'app/_parts/EditedAt'
 import { EmojiReactions } from 'app/_parts/EmojiReactions'
 import { MediaAttachments } from 'app/_parts/MediaAttachments'
 import { Poll } from 'app/_parts/Poll'
+import { TruncatedDisplayName } from 'app/_parts/TruncatedDisplayName'
 import { UserInfo } from 'app/_parts/UserInfo'
 import { ElementType } from 'domelementtype'
 import parse, {
@@ -27,7 +28,7 @@ import {
 import { RiRepeatFill, RiVideoLine } from 'react-icons/ri'
 import type { PollAddAppIndex, StatusAddAppIndex } from 'types/types'
 import { replaceEmojis } from 'util/emojiReplacer'
-import { escapeHtml } from 'util/escapeHtml'
+import { formatDisplayNameHtml } from 'util/formatDisplayName'
 import { canPlay } from 'util/PlayerUtils'
 import { AppsContext } from 'util/provider/AppsProvider'
 import { SetDetailContext } from 'util/provider/DetailProvider'
@@ -125,20 +126,9 @@ export const Status = ({
     [],
   )
 
-  const getDisplayName = useCallback(
-    (account: Entity.Account) =>
-      replaceEmojis(
-        escapeHtml(account.display_name),
-        account.emojis,
-        // min-width 付き絵文字は truncate 行の intrinsic 幅を押し広げるため使わない
-        'h-4 w-4 inline-block',
-      ),
-    [],
-  )
-
   const displayName = useMemo(
-    () => getDisplayName(status.account),
-    [status.account, getDisplayName],
+    () => formatDisplayNameHtml(status.account),
+    [status.account],
   )
 
   const getSpoilerText = useCallback(
@@ -361,7 +351,7 @@ export const Status = ({
       ) : (
         <>
           <button
-            className="mb-1 w-full min-w-0 max-w-full border-0 bg-transparent p-0 text-left text-inherit"
+            className="mb-1 block w-full min-w-0 max-w-full border-0 bg-transparent p-0 text-left text-inherit"
             onClick={() => {
               setDetail({
                 content: {
@@ -394,9 +384,11 @@ export const Status = ({
                 loading="lazy"
                 src={toSecureResourceUrl(status.account.avatar)}
               />
-              <span className="min-w-0 flex-1 truncate pl-2">
-                {parse(displayName)}
-              </span>
+              <TruncatedDisplayName
+                className="pl-2"
+                html={displayName}
+                title={status.account.display_name}
+              />
             </span>
           </button>
           <UserInfo

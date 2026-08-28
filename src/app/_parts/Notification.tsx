@@ -2,15 +2,14 @@
 
 import { ProxyImage } from 'app/_parts/ProxyImage'
 import { Status } from 'app/_parts/Status'
+import { TruncatedDisplayName } from 'app/_parts/TruncatedDisplayName'
 
-import parse from 'html-react-parser'
 import * as emoji from 'node-emoji'
 import type { KeyboardEvent } from 'react'
 import { useContext, useMemo } from 'react'
 import { RiStarFill } from 'react-icons/ri'
 import type { NotificationAddAppIndex } from 'types/types'
-import { replaceEmojis } from 'util/emojiReplacer'
-import { escapeHtml } from 'util/escapeHtml'
+import { formatDisplayNameHtml } from 'util/formatDisplayName'
 import { AppsContext } from 'util/provider/AppsProvider'
 import { SetDetailContext } from 'util/provider/DetailProvider'
 import {
@@ -114,10 +113,7 @@ export const Notification = ({
 
   const displayName = useMemo(() => {
     if (notification.account == null) return ''
-    return replaceEmojis(
-      escapeHtml(notification.account.display_name),
-      notification.account.emojis,
-    )
+    return formatDisplayNameHtml(notification.account)
   }, [notification.account])
 
   const openAccountDetail = () => {
@@ -189,10 +185,12 @@ export const Notification = ({
                   width={48}
                 />
               )}
-              <span className="min-w-0 flex-1 overflow-hidden pl-2">
-                <span className="block w-full truncate">
-                  <span>{parse(displayName)}</span>
-                </span>
+              <span className="min-w-0 w-0 flex-1 overflow-hidden pl-2">
+                <TruncatedDisplayName
+                  flexItem={false}
+                  html={displayName}
+                  title={notification.account?.display_name}
+                />
                 <span
                   className="block w-full truncate text-gray-300"
                   title={`@${notification.account?.acct ?? ''}`}
@@ -236,10 +234,12 @@ export const Notification = ({
                   width={48}
                 />
               )}
-              <span className="min-w-0 flex-1 overflow-hidden pl-2">
-                <span className="block w-full truncate">
-                  <span>{parse(displayName)}</span>
-                </span>
+              <span className="min-w-0 w-0 flex-1 overflow-hidden pl-2">
+                <TruncatedDisplayName
+                  flexItem={false}
+                  html={displayName}
+                  title={notification.account?.display_name}
+                />
                 <span
                   className="block w-full truncate text-gray-300"
                   title={`@${notification.account?.acct ?? ''}`}
@@ -269,7 +269,7 @@ export const Notification = ({
         <div className="ml-1 mt-2 box-border min-w-0 max-w-full overflow-x-hidden border-b-2 border-l-2 border-orange-300 pl-2">
           <h3 className="flex min-w-0 max-w-full items-start gap-2">
             <button
-              className="flex min-w-0 flex-1 max-w-full cursor-pointer appearance-none border-0 bg-transparent p-0 text-left text-inherit"
+              className="flex min-w-0 w-0 flex-1 max-w-full cursor-pointer appearance-none border-0 bg-transparent p-0 text-left text-inherit"
               onClick={openAccountDetail}
               onKeyDown={handleAccountKeyDown}
               type="button"
@@ -286,10 +286,12 @@ export const Notification = ({
                   width={48}
                 />
               )}
-              <span className="min-w-0 flex-1 overflow-hidden pl-2">
-                <span className="block w-full truncate">
-                  <span>{parse(displayName)}</span>
-                </span>
+              <span className="min-w-0 w-0 flex-1 overflow-hidden pl-2">
+                <TruncatedDisplayName
+                  flexItem={false}
+                  html={displayName}
+                  title={notification.account?.display_name}
+                />
                 <span
                   className="block w-full truncate text-gray-300"
                   title={`@${notification.account?.acct ?? ''}`}
@@ -341,10 +343,12 @@ export const Notification = ({
                   width={48}
                 />
               )}
-              <span className="min-w-0 flex-1 overflow-hidden pl-2">
-                <span className="block w-full truncate">
-                  <span>{parse(displayName)}</span>
-                </span>
+              <span className="min-w-0 w-0 flex-1 overflow-hidden pl-2">
+                <TruncatedDisplayName
+                  flexItem={false}
+                  html={displayName}
+                  title={notification.account?.display_name}
+                />
                 <span
                   className="block w-full truncate text-gray-300"
                   title={`@${notification.account?.acct ?? ''}`}
@@ -379,10 +383,12 @@ export const Notification = ({
                   width={48}
                 />
               )}
-              <span className="min-w-0 flex-1 overflow-hidden pl-2">
-                <span className="block w-full truncate">
-                  <span>{parse(displayName)}</span>
-                </span>
+              <span className="min-w-0 w-0 flex-1 overflow-hidden pl-2">
+                <TruncatedDisplayName
+                  flexItem={false}
+                  html={displayName}
+                  title={notification.account?.display_name}
+                />
                 <span
                   className="block w-full truncate text-gray-300"
                   title={`@${notification.account?.acct ?? ''}`}
