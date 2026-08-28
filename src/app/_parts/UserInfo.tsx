@@ -2,6 +2,7 @@
 'use client'
 
 import { ProxyImage } from 'app/_parts/ProxyImage'
+import { TruncatedDisplayName } from 'app/_parts/TruncatedDisplayName'
 import { Visibility } from 'app/_parts/Visibility'
 
 import parse from 'html-react-parser'
@@ -9,8 +10,7 @@ import type { Entity } from 'megalodon'
 import { useContext, useMemo } from 'react'
 import { RiRobotFill } from 'react-icons/ri'
 import type { AccountAddAppIndex } from 'types/types'
-import { replaceEmojis } from 'util/emojiReplacer'
-import { escapeHtml } from 'util/escapeHtml'
+import { formatDisplayNameHtml } from 'util/formatDisplayName'
 import { SetDetailContext } from 'util/provider/DetailProvider'
 
 export const UserInfo = ({
@@ -25,16 +25,7 @@ export const UserInfo = ({
   scrolling?: boolean
 }) => {
   const setDetail = useContext(SetDetailContext)
-  const getDisplayName = useMemo(
-    () =>
-      replaceEmojis(
-        escapeHtml(account.display_name),
-        account.emojis,
-        // min-width 付き絵文字は truncate 行の intrinsic 幅を押し広げる
-        'h-5 w-5 inline-block',
-      ),
-    [account],
-  )
+  const displayName = useMemo(() => formatDisplayNameHtml(account), [account])
 
   const openAccountDetail = () => {
     setDetail({
@@ -46,7 +37,7 @@ export const UserInfo = ({
   return (
     <h3 className="min-w-0 max-w-full">
       <button
-        className="w-full min-w-0 max-w-full border-0 bg-transparent p-0 text-left font-[inherit] text-inherit"
+        className="block w-full min-w-0 max-w-full border-0 bg-transparent p-0 text-left font-[inherit] text-inherit"
         onClick={openAccountDetail}
         type="button"
       >
@@ -83,23 +74,24 @@ export const UserInfo = ({
             )}
           </span>
           {small ? (
-            <span className="min-w-0 flex-1 overflow-hidden pl-2">
+            <span className="min-w-0 w-0 flex-1 overflow-hidden pl-2">
               <span className="flex w-full min-w-0 items-center justify-between gap-1">
-                <span className="min-w-0 flex-1 truncate">
-                  <span>{parse(getDisplayName)}</span>
+                <TruncatedDisplayName title={account.display_name}>
+                  {parse(displayName)}
                   <span className="pl-1 text-gray-300">@{account.acct}</span>
-                </span>
+                </TruncatedDisplayName>
                 <span className="shrink-0">
                   <Visibility visibility={visibility} />
                 </span>
               </span>
             </span>
           ) : (
-            <span className="min-w-0 flex-1 overflow-hidden pl-2">
+            <span className="min-w-0 w-0 flex-1 overflow-hidden pl-2">
               <span className="flex w-full min-w-0 items-center justify-between gap-1">
-                <span className="min-w-0 flex-1 truncate">
-                  {parse(getDisplayName)}
-                </span>
+                <TruncatedDisplayName
+                  html={displayName}
+                  title={account.display_name}
+                />
                 <span className="shrink-0">
                   <Visibility visibility={visibility} />
                 </span>

@@ -15,4 +15,17 @@ describe('Notification emoji reaction image', () => {
     )
     expect(source).not.toMatch(/<ProxyImage\s+alt="emoji"/)
   })
+
+  it('truncates account display names without default min-width emojis', async () => {
+    const source = await readFile(
+      join(process.cwd(), 'src/app/_parts/Notification.tsx'),
+      'utf8',
+    )
+
+    expect(source).toContain('formatDisplayNameHtml')
+    expect(source).toContain('TruncatedDisplayName')
+    expect(source).not.toMatch(
+      /replaceEmojis\(\s*escapeHtml\(notification\.account\.display_name\)/,
+    )
+  })
 })
