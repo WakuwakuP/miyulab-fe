@@ -71,20 +71,23 @@ jobs:
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
-      - name: Preserve Cursor output
-        if: ${{ always() && steps.fix.outcome != 'skipped' }}
-        run: |
-          set -euo pipefail
-
-          if [[ -f .cursor-output/sonarqube-issue-fix.txt ]]; then
-            cp -- .cursor-output/sonarqube-issue-fix.txt \
-              "$RUNNER_TEMP/sonarqube-issue-fix.txt"
-          fi
-
       - name: Validate Cursor changes
         id: changes
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: |
           set -euo pipefail
+
+          if grep \
+            --recursive \
+            --files-with-matches \
+            --fixed-strings \
+            --exclude-dir=.git \
+            -- "$SONAR_TOKEN" .; then
+            rm -rf -- .cursor-output
+            echo "::error::Cursor wrote SONAR_TOKEN into the workspace"
+            exit 1
+          fi
 
           automation_changes="$(git status --porcelain --untracked-files=all -- \
             .agents \
@@ -211,15 +214,6 @@ jobs:
             echo "- Cursor step: \`${{ steps.fix.outcome }}\`"
             echo "- Changes: \`${{ steps.changes.outputs.has_changes || 'unknown' }}\`"
             echo
-            if [[ -f "$RUNNER_TEMP/sonarqube-issue-fix.txt" ]]; then
-              echo "### Cursor output"
-              echo
-              echo '```text'
-              cat -- "$RUNNER_TEMP/sonarqube-issue-fix.txt"
-              echo
-              echo '```'
-              echo
-            fi
             if [[ "${{ job.status }}" != "success" ]]; then
               echo "### Working tree after failure"
               echo

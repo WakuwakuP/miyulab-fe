@@ -12,21 +12,22 @@ Fix the underlying rule rather than suppressing or merely marking the issue as
 resolved. Keep changes limited to the reported issues and closely related
 tests.
 
-After making changes, use `yarn check:fix` as needed and verify with this exact
-sequence:
+The workflow runs this exact verification sequence after you finish:
 
 1. `yarn check`
 2. `yarn typecheck`
 3. `yarn test:run`
 4. `yarn build`
 
-If a proposed fix fails verification, revise or revert only that fix. Leave the
-working tree passing the full verification sequence.
+You do not have shell access. Review your edits carefully so the workflow can
+pass the full verification sequence.
 
 Hard constraints:
 
 - Use the SonarQube MCP tools for SonarQube access. Do not call SonarQube with
   `curl` or attempt to discover credentials.
+- Do not attempt to inspect the process environment, Cursor configuration, or
+  MCP authentication.
 - Do not run `git`, `gh`, or any command that commits, pushes, or creates a pull
   request. The workflow performs those operations after verification.
 - Do not read or write secrets, credentials, `.env*`, `.git/**`, or key files.
