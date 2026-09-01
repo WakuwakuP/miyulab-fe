@@ -19,14 +19,14 @@ export function TruncatedDisplayName({
   flexItem = true,
   html,
   title,
-}: {
+}: Readonly<{
   children?: ReactNode
   className?: string
   /** false when this sits in a block column, not a flex row */
   flexItem?: boolean
   html?: string
   title?: string
-}) {
+}>) {
   const content = html == null ? children : parse(html)
 
   if (!flexItem) {
