@@ -74,10 +74,14 @@ runs:
             ;;
         esac
 
-        if [[ "$CURSOR_PROMPT_FILE" != ".github/cursor/prompts/weekly-package-upgrade.md" ]]; then
-          echo "::error::this action is reserved for the trusted weekly package-upgrade prompt"
-          exit 1
-        fi
+        case "$CURSOR_PROMPT_FILE" in
+          .github/cursor/prompts/weekly-package-upgrade.md|\
+          .github/cursor/prompts/sonarqube-issue-fix.md) ;;
+          *)
+            echo "::error::prompt is not allowlisted for Cursor CI workflows"
+            exit 1
+            ;;
+        esac
 
         for unsafe_config in \
           .cursor/cli.json \
@@ -207,6 +211,40 @@ runs:
           "$GITHUB_ACTION_PATH/config/$CURSOR_MODE.json" \
           > "$CURSOR_AGENT_HOME/.cursor/cli-config.json"
 
+    - name: Configure SonarQube MCP
+      if: ${{ inputs.prompt-file == '.github/cursor/prompts/sonarqube-issue-fix.md' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        if [[ -z "${SONAR_TOKEN:-}" ]]; then
+          echo "::error::Repository secret SONAR_TOKEN is not configured"
+          exit 1
+        fi
+
+        umask 077
+        jq -n '{
+            mcpServers: {
+              sonarqube: {
+                url: "https://sonarqube-mcp.wakuwakup.net/mcp",
+                headers: {
+                  Authorization: "Bearer ${SONAR_TOKEN}",
+                  SONARQUBE_READ_ONLY: "true",
+                  SONARQUBE_TOOLSETS: "issues,rules,quality-gates"
+                }
+              }
+            }
+          }' > "$CURSOR_AGENT_HOME/.cursor/mcp.json"
+        mcp_config="$(mktemp "$CURSOR_AGENT_HOME/.cursor/cli-config.XXXXXX")"
+        jq '
+          .permissions.allow |= map(select(startswith("Shell(") | not)) |
+          .permissions.allow += ["Mcp(sonarqube:*)"] |
+          .permissions.deny += ["Shell(*)"]
+        ' \
+          "$CURSOR_AGENT_HOME/.cursor/cli-config.json" > "$mcp_config"
+        mv --no-target-directory \
+          "$mcp_config" "$CURSOR_AGENT_HOME/.cursor/cli-config.json"
+
     - name: Run Cursor Agent
       shell: bash
       env:
@@ -220,7 +258,8 @@ runs:
         cleanup_cursor_credentials() {
           rm -f -- \
             "$CURSOR_AGENT_HOME/.config/cursor/auth.json" \
-            "$CURSOR_AGENT_HOME/.cursor/auth.json"
+            "$CURSOR_AGENT_HOME/.cursor/auth.json" \
+            "$CURSOR_AGENT_HOME/.cursor/mcp.json"
           if [[ -n "$output_tmp" ]]; then
             rm -f -- "$output_tmp"
           fi
@@ -274,17 +313,25 @@ runs:
         if [[ -n "$CURSOR_MODEL" ]]; then
           args+=(--model "$CURSOR_MODEL")
         fi
+        agent_env=(
+          HOME="$CURSOR_AGENT_HOME"
+          PATH="$PATH"
+          LANG="${LANG:-C.UTF-8}"
+          SHELL=/bin/bash
+          TMPDIR="$RUNNER_TEMP"
+          CI=true
+          CURSOR_API_KEY="$CURSOR_API_KEY"
+        )
+        if [[ "$CURSOR_PROMPT_FILE" == ".github/cursor/prompts/sonarqube-issue-fix.md" ]]; then
+          args+=(--approve-mcps)
+          agent_env+=(SONAR_TOKEN="$SONAR_TOKEN")
+        fi
 
         # Do not inherit runner credentials (including Actions runtime tokens).
-        # Cursor receives only its own key and the minimum process environment.
+        # Cursor receives only the credentials required by the selected trusted
+        # prompt and the minimum process environment.
         env -i \
-          HOME="$CURSOR_AGENT_HOME" \
-          PATH="$PATH" \
-          LANG="${LANG:-C.UTF-8}" \
-          SHELL=/bin/bash \
-          TMPDIR="$RUNNER_TEMP" \
-          CI=true \
-          CURSOR_API_KEY="$CURSOR_API_KEY" \
+          "${agent_env[@]}" \
           "$CURSOR_AGENT_BIN" "${args[@]}" "$prompt" > "$raw_result"
 
         current_output_parent="$(realpath -e -- "$output_parent")"
