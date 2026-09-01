@@ -21,6 +21,8 @@ import {
   MediaModalContext,
   SetMediaModalContext,
 } from 'util/provider/ModalProvider'
+import { SetPlayerContext } from 'util/provider/PlayerProvider'
+import { toSecureResourceUrl } from 'util/secureResourceUrl'
 import { ZoomableImage } from './ZoomableImage'
 
 const ModalContent = ({
@@ -31,10 +33,12 @@ const ModalContent = ({
   onZoomChange: (isZoomed: boolean) => void
 }) => {
   const { attachment, index } = useContext(MediaModalContext)
+  const setPlayer = useContext(SetPlayerContext)
 
   const [carouselApi, setCarouselApi] = useState<CarouselApi>()
   const [currentSlide, setCurrentSlide] = useState(index ?? 0)
   const isCurrentSlideZoomedRef = useRef(false)
+  const mediaElementsRef = useRef<Map<number, HTMLMediaElement>>(new Map())
   const zoomedSlideRef = useRef<Set<number>>(new Set())
 
   const carouselOpts = useMemo(
@@ -51,6 +55,9 @@ const ModalContent = ({
 
     const onSelect = () => {
       const slide = carouselApi.selectedScrollSnap()
+      for (const [mediaIndex, mediaElement] of mediaElementsRef.current) {
+        if (mediaIndex !== slide) mediaElement.pause()
+      }
       setCurrentSlide(slide)
       const nextSlideZoomed = zoomedSlideRef.current.has(slide)
       isCurrentSlideZoomedRef.current = nextSlideZoomed
@@ -66,8 +73,10 @@ const ModalContent = ({
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.code === 'ArrowLeft') {
+        if (e.target instanceof HTMLMediaElement) return
         carouselApi?.scrollPrev()
       } else if (e.code === 'ArrowRight') {
+        if (e.target instanceof HTMLMediaElement) return
         carouselApi?.scrollNext()
       } else if (e.code === 'Escape') {
         onClose()
@@ -94,6 +103,14 @@ const ModalContent = ({
     onClose()
   }, [onClose])
 
+  const openInPlayer = useCallback(
+    (mediaIndex: number) => {
+      onClose()
+      setPlayer({ attachment, index: mediaIndex })
+    },
+    [attachment, onClose, setPlayer],
+  )
+
   const handleZoomChange = useCallback(
     (slideIndex: number, isZoomed: boolean) => {
       if (isZoomed) {
@@ -119,20 +136,106 @@ const ModalContent = ({
       {attachment.length > 1 ? (
         <>
           <div className="fixed inset-0 z-50 m-auto h-[90vh] w-[90vw]">
-            <Carousel opts={carouselOpts} setApi={setCarouselApi}>
+            <Carousel
+              onKeyDownCapture={(event) => {
+                if (!(event.target instanceof HTMLMediaElement)) return
+                if (event.code === 'Escape') {
+                  onClose()
+                  event.stopPropagation()
+                }
+              }}
+              opts={carouselOpts}
+              setApi={setCarouselApi}
+            >
               <CarouselContent>
                 {attachment.map((media, slideIndex) => {
                   return (
                     <CarouselItem key={media.id}>
                       <div className="h-[90vh] w-[90vw]">
-                        <ZoomableImage
-                          className="h-[90vh] w-[90vw]"
-                          media={media}
-                          onBackgroundClick={handleBackgroundClick}
-                          onZoomChange={(isZoomed) =>
-                            handleZoomChange(slideIndex, isZoomed)
-                          }
-                        />
+                        {media.type === 'image' && (
+                          <ZoomableImage
+                            className="h-[90vh] w-[90vw]"
+                            media={media}
+                            onBackgroundClick={handleBackgroundClick}
+                            onZoomChange={(isZoomed) =>
+                              handleZoomChange(slideIndex, isZoomed)
+                            }
+                          />
+                        )}
+                        {(media.type === 'video' || media.type === 'gifv') && (
+                          <div
+                            className="relative flex h-full w-full items-center justify-center"
+                            onClick={handleBackgroundClick}
+                          >
+                            <video
+                              aria-label={
+                                media.description || `${media.type} attachment`
+                              }
+                              className="max-h-full max-w-full"
+                              controls
+                              loop={media.type === 'gifv'}
+                              onClick={(event) => event.stopPropagation()}
+                              playsInline
+                              ref={(element) => {
+                                if (element == null) {
+                                  mediaElementsRef.current.delete(slideIndex)
+                                } else {
+                                  mediaElementsRef.current.set(
+                                    slideIndex,
+                                    element,
+                                  )
+                                }
+                              }}
+                              src={toSecureResourceUrl(media.url) ?? undefined}
+                            />
+                            <button
+                              className="absolute right-3 top-3 rounded-md bg-black/70 px-3 py-2 text-sm text-white"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                openInPlayer(slideIndex)
+                              }}
+                              type="button"
+                            >
+                              Open in player
+                            </button>
+                          </div>
+                        )}
+                        {media.type === 'audio' && (
+                          <div
+                            className="relative flex h-full w-full items-center justify-center"
+                            onClick={handleBackgroundClick}
+                          >
+                            <audio
+                              aria-label={
+                                media.description || 'Audio attachment'
+                              }
+                              className="w-full max-w-2xl"
+                              controls
+                              onClick={(event) => event.stopPropagation()}
+                              ref={(element) => {
+                                if (element == null) {
+                                  mediaElementsRef.current.delete(slideIndex)
+                                } else {
+                                  mediaElementsRef.current.set(
+                                    slideIndex,
+                                    element,
+                                  )
+                                }
+                              }}
+                              src={toSecureResourceUrl(media.url) ?? undefined}
+                            />
+                            <button
+                              className="absolute right-3 top-3 rounded-md bg-black/70 px-3 py-2 text-sm text-white"
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                openInPlayer(slideIndex)
+                              }}
+                              type="button"
+                            >
+                              Open in player
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </CarouselItem>
                   )
