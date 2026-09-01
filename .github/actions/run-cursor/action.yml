@@ -74,10 +74,14 @@ runs:
             ;;
         esac
 
-        if [[ "$CURSOR_PROMPT_FILE" != ".github/cursor/prompts/weekly-package-upgrade.md" ]]; then
-          echo "::error::this action is reserved for the trusted weekly package-upgrade prompt"
-          exit 1
-        fi
+        case "$CURSOR_PROMPT_FILE" in
+          .github/cursor/prompts/weekly-package-upgrade.md|\
+          .github/cursor/prompts/sonarqube-issue-fix.md) ;;
+          *)
+            echo "::error::prompt is not allowlisted for Cursor CI workflows"
+            exit 1
+            ;;
+        esac
 
         for unsafe_config in \
           .cursor/cli.json \
@@ -207,6 +211,33 @@ runs:
           "$GITHUB_ACTION_PATH/config/$CURSOR_MODE.json" \
           > "$CURSOR_AGENT_HOME/.cursor/cli-config.json"
 
+    - name: Configure SonarQube MCP
+      if: ${{ inputs.prompt-file == '.github/cursor/prompts/sonarqube-issue-fix.md' }}
+      shell: bash
+      env:
+        SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
+      run: |
+        set -euo pipefail
+
+        if [[ -z "${SONAR_TOKEN:-}" ]]; then
+          echo "::error::Repository secret SONAR_TOKEN is not configured"
+          exit 1
+        fi
+
+        umask 077
+        jq -n \
+          --arg token "$SONAR_TOKEN" \
+          '{
+            mcpServers: {
+              sonarqube: {
+                url: "https://sonarqube-mcp.wakuwakup.net/mcp",
+                headers: {
+                  Authorization: ("Bearer " + $token)
+                }
+              }
+            }
+          }' > "$CURSOR_AGENT_HOME/.cursor/mcp.json"
+
     - name: Run Cursor Agent
       shell: bash
       env:
@@ -220,7 +251,8 @@ runs:
         cleanup_cursor_credentials() {
           rm -f -- \
             "$CURSOR_AGENT_HOME/.config/cursor/auth.json" \
-            "$CURSOR_AGENT_HOME/.cursor/auth.json"
+            "$CURSOR_AGENT_HOME/.cursor/auth.json" \
+            "$CURSOR_AGENT_HOME/.cursor/mcp.json"
           if [[ -n "$output_tmp" ]]; then
             rm -f -- "$output_tmp"
           fi
