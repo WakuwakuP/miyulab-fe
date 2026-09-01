@@ -95,4 +95,7 @@ jobs:
       - name: Queue issue fix workflow
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh workflow run cursor-sonarqube-issue-fix.yml --ref main
+        run: >-
+          gh workflow run cursor-sonarqube-issue-fix.yml
+          --repo "$GITHUB_REPOSITORY"
+          --ref main
