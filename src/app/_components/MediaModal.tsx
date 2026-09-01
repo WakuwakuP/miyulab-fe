@@ -38,6 +38,7 @@ const ModalContent = ({
   const [carouselApi, setCarouselApi] = useState<CarouselApi>()
   const [currentSlide, setCurrentSlide] = useState(index ?? 0)
   const isCurrentSlideZoomedRef = useRef(false)
+  const mediaElementsRef = useRef<Map<number, HTMLMediaElement>>(new Map())
   const zoomedSlideRef = useRef<Set<number>>(new Set())
 
   const carouselOpts = useMemo(
@@ -54,6 +55,9 @@ const ModalContent = ({
 
     const onSelect = () => {
       const slide = carouselApi.selectedScrollSnap()
+      for (const [mediaIndex, mediaElement] of mediaElementsRef.current) {
+        if (mediaIndex !== slide) mediaElement.pause()
+      }
       setCurrentSlide(slide)
       const nextSlideZoomed = zoomedSlideRef.current.has(slide)
       isCurrentSlideZoomedRef.current = nextSlideZoomed
@@ -68,10 +72,11 @@ const ModalContent = ({
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLMediaElement) return
       if (e.code === 'ArrowLeft') {
+        if (e.target instanceof HTMLMediaElement) return
         carouselApi?.scrollPrev()
       } else if (e.code === 'ArrowRight') {
+        if (e.target instanceof HTMLMediaElement) return
         carouselApi?.scrollNext()
       } else if (e.code === 'Escape') {
         onClose()
@@ -131,7 +136,17 @@ const ModalContent = ({
       {attachment.length > 1 ? (
         <>
           <div className="fixed inset-0 z-50 m-auto h-[90vh] w-[90vw]">
-            <Carousel opts={carouselOpts} setApi={setCarouselApi}>
+            <Carousel
+              onKeyDownCapture={(event) => {
+                if (!(event.target instanceof HTMLMediaElement)) return
+                if (event.code === 'Escape') {
+                  onClose()
+                  event.stopPropagation()
+                }
+              }}
+              opts={carouselOpts}
+              setApi={setCarouselApi}
+            >
               <CarouselContent>
                 {attachment.map((media, slideIndex) => {
                   return (
@@ -148,7 +163,10 @@ const ModalContent = ({
                           />
                         )}
                         {(media.type === 'video' || media.type === 'gifv') && (
-                          <div className="relative flex h-full w-full items-center justify-center">
+                          <div
+                            className="relative flex h-full w-full items-center justify-center"
+                            onClick={handleBackgroundClick}
+                          >
                             <video
                               aria-label={
                                 media.description || `${media.type} attachment`
@@ -158,6 +176,16 @@ const ModalContent = ({
                               loop={media.type === 'gifv'}
                               onClick={(event) => event.stopPropagation()}
                               playsInline
+                              ref={(element) => {
+                                if (element == null) {
+                                  mediaElementsRef.current.delete(slideIndex)
+                                } else {
+                                  mediaElementsRef.current.set(
+                                    slideIndex,
+                                    element,
+                                  )
+                                }
+                              }}
                               src={toSecureResourceUrl(media.url) ?? undefined}
                             />
                             <button
@@ -173,7 +201,10 @@ const ModalContent = ({
                           </div>
                         )}
                         {media.type === 'audio' && (
-                          <div className="relative flex h-full w-full items-center justify-center">
+                          <div
+                            className="relative flex h-full w-full items-center justify-center"
+                            onClick={handleBackgroundClick}
+                          >
                             <audio
                               aria-label={
                                 media.description || 'Audio attachment'
@@ -181,6 +212,16 @@ const ModalContent = ({
                               className="w-full max-w-2xl"
                               controls
                               onClick={(event) => event.stopPropagation()}
+                              ref={(element) => {
+                                if (element == null) {
+                                  mediaElementsRef.current.delete(slideIndex)
+                                } else {
+                                  mediaElementsRef.current.set(
+                                    slideIndex,
+                                    element,
+                                  )
+                                }
+                              }}
                               src={toSecureResourceUrl(media.url) ?? undefined}
                             />
                             <button
