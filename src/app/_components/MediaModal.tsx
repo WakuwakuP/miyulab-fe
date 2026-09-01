@@ -1,5 +1,6 @@
 'use client'
 
+import { captionsTrackSrc } from 'app/_parts/Media'
 import { Modal } from 'app/_parts/Modal'
 import {
   Carousel,
@@ -32,10 +33,10 @@ import { ZoomableImage } from './ZoomableImage'
 const ModalContent = ({
   onClose,
   onZoomChange,
-}: {
+}: Readonly<{
   onClose: () => void
   onZoomChange: (isZoomed: boolean) => void
-}) => {
+}>) => {
   const { attachment, index } = useContext(MediaModalContext)
   const setPlayer = useContext(SetPlayerContext)
 
@@ -167,15 +168,18 @@ const ModalContent = ({
                           />
                         )}
                         {(media.type === 'video' || media.type === 'gifv') && (
-                          <div
-                            className="relative flex h-full w-full items-center justify-center"
-                            onClick={handleBackgroundClick}
-                          >
+                          <div className="relative flex h-full w-full items-center justify-center">
+                            <button
+                              aria-label="Close media viewer"
+                              className="absolute inset-0 border-0 bg-transparent p-0"
+                              onClick={handleBackgroundClick}
+                              type="button"
+                            />
                             <video
                               aria-label={
                                 media.description || `${media.type} attachment`
                               }
-                              className="max-h-full max-w-full"
+                              className="relative z-1 max-h-full max-w-full"
                               controls
                               loop={media.type === 'gifv'}
                               onClick={(event) => event.stopPropagation()}
@@ -191,19 +195,29 @@ const ModalContent = ({
                                 }
                               }}
                               src={toSecureResourceUrl(media.url) ?? undefined}
-                            />
+                            >
+                              <track
+                                kind="captions"
+                                label="Captions"
+                                src={captionsTrackSrc(media.description)}
+                                srcLang="und"
+                              />
+                            </video>
                           </div>
                         )}
                         {media.type === 'audio' && (
-                          <div
-                            className="relative flex h-full w-full items-center justify-center"
-                            onClick={handleBackgroundClick}
-                          >
+                          <div className="relative flex h-full w-full items-center justify-center">
+                            <button
+                              aria-label="Close media viewer"
+                              className="absolute inset-0 border-0 bg-transparent p-0"
+                              onClick={handleBackgroundClick}
+                              type="button"
+                            />
                             <audio
                               aria-label={
                                 media.description || 'Audio attachment'
                               }
-                              className="w-full max-w-2xl"
+                              className="relative z-1 w-full max-w-2xl"
                               controls
                               onClick={(event) => event.stopPropagation()}
                               ref={(element) => {
@@ -217,7 +231,14 @@ const ModalContent = ({
                                 }
                               }}
                               src={toSecureResourceUrl(media.url) ?? undefined}
-                            />
+                            >
+                              <track
+                                kind="captions"
+                                label="Captions"
+                                src={captionsTrackSrc(media.description)}
+                                srcLang="und"
+                              />
+                            </audio>
                           </div>
                         )}
                       </div>

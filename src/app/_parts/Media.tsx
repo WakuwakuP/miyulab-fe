@@ -29,6 +29,15 @@ ${cueText}`
   return `data:text/vtt;charset=utf-8,${encodeURIComponent(captions)}`
 }
 
+const EMPTY_CAPTIONS_TRACK = 'data:text/vtt;charset=utf-8,WEBVTT%0A%0A'
+
+export const captionsTrackSrc = (
+  description: string | null | undefined,
+): string => {
+  if (description == null || description === '') return EMPTY_CAPTIONS_TRACK
+  return descriptionTrackUrl(description)
+}
+
 export const Media = ({
   media,
   onClick,
