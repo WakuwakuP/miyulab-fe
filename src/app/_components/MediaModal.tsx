@@ -147,13 +147,11 @@ const ModalContent = ({
                             }
                           />
                         )}
-                        {(media.type === 'video' ||
-                          media.type === 'gifv') && (
+                        {(media.type === 'video' || media.type === 'gifv') && (
                           <div className="relative flex h-full w-full items-center justify-center">
                             <video
                               aria-label={
-                                media.description ||
-                                `${media.type} attachment`
+                                media.description || `${media.type} attachment`
                               }
                               className="max-h-full max-w-full"
                               controls
