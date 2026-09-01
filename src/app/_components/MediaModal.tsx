@@ -16,7 +16,11 @@ import {
   useRef,
   useState,
 } from 'react'
-import { RiArrowLeftSLine, RiArrowRightSLine } from 'react-icons/ri'
+import {
+  RiArrowLeftSLine,
+  RiArrowRightSLine,
+  RiPlayCircleLine,
+} from 'react-icons/ri'
 import {
   MediaModalContext,
   SetMediaModalContext,
@@ -188,16 +192,6 @@ const ModalContent = ({
                               }}
                               src={toSecureResourceUrl(media.url) ?? undefined}
                             />
-                            <button
-                              className="absolute right-3 top-3 rounded-md bg-black/70 px-3 py-2 text-sm text-white"
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                openInPlayer(slideIndex)
-                              }}
-                              type="button"
-                            >
-                              Open in player
-                            </button>
                           </div>
                         )}
                         {media.type === 'audio' && (
@@ -224,16 +218,6 @@ const ModalContent = ({
                               }}
                               src={toSecureResourceUrl(media.url) ?? undefined}
                             />
-                            <button
-                              className="absolute right-3 top-3 rounded-md bg-black/70 px-3 py-2 text-sm text-white"
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                openInPlayer(slideIndex)
-                              }}
-                              type="button"
-                            >
-                              Open in player
-                            </button>
                           </div>
                         )}
                       </div>
@@ -260,6 +244,21 @@ const ModalContent = ({
           >
             <RiArrowRightSLine className="pl-1" size={60} />
           </button>
+          {['video', 'gifv', 'audio'].includes(
+            attachment[currentSlide].type,
+          ) && (
+            <button
+              className="fixed bottom-6 right-6 z-51 flex items-center gap-2 rounded-full bg-white px-5 py-3 font-semibold text-black shadow-xl ring-2 ring-black/20 transition-transform hover:scale-105"
+              onClick={(event) => {
+                event.stopPropagation()
+                openInPlayer(currentSlide)
+              }}
+              type="button"
+            >
+              <RiPlayCircleLine aria-hidden="true" size={24} />
+              Open in player
+            </button>
+          )}
         </>
       ) : (
         attachment[index].type === 'image' && (
