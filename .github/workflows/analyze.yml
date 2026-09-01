@@ -12,8 +12,9 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      actions: write
       contents: read
+    outputs:
+      quality-gate-outcome: ${{ steps.quality-gate.outcome }}
 
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
@@ -82,8 +83,16 @@ jobs:
           }' "${response_file}"; then
             echo "::warning::SonarQube Quality Gate response was not valid JSON."
           fi
-      - name: Queue Cursor SonarQube issue fix
-        if: ${{ always() && steps.quality-gate.outcome == 'failure' }}
+  queue-fix:
+    name: Queue Cursor SonarQube issue fix
+    needs: build
+    if: ${{ always() && needs.build.outputs.quality-gate-outcome == 'failure' }}
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+    steps:
+      - name: Queue issue fix workflow
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh workflow run cursor-sonarqube-issue-fix.yml --ref main
