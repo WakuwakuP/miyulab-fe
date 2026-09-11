@@ -3748,14 +3748,14 @@ __metadata:
   languageName: node
   linkType: hard
 
-"emoji-picker-react@npm:^4.20.1":
-  version: 4.20.1
-  resolution: "emoji-picker-react@npm:4.20.1"
+"emoji-picker-react@npm:^4.20.2":
+  version: 4.20.2
+  resolution: "emoji-picker-react@npm:4.20.2"
   dependencies:
-    flairup: "npm:1.1.1"
+    flairup: "npm:1.1.2"
   peerDependencies:
-    react: ">=16"
-  checksum: 10c0/ae1c52d96eb3b33cc5ad10f3f51a7270845bf38dec97079043f53e30090c423a5dd00ceb7163913f516a5a44b7405067fda6e521051c413507a7549eba853b96
+    react: ">=16.8"
+  checksum: 10c0/41f5f4c5e8640d9b7cb509fbcb1618f95e7c0218b685eb17a84574be1ce3861cc5418bab74a13592b81dfb9698060184206f11254928f24ed84f46e2fe15300b
   languageName: node
   linkType: hard
 
@@ -3963,10 +3963,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"flairup@npm:1.1.1":
-  version: 1.1.1
-  resolution: "flairup@npm:1.1.1"
-  checksum: 10c0/41c179733dd4bf77c0c868629f36cf89c05ed91a702c2e0f577c05c47fd56455007d1f5d53f3ad63270cf37407135db7e444a6f3ed21f0bf9d8fd2a0099a3f91
+"flairup@npm:1.1.2":
+  version: 1.1.2
+  resolution: "flairup@npm:1.1.2"
+  checksum: 10c0/525d9142597b7b31fc98ac70b016774a5494658fab7c4fdb3c455ec9ab1f361c0a1be8fd32b3b7581447bde1e68a96a319fb6f63264669042e87e6538ccc2cfb
   languageName: node
   linkType: hard
 
@@ -5034,7 +5034,7 @@ __metadata:
     cmdk: "npm:^1.1.1"
     domelementtype: "npm:^3.0.0"
     embla-carousel-react: "npm:^8.6.0"
-    emoji-picker-react: "npm:^4.20.1"
+    emoji-picker-react: "npm:^4.20.2"
     globals: "npm:^17.12.0"
     html-react-parser: "npm:^6.1.7"
     husky: "npm:9.1.7"
