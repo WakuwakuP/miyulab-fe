@@ -542,7 +542,8 @@
 				storeAndNotify(opName, rc);
 			},
 			xDelete: async function(...args) {
-				storeAndNotify("xDelete", await vfsAsyncImpls.xDeleteNoWait(...args));
+				const rc = await vfsAsyncImpls.xDeleteNoWait(...args);
+				storeAndNotify("xDelete", rc);
 			},
 			xDeleteNoWait: async function(filename, syncDir = 0, recursive = false) {
 				let rc = 0;
@@ -576,6 +577,12 @@
 				await releaseImplicitLock(fh);
 				storeAndNotify("xFileSize", rc);
 			},
+			/**
+			The first argument is semantically invalid here - it's an
+			address in the synchronous side's heap. We can do nothing with
+			it here except use it as a unique-per-file identifier.
+			i.e. a lookup key.
+			*/
 			xOpen: async function(fid, filename, flags, opfsFlags) {
 				const opName = "xOpen";
 				const create = state.sq3Codes.SQLITE_OPEN_CREATE & flags;
@@ -854,13 +861,11 @@
 						waitLoop();
 						break;
 					}
-					case "opfs-async-restart":
-						if (flagAsyncShutdown) {
-							warn("Restarting after opfs-async-shutdown. Might or might not work.");
-							flagAsyncShutdown = false;
-							waitLoop();
-						}
-						break;
+					case "opfs-async-restart": if (flagAsyncShutdown) {
+						warn("Restarting after opfs-async-shutdown. Might or might not work.");
+						flagAsyncShutdown = false;
+						waitLoop();
+					}
 				}
 			};
 			wPost("opfs-async-loaded");
