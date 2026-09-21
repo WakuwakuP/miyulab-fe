@@ -5053,7 +5053,7 @@ __metadata:
     react-zoom-pan-pinch: "npm:^4.2.0"
     rich-textarea: "npm:0.27.1"
     sharp: "npm:^0.35.4"
-    slick-carousel: "npm:^1.8.1"
+    slick-carousel: "npm:^2.0.0"
     tailwind-merge: "npm:^3.7.0"
     tailwindcss: "npm:^4.3.3"
     tailwindcss-animate: "npm:^1.0.7"
@@ -6154,12 +6154,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"slick-carousel@npm:^1.8.1":
-  version: 1.8.1
-  resolution: "slick-carousel@npm:1.8.1"
+"slick-carousel@npm:^2.0.0":
+  version: 2.0.0
+  resolution: "slick-carousel@npm:2.0.0"
   peerDependencies:
     jquery: ">=1.8.0"
-  checksum: 10c0/e8c9c9a454c107cfee88689477b453449ed66d5343cf495d3135ec25ea736a0df862f625a9cdc8abd6262629ecef3343c5de686694831f99b13dfe837a1aa587
+  checksum: 10c0/f1f235cac6e1bec563f5a85de6178f3ab578c0c5b33d506d9a738c46965269b70f72c5f7db9eb47d83c06dc8e1c70f0dad0a4b2449e24ea29a0134ec38e39426
   languageName: node
   linkType: hard
 
