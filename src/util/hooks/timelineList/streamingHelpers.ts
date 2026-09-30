@@ -13,6 +13,10 @@ import { CURSOR_MARGIN_MS } from './itemHelpers'
 
 const INTERACTION_ONLY_TABLE = 'post_interactions'
 
+export const INTERACTION_RELATED_TABLES: ReadonlySet<string> = new Set([
+  INTERACTION_ONLY_TABLE,
+])
+
 /**
  * ChangeHint 配列から changedTables を集約して Set にまとめる。
  *

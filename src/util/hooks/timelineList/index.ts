@@ -1,4 +1,12 @@
-export { hintsMatchTimeline } from './hintMatching'
+export {
+  hintMatchesTimeline,
+  hintsMatchTimeline,
+  mergeChangedPostIds,
+} from './hintMatching'
+export {
+  collectAffectedTimelineEntries,
+  planReferencesTableDeep,
+} from './interactionRefresh'
 export {
   CURSOR_MARGIN_MS,
   itemKey,
@@ -17,5 +25,6 @@ export {
   aggregateChangedTables,
   buildStreamingCursor,
 } from './streamingHelpers'
+export { createChangeCoalescer } from './subscriptionCoalescer'
 export { useTimelineScrollbackController } from './useTimelineScrollbackController'
 export { useTimelineStreamingController } from './useTimelineStreamingController'

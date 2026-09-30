@@ -9,6 +9,7 @@
 import type { MergeNodeV2 } from '../nodes'
 import type { NodeOutputRow } from '../plan'
 import type { NodeOutput } from './types'
+import { serializeRowsForHash } from './workerNodeCache'
 
 /** (table, id) 複合キーを生成する */
 function rowKey(row: NodeOutputRow): string {
@@ -60,8 +61,8 @@ export function executeMerge(
 
   const sourceTable = deriveSourceTable(rows, inputs[0].sourceTable)
 
-  const inputHashes = inputs.map((i) => i.hash).join('+')
-  const hash = `merge:${node.strategy}:${inputHashes}:${rows.length}`
+  const inputHashes = JSON.stringify(inputs.map((i) => i.hash))
+  const hash = `merge:${node.strategy}:${inputHashes}:${serializeRowsForHash(rows)}`
 
   return { hash, rows, sourceTable }
 }

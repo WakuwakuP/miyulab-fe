@@ -22,7 +22,11 @@
  * - stored_at, reblog_of_uri, has_media, is_reblog(stored) 廃止
  */
 
-import { BATCH_INTERACTIONS_SQL, BATCH_SQL_TEMPLATES } from './statusBatch'
+import {
+  BATCH_INTERACTIONS_SQL,
+  BATCH_POLLS_SQL,
+  BATCH_SQL_TEMPLATES,
+} from './statusBatch'
 
 // ================================================================
 // 定数
@@ -264,12 +268,23 @@ export const STATUS_BASE_SELECT = `
  * NOTE: バックエンド URL はアプリ設定由来であり、ユーザー入力ではないため
  * リテラル埋め込みは安全。bind パラメータ変更を避けるためこの方式を採用。
  */
-export function buildSpbFilter(backendUrls: string[]): string {
+function scopedAccountPredicate(
+  alias: 'rep' | 'spb_min',
+  backendUrls: string[],
+): string {
   if (backendUrls.length === 0) return ''
   const quoted = backendUrls
     .map((u) => `'${u.replaceAll("'", "''")}'`)
     .join(',')
-  return `AND spb_min.server_id IN (SELECT la.server_id FROM local_accounts la WHERE la.backend_url IN (${quoted}))`
+  return `AND ${alias}.local_account_id IN (SELECT la.id FROM local_accounts la WHERE la.backend_url IN (${quoted}))`
+}
+
+export function buildSpbFilter(backendUrls: string[]): string {
+  return scopedAccountPredicate('spb_min', backendUrls)
+}
+
+export function buildRepFilter(backendUrls: string[]): string {
+  return scopedAccountPredicate('rep', backendUrls)
 }
 
 /**
@@ -306,16 +321,67 @@ export function buildScopedEngagementsSql(
     ) AS interactions_json
   FROM post_interactions pi
   WHERE pi.post_id IN (${placeholder})
-    AND pi.local_account_id IN (
-      SELECT la.id FROM local_accounts la
-      WHERE la.backend_url IN (${quoted})
+    AND pi.local_account_id = (
+      SELECT pbr.local_account_id
+      FROM post_backend_ids pbr
+      WHERE pbr.post_id = pi.post_id
+        AND pbr.local_account_id IN (
+          SELECT la.id FROM local_accounts la
+          WHERE la.backend_url IN (${quoted})
+        )
+      ORDER BY pbr.server_id, pbr.local_account_id
+      LIMIT 1
     )`
+}
+
+export function buildScopedPollsSql(
+  backendUrls: string[],
+  placeholder = '{IDS}',
+): string {
+  if (backendUrls.length === 0) {
+    return placeholder === '{IDS}' ? BATCH_SQL_TEMPLATES.polls : BATCH_POLLS_SQL
+  }
+  const quoted = backendUrls
+    .map((u) => `'${u.replaceAll("'", "''")}'`)
+    .join(',')
+  return `
+  SELECT p.post_id,
+    json_object(
+      'id', p.id,
+      'expires_at', p.expires_at,
+      'expired', p.expired,
+      'multiple', p.multiple,
+      'votes_count', p.votes_count,
+      'options', (
+        SELECT json_group_array(
+          json_object('title', po.title, 'votes_count', po.votes_count)
+        )
+        FROM poll_options po
+        WHERE po.poll_id = p.id
+        ORDER BY po.sort_order
+      ),
+      'voted', pv.voted,
+      'own_votes', pv.own_votes_json
+    ) AS poll_json
+  FROM polls p
+  LEFT JOIN poll_votes pv ON p.id = pv.poll_id AND pv.local_account_id = (
+    SELECT pbr.local_account_id
+    FROM post_backend_ids pbr
+    WHERE pbr.post_id = p.post_id
+      AND pbr.local_account_id IN (
+        SELECT la.id FROM local_accounts la
+        WHERE la.backend_url IN (${quoted})
+      )
+    ORDER BY pbr.server_id, pbr.local_account_id
+    LIMIT 1
+  )
+  WHERE p.post_id IN (${placeholder})`
 }
 
 /**
  * local_account_id でスコープされたバッチ SQL テンプレートを構築する。
  *
- * engagements のみがスコープ対象。他のバッチクエリは共通テンプレートをそのまま使う。
+ * interactions/polls のみがスコープ対象。他のバッチクエリは共通テンプレートをそのまま使う。
  */
 export function buildScopedBatchTemplates(backendUrls: string[]): {
   [K in keyof typeof BATCH_SQL_TEMPLATES]: string
@@ -323,6 +389,7 @@ export function buildScopedBatchTemplates(backendUrls: string[]): {
   return {
     ...BATCH_SQL_TEMPLATES,
     interactions: buildScopedEngagementsSql(backendUrls),
+    polls: buildScopedPollsSql(backendUrls),
   }
 }
 
@@ -334,7 +401,7 @@ export function buildScopedBatchTemplates(backendUrls: string[]): {
  * フィルタされたタイムラインが同時に存在する場合、各パネルに正しい
  * local_id / account.id が返るようになる。
  */
-export function buildStatusBaseJoins(spbFilter = ''): string {
+export function buildStatusBaseJoins(spbFilter = '', repFilter = ''): string {
   return `
   LEFT JOIN profiles pr ON p.author_profile_id = pr.id
   LEFT JOIN visibility_types vt ON p.visibility_id = vt.id
@@ -346,11 +413,19 @@ export function buildStatusBaseJoins(spbFilter = ''): string {
   LEFT JOIN post_stats rps ON rs.id = rps.post_id
   LEFT JOIN post_backend_ids spb
     ON spb.post_id = p.id
-    AND spb.server_id = (
-      SELECT MIN(spb_min.server_id)
-      FROM post_backend_ids spb_min
-      WHERE spb_min.post_id = p.id
-        ${spbFilter}
+    AND spb.local_account_id = (
+      SELECT rep.local_account_id
+      FROM post_backend_ids rep
+      WHERE rep.post_id = p.id
+        ${repFilter}
+        AND rep.server_id = (
+          SELECT MIN(spb_min.server_id)
+          FROM post_backend_ids spb_min
+          WHERE spb_min.post_id = p.id
+            ${spbFilter}
+        )
+      ORDER BY rep.local_account_id
+      LIMIT 1
     )
   LEFT JOIN local_accounts la_auth ON la_auth.id = spb.local_account_id`
 }
@@ -364,11 +439,11 @@ export const STATUS_BASE_JOINS = buildStatusBaseJoins()
  * spbFilter を渡すと spb のバックエンド選択がフィルタされる。
  * {IDS} プレースホルダは Worker 側で post_id IN 句に置換される。
  */
-export function buildPhase2Template(spbFilter = ''): string {
+export function buildPhase2Template(spbFilter = '', repFilter = ''): string {
   return `
   SELECT ${STATUS_BASE_SELECT}
   FROM posts p
-  ${buildStatusBaseJoins(spbFilter)}
+  ${buildStatusBaseJoins(spbFilter, repFilter)}
   WHERE p.id IN ({IDS})
   GROUP BY p.id
   ORDER BY p.created_at_ms DESC;

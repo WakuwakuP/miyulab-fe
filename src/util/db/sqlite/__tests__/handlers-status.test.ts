@@ -24,6 +24,7 @@ function createMockDb(
   calls: ExecCall[]
 } {
   const calls: ExecCall[] = []
+  let lastChange = 0
 
   const db: DbExec = {
     exec: vi.fn(
@@ -35,7 +36,19 @@ function createMockDb(
         },
       ) => {
         calls.push({ opts, sql })
-        if (execImpl) return execImpl(sql, opts)
+        if (
+          opts?.returnValue === 'resultRows' &&
+          /^\s*SELECT\s+changes\s*\(\s*\)/i.test(sql)
+        ) {
+          const n = lastChange
+          lastChange = 0
+          return [[n]]
+        }
+        if (/^\s*(INSERT|UPDATE|DELETE|REPLACE)\b/i.test(sql)) lastChange = 1
+        if (execImpl) {
+          const result = execImpl(sql, opts)
+          if (result !== undefined) return result
+        }
         if (opts?.returnValue === 'resultRows') return []
         return undefined
       },
@@ -104,7 +117,8 @@ function createMockStatus(
 // モック設定
 // ================================================================
 
-vi.mock('util/db/sqlite/helpers', () => ({
+vi.mock('util/db/sqlite/helpers', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('util/db/sqlite/helpers')>()),
   buildTimelineKey: vi.fn((type: string, opts?: { tag?: string }) =>
     type === 'tag' ? `tag:${opts?.tag ?? ''}` : type,
   ),
@@ -302,9 +316,9 @@ describe('handleUpsertStatus', () => {
       expect.anything(),
     )
 
-    // ensureProfile が新シグネチャ (db, account, serverId, collector, skipProfileUpdate) で呼ばれること
+    // ensureProfile が新シグネチャ (db, account, serverId, collector, skipProfileUpdate, now) で呼ばれること
     const callArgs = vi.mocked(helpersModule.ensureProfile).mock.calls[0]
-    expect(callArgs).toHaveLength(5)
+    expect(callArgs).toHaveLength(6)
     expect(callArgs[0]).toBe(db)
     expect(callArgs[1]).toEqual(
       expect.objectContaining({ acct: 'alice@example.com' }),
@@ -335,6 +349,7 @@ describe('handleUpsertStatus', () => {
       'favourite',
       true,
       expect.anything(),
+      { now: expect.any(Number) },
     )
     expect(helpersModule.updateInteraction).toHaveBeenCalledWith(
       db,
@@ -343,6 +358,7 @@ describe('handleUpsertStatus', () => {
       'reblog',
       true,
       expect.anything(),
+      { now: expect.any(Number) },
     )
     expect(helpersModule.updateInteraction).toHaveBeenCalledWith(
       db,
@@ -351,6 +367,7 @@ describe('handleUpsertStatus', () => {
       'bookmark',
       true,
       expect.anything(),
+      { now: expect.any(Number) },
     )
   })
 
@@ -376,7 +393,7 @@ describe('handleUpsertStatus', () => {
       'favourite',
       false,
       expect.anything(),
-      { preserveRecentLocalTrueMs: 60_000 },
+      expect.objectContaining({ preserveRecentLocalTrueMs: 60_000 }),
     )
     expect(helpersModule.updateInteraction).toHaveBeenCalledWith(
       db,
@@ -385,7 +402,7 @@ describe('handleUpsertStatus', () => {
       'reblog',
       false,
       expect.anything(),
-      { preserveRecentLocalTrueMs: 60_000 },
+      expect.objectContaining({ preserveRecentLocalTrueMs: 60_000 }),
     )
     expect(helpersModule.updateInteraction).toHaveBeenCalledWith(
       db,
@@ -394,7 +411,7 @@ describe('handleUpsertStatus', () => {
       'bookmark',
       false,
       expect.anything(),
-      { preserveRecentLocalTrueMs: 60_000 },
+      expect.objectContaining({ preserveRecentLocalTrueMs: 60_000 }),
     )
   })
 
@@ -856,6 +873,7 @@ describe('handleBulkUpsertStatuses', () => {
       'favourite',
       true,
       expect.anything(),
+      { now: expect.any(Number) },
     )
   })
 
@@ -1052,6 +1070,7 @@ describe('status handler branch behavior', () => {
       1,
       expect.any(Set),
       true,
+      expect.any(Number),
     )
   })
 

@@ -7,9 +7,11 @@
  * Server Action に転送する。レンダリング出力は持たない。
  */
 
+import { useDbDiagnosticUploader } from 'hooks/useDbDiagnosticUploader'
 import { useWorkerQueryLogBridge } from 'hooks/useWorkerQueryLogBridge'
 
 export function QueryLogBridge() {
   useWorkerQueryLogBridge()
+  useDbDiagnosticUploader(true)
   return null
 }

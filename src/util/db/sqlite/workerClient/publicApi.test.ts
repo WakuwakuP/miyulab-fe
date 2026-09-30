@@ -129,15 +129,12 @@ function resolveMessage(
   result: unknown,
   durationMs?: number,
 ): void {
-  if (durationMs != null) {
-    durationForId.set(message.id, durationMs)
-  }
   const request = pending.get(message.id)
   if (!request) {
     throw new Error(`No pending request for id=${message.id}`)
   }
   pending.delete(message.id)
-  request.resolve(result)
+  request.resolve(result, durationMs)
 }
 
 const flatFetchRequest = {

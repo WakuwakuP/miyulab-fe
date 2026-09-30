@@ -78,8 +78,8 @@ describe('notification store commands', () => {
 
     expect(sendCommand).toHaveBeenCalledWith({
       backendUrl: 'https://example.com',
-      notificationJson: JSON.stringify(notification),
-      type: 'addNotification',
+      notificationsJson: [JSON.stringify(notification)],
+      type: 'bulkAddNotifications',
     })
   })
 

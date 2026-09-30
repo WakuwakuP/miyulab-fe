@@ -23,7 +23,10 @@ import {
 import { buildTimelineKey, resolveLocalAccountId } from '../helpers'
 import type { WorkerMessage, WorkerRequest } from '../protocol'
 import { ALL_TABLE_NAMES } from '../protocol'
-import { executeQueryPlan as runQueryPlan } from '../queries/executionEngine'
+import {
+  isReadOnlySql,
+  executeQueryPlan as runQueryPlan,
+} from '../queries/executionEngine'
 import { resolvePostIdInternal } from './handlers/statusHelpers'
 import {
   DEFAULT_MAX_NOTIFICATIONS,
@@ -31,6 +34,7 @@ import {
   DEFAULT_MAX_TIMELINE_ENTRIES,
   handleEnforceMaxLength,
 } from './workerCleanup'
+import { beginWorkerDiagnostics } from './workerDiagnostics'
 import { handleExec, handleExecBatch } from './workerExecHandlers'
 import { handleExportDatabase } from './workerExportHandler'
 import { handleFetchTimeline } from './workerFetchTimelineHandler'
@@ -92,31 +96,52 @@ function handleWorkerInitMessage(origin: string): void {
 }
 
 function handleExportDatabaseMessage(id: number): void {
-  handleExportDatabase()
-    .then(() => sendResponse(id, { ok: true }))
-    .catch((e) => sendError(id, e))
+  try {
+    const db = getDb()
+    const measuredDb = db ? beginWorkerDiagnostics(id, db) : db
+    handleExportDatabase(measuredDb ?? undefined)
+      .then(() => sendResponse(id, { ok: true }))
+      .catch((e) => sendError(id, e))
+  } catch (e) {
+    sendError(id, e)
+  }
 }
 
 function dispatchWorkerRequest(msg: WorkerRequest, db: WorkerDb): void {
   switch (msg.type) {
     // ---- 汎用 ----
     case 'exec': {
-      const { result, durationMs } = handleExec(
-        msg.sql,
-        msg.bind,
-        msg.returnValue,
-      )
-      sendResponse(msg.id, result, undefined, durationMs)
+      try {
+        const { result, durationMs } = handleExec(
+          msg.sql,
+          msg.bind,
+          msg.returnValue,
+          db,
+        )
+        sendResponse(msg.id, result, undefined, durationMs)
+      } finally {
+        if (!isReadOnlySql(msg.sql)) {
+          bumpTableVersions([...ALL_TABLE_NAMES])
+        }
+      }
       break
     }
 
     case 'execBatch': {
-      const result = handleExecBatch(
-        msg.statements,
-        msg.rollbackOnError,
-        msg.returnIndices,
-      )
-      sendResponse(msg.id, result)
+      const hasMutation = msg.statements.some((s) => !isReadOnlySql(s.sql))
+      try {
+        const result = handleExecBatch(
+          msg.statements,
+          msg.rollbackOnError,
+          msg.returnIndices,
+          db,
+        )
+        sendResponse(msg.id, result)
+      } finally {
+        if (hasMutation) {
+          bumpTableVersions([...ALL_TABLE_NAMES])
+        }
+      }
       break
     }
 
@@ -174,6 +199,7 @@ function dispatchWorkerRequest(msg: WorkerRequest, db: WorkerDb): void {
       )
       sendResponse(msg.id, { ok: true }, r.changedTables, undefined, {
         backendUrl: msg.backendUrl,
+        changedPostIds: r.changedPostIds,
       })
       break
     }
@@ -258,6 +284,7 @@ function dispatchWorkerRequest(msg: WorkerRequest, db: WorkerDb): void {
       )
       sendResponse(msg.id, { ok: true }, r.changedTables, undefined, {
         backendUrl: msg.backendUrl,
+        changedPostIds: r.changedPostIds,
       })
       break
     }
@@ -272,6 +299,7 @@ function dispatchWorkerRequest(msg: WorkerRequest, db: WorkerDb): void {
         {
           batchLimit: msg.batchLimit,
           mode: msg.mode,
+          targetCounts: msg.targetCounts,
           targetRatio: msg.targetRatio,
         },
       )
@@ -282,6 +310,7 @@ function dispatchWorkerRequest(msg: WorkerRequest, db: WorkerDb): void {
           hasMore: r.hasMore,
           ok: true,
           phaseTimings: r.phaseTimings,
+          targetCounts: r.targetCounts,
         },
         r.changedTables,
       )
@@ -311,6 +340,7 @@ function dispatchWorkerRequest(msg: WorkerRequest, db: WorkerDb): void {
       )
       sendResponse(msg.id, { ok: true }, r.changedTables, undefined, {
         backendUrl: msg.backendUrl,
+        changedPostIds: r.changedPostIds,
       })
       break
     }
@@ -360,7 +390,7 @@ function dispatchWorkerRequest(msg: WorkerRequest, db: WorkerDb): void {
 
     // ---- Timeline 一括取得 ----
     case 'fetchTimeline': {
-      const result = handleFetchTimeline(msg)
+      const result = handleFetchTimeline(msg, db)
       sendResponse(msg.id, result)
       break
     }
@@ -392,10 +422,25 @@ globalThis.onmessage = (
     return
   }
 
-  const db = getDb()
-
   try {
-    dispatchWorkerRequest(msg, db)
+    const db = getDb()
+    const measuredDb = db
+      ? beginWorkerDiagnostics(
+          msg.id,
+          db,
+          msg.type === 'executeGraphPlan'
+            ? msg.plan.nodes
+                .filter(
+                  (n) =>
+                    n.node.kind === 'get-ids' ||
+                    n.node.kind === 'lookup-related',
+                )
+                .map((n) => n.id)
+            : [],
+        )
+      : db
+
+    dispatchWorkerRequest(msg, measuredDb ?? db)
   } catch (e) {
     sendError(msg.id, e)
 

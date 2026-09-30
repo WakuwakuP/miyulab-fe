@@ -19,6 +19,7 @@ import type { JoinClause, NodeOutputRow } from '../plan'
 import { compileFilterNode } from '../translate/filterToSql'
 import { buildJoinString, getSourceAlias } from '../translate/sourceToSql'
 import type { NodeOutput } from './types'
+import { serializeRowsForHash } from './workerNodeCache'
 
 // --------------- フィルタ変換ヘルパー ---------------
 
@@ -54,6 +55,7 @@ export type GetIdsCompileResult = {
   binds: BindValue[]
   /** フィルタが参照するテーブル名一覧（キャッシュ依存追跡用） */
   dependentTables: string[]
+  outputTable: string
 }
 
 type FilterCompileContext = {
@@ -105,6 +107,14 @@ function compileFilterIntoContext(
   ctx.allBinds.push(...compiled.binds)
   ctx.allJoins.push(...compiled.joins)
   ctx.dependentTables.add(filter.table)
+  for (const join of compiled.joins) {
+    ctx.dependentTables.add(join.table)
+  }
+  if ('innerFilters' in filter && filter.innerFilters) {
+    for (const inner of filter.innerFilters) {
+      ctx.dependentTables.add(inner.table)
+    }
+  }
   if (compiled.sql && compiled.sql !== '1=1') {
     return compiled.sql
   }
@@ -311,11 +321,54 @@ export function compileGetIds(
   return {
     binds: ctx.allBinds,
     dependentTables: [...ctx.dependentTables],
+    outputTable: resolveOutputTable(node.table, node.outputIdColumn ?? 'id'),
     sql,
   }
 }
 
 // --------------- 実行 ---------------
+
+export function hashGetIdsOutput(
+  sql: string,
+  binds: BindValue[],
+  rows: NodeOutputRow[],
+): string {
+  return `getids:${sql}:${JSON.stringify(binds)}:${serializeRowsForHash(rows)}`
+}
+
+export function executeCompiledGetIds(
+  db: DbExec,
+  compiled: GetIdsCompileResult,
+): {
+  output: NodeOutput
+  sql: string
+  binds: BindValue[]
+  dependentTables: string[]
+} {
+  const { sql, binds, dependentTables, outputTable } = compiled
+
+  const rawRows = db.exec(sql, {
+    bind: binds.length > 0 ? binds : undefined,
+    returnValue: 'resultRows',
+  })
+
+  const rows: NodeOutputRow[] = rawRows.map((row) => ({
+    createdAtMs: row[1] as number,
+    id: row[0] as number,
+    table: outputTable,
+  }))
+
+  return {
+    binds,
+    dependentTables,
+    output: {
+      hash: hashGetIdsOutput(sql, binds, rows),
+      rows,
+      sourceTable: outputTable,
+    },
+    sql,
+  }
+}
 
 /**
  * GetIds ノードを実行し、NodeOutput を返す。
@@ -331,34 +384,5 @@ export function executeGetIds(
   binds: BindValue[]
   dependentTables: string[]
 } {
-  const { sql, binds, dependentTables } = compileGetIds(
-    node,
-    upstreamOutputs,
-    limit,
-  )
-
-  const rawRows = db.exec(sql, {
-    bind: binds.length > 0 ? binds : undefined,
-    returnValue: 'resultRows',
-  })
-
-  const outputTable = resolveOutputTable(
-    node.table,
-    node.outputIdColumn ?? 'id',
-  )
-
-  const rows: NodeOutputRow[] = rawRows.map((row) => ({
-    createdAtMs: row[1] as number,
-    id: row[0] as number,
-    table: outputTable,
-  }))
-
-  const hash = `getids:${sql}:${JSON.stringify(binds)}:${rows.length}`
-
-  return {
-    binds,
-    dependentTables,
-    output: { hash, rows, sourceTable: outputTable },
-    sql,
-  }
+  return executeCompiledGetIds(db, compileGetIds(node, upstreamOutputs, limit))
 }

@@ -14,8 +14,10 @@ import {
   NOTIFICATION_SELECT,
 } from '../../sqlite/queries/notificationSelect'
 import type { BATCH_SQL_TEMPLATES } from '../../sqlite/queries/statusBatch'
+import { batchBindForIds } from '../../sqlite/queries/statusBatch'
 import {
   buildPhase2Template,
+  buildRepFilter,
   buildScopedBatchTemplates,
   buildSpbFilter,
 } from '../../sqlite/queries/statusSelect'
@@ -159,7 +161,8 @@ function executePostOutput(
 
   // Phase2: Detail Fetch
   const spbFilter = buildSpbFilter(backendUrls)
-  const phase2Template = buildPhase2Template(spbFilter)
+  const repFilter = buildRepFilter(backendUrls)
+  const phase2Template = buildPhase2Template(spbFilter, repFilter)
   const placeholders = postIds.map(() => '?').join(',')
   const phase2Sql = phase2Template.replaceAll('{IDS}', placeholders)
 
@@ -237,7 +240,7 @@ function executeBatchQueries(
   for (const [key, sqlTemplate] of Object.entries(templates)) {
     const sql = sqlTemplate.replaceAll('{IDS}', placeholders)
     results[key] = db.exec(sql, {
-      bind: postIds,
+      bind: batchBindForIds(sql, postIds),
       returnValue: 'resultRows',
     })
   }

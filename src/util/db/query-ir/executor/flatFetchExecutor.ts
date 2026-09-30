@@ -22,8 +22,9 @@ import {
   buildPostFlatQuery,
 } from '../../sqlite/queries/flatSelect'
 import type { BatchMaps } from '../../sqlite/queries/statusBatch'
-import { BATCH_SQL_TEMPLATES } from '../../sqlite/queries/statusBatch'
+import { batchBindForIds } from '../../sqlite/queries/statusBatch'
 import type { SqliteStoredStatus } from '../../sqlite/queries/statusMapper'
+import { buildScopedBatchTemplates } from '../../sqlite/queries/statusSelect'
 import {
   assembleNotificationFromFlat,
   assemblePostFromFlat,
@@ -70,7 +71,7 @@ export function executeFlatFetch(
     fetchedPostIds,
   )
 
-  const batchMaps = runBatchQueries(db, [...fetchedPostIds])
+  const batchMaps = runBatchQueries(db, [...fetchedPostIds], backendUrls)
 
   const actorEmojisMap = fetchActorEmojisForNotifications(db, notifCoreRows)
 
@@ -222,24 +223,30 @@ function fetchCoreRows(
 }
 
 /**
- * BATCH_SQL_TEMPLATES を使って全バッチクエリを実行し BatchMaps を返す。
+ * backendUrls でスコープされたバッチクエリを実行し BatchMaps を返す。
  *
  * {IDS} プレースホルダを実際の (?, ?, ...) に置換して実行する。
- * polls クエリは local_account_id 用の追加バインドパラメータを先頭に付加する。
+ * backendUrls が空の場合の従来 polls テンプレートのみ先頭に null をバインドする。
  */
-function runBatchQueries(db: DbExec, allPostIds: number[]): BatchMaps {
+function runBatchQueries(
+  db: DbExec,
+  allPostIds: number[],
+  backendUrls: string[],
+): BatchMaps {
   if (allPostIds.length === 0) {
     return emptyBatchMaps()
   }
 
   const placeholders = allPostIds.map(() => '?').join(',')
+  const templates = buildScopedBatchTemplates(backendUrls)
 
-  const run = (key: keyof typeof BATCH_SQL_TEMPLATES): Map<number, string> => {
-    const sql = BATCH_SQL_TEMPLATES[key].replaceAll('{IDS}', placeholders)
+  const run = (key: keyof typeof templates): Map<number, string> => {
+    const sql = templates[key].replaceAll('{IDS}', placeholders)
     // polls template は先頭に pv.local_account_id = ? のバインドが必要
-    const bind: (string | number | null)[] =
-      key === 'polls' ? [null, ...allPostIds] : [...allPostIds]
-    const rows = db.exec(sql, { bind, returnValue: 'resultRows' })
+    const rows = db.exec(sql, {
+      bind: batchBindForIds(sql, allPostIds),
+      returnValue: 'resultRows',
+    })
     const map = new Map<number, string>()
     for (const row of rows) {
       map.set(row[0] as number, row[1] as string)

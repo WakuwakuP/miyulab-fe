@@ -61,13 +61,25 @@ export const EmojiReactions = ({
         console.error('Failed to remove reaction:', error)
       })
       // DB からリアクションを削除
-      toggleReactionInDb(statusApp.backendUrl, statusId, false, reaction.name)
+      toggleReactionInDb(
+        statusApp.backendUrl,
+        statusId,
+        false,
+        reaction.name,
+      ).catch((error) =>
+        console.error('Failed to remove reaction from DB:', error),
+      )
     } else {
       client.createEmojiReaction(statusId, reaction.name).catch((error) => {
         console.error('Failed to add reaction:', error)
       })
       // DB にリアクションを保存
-      toggleReactionInDb(statusApp.backendUrl, statusId, true, reaction.name)
+      toggleReactionInDb(
+        statusApp.backendUrl,
+        statusId,
+        true,
+        reaction.name,
+      ).catch((error) => console.error('Failed to save reaction to DB:', error))
     }
   }
 

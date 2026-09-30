@@ -32,6 +32,9 @@ function createMockDb(selectResult?: unknown[][]): {
   const db: DbExecCompat = {
     exec: vi.fn((sql: string, opts?: Parameters<DbExecCompat['exec']>[1]) => {
       calls.push({ opts, sql })
+      if (sql === 'SELECT changes();') {
+        return [[1]]
+      }
       if (opts?.returnValue === 'resultRows') {
         return selectResult ?? []
       }
@@ -135,8 +138,8 @@ describe('ensureProfile', () => {
     const id = ensureProfile(db, account, 1)
 
     expect(id).toBe(42)
-    // UPSERT + SELECT の 2 回
-    expect(calls).toHaveLength(2)
+    // UPSERT + changes() + SELECT の 3 回
+    expect(calls).toHaveLength(3)
 
     // 1回目: UPSERT (dual ON CONFLICT chain)
     expect(calls[0].sql).toContain('INSERT INTO profiles')
@@ -169,11 +172,11 @@ describe('ensureProfile', () => {
     expect(bind[13]).toBe(0) // is_bot
 
     // 2回目: SELECT id (canonical_acct で検索)
-    expect(calls[1].sql).toContain('SELECT id FROM profiles')
-    expect(calls[1].sql).not.toContain('profile_id')
-    expect(calls[1].sql).toContain('canonical_acct = ?')
-    expect(calls[1].opts?.bind).toEqual(['alice@example.com'])
-    expect(calls[1].opts?.returnValue).toBe('resultRows')
+    expect(calls[2].sql).toContain('SELECT id FROM profiles')
+    expect(calls[2].sql).not.toContain('profile_id')
+    expect(calls[2].sql).toContain('canonical_acct = ?')
+    expect(calls[2].opts?.bind).toEqual(['alice@example.com'])
+    expect(calls[2].opts?.returnValue).toBe('resultRows')
 
     // キャッシュに canonical_acct キーで保存されている
     expect(profileIdCache.get('alice@example.com')).toBe(42)
@@ -204,11 +207,11 @@ describe('ensureProfile', () => {
     const id = ensureProfile(db, account2, 1)
 
     expect(id).toBe(7)
-    // 2回分: (UPSERT + SELECT) × 2
-    expect(calls).toHaveLength(4)
+    // 2回分: (UPSERT + changes() + SELECT) × 2
+    expect(calls).toHaveLength(6)
 
     // 2回目の UPSERT で新しい display_name が使われる
-    const secondBind = calls[2].opts?.bind as SqlValue[]
+    const secondBind = calls[3].opts?.bind as SqlValue[]
     expect(secondBind[5]).toBe('Bob v2') // display_name
     expect(secondBind[7]).toBe('https://example.com/bob_v2.png') // avatar_url
   })
@@ -226,13 +229,13 @@ describe('ensureProfile', () => {
     // 1回目: DB にアクセスしてキャッシュに保存
     const id1 = ensureProfile(db, account, 1)
     expect(id1).toBe(99)
-    expect(calls).toHaveLength(2) // UPSERT + SELECT
+    expect(calls).toHaveLength(3) // UPSERT + changes() + SELECT
 
     // 2回目: UPSERT は実行されるが SELECT はスキップ
     const id2 = ensureProfile(db, account, 1)
     expect(id2).toBe(99)
-    expect(calls).toHaveLength(3) // UPSERT のみ追加
-    expect(calls[2].sql).toContain('INSERT INTO profiles')
+    expect(calls).toHaveLength(5) // UPSERT + changes() のみ追加
+    expect(calls[3].sql).toContain('INSERT INTO profiles')
   })
 
   it('acct が FQN 形式でない場合、canonical_acct に host を付加する', () => {
@@ -257,7 +260,7 @@ describe('ensureProfile', () => {
     expect(bind[4]).toBe('localuser@myserver.com') // canonical_acct (host 付加)
 
     // SELECT でも canonical_acct で検索
-    expect(calls[1].opts?.bind).toEqual(['localuser@myserver.com'])
+    expect(calls[2].opts?.bind).toEqual(['localuser@myserver.com'])
 
     // キャッシュキーは canonical_acct
     expect(profileIdCache.get('localuser@myserver.com')).toBe(5)
@@ -284,7 +287,7 @@ describe('ensureProfile', () => {
     expect(bind[2]).toBe(42) // server_id
 
     // SELECT bind にも canonical_acct が含まれる
-    expect(calls[1].opts?.bind).toEqual(['user1@remote.example.com'])
+    expect(calls[2].opts?.bind).toEqual(['user1@remote.example.com'])
 
     // is_locked / is_bot のマッピング確認
     expect(bind[12]).toBe(1) // is_locked (locked: true → 1)
@@ -300,6 +303,9 @@ describe('ensureProfile', () => {
     const db: DbExecCompat = {
       exec: vi.fn((sql, opts) => {
         calls.push({ opts, sql })
+        if (sql.includes('SELECT changes')) {
+          return [[1]]
+        }
         if (sql.includes('SELECT host FROM servers')) {
           return [['resolved.example']]
         }
@@ -326,6 +332,7 @@ describe('ensureProfile', () => {
     serverHostCache.clear()
     const db: DbExecCompat = {
       exec: vi.fn((sql) => {
+        if (sql.includes('SELECT changes')) return [[1]]
         if (sql.includes('SELECT host FROM servers')) return []
         if (sql.includes('SELECT id FROM profiles')) return [[21]]
         return undefined
@@ -380,7 +387,7 @@ describe('ensureProfile', () => {
     ).toBe(73)
 
     expect(calls[0].sql).toContain('INSERT OR IGNORE INTO profiles')
-    expect(calls[1].sql).toContain('SELECT id FROM profiles')
+    expect(calls[2].sql).toContain('SELECT id FROM profiles')
     expect(collector.add).toHaveBeenCalledWith('profiles')
     expect(profileIdCache.get('new@example.com')).toBe(73)
   })
@@ -500,16 +507,16 @@ describe('syncProfileFields', () => {
       },
     ])
 
-    // DELETE + multi-value INSERT
-    expect(calls).toHaveLength(2)
+    // SELECT + DELETE + multi-value INSERT
+    expect(calls).toHaveLength(3)
 
-    // 1回目: DELETE
-    expect(calls[0].sql).toContain('DELETE FROM profile_fields')
-    expect(calls[0].opts?.bind).toEqual([10])
+    // DELETE
+    expect(calls[1].sql).toContain('DELETE FROM profile_fields')
+    expect(calls[1].opts?.bind).toEqual([10])
 
-    // 2回目: multi-value INSERT
-    expect(calls[1].sql).toContain('INSERT INTO profile_fields')
-    const bind = calls[1].opts?.bind as SqlValue[]
+    // multi-value INSERT
+    expect(calls[2].sql).toContain('INSERT INTO profile_fields')
+    const bind = calls[2].opts?.bind as SqlValue[]
     // 1つ目のフィールド
     expect(bind[0]).toBe(10) // profile_id
     expect(bind[1]).toBe(0) // sort_order
@@ -529,7 +536,7 @@ describe('syncProfileFields', () => {
     // 1回目の同期
     syncProfileFields(db, 5, [{ name: 'Old Field', value: 'old value' }])
 
-    expect(calls).toHaveLength(2) // DELETE + multi-value INSERT
+    expect(calls).toHaveLength(3)
 
     // 2回目の同期（フィールドを変更）
     syncProfileFields(db, 5, [
@@ -537,25 +544,29 @@ describe('syncProfileFields', () => {
       { name: 'Another Field', value: 'another value' },
     ])
 
-    // 合計: (DELETE + INSERT) + (DELETE + INSERT) = 4
-    expect(calls).toHaveLength(4)
+    // 合計: (SELECT + DELETE + INSERT) + (SELECT + DELETE + INSERT) = 6
+    expect(calls).toHaveLength(6)
 
     // 2回目の DELETE
-    expect(calls[2].sql).toContain('DELETE FROM profile_fields')
-    expect(calls[2].opts?.bind).toEqual([5])
+    expect(calls[4].sql).toContain('DELETE FROM profile_fields')
+    expect(calls[4].opts?.bind).toEqual([5])
 
     // 2回目の multi-value INSERT で新しいフィールドが追加される
-    const bind = calls[3].opts?.bind as SqlValue[]
+    const bind = calls[5].opts?.bind as SqlValue[]
     expect(bind[2]).toBe('New Field')
     expect(bind[7]).toBe('Another Field')
   })
 
   it('空リストでは既存フィールドの削除だけを行う', () => {
-    const { db, calls } = createMockDb()
+    const { db, calls } = createMockDb([['Old Field', 'old value', null]])
 
     syncProfileFields(db, 5, [])
 
     expect(calls).toEqual([
+      {
+        opts: { bind: [5], returnValue: 'resultRows' },
+        sql: 'SELECT name, value, verified_at FROM profile_fields WHERE profile_id = ? ORDER BY sort_order;',
+      },
       {
         opts: { bind: [5] },
         sql: 'DELETE FROM profile_fields WHERE profile_id = ?;',

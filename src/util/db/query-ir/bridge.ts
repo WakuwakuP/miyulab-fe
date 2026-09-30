@@ -20,6 +20,7 @@ import type { SqliteStoredStatus } from '../sqlite/queries/statusMapper'
 import { assembleStatusFromBatch } from '../sqlite/queries/statusMapper'
 import {
   buildPhase2Template,
+  buildRepFilter,
   buildScopedBatchTemplates,
   buildSpbFilter,
   PHASE2_BASE_TEMPLATE,
@@ -67,8 +68,9 @@ export function resolvePlanTemplates(
 
   // backend-scoped templates
   const spbFilter = buildSpbFilter(backendUrls)
+  const repFilter = buildRepFilter(backendUrls)
   const phase2Template = spbFilter
-    ? buildPhase2Template(spbFilter)
+    ? buildPhase2Template(spbFilter, repFilter)
     : PHASE2_BASE_TEMPLATE
   const scopedBatch = buildScopedBatchTemplates(backendUrls)
 
@@ -126,13 +128,11 @@ function resolveStep(
       const resolved: Record<string, string> = {}
       for (const [key, template] of Object.entries(step.queries)) {
         // プレースホルダを実 SQL に置換 (interactions は scoped 版を使用)
-        if (key === 'interactions') {
-          resolved[key] =
-            BATCH_PLACEHOLDER_MAP[template] == null
-              ? template
-              : scopedBatch.interactions
+        if (BATCH_PLACEHOLDER_MAP[template] == null) {
+          resolved[key] = template
         } else {
-          resolved[key] = BATCH_PLACEHOLDER_MAP[template] ?? template
+          const scoped = scopedBatch[key as keyof typeof scopedBatch]
+          resolved[key] = scoped ?? BATCH_PLACEHOLDER_MAP[template]
         }
       }
       return { queries: resolved, type: 'batch-enrich' }

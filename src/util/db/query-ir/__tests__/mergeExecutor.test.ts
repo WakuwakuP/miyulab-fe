@@ -807,7 +807,7 @@ describe('executeMerge', () => {
   // --- hash 生成 ---
   // =============================================================
   describe('hash生成', () => {
-    it("生成されるhashが'merge:{strategy}:{inputHashes}:{rowCount}'の形式であること", () => {
+    it("生成されるhashが'merge:{strategy}:{inputHashes}:{serializedRows}'の形式であること", () => {
       // Arrange
       const node = mkNode('union')
       const inputs: NodeOutput[] = [
@@ -818,7 +818,7 @@ describe('executeMerge', () => {
       const result = executeMerge(node, inputs)
 
       // Assert
-      expect(result.hash).toBe('merge:union:hash-a:1')
+      expect(result.hash).toBe('merge:union:["hash-a"]:[["posts",1,100]]')
     })
 
     it('同一の入力とstrategyの時、同一のhashが生成されること', () => {
@@ -882,7 +882,7 @@ describe('executeMerge', () => {
       expect(intersectResult.hash).toContain('intersect')
     })
 
-    it("複数入力のhashが'+'で連結されてhashに含まれること", () => {
+    it('複数入力のhashがJSON配列として連結されてhashに含まれること', () => {
       // Arrange
       const node = mkNode('union')
       const inputs: NodeOutput[] = [
@@ -894,8 +894,10 @@ describe('executeMerge', () => {
       const result = executeMerge(node, inputs)
 
       // Assert
-      expect(result.hash).toContain('aaa+bbb')
-      expect(result.hash).toBe('merge:union:aaa+bbb:2')
+      expect(result.hash).toContain('"aaa","bbb"')
+      expect(result.hash).toBe(
+        'merge:union:["aaa","bbb"]:[["posts",1,200],["posts",2,100]]',
+      )
     })
 
     it('limit適用後の行数がhashに反映されること', () => {
@@ -915,9 +917,9 @@ describe('executeMerge', () => {
       // Act
       const result = executeMerge(node, inputs)
 
-      // Assert（limit=1 で切り詰められた後の行数 "1" が含まれる）
+      // Assert（limit=1 で切り詰められた後の行がシリアライズされて hash に含まれる）
       expect(result.rows).toHaveLength(1)
-      expect(result.hash).toBe('merge:union:h:1')
+      expect(result.hash).toBe('merge:union:["h"]:[["posts",1,300]]')
     })
 
     it("inputsが空配列の時、hashが'merge:empty'であること", () => {

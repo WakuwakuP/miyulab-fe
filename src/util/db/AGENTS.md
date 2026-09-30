@@ -58,3 +58,11 @@ src/util/db/
 - Focused tests live heavily under `sqlite/__tests__` and `query-ir/__tests__`; run the smallest matching file first.
 - Interaction freshness needs tests for `post_interactions`, `changedTables`, and `backendUrl` hints, not only API toggle success.
 - Migration changes need schema creation tests plus versioned migration tests.
+
+## DIAGNOSTICS
+
+- Continuous queue/worker diagnostics use `dbDiagnostics.ts`, `dbDiagnosticTransport.ts`, `dbDiagnosticUploader.ts`, and `src/app/actions/dbDiagnostics.server.ts`; Developer settings can load the current or a pasted session UUID.
+- Diagnostic windows use `QueryLog` rows with `DB_DIAGNOSTICS_V1:<session UUID>` markers, zero SQL duration, and validated JSON in `bind`; keep them separate from slow SQL analysis. Session/zero-padded sequence primary keys make retries idempotent and latest-window reads bounded.
+- Diagnostic save/read server actions require the signed owner cookie `__Host-miyulab-db-diag` (HttpOnly, Secure, SameSite=strict, Path=/, 8-hour maxAge). The browser obtains it by proving the configured Fediverse owner account via `verify_credentials` against `https://pl.waku.dev` (default owner account id `AY71rP68i6pkmSPd1k`); both can be overridden only together via `DB_DIAGNOSTICS_OWNER_BACKEND_URL` + `DB_DIAGNOSTICS_OWNER_ACCOUNT_ID` (a single override fails closed). The cookie MAC key is derived server-side as `HMAC-SHA256(DATABASE_URL, 'miyulab-fe:db-diag-auth:key:v1')`, so it needs no extra secret and rotates with the database URL; never log tokens, cookies, or the derived key.
+- Set both `NEXT_PUBLIC_DB_DIAGNOSTICS_ENABLED=false` and `DB_DIAGNOSTICS_ENABLED=false` and redeploy to stop client uploads and disable server reads/writes. `DATABASE_URL` stays server-only.
+- Verify telemetry arithmetic with `yarn test:run src/util/db/__tests__/dbDiagnostics.test.ts`; `yarn typecheck` covers app and worker interfaces. Never test a production build's database migration against a shared database unintentionally.

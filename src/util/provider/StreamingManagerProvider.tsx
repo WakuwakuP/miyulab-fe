@@ -29,6 +29,7 @@ import { restartStream, stopStream } from 'util/streaming/stopStream'
 import { parseStreamKey, type StreamType } from 'util/streaming/streamKey'
 import type { StreamEntry, StreamRegistry } from 'util/streaming/streamRegistry'
 import { AppsContext } from './AppsProvider'
+import { SettingContext } from './SettingProvider'
 import { StartupCoordinatorContext } from './StartupCoordinator'
 import { TimelineContext } from './TimelineProvider'
 
@@ -121,6 +122,7 @@ export const StreamingManagerProvider = ({
   children,
 }: Readonly<{ children: ReactNode }>) => {
   const apps = useContext(AppsContext)
+  const { backgroundPublicStreaming } = useContext(SettingContext)
   const timelineSettings = useContext(TimelineContext)
   const { isPhaseReached, advanceTo } = useContext(StartupCoordinatorContext)
   const registryRef = useRef<StreamRegistry>(new Map())
@@ -253,6 +255,7 @@ export const StreamingManagerProvider = ({
       apps,
       timelineSettings.timelines,
       fetchedInitialKeysRef.current,
+      backgroundPublicStreaming,
     )
 
     // 並行度を制限して実行（Worker キューの圧迫を防ぐ）
@@ -269,7 +272,11 @@ export const StreamingManagerProvider = ({
   // =============================================
   const syncStreamsEvent = useEffectEvent(() => {
     const registry = registryRef.current
-    const requiredKeys = deriveRequiredStreams(timelineSettings.timelines, apps)
+    const requiredKeys = deriveRequiredStreams(
+      timelineSettings.timelines,
+      apps,
+      backgroundPublicStreaming,
+    )
 
     // 接続数の警告
     if (requiredKeys.size > MAX_STREAM_COUNT_WARNING) {
@@ -319,7 +326,7 @@ export const StreamingManagerProvider = ({
   // =============================================
   const restFetched = isPhaseReached('rest-fetched')
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: timelineSettings is intentionally included to trigger re-sync when settings change. syncStreamsEvent/fetchInitialDataForTimelines are useEffectEvent and capture the latest values. restFetched gates the startup sequence.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: timelineSettings and backgroundPublicStreaming are intentionally included to trigger re-sync when settings change. syncStreamsEvent/fetchInitialDataForTimelines are useEffectEvent and capture the latest values. restFetched gates the startup sequence.
   useEffect(() => {
     // StrictMode ガードを apps.length チェックより先に消費する。
     // apps.length を先にチェックすると、初回レンダで apps=[] の時に
@@ -337,7 +344,7 @@ export const StreamingManagerProvider = ({
     console.info('[Startup] Phase 4 完了: ストリーム同期 + 初期データ取得')
 
     advanceTo('streaming')
-  }, [apps, timelineSettings, restFetched])
+  }, [apps, backgroundPublicStreaming, timelineSettings, restFetched])
 
   const streamingManagerValue = useMemo(() => ({ getStatus }), [getStatus])
 

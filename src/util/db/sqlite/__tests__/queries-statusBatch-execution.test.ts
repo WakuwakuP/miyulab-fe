@@ -1,9 +1,12 @@
 import {
+  BATCH_POLLS_SQL,
+  batchBindForIds,
   buildBatchMapsFromResults,
   executeBatchQueries,
   replacePlaceholders,
   type SqliteHandle,
 } from 'util/db/sqlite/queries/statusBatch'
+import { buildScopedPollsSql } from 'util/db/sqlite/queries/statusSelect'
 import { describe, expect, it, vi } from 'vitest'
 
 function createHandle(execAsync: ReturnType<typeof vi.fn>): SqliteHandle {
@@ -70,6 +73,51 @@ describe('buildBatchMapsFromResults', () => {
     })
 
     expect(maps.interactionsMap).toEqual(new Map([[1, 'new']]))
+  })
+})
+
+describe('batchBindForIds', () => {
+  it('プレースホルダ数が ID 数と一致すれば ID のみを返す', () => {
+    expect(
+      batchBindForIds('SELECT * FROM t WHERE post_id IN (?,?)', [1, 2]),
+    ).toEqual([1, 2])
+  })
+
+  it('従来 polls テンプレートは先頭に local_account_id を 1 つ補う', () => {
+    const sql = BATCH_POLLS_SQL.replace('__PH__', '?,?,?')
+    expect(batchBindForIds(sql, [1, 2, 3], 9)).toEqual([9, 1, 2, 3])
+  })
+
+  it('スコープ済み polls テンプレートは先頭プレースホルダなしで ID のみ返す', () => {
+    const sql = buildScopedPollsSql(['https://a.test']).replace('{IDS}', '?,?')
+    expect(batchBindForIds(sql, [1, 2])).toEqual([1, 2])
+  })
+
+  it('backendUrl 内の ? やクォートはプレースホルダとして数えない', () => {
+    const sql = buildScopedPollsSql(["https://a.test/x?y='z"]).replace(
+      '{IDS}',
+      '?',
+    )
+    expect(batchBindForIds(sql, [5])).toEqual([5])
+  })
+
+  it('SQL 文字列リテラル内の ? はプレースホルダとして数えない', () => {
+    const sql = "SELECT 'a?b' AS literal WHERE post_id IN (?)"
+    expect(batchBindForIds(sql, [7])).toEqual([7])
+  })
+
+  it('想定外の余分なプレースホルダは実行前に throw する', () => {
+    const sql = 'SELECT * FROM t WHERE a = ? AND b = ? AND post_id IN (?)'
+    expect(() => batchBindForIds(sql, [1])).toThrow(
+      /unexpected placeholder count/,
+    )
+  })
+
+  it('pv.local_account_id 以外の余分なプレースホルダ 1 つでも throw する', () => {
+    const sql = 'SELECT * FROM t WHERE other_id = ? AND post_id IN (?,?)'
+    expect(() => batchBindForIds(sql, [1, 2])).toThrow(
+      /unexpected placeholder count/,
+    )
   })
 })
 

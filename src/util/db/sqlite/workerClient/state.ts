@@ -45,7 +45,10 @@ export const timelineQueue: QueuedRequest[] = []
  */
 export const timelineDedup = new Map<
   string,
-  { resolvers: ((v: unknown) => void)[]; rejectors: ((e: Error) => void)[] }
+  {
+    resolvers: ((v: unknown, durationMs?: number) => void)[]
+    rejectors: ((e: Error) => void)[]
+  }
 >()
 
 let activeRequest = false

@@ -5,7 +5,10 @@
 // 相関サブクエリなしの軽量 Notification SELECT を定義する。
 // ============================================================
 
-import { buildSpbFilter } from '../../sqlite/queries/statusSelect'
+import {
+  buildRepFilter,
+  buildSpbFilter,
+} from '../../sqlite/queries/statusSelect'
 
 // ================================================================
 // Post コア SELECT（30 カラム、リブログ JOIN なし）
@@ -73,18 +76,26 @@ export const POST_FLAT_SELECT = `
  * STATUS_BASE_JOINS (10+ JOIN) からリブログ関連の JOIN を除去した軽量版。
  * spbFilter でバックエンドスコープを適用可能。
  */
-export function buildPostFlatJoins(spbFilter = ''): string {
+export function buildPostFlatJoins(spbFilter = '', repFilter = ''): string {
   return `
   LEFT JOIN profiles pr ON p.author_profile_id = pr.id
   LEFT JOIN visibility_types vt ON p.visibility_id = vt.id
   LEFT JOIN post_stats ps ON p.id = ps.post_id
   LEFT JOIN post_backend_ids spb
     ON spb.post_id = p.id
-    AND spb.server_id = (
-      SELECT MIN(spb_min.server_id)
-      FROM post_backend_ids spb_min
-      WHERE spb_min.post_id = p.id
-        ${spbFilter}
+    AND spb.local_account_id = (
+      SELECT rep.local_account_id
+      FROM post_backend_ids rep
+      WHERE rep.post_id = p.id
+        ${repFilter}
+        AND rep.server_id = (
+          SELECT MIN(spb_min.server_id)
+          FROM post_backend_ids spb_min
+          WHERE spb_min.post_id = p.id
+            ${spbFilter}
+        )
+      ORDER BY rep.local_account_id
+      LIMIT 1
     )
   LEFT JOIN local_accounts la_auth ON la_auth.id = spb.local_account_id`
 }
@@ -100,7 +111,8 @@ export function buildPostFlatQuery(
   postIds: number[],
 ): { sql: string; bind: number[] } {
   const spbFilter = buildSpbFilter(backendUrls)
-  const joins = buildPostFlatJoins(spbFilter)
+  const repFilter = buildRepFilter(backendUrls)
+  const joins = buildPostFlatJoins(spbFilter, repFilter)
   const placeholders = postIds.map(() => '?').join(',')
   const sql = `
     SELECT ${POST_FLAT_SELECT}

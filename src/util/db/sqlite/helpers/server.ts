@@ -1,5 +1,6 @@
 import type { WrittenTableCollector } from '../protocol'
 import { serverHostCache, serverIdCache } from './cache'
+import { lastChangeCount } from './changes'
 import type { DbExecCompat } from './types'
 
 /**
@@ -18,7 +19,7 @@ export function ensureServer(
   db.exec('INSERT OR IGNORE INTO servers (host) VALUES (?);', {
     bind: [host],
   })
-  collector?.add('servers')
+  if (lastChangeCount(db) > 0) collector?.add('servers')
 
   const cached = serverIdCache.get(host)
   if (cached !== undefined) return cached

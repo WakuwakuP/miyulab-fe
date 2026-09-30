@@ -4,6 +4,7 @@ import type {
   WrittenTableCollector,
 } from '../protocol'
 import { emojiIdCache } from './cache'
+import { lastChangeCount } from './changes'
 
 /**
  * カスタム絵文字を custom_emojis に UPSERT し、id を返す。
@@ -25,6 +26,7 @@ export function ensureCustomEmoji(
     static_url?: string | null
     visible_in_picker?: boolean
   },
+  collector?: WrittenTableCollector,
 ): number {
   const cacheKey = `${serverId}:${emoji.shortcode}`
 
@@ -33,8 +35,12 @@ export function ensureCustomEmoji(
     `INSERT INTO custom_emojis (server_id, shortcode, url, static_url, visible_in_picker)
      VALUES (?, ?, ?, ?, ?)
      ON CONFLICT(shortcode, server_id) DO UPDATE SET
-       url        = excluded.url,
-       static_url = excluded.static_url;`,
+       url               = excluded.url,
+       static_url        = excluded.static_url,
+       visible_in_picker = excluded.visible_in_picker
+     WHERE custom_emojis.url               IS NOT excluded.url
+        OR custom_emojis.static_url        IS NOT excluded.static_url
+        OR custom_emojis.visible_in_picker IS NOT excluded.visible_in_picker;`,
     {
       bind: [
         serverId,
@@ -45,6 +51,7 @@ export function ensureCustomEmoji(
       ],
     },
   )
+  if (collector && lastChangeCount(db) > 0) collector.add('custom_emojis')
 
   // キャッシュヒット時は SELECT をスキップ
   const cached = emojiIdCache.get(cacheKey)
@@ -86,20 +93,40 @@ export function syncPostCustomEmojis(
     db.exec('DELETE FROM post_custom_emojis WHERE post_id = ?;', {
       bind: [postId],
     })
-    collector?.add('post_custom_emojis')
+    if (lastChangeCount(db) > 0) collector?.add('post_custom_emojis')
     return
   }
 
   const keepIds: number[] = []
-
+  const seenIds = new Set<number>()
   for (const emoji of emojis) {
-    const emojiId = ensureCustomEmoji(db, serverId, emoji)
+    const emojiId = ensureCustomEmoji(db, serverId, emoji, collector)
+    if (seenIds.has(emojiId)) continue
+    seenIds.add(emojiId)
+    keepIds.push(emojiId)
+  }
+
+  const currentIds = new Set(
+    (
+      db.exec(
+        'SELECT custom_emoji_id FROM post_custom_emojis WHERE post_id = ?;',
+        { bind: [postId], returnValue: 'resultRows' },
+      ) as number[][]
+    ).map((row) => row[0]),
+  )
+  const linksIdentical =
+    currentIds.size === keepIds.length &&
+    keepIds.every((id) => currentIds.has(id))
+  if (linksIdentical) return
+
+  let linksChanged = false
+  for (const emojiId of keepIds) {
     db.exec(
       `INSERT OR IGNORE INTO post_custom_emojis (post_id, custom_emoji_id)
        VALUES (?, ?);`,
       { bind: [postId, emojiId] },
     )
-    keepIds.push(emojiId)
+    if (lastChangeCount(db) > 0) linksChanged = true
   }
 
   // Remove stale entries
@@ -108,7 +135,8 @@ export function syncPostCustomEmojis(
     `DELETE FROM post_custom_emojis WHERE post_id = ? AND custom_emoji_id NOT IN (${ph});`,
     { bind: [postId, ...keepIds] },
   )
-  collector?.add('post_custom_emojis')
+  if (lastChangeCount(db) > 0) linksChanged = true
+  if (linksChanged) collector?.add('post_custom_emojis')
 }
 
 // ================================================================

@@ -20,6 +20,7 @@ import {
   ensureProfile,
   ensureServer,
   extractPostColumns,
+  lastChangeCount,
   resolveLocalAccountId,
   resolvePostId,
   syncPollData,
@@ -28,6 +29,7 @@ import {
   updateInteraction,
 } from '../helpers'
 import type { TableName } from '../protocol'
+import { resolveRelatedInteractionPostIds } from './handlers/interactionHandlers'
 import { syncPostMedia, upsertMentionsInternal } from './handlers/postSync'
 
 type DbExec = {
@@ -40,7 +42,10 @@ type DbExec = {
   ) => unknown
 }
 
-type HandlerResult = { changedTables: TableName[] }
+type HandlerResult = {
+  changedTables: TableName[]
+  changedPostIds?: readonly number[]
+}
 
 // ================================================================
 // notification_types 定数マップ（DB シードと一致）
@@ -120,12 +125,13 @@ function ensurePostForNotification(
   backendUrl: string,
   serverId: number,
   localAccountId: number,
+  collector?: Set<TableName>,
 ): { postId: number; updatedPollOnExistingPost: boolean } {
   // post_backend_ids で既存チェック
   const existing = resolvePostId(db, backendUrl, status.id)
   if (existing !== undefined) {
     if (status.poll) {
-      syncPollData(db, existing, status.poll)
+      syncPollData(db, existing, status.poll, collector)
       return { postId: existing, updatedPollOnExistingPost: true }
     }
     return { postId: existing, updatedPollOnExistingPost: false }
@@ -134,10 +140,10 @@ function ensurePostForNotification(
   // URI で既存チェック
   const normalizedUri = status.uri?.trim() || ''
   if (normalizedUri) {
-    const uriRows = db.exec('SELECT id FROM posts WHERE object_uri = ?;', {
-      bind: [normalizedUri],
-      returnValue: 'resultRows',
-    }) as number[][]
+    const uriRows = db.exec(
+      "SELECT id FROM posts WHERE object_uri = ? AND object_uri != '';",
+      { bind: [normalizedUri], returnValue: 'resultRows' },
+    ) as number[][]
     if (uriRows.length > 0) {
       const postId = uriRows[0][0]
       // post_backend_ids マッピングを追加
@@ -146,8 +152,9 @@ function ensurePostForNotification(
          VALUES (?, ?, ?);`,
         { bind: [localAccountId, status.id, postId] },
       )
+      if (lastChangeCount(db) > 0) collector?.add('post_backend_ids')
       if (status.poll) {
-        syncPollData(db, postId, status.poll)
+        syncPollData(db, postId, status.poll, collector)
         return { postId, updatedPollOnExistingPost: true }
       }
       return { postId, updatedPollOnExistingPost: false }
@@ -156,10 +163,16 @@ function ensurePostForNotification(
 
   // 新規投稿を挿入
   const cols = extractPostColumns(status)
-  const profileId = ensureProfile(db, status.account, serverId)
+  const profileId = ensureProfile(db, status.account, serverId, collector)
 
   if (status.account.emojis.length > 0) {
-    syncProfileCustomEmojis(db, profileId, serverId, status.account.emojis)
+    syncProfileCustomEmojis(
+      db,
+      profileId,
+      serverId,
+      status.account.emojis,
+      collector,
+    )
   }
 
   // Resolve FK references
@@ -206,6 +219,7 @@ function ensurePostForNotification(
       ],
     },
   )
+  collector?.add('posts')
 
   const postId = (
     db.exec('SELECT last_insert_rowid();', {
@@ -219,25 +233,26 @@ function ensurePostForNotification(
      VALUES (?, ?, ?);`,
     { bind: [localAccountId, status.id, postId] },
   )
+  if (lastChangeCount(db) > 0) collector?.add('post_backend_ids')
 
   // カスタム絵文字を同期
   if (status.emojis.length > 0) {
-    syncPostCustomEmojis(db, postId, serverId, status.emojis)
+    syncPostCustomEmojis(db, postId, serverId, status.emojis, collector)
   }
 
   // メディア添付ファイルを同期
   if (status.media_attachments?.length > 0) {
-    syncPostMedia(db, postId, status.media_attachments)
+    syncPostMedia(db, postId, status.media_attachments, collector)
   }
 
   // メンションを同期
   if (status.mentions?.length > 0) {
-    upsertMentionsInternal(db, postId, status.mentions)
+    upsertMentionsInternal(db, postId, status.mentions, collector)
   }
 
   // 投票データを同期
   if (status.poll) {
-    syncPollData(db, postId, status.poll)
+    syncPollData(db, postId, status.poll, collector)
   }
 
   // 新規行＋poll もタイムラインの集計表示に効くので posts 購読を起こす
@@ -254,11 +269,12 @@ function syncPollOntoStoredPost(
   backendUrl: string,
   serverId: number,
   localAccountId: number,
+  collector?: Set<TableName>,
 ): boolean {
   if (!carrier.poll) return false
   const existing = resolvePostId(db, backendUrl, carrier.id)
   if (existing !== undefined) {
-    syncPollData(db, existing, carrier.poll)
+    syncPollData(db, existing, carrier.poll, collector)
     return true
   }
   const r = ensurePostForNotification(
@@ -267,6 +283,7 @@ function syncPollOntoStoredPost(
     backendUrl,
     serverId,
     localAccountId,
+    collector,
   )
   return r.updatedPollOnExistingPost
 }
@@ -281,9 +298,10 @@ export function upsertNotification(
   db: DbExec,
   notification: Entity.Notification,
   backendUrl: string,
+  collector?: Set<TableName>,
 ): boolean {
   const host = extractHost(backendUrl)
-  const serverId = ensureServer(db, host)
+  const serverId = ensureServer(db, host, collector)
   const localAccountId = resolveLocalAccountId(db, backendUrl)
   if (localAccountId === null) {
     // local_accounts に未登録の backendUrl → NOT NULL 制約違反を回避
@@ -293,7 +311,7 @@ export function upsertNotification(
   const created_at_ms = new Date(notification.created_at).getTime()
   const notificationTypeId = resolveNotificationTypeId(db, notification.type)
   const actorProfileId = notification.account
-    ? ensureProfile(db, notification.account, serverId)
+    ? ensureProfile(db, notification.account, serverId, collector)
     : null
 
   if (
@@ -306,6 +324,7 @@ export function upsertNotification(
       actorProfileId,
       serverId,
       notification.account.emojis,
+      collector,
     )
   }
 
@@ -318,6 +337,7 @@ export function upsertNotification(
       backendUrl,
       serverId,
       localAccountId,
+      collector,
     )
     relatedPostId = r.postId
     touchPosts = r.updatedPollOnExistingPost
@@ -325,7 +345,14 @@ export function upsertNotification(
     if (rb?.poll) {
       touchPosts =
         touchPosts ||
-        syncPollOntoStoredPost(db, rb, backendUrl, serverId, localAccountId)
+        syncPollOntoStoredPost(
+          db,
+          rb,
+          backendUrl,
+          serverId,
+          localAccountId,
+          collector,
+        )
     }
   }
 
@@ -364,7 +391,12 @@ export function upsertNotification(
       actor_profile_id     = excluded.actor_profile_id,
       related_post_id      = excluded.related_post_id,
       reaction_name        = excluded.reaction_name,
-      reaction_url         = excluded.reaction_url;`,
+      reaction_url         = excluded.reaction_url
+    WHERE notifications.notification_type_id IS NOT excluded.notification_type_id
+       OR notifications.actor_profile_id     IS NOT excluded.actor_profile_id
+       OR notifications.related_post_id      IS NOT excluded.related_post_id
+       OR notifications.reaction_name        IS NOT excluded.reaction_name
+       OR notifications.reaction_url         IS NOT excluded.reaction_url;`,
     {
       bind: [
         localAccountId,
@@ -379,6 +411,7 @@ export function upsertNotification(
       ],
     },
   )
+  if (lastChangeCount(db) > 0) collector?.add('notifications')
 
   return touchPosts
 }
@@ -389,14 +422,10 @@ export function handleAddNotification(
   backendUrl: string,
 ): HandlerResult {
   const notification = JSON.parse(notificationJson) as Entity.Notification
-  const host = extractHost(backendUrl)
-  ensureServer(db, host)
-  const touchPosts = upsertNotification(db, notification, backendUrl)
-  return {
-    changedTables: touchPosts
-      ? (['notifications', 'posts'] as TableName[])
-      : ['notifications'],
-  }
+  const collector: Set<TableName> = new Set()
+  const touchPosts = upsertNotification(db, notification, backendUrl, collector)
+  if (touchPosts) collector.add('posts')
+  return { changedTables: [...collector] }
 }
 
 export function handleBulkAddNotifications(
@@ -406,14 +435,13 @@ export function handleBulkAddNotifications(
 ): HandlerResult {
   if (notificationsJson.length === 0) return { changedTables: [] }
 
+  const collector: Set<TableName> = new Set()
   db.exec('BEGIN;')
   let touchPosts = false
   try {
-    const host = extractHost(backendUrl)
-    ensureServer(db, host)
     for (const nJson of notificationsJson) {
       const notification = JSON.parse(nJson) as Entity.Notification
-      if (upsertNotification(db, notification, backendUrl)) {
+      if (upsertNotification(db, notification, backendUrl, collector)) {
         touchPosts = true
       }
     }
@@ -423,11 +451,8 @@ export function handleBulkAddNotifications(
     throw e
   }
 
-  return {
-    changedTables: touchPosts
-      ? (['notifications', 'posts'] as TableName[])
-      : ['notifications'],
-  }
+  if (touchPosts) collector.add('posts')
+  return { changedTables: [...collector] }
 }
 
 export function handleUpdateNotificationStatusAction(
@@ -446,7 +471,21 @@ export function handleUpdateNotificationStatusAction(
   const normalizedAction = ACTION_NAME_MAP[action]
   if (!normalizedAction) return { changedTables: [] }
 
-  updateInteraction(db, postId, localAccountId, normalizedAction, value)
+  const relatedPostIds = resolveRelatedInteractionPostIds(db, postId)
+  for (const relatedPostId of relatedPostIds) {
+    updateInteraction(
+      db,
+      relatedPostId,
+      localAccountId,
+      normalizedAction,
+      value,
+      undefined,
+      { recordLocalAction: true },
+    )
+  }
 
-  return { changedTables: ['notifications'] }
+  return {
+    changedPostIds: relatedPostIds,
+    changedTables: ['post_interactions'],
+  }
 }

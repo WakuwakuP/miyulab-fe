@@ -36,4 +36,7 @@ export function createNotificationTables(db: DbExec): void {
   db.exec(
     `CREATE INDEX IF NOT EXISTS idx_notifications_post ON notifications(related_post_id) WHERE related_post_id IS NOT NULL;`,
   )
+  db.exec(
+    `CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications(created_at_ms, id);`,
+  )
 }

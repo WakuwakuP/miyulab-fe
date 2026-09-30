@@ -11,12 +11,13 @@ import type {
   SqliteResultRow,
   SqliteResultRows,
 } from '../protocol'
+import { batchBindForIds } from '../queries/statusBatch'
 import { getDb } from './workerState'
 
 export function handleFetchTimeline(
   msg: Omit<FetchTimelineRequest, 'id' | 'type'>,
+  db: ReturnType<typeof getDb> = getDb(),
 ): FetchTimelineResult {
-  const db = getDb()
   const start = performance.now()
 
   // Phase1
@@ -63,11 +64,13 @@ export function handleFetchTimeline(
   const allPlaceholders = allPostIds.map(() => '?').join(',')
 
   // Batch 7本を同期実行
-  const runBatch = (sql: string) =>
-    db.exec(sql.replaceAll('{IDS}', allPlaceholders), {
-      bind: allPostIds,
+  const runBatch = (sql: string) => {
+    const substituted = sql.replaceAll('{IDS}', allPlaceholders)
+    return db.exec(substituted, {
+      bind: batchBindForIds(substituted, allPostIds),
       returnValue: 'resultRows',
     }) as SqliteResultRows
+  }
 
   const batchResults = {
     belongingTags: runBatch(msg.batchSqls.belongingTags),

@@ -40,7 +40,7 @@ describe('syncLinkCard', () => {
       url: 'https://example.com/article',
     })
 
-    expect(calls).toHaveLength(1)
+    expect(calls).toHaveLength(2)
 
     const sql = calls[0].sql
     // INSERT ... ON CONFLICT(post_id) DO UPDATE による UPSERT
@@ -115,14 +115,14 @@ describe('syncLinkCard', () => {
       url: 'https://example.com/v2',
     })
 
-    expect(calls).toHaveLength(2)
+    expect(calls).toHaveLength(4)
 
     // 両方とも UPSERT 文
     expect(calls[0].sql).toContain('ON CONFLICT(post_id) DO UPDATE')
-    expect(calls[1].sql).toContain('ON CONFLICT(post_id) DO UPDATE')
+    expect(calls[2].sql).toContain('ON CONFLICT(post_id) DO UPDATE')
 
     // 2回目のバインドには新しい値が入る
-    const bind2 = calls[1].opts?.bind ?? []
+    const bind2 = calls[2].opts?.bind ?? []
     expect(bind2[0]).toBe(10) // post_id
     expect(bind2[2]).toBe('https://example.com/v2') // url
     expect(bind2[3]).toBe('改訂版') // title
@@ -133,7 +133,7 @@ describe('syncLinkCard', () => {
 
     syncLinkCard(db, 99, null)
 
-    expect(calls).toHaveLength(1)
+    expect(calls).toHaveLength(2)
     expect(calls[0].sql).toContain('DELETE FROM link_cards')
     expect(calls[0].sql).toContain('post_id')
     expect(calls[0].opts?.bind).toEqual([99])
@@ -144,7 +144,7 @@ describe('syncLinkCard', () => {
 
     syncLinkCard(db, 77, undefined)
 
-    expect(calls).toHaveLength(1)
+    expect(calls).toHaveLength(2)
     expect(calls[0].sql).toContain('DELETE FROM link_cards')
     expect(calls[0].opts?.bind).toEqual([77])
   })
@@ -169,7 +169,7 @@ describe('syncLinkCard', () => {
       width: 640,
     })
 
-    expect(calls).toHaveLength(1)
+    expect(calls).toHaveLength(2)
 
     const sql = calls[0].sql
     // 全カラムが SQL に含まれる

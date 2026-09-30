@@ -1,4 +1,5 @@
 import type { WrittenTableCollector } from '../protocol'
+import { lastChangeCount } from './changes'
 import type { DbExecCompat } from './types'
 
 // ================================================================
@@ -15,6 +16,7 @@ const ACTION_COLUMN_MAP: Record<string, string> = {
 }
 
 type UpdateInteractionOptions = {
+  now?: number
   preserveRecentLocalTrueMs?: number
   recordLocalAction?: boolean
 }
@@ -45,7 +47,7 @@ export function updateInteraction(
   const column = ACTION_COLUMN_MAP[action]
   if (!column) return
 
-  const now = Date.now()
+  const now = options?.now ?? Date.now()
   const key = interactionKey(postId, localAccountId, action)
   const recentLocalTrueAt = recentLocalTrueInteractions.get(key)
   if (
@@ -64,7 +66,9 @@ export function updateInteraction(
     `INSERT INTO post_interactions (post_id, local_account_id, ${column}, updated_at)
      VALUES (?, ?, ?, ?)
      ON CONFLICT(post_id, local_account_id) DO UPDATE SET
-       ${updateClause};`,
+       ${updateClause}
+     WHERE post_interactions.${column} IS NOT excluded.${column}
+        OR post_interactions.updated_at IS NOT excluded.updated_at;`,
     { bind: [postId, localAccountId, value ? 1 : 0, now] },
   )
   if (options?.recordLocalAction) {
@@ -74,7 +78,7 @@ export function updateInteraction(
       recentLocalTrueInteractions.delete(key)
     }
   }
-  collector?.add('post_interactions')
+  if (lastChangeCount(db) > 0) collector?.add('post_interactions')
 }
 
 /**
@@ -88,16 +92,20 @@ export function toggleReaction(
   name: string | null,
   url: string | null,
   collector?: WrittenTableCollector,
+  now?: number,
 ): void {
-  const now = Date.now()
+  const nowTs = now ?? Date.now()
   db.exec(
     `INSERT INTO post_interactions (post_id, local_account_id, my_reaction_name, my_reaction_url, updated_at)
      VALUES (?, ?, ?, ?, ?)
      ON CONFLICT(post_id, local_account_id) DO UPDATE SET
        my_reaction_name = excluded.my_reaction_name,
        my_reaction_url = excluded.my_reaction_url,
-       updated_at = excluded.updated_at;`,
-    { bind: [postId, localAccountId, name, url, now] },
+       updated_at = excluded.updated_at
+     WHERE post_interactions.my_reaction_name IS NOT excluded.my_reaction_name
+        OR post_interactions.my_reaction_url IS NOT excluded.my_reaction_url
+        OR post_interactions.updated_at IS NOT excluded.updated_at;`,
+    { bind: [postId, localAccountId, name, url, nowTs] },
   )
-  collector?.add('post_interactions')
+  if (lastChangeCount(db) > 0) collector?.add('post_interactions')
 }

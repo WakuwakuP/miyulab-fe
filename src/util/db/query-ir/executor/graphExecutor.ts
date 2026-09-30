@@ -14,8 +14,16 @@ import type {
   MergeNodeV2,
   OutputNodeV2,
 } from '../nodes'
-import { executeGetIds } from './getIdsExecutor'
-import { executeLookupRelated } from './lookupRelatedExecutor'
+import {
+  compileGetIds,
+  executeCompiledGetIds,
+  hashGetIdsOutput,
+} from './getIdsExecutor'
+import {
+  compileLookupRelated,
+  executeCompiledLookupRelated,
+  hashLookupRelatedOutput,
+} from './lookupRelatedExecutor'
 import { executeMerge } from './mergeExecutor'
 import { executeOutput } from './outputExecutor'
 import { topoSort } from './topoSort'
@@ -51,6 +59,17 @@ export function bumpGraphCacheVersion(table: string): void {
 /** テーブルバージョンマップを同期する */
 export function syncGraphCacheVersions(versions: Map<string, number>): void {
   getCache().syncVersions(versions)
+}
+
+export function captureGraphCacheVersions(): Record<string, number> {
+  return getCache().captureVersions()
+}
+
+export function bumpAllGraphCacheVersions(tables: readonly string[]): void {
+  const cache = getCache()
+  for (const table of tables) {
+    cache.bumpVersion(table)
+  }
 }
 
 // --------------- ヘルパー ---------------
@@ -165,29 +184,30 @@ function runGetIdsNode(
   const upstreamOutputs = collectUpstreamOutputs(incoming, outputs)
   const upstreamHash =
     upstreamOutputs.size > 0
-      ? [...upstreamOutputs.values()].map((o) => o.hash).join('+')
+      ? JSON.stringify([...upstreamOutputs.values()].map((o) => o.hash))
       : undefined
 
-  const { sql, binds, dependentTables, output } = executeGetIds(
-    db,
-    node,
-    upstreamOutputs,
-    globalLimit,
-  )
+  const compiled = compileGetIds(node, upstreamOutputs, globalLimit)
 
-  const cacheKey = { binds, nodeId, sql, upstreamHash }
+  const cacheKey = {
+    binds: compiled.binds,
+    nodeId,
+    sql: compiled.sql,
+    upstreamHash,
+  }
   const cached = cache.get(cacheKey)
   if (cached) {
     outputs.set(nodeId, {
-      hash: output.hash,
+      hash: hashGetIdsOutput(compiled.sql, compiled.binds, cached),
       rows: cached,
-      sourceTable: output.sourceTable,
+      sourceTable: compiled.outputTable,
     })
     recordNodeStat(nodeStats, nodeId, nodeStart, true, cached.length)
     return
   }
 
-  cache.set(cacheKey, output.rows, dependentTables)
+  const { output } = executeCompiledGetIds(db, compiled)
+  cache.set(cacheKey, output.rows, compiled.dependentTables)
   outputs.set(nodeId, output)
   recordNodeStat(nodeStats, nodeId, nodeStart, false, output.rows.length)
 }
@@ -218,30 +238,27 @@ function runLookupRelatedNode(
     return
   }
 
-  const { sql, binds, dependentTables, output } = executeLookupRelated(
-    db,
-    node,
-    firstInput,
-  )
+  const compiled = compileLookupRelated(node, firstInput)
 
   const cacheKey = {
-    binds,
+    binds: compiled.binds,
     nodeId,
-    sql,
+    sql: compiled.sql,
     upstreamHash: firstInput.hash,
   }
   const cached = cache.get(cacheKey)
   if (cached) {
     outputs.set(nodeId, {
-      hash: output.hash,
+      hash: hashLookupRelatedOutput(compiled.sql, compiled.binds, cached),
       rows: cached,
-      sourceTable: node.lookupTable,
+      sourceTable: compiled.outputTable,
     })
     recordNodeStat(nodeStats, nodeId, nodeStart, true, cached.length)
     return
   }
 
-  cache.set(cacheKey, output.rows, dependentTables)
+  const { output } = executeCompiledLookupRelated(db, compiled)
+  cache.set(cacheKey, output.rows, compiled.dependentTables)
   outputs.set(nodeId, output)
   recordNodeStat(nodeStats, nodeId, nodeStart, false, output.rows.length)
 }

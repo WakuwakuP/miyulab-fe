@@ -71,6 +71,11 @@ type EnforceMaxLengthResponse = {
     notifications: number
     posts: number
   }
+  targetCounts?: {
+    timeline_entries: number
+    notifications: number
+    posts: number
+  }
   phaseTimings?: {
     timeline: number
     notifications: number
@@ -303,17 +308,20 @@ export async function enforceMaxLength(
   let iteration = 0
   let aborted = false
   let abortError: unknown
+  let targetCounts: EnforceMaxLengthResponse['targetCounts']
   try {
     while (iteration < MAX_BATCH_ITERATIONS) {
       iteration++
       const result = (await handle.sendCommand(
         {
           mode,
+          targetCounts,
           targetRatio,
           type: 'enforceMaxLength',
         },
         { kind },
       )) as EnforceMaxLengthResponse | undefined
+      targetCounts = targetCounts ?? result?.targetCounts
       mergeDeletedCounts(totalDeleted, result?.deletedCounts)
       if (result?.phaseTimings) {
         phaseTimingsAvailable = true

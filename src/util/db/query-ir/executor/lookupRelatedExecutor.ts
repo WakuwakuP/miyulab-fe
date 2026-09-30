@@ -16,6 +16,91 @@ import { getDefaultTimeColumn, resolveOutputTable } from '../completion'
 import type { BindValue, LookupRelatedNode } from '../nodes'
 import type { NodeOutputRow } from '../plan'
 import type { NodeOutput } from './types'
+import { serializeRowsForHash } from './workerNodeCache'
+
+export type LookupRelatedCompileResult = {
+  sql: string
+  binds: BindValue[]
+  dependentTables: string[]
+  outputTable: string
+}
+
+export function compileLookupRelated(
+  node: LookupRelatedNode,
+  input: NodeOutput,
+): LookupRelatedCompileResult {
+  if (input.rows.length === 0) {
+    return {
+      binds: [],
+      dependentTables: [node.lookupTable, input.sourceTable],
+      outputTable: node.lookupTable,
+      sql: '',
+    }
+  }
+
+  // timeCondition がありかつ resolve を使わない場合は JOIN ベースで per-row 相関
+  const hasResolve = node.joinConditions.some((jc) => jc.resolve)
+  if (node.timeCondition && !hasResolve) {
+    return compileWithJoin(node, input)
+  }
+
+  // それ以外は IN ベース（timeCondition なし、または resolve 使用時）
+  return compileWithIn(node, input)
+}
+
+export function hashLookupRelatedOutput(
+  sql: string,
+  binds: BindValue[],
+  rows: NodeOutputRow[],
+): string {
+  if (sql === '') {
+    return 'lookup:empty'
+  }
+  return `lookup:${sql}:${JSON.stringify(binds)}:${serializeRowsForHash(rows)}`
+}
+
+export function executeCompiledLookupRelated(
+  db: DbExec,
+  compiled: LookupRelatedCompileResult,
+): {
+  output: NodeOutput
+  sql: string
+  binds: BindValue[]
+  dependentTables: string[]
+} {
+  const { sql, binds, dependentTables, outputTable } = compiled
+
+  if (sql === '') {
+    return {
+      binds,
+      dependentTables,
+      output: { hash: 'lookup:empty', rows: [], sourceTable: outputTable },
+      sql,
+    }
+  }
+
+  const rawRows = db.exec(sql, {
+    bind: binds.length > 0 ? binds : undefined,
+    returnValue: 'resultRows',
+  })
+
+  const rows: NodeOutputRow[] = rawRows.map((row) => ({
+    createdAtMs: row[1] as number,
+    id: row[0] as number,
+    table: outputTable,
+  }))
+
+  return {
+    binds,
+    dependentTables,
+    output: {
+      hash: hashLookupRelatedOutput(sql, binds, rows),
+      rows,
+      sourceTable: outputTable,
+    },
+    sql,
+  }
+}
 
 /**
  * LookupRelated ノードを実行し、NodeOutput を返す。
@@ -34,23 +119,7 @@ export function executeLookupRelated(
   binds: BindValue[]
   dependentTables: string[]
 } {
-  if (input.rows.length === 0) {
-    return {
-      binds: [],
-      dependentTables: [node.lookupTable, input.sourceTable],
-      output: { hash: 'lookup:empty', rows: [], sourceTable: node.lookupTable },
-      sql: '',
-    }
-  }
-
-  // timeCondition がありかつ resolve を使わない場合は JOIN ベースで per-row 相関
-  const hasResolve = node.joinConditions.some((jc) => jc.resolve)
-  if (node.timeCondition && !hasResolve) {
-    return executeWithJoin(db, node, input)
-  }
-
-  // それ以外は IN ベース（timeCondition なし、または resolve 使用時）
-  return executeWithIn(db, node, input)
+  return executeCompiledLookupRelated(db, compileLookupRelated(node, input))
 }
 
 // --------------- JOIN ベース（per-row 相関） ---------------
@@ -179,23 +248,17 @@ function buildJoinLookupSql(
 }
 
 /**
- * JOIN ベースの実行。
+ * JOIN ベースのコンパイル。
  * 上流テーブルと lookup テーブルを JOIN し、
  * 各入力行に対して個別に時間窓を適用する。
  *
  * resolveIdentity が有効な joinCondition では、
  * profiles.canonical_acct を介して同一人物の全 profile ID に展開する。
  */
-function executeWithJoin(
-  db: DbExec,
+function compileWithJoin(
   node: LookupRelatedNode,
   input: NodeOutput,
-): {
-  output: NodeOutput
-  sql: string
-  binds: BindValue[]
-  dependentTables: string[]
-} {
+): LookupRelatedCompileResult {
   const lt = 'lt'
   const src = 'src'
   // biome-ignore lint/style/noNonNullAssertion: caller guarantees timeCondition exists
@@ -229,24 +292,10 @@ function executeWithJoin(
     tc,
   })
 
-  const rawRows = db.exec(sql, {
-    bind: binds.length > 0 ? binds : undefined,
-    returnValue: 'resultRows',
-  })
-
-  const outputTable = resolveOutputTable(node.lookupTable, 'id')
-  const rows: NodeOutputRow[] = rawRows.map((row) => ({
-    createdAtMs: row[1] as number,
-    id: row[0] as number,
-    table: outputTable,
-  }))
-
-  const hash = `lookup:${sql}:${JSON.stringify(binds)}:${rows.length}`
-
   return {
     binds,
     dependentTables,
-    output: { hash, rows, sourceTable: outputTable },
+    outputTable: resolveOutputTable(node.lookupTable, 'id'),
     sql,
   }
 }
@@ -387,23 +436,17 @@ function buildInLookupSql(
 }
 
 /**
- * IN ベースの実行。
+ * IN ベースのコンパイル。
  * timeCondition がない場合、または resolve がある場合に使用する。
  * resolve 使用時の timeCondition はグローバル min/max で近似する。
  *
  * resolveIdentity が有効な joinCondition では、
  * profiles.canonical_acct サブクエリで同一人物の全 profile ID に展開する。
  */
-function executeWithIn(
-  db: DbExec,
+function compileWithIn(
   node: LookupRelatedNode,
   input: NodeOutput,
-): {
-  output: NodeOutput
-  sql: string
-  binds: BindValue[]
-  dependentTables: string[]
-} {
+): LookupRelatedCompileResult {
   const lt = 'lt'
   const { binds, conditions, dependentTables } = buildInJoinConditions(
     node,
@@ -426,24 +469,10 @@ function executeWithIn(
     conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
   const sql = buildInLookupSql(node, { groupByStr, lt, selectExpr, whereStr })
 
-  const rawRows = db.exec(sql, {
-    bind: binds.length > 0 ? binds : undefined,
-    returnValue: 'resultRows',
-  })
-
-  const outputTable = resolveOutputTable(node.lookupTable, 'id')
-  const rows: NodeOutputRow[] = rawRows.map((row) => ({
-    createdAtMs: row[1] as number,
-    id: row[0] as number,
-    table: outputTable,
-  }))
-
-  const hash = `lookup:${sql}:${JSON.stringify(binds)}:${rows.length}`
-
   return {
     binds,
     dependentTables,
-    output: { hash, rows, sourceTable: outputTable },
+    outputTable: resolveOutputTable(node.lookupTable, 'id'),
     sql,
   }
 }

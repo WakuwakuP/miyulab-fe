@@ -31,6 +31,7 @@ function createMockDb(
     sql: string
     opts?: { bind?: SqlValue[]; returnValue?: 'resultRows' }
   }[] = []
+  let lastChange = 0
 
   const db: DbExec = {
     exec: vi.fn(
@@ -42,7 +43,19 @@ function createMockDb(
         },
       ) => {
         calls.push({ opts, sql })
-        if (execImpl) return execImpl(sql, opts)
+        if (
+          opts?.returnValue === 'resultRows' &&
+          /^\s*SELECT\s+changes\s*\(\s*\)/i.test(sql)
+        ) {
+          const n = lastChange
+          lastChange = 0
+          return [[n]]
+        }
+        if (/^\s*(INSERT|UPDATE|DELETE|REPLACE)\b/i.test(sql)) lastChange = 1
+        if (execImpl) {
+          const result = execImpl(sql, opts)
+          if (result !== undefined) return result
+        }
         if (opts?.returnValue === 'resultRows') return []
         return undefined
       },
@@ -219,7 +232,14 @@ describe('upsertMentionsInternal', () => {
   })
 
   it('メンションが空の場合すべて削除する', () => {
-    const { db, calls } = createMockDb()
+    const { db, calls } = createMockDb((sql) => {
+      if (sql.includes('FROM post_mentions')) {
+        return [
+          ['old@remote.example', 'old', 'https://remote.example/@old', null],
+        ]
+      }
+      return undefined
+    })
 
     upsertMentionsInternal(db, 100, [])
 
@@ -469,16 +489,19 @@ describe('syncPostStats', () => {
 
     syncPostStats(db, 100, status)
 
-    expect(calls).toHaveLength(1)
+    const statsCalls = calls.filter((c) =>
+      c.sql.includes('INSERT INTO post_stats'),
+    )
+    expect(statsCalls).toHaveLength(1)
 
-    const sql = calls[0].sql
+    const sql = statsCalls[0].sql
     expect(sql).toContain('INSERT INTO post_stats')
     expect(sql).toContain('ON CONFLICT(post_id) DO UPDATE SET')
     expect(sql).toContain('replies_count')
     expect(sql).toContain('reblogs_count')
     expect(sql).toContain('favourites_count')
 
-    const bind = calls[0].opts?.bind
+    const bind = statsCalls[0].opts?.bind
     expect(bind).toContain(100) // post_id
     expect(bind).toContain(3) // replies_count
     expect(bind).toContain(5) // reblogs_count
@@ -571,7 +594,8 @@ describe('syncPostStats', () => {
 // ================================================================
 
 // helpers をモック化
-vi.mock('util/db/sqlite/helpers', () => ({
+vi.mock('util/db/sqlite/helpers', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('util/db/sqlite/helpers')>()),
   ensureProfile: vi.fn(() => 10),
   extractPostColumns: vi.fn(() => ({
     application_name: null,
@@ -720,10 +744,10 @@ describe('ensureReblogOriginalPost', () => {
 
     ensureReblogOriginalPost(db, originalStatus, 7, Date.now(), 42)
 
-    // ensureProfile が (db, account, serverId, collector, skipProfileUpdate) の5引数で呼ばれている
+    // ensureProfile が (db, account, serverId, collector, skipProfileUpdate, now) の6引数で呼ばれている
     expect(helpersModule.ensureProfile).toHaveBeenCalled()
     const callArgs = vi.mocked(helpersModule.ensureProfile).mock.calls[0]
-    expect(callArgs).toHaveLength(5)
+    expect(callArgs).toHaveLength(6)
     expect(callArgs[0]).toBe(db) // db
     expect(callArgs[1]).toBe(originalStatus.account) // account
     expect(callArgs[2]).toBe(7) // serverId

@@ -5,6 +5,7 @@
  * 04-reactive-behavior-analysis.md の修正版プロトコルに基づく。
  */
 
+import type { DbWorkerRequestMetrics } from '../dbDiagnosticTypes'
 import type { ExecuteFlatFetchRequest } from '../query-ir/executor/flatFetchTypes'
 import type { ExecuteGraphPlanRequest } from '../query-ir/executor/types'
 
@@ -24,6 +25,7 @@ export type SqliteResultRows = SqliteResultRow[]
 
 export type TableName =
   | 'cards'
+  | 'custom_emojis'
   | 'hashtags'
   | 'local_accounts'
   | 'notifications'
@@ -47,6 +49,7 @@ export type WrittenTableCollector = Set<TableName>
 
 export const ALL_TABLE_NAMES: readonly TableName[] = [
   'cards',
+  'custom_emojis',
   'hashtags',
   'local_accounts',
   'notifications',
@@ -195,6 +198,12 @@ export type UpdateNotificationStatusActionRequest = {
   value: boolean
 }
 
+export type EnforceMaxLengthTargetCounts = {
+  timeline_entries: number
+  notifications: number
+  posts: number
+}
+
 /** MAX_LENGTH クリーンアップ */
 export type EnforceMaxLengthRequest = {
   type: 'enforceMaxLength'
@@ -215,6 +224,7 @@ export type EnforceMaxLengthRequest = {
    * 呼び出し側は `hasMore === false` になるまで繰り返し呼ぶ。
    */
   batchLimit?: number
+  targetCounts?: EnforceMaxLengthTargetCounts
 }
 
 /** MAX_LENGTH クリーンアップのレスポンス本体 */
@@ -241,6 +251,7 @@ export type EnforceMaxLengthResult = {
     phase2Total: number
     total: number
   }
+  targetCounts?: EnforceMaxLengthTargetCounts
 }
 
 /** フォロー関係の同期 */
@@ -454,8 +465,10 @@ export type SuccessResponse = {
     timelineType?: string
     backendUrl?: string
     tag?: string
+    changedPostIds?: readonly number[]
   }
   durationMs?: number
+  diagnostics?: DbWorkerRequestMetrics
 }
 
 /** エラーレスポンス */
@@ -463,6 +476,7 @@ export type ErrorResponse = {
   type: 'error'
   id: number
   error: string
+  diagnostics?: DbWorkerRequestMetrics
 }
 
 /** Worker 初期化完了通知 */

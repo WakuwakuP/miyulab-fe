@@ -15,6 +15,9 @@ export type DbExec = {
   ) => unknown
 }
 
-export type HandlerResult = { changedTables: TableName[] }
+export type HandlerResult = {
+  changedTables: TableName[]
+  changedPostIds?: readonly number[]
+}
 
 export type { WrittenTableCollector } from '../../protocol'

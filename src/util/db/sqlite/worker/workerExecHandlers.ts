@@ -11,8 +11,8 @@ export function handleExec(
   sql: string,
   bind?: (string | number | null)[],
   returnValue?: string,
+  db: ReturnType<typeof getDb> = getDb(),
 ): { result: unknown; durationMs: number } {
-  const db = getDb()
   const start = performance.now()
   let result: unknown
   if (returnValue === 'resultRows') {
@@ -37,8 +37,8 @@ export function handleExecBatch(
   }[],
   rollbackOnError: boolean,
   returnIndices?: number[],
+  db: ReturnType<typeof getDb> = getDb(),
 ): unknown {
-  const db = getDb()
   const results = new Map<number, unknown>()
   const shouldReturn = new Set(returnIndices ?? [])
 
@@ -49,7 +49,7 @@ export function handleExecBatch(
   try {
     for (let i = 0; i < statements.length; i++) {
       const stmt = statements[i]
-      const { result } = handleExec(stmt.sql, stmt.bind, stmt.returnValue)
+      const { result } = handleExec(stmt.sql, stmt.bind, stmt.returnValue, db)
       if (shouldReturn.has(i) || !returnIndices) {
         results.set(i, result)
       }

@@ -6,6 +6,7 @@ export {
   serverIdCache,
 } from './cache'
 export { syncLinkCard } from './card'
+export { lastChangeCount } from './changes'
 export {
   CUSTOM_EMOJI_RE,
   ensureCustomEmoji,

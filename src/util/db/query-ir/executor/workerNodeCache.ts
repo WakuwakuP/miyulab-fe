@@ -40,6 +40,13 @@ function makeKey(params: NodeCacheKey): string {
 
 // --------------- WorkerNodeCache クラス ---------------
 
+const MAX_ENTRIES = 200
+const MAX_ROWS = 50_000
+
+export function serializeRowsForHash(rows: NodeOutputRow[]): string {
+  return JSON.stringify(rows.map((r) => [r.table, r.id, r.createdAtMs]))
+}
+
 /**
  * Worker 内で動作するノードキャッシュ。
  *
@@ -50,6 +57,7 @@ function makeKey(params: NodeCacheKey): string {
 export class WorkerNodeCache {
   private readonly cache = new Map<string, CacheEntry>()
   private readonly tableVersions = new Map<string, number>()
+  private totalRows = 0
 
   /**
    * キャッシュから結果を取得する。
@@ -65,11 +73,13 @@ export class WorkerNodeCache {
       const current = this.tableVersions.get(table) ?? 0
       const captured = entry.capturedVersions[table] ?? 0
       if (current !== captured) {
-        this.cache.delete(key)
+        this.removeEntry(key, entry)
         return null
       }
     }
 
+    this.cache.delete(key)
+    this.cache.set(key, entry)
     return entry.rows
   }
 
@@ -80,16 +90,26 @@ export class WorkerNodeCache {
     dependentTables: string[],
   ): void {
     const key = makeKey(params)
+    const existing = this.cache.get(key)
+    if (existing) {
+      this.removeEntry(key, existing)
+    }
+    if (rows.length > MAX_ROWS) return
+
     const capturedVersions: Record<string, number> = {}
     for (const table of dependentTables) {
       capturedVersions[table] = this.tableVersions.get(table) ?? 0
     }
+
+    this.evictIfNeeded(rows.length)
     this.cache.set(key, { capturedVersions, dependentTables, rows })
+    this.totalRows += rows.length
   }
 
   /** テーブルへの書き込みを通知してバージョンを進める */
   bumpVersion(table: string): void {
     this.tableVersions.set(table, (this.tableVersions.get(table) ?? 0) + 1)
+    this.invalidateDependents(table)
   }
 
   /** 外部のテーブルバージョンマップと同期する */
@@ -98,6 +118,7 @@ export class WorkerNodeCache {
       const local = this.tableVersions.get(table) ?? 0
       if (version > local) {
         this.tableVersions.set(table, version)
+        this.invalidateDependents(table)
       }
     }
   }
@@ -110,10 +131,39 @@ export class WorkerNodeCache {
   /** キャッシュを全クリアする */
   clear(): void {
     this.cache.clear()
+    this.totalRows = 0
   }
 
   /** 現在のキャッシュエントリ数を返す */
   get size(): number {
     return this.cache.size
+  }
+
+  private removeEntry(key: string, entry: CacheEntry): void {
+    this.cache.delete(key)
+    this.totalRows -= entry.rows.length
+  }
+
+  private evictIfNeeded(incomingRows: number): void {
+    while (
+      this.cache.size >= MAX_ENTRIES ||
+      this.totalRows + incomingRows > MAX_ROWS
+    ) {
+      const oldestKey = this.cache.keys().next().value
+      if (oldestKey === undefined) return
+      const oldest = this.cache.get(oldestKey)
+      this.cache.delete(oldestKey)
+      if (oldest) {
+        this.totalRows -= oldest.rows.length
+      }
+    }
+  }
+
+  private invalidateDependents(table: string): void {
+    for (const [key, entry] of this.cache) {
+      if (entry.dependentTables.includes(table)) {
+        this.removeEntry(key, entry)
+      }
+    }
   }
 }

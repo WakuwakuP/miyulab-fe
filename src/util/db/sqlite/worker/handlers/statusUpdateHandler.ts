@@ -18,6 +18,7 @@ import {
   ensureProfile,
   ensureServer,
   extractPostColumns,
+  lastChangeCount,
   resolveLocalAccountId,
   syncLinkCard,
   syncPollData,
@@ -48,10 +49,10 @@ function resolveUpdateTargetPostId(
 ): number | null {
   const normalizedUri = status.uri?.trim() || ''
   if (normalizedUri) {
-    const existingRows = db.exec('SELECT id FROM posts WHERE object_uri = ?;', {
-      bind: [normalizedUri],
-      returnValue: 'resultRows',
-    }) as number[][]
+    const existingRows = db.exec(
+      "SELECT id FROM posts WHERE object_uri = ? AND object_uri != '';",
+      { bind: [normalizedUri], returnValue: 'resultRows' },
+    ) as number[][]
     if (existingRows.length > 0) {
       return existingRows[0][0]
     }
@@ -88,9 +89,20 @@ function syncStatusInteractions(
   localAccountId: number,
   status: Entity.Status,
   collector: WrittenTableCollector,
+  now: number,
 ): void {
   if (status.favourited === true) {
-    updateInteraction(db, postId, localAccountId, 'favourite', true, collector)
+    updateInteraction(
+      db,
+      postId,
+      localAccountId,
+      'favourite',
+      true,
+      collector,
+      {
+        now,
+      },
+    )
   } else if (status.favourited === false) {
     updateInteraction(
       db,
@@ -100,19 +112,25 @@ function syncStatusInteractions(
       false,
       collector,
       {
+        now,
         preserveRecentLocalTrueMs: STALE_INTERACTION_FALSE_PROTECTION_MS,
       },
     )
   }
   if (status.reblogged === true) {
-    updateInteraction(db, postId, localAccountId, 'reblog', true, collector)
+    updateInteraction(db, postId, localAccountId, 'reblog', true, collector, {
+      now,
+    })
   } else if (status.reblogged === false) {
     updateInteraction(db, postId, localAccountId, 'reblog', false, collector, {
+      now,
       preserveRecentLocalTrueMs: STALE_INTERACTION_FALSE_PROTECTION_MS,
     })
   }
   if (status.bookmarked === true) {
-    updateInteraction(db, postId, localAccountId, 'bookmark', true, collector)
+    updateInteraction(db, postId, localAccountId, 'bookmark', true, collector, {
+      now,
+    })
   } else if (status.bookmarked === false) {
     updateInteraction(
       db,
@@ -122,6 +140,7 @@ function syncStatusInteractions(
       false,
       collector,
       {
+        now,
         preserveRecentLocalTrueMs: STALE_INTERACTION_FALSE_PROTECTION_MS,
       },
     )
@@ -140,7 +159,14 @@ function applyStatusUpdate(
   const host = new URL(backendUrl).host
   const serverId = ensureServer(db, host, collector)
   const visibilityId = resolveVisibilityId(db, cols.visibility_id.toString())
-  const profileId = ensureProfile(db, status.account, serverId, collector)
+  const profileId = ensureProfile(
+    db,
+    status.account,
+    serverId,
+    collector,
+    undefined,
+    now,
+  )
   if (status.account.emojis.length > 0) {
     syncProfileCustomEmojis(
       db,
@@ -159,6 +185,25 @@ function applyStatusUpdate(
   // object_uri / created_at_ms / author_profile_id は編集で変わらないため更新しない
   // author_profile_id: ActivityPub では著者は不変。クロスバックエンド到着時の
   // profile_id 不整合を防ぐため INSERT 時にのみ設定する。
+  const postSetValues = [
+    now,
+    visibilityId ?? cols.visibility_id,
+    cols.language,
+    cols.content_html,
+    cols.spoiler_text,
+    cols.canonical_url,
+    isReblog,
+    cols.is_sensitive,
+    cols.in_reply_to_uri,
+    cols.in_reply_to_account_acct,
+    cols.edited_at_ms,
+    cols.plain_content,
+    cols.quote_state,
+    cols.is_local_only,
+    cols.application_name,
+    reblogOfPostId,
+    null, // quote_of_post_id: 将来拡張用
+  ]
   db.exec(
     `UPDATE posts SET
        last_fetched_at        = ?,
@@ -178,39 +223,42 @@ function applyStatusUpdate(
        application_name       = ?,
        reblog_of_post_id      = ?,
        quote_of_post_id       = ?
-     WHERE id = ?;`,
+     WHERE id = ? AND (
+       last_fetched_at        IS NOT ? OR
+       visibility_id          IS NOT ? OR
+       language               IS NOT ? OR
+       content_html           IS NOT ? OR
+       spoiler_text           IS NOT ? OR
+       canonical_url          IS NOT ? OR
+       is_reblog              IS NOT ? OR
+       is_sensitive           IS NOT ? OR
+       in_reply_to_uri        IS NOT ? OR
+       in_reply_to_account_acct IS NOT ? OR
+       edited_at_ms           IS NOT ? OR
+       plain_content          IS NOT ? OR
+       quote_state            IS NOT ? OR
+       is_local_only          IS NOT ? OR
+       application_name       IS NOT ? OR
+       reblog_of_post_id      IS NOT ? OR
+       quote_of_post_id       IS NOT ?
+     );`,
     {
       bind: [
-        now,
-        visibilityId ?? cols.visibility_id,
-        cols.language,
-        cols.content_html,
-        cols.spoiler_text,
-        cols.canonical_url,
-        isReblog,
-        cols.is_sensitive,
-        cols.in_reply_to_uri,
-        cols.in_reply_to_account_acct,
-        cols.edited_at_ms,
-        cols.plain_content,
-        cols.quote_state,
-        cols.is_local_only,
-        cols.application_name,
-        reblogOfPostId,
-        null, // quote_of_post_id: 将来拡張用
+        ...(postSetValues as (string | number | null)[]),
         postId,
+        ...(postSetValues as (string | number | null)[]),
       ],
     },
   )
-  collector.add('posts')
+  if (lastChangeCount(db) > 0) collector.add('posts')
 
   upsertMentionsInternal(db, postId, status.mentions, collector)
   syncPostMedia(db, postId, status.media_attachments, collector)
-  syncPostStats(db, postId, status, collector)
+  syncPostStats(db, postId, status, collector, now)
 
   const localAccountId = resolveLocalAccountId(db, backendUrl)
   if (localAccountId !== null) {
-    syncStatusInteractions(db, postId, localAccountId, status, collector)
+    syncStatusInteractions(db, postId, localAccountId, status, collector, now)
   }
 
   syncPostCustomEmojis(

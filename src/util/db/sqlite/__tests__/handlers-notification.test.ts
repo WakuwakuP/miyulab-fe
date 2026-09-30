@@ -70,12 +70,18 @@ function createMockDb(queryMap: Record<string, unknown[][][]> = {}): {
 } {
   const calls: ExecCall[] = []
   const counters: Record<string, number> = {}
+  let lastChange = 0
 
   const db: DbExecCompat = {
     exec: vi.fn((sql: string, opts?: Parameters<DbExecCompat['exec']>[1]) => {
       calls.push({ opts, sql })
 
       if (opts?.returnValue === 'resultRows') {
+        if (/^\s*SELECT\s+changes\s*\(\s*\)/i.test(sql)) {
+          const n = lastChange
+          lastChange = 0
+          return [[n]]
+        }
         for (const pattern of Object.keys(queryMap)) {
           if (sql.includes(pattern)) {
             const idx = counters[pattern] ?? 0
@@ -86,6 +92,7 @@ function createMockDb(queryMap: Record<string, unknown[][][]> = {}): {
         }
         return []
       }
+      if (/^\s*(INSERT|UPDATE|DELETE|REPLACE)\b/i.test(sql)) lastChange = 1
       return undefined
     }),
   }
@@ -370,9 +377,13 @@ describe('upsertNotification', () => {
 
     upsertNotification(db, notification, 'https://example.com')
 
-    expect(syncProfileCustomEmojis).toHaveBeenCalledWith(db, 10, 1, [
-      actorEmoji,
-    ])
+    expect(syncProfileCustomEmojis).toHaveBeenCalledWith(
+      db,
+      10,
+      1,
+      [actorEmoji],
+      undefined,
+    )
   })
 
   it('URL 無しのカスタムリアクションを DB の static URL で補完する', () => {
@@ -485,7 +496,11 @@ describe('handleAddNotification', () => {
     expect(result).toEqual({ changedTables: ['notifications'] })
 
     // ensureServer が host で呼ばれる
-    expect(ensureServer).toHaveBeenCalledWith(db, 'example.com')
+    expect(ensureServer).toHaveBeenCalledWith(
+      db,
+      'example.com',
+      expect.any(Set),
+    )
 
     // resolveLocalAccountId が呼ばれる
     expect(resolveLocalAccountId).toHaveBeenCalledWith(
@@ -599,13 +614,15 @@ describe('handleAddNotification', () => {
 
     handleAddNotification(db, JSON.stringify(makeNotification()), 'not a url')
 
-    expect(ensureServer).toHaveBeenCalledWith(db, 'not a url')
+    expect(ensureServer).toHaveBeenCalledWith(db, 'not a url', expect.any(Set))
   })
 
   it('同じ URI の投稿を再利用して backend ID を対応付ける', () => {
     vi.mocked(resolvePostId).mockReturnValue(undefined)
     const { db, calls } = createMockDb({
-      'SELECT id FROM posts WHERE object_uri = ?;': [[[77]]],
+      "SELECT id FROM posts WHERE object_uri = ? AND object_uri != '';": [
+        [[77]],
+      ],
     })
     const status = makeStatus({ id: 'uri-status' })
 
@@ -615,7 +632,9 @@ describe('handleAddNotification', () => {
       'https://example.com',
     )
 
-    expect(result).toEqual({ changedTables: ['notifications'] })
+    expect(result).toEqual({
+      changedTables: ['post_backend_ids', 'notifications'],
+    })
     expect(calls.some((call) => call.sql.includes('INSERT INTO posts'))).toBe(
       false,
     )
@@ -640,7 +659,9 @@ describe('handleAddNotification', () => {
       votes_count: 10,
     }
     const { db } = createMockDb({
-      'SELECT id FROM posts WHERE object_uri = ?;': [[[78]]],
+      "SELECT id FROM posts WHERE object_uri = ? AND object_uri != '';": [
+        [[78]],
+      ],
     })
 
     const result = handleAddNotification(
@@ -654,8 +675,10 @@ describe('handleAddNotification', () => {
       'https://example.com',
     )
 
-    expect(syncPollData).toHaveBeenCalledWith(db, 78, poll)
-    expect(result).toEqual({ changedTables: ['notifications', 'posts'] })
+    expect(syncPollData).toHaveBeenCalledWith(db, 78, poll, expect.any(Set))
+    expect(result).toEqual({
+      changedTables: ['post_backend_ids', 'notifications', 'posts'],
+    })
   })
 
   it('新規投稿の絵文字・メディア・メンション・poll を同期する', () => {
@@ -726,18 +749,36 @@ describe('handleAddNotification', () => {
       'https://example.com',
     )
 
-    expect(syncProfileCustomEmojis).toHaveBeenCalledWith(db, 10, 1, [
-      profileEmoji,
-    ])
-    expect(syncPostCustomEmojis).toHaveBeenCalledWith(db, 91, 1, [postEmoji])
-    expect(syncPollData).toHaveBeenCalledWith(db, 91, poll)
+    expect(syncProfileCustomEmojis).toHaveBeenCalledWith(
+      db,
+      10,
+      1,
+      [profileEmoji],
+      expect.any(Set),
+    )
+    expect(syncPostCustomEmojis).toHaveBeenCalledWith(
+      db,
+      91,
+      1,
+      [postEmoji],
+      expect.any(Set),
+    )
+    expect(syncPollData).toHaveBeenCalledWith(db, 91, poll, expect.any(Set))
     expect(
       calls.some((call) => call.sql.includes('INSERT INTO post_media')),
     ).toBe(true)
     expect(
       calls.some((call) => call.sql.includes('INSERT INTO post_mentions')),
     ).toBe(true)
-    expect(result).toEqual({ changedTables: ['notifications', 'posts'] })
+    expect(result).toEqual({
+      changedTables: [
+        'posts',
+        'post_backend_ids',
+        'post_media',
+        'post_mentions',
+        'notifications',
+      ],
+    })
   })
 
   it.each([
@@ -796,7 +837,7 @@ describe('handleAddNotification', () => {
       'https://example.com',
     )
 
-    expect(syncPollData).toHaveBeenCalledWith(db, 60, poll)
+    expect(syncPollData).toHaveBeenCalledWith(db, 60, poll, expect.any(Set))
     expect(result).toEqual({ changedTables: ['notifications', 'posts'] })
   })
 
@@ -833,8 +874,10 @@ describe('handleAddNotification', () => {
     expect(calls.some((call) => call.sql.includes('INSERT INTO posts'))).toBe(
       true,
     )
-    expect(syncPollData).toHaveBeenCalledWith(db, 93, poll)
-    expect(result).toEqual({ changedTables: ['notifications', 'posts'] })
+    expect(syncPollData).toHaveBeenCalledWith(db, 93, poll, expect.any(Set))
+    expect(result).toEqual({
+      changedTables: ['posts', 'post_backend_ids', 'notifications'],
+    })
   })
 
   it('ラッパー投稿の poll 同期済みならリブログ元同期を短絡する', () => {
@@ -865,7 +908,12 @@ describe('handleAddNotification', () => {
 
     expect(resolvePostId).toHaveBeenCalledTimes(1)
     expect(syncPollData).toHaveBeenCalledTimes(1)
-    expect(syncPollData).toHaveBeenCalledWith(db, 50, wrapperPoll)
+    expect(syncPollData).toHaveBeenCalledWith(
+      db,
+      50,
+      wrapperPoll,
+      expect.any(Set),
+    )
     expect(result).toEqual({ changedTables: ['notifications', 'posts'] })
   })
 })
@@ -905,7 +953,11 @@ describe('handleBulkAddNotifications', () => {
 
     // ensureServer が host で呼ばれる（内部キャッシュにより実質1回だが、
     // upsertNotification 内でも呼ばれるため回数ではなく引数を検証）
-    expect(ensureServer).toHaveBeenCalledWith(db, 'example.com')
+    expect(ensureServer).toHaveBeenCalledWith(
+      db,
+      'example.com',
+      expect.any(Set),
+    )
   })
 
   it('空のリストの場合は何もしない', () => {
@@ -1013,8 +1065,13 @@ describe('handleUpdateNotificationStatusAction', () => {
       42,
       'favourite',
       true,
+      undefined,
+      { recordLocalAction: true },
     )
-    expect(result).toEqual({ changedTables: ['notifications'] })
+    expect(result).toEqual({
+      changedPostIds: [100],
+      changedTables: ['post_interactions'],
+    })
   })
 
   it('reblogged アクションを処理する', () => {
@@ -1030,8 +1087,19 @@ describe('handleUpdateNotificationStatusAction', () => {
       true,
     )
 
-    expect(updateInteraction).toHaveBeenCalledWith(db, 200, 42, 'reblog', true)
-    expect(result).toEqual({ changedTables: ['notifications'] })
+    expect(updateInteraction).toHaveBeenCalledWith(
+      db,
+      200,
+      42,
+      'reblog',
+      true,
+      undefined,
+      { recordLocalAction: true },
+    )
+    expect(result).toEqual({
+      changedPostIds: [200],
+      changedTables: ['post_interactions'],
+    })
   })
 
   it('bookmarked アクションを処理する', () => {
@@ -1053,8 +1121,13 @@ describe('handleUpdateNotificationStatusAction', () => {
       42,
       'bookmark',
       false,
+      undefined,
+      { recordLocalAction: true },
     )
-    expect(result).toEqual({ changedTables: ['notifications'] })
+    expect(result).toEqual({
+      changedPostIds: [300],
+      changedTables: ['post_interactions'],
+    })
   })
 
   it('投稿が見つからない場合は何もしない', () => {
