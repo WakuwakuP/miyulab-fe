@@ -12,7 +12,10 @@ import {
   type DbDiagnosticWindow,
   isDbDiagnosticSessionId,
 } from 'util/db/dbDiagnosticTypes'
-import { isDbDiagnosticsClientEnabled } from 'util/db/dbDiagnosticUploader'
+import {
+  ensureDbDiagnosticAuthorization,
+  isDbDiagnosticsClientEnabled,
+} from 'util/db/dbDiagnosticUploader'
 
 type LoadState =
   | { status: 'idle' }
@@ -136,7 +139,10 @@ export function DbDiagnosticsSection() {
     let timeoutId: ReturnType<typeof setTimeout> | undefined
     try {
       const result = await Promise.race([
-        getDbDiagnosticLogs(sessionId),
+        (async () => {
+          await ensureDbDiagnosticAuthorization()
+          return getDbDiagnosticLogs(sessionId)
+        })(),
         new Promise<never>((_, reject) => {
           timeoutId = setTimeout(
             () => reject(new Error('読み込みがタイムアウトしました')),
@@ -190,12 +196,12 @@ export function DbDiagnosticsSection() {
           </>
         )}
       </div>
-      <div className="mt-2 flex items-center gap-2">
+      <div className="mt-2 flex flex-wrap items-center gap-2">
         <label className="sr-only" htmlFor="db-diagnostics-session-input">
           過去セッション UUID
         </label>
         <input
-          className="min-w-0 flex-1 rounded border border-gray-600 bg-transparent px-2 py-1 text-xs"
+          className="min-w-0 flex-1 basis-full rounded border border-gray-600 bg-transparent px-2 py-1 text-xs"
           id="db-diagnostics-session-input"
           onChange={(e) => {
             requestSeq.current++

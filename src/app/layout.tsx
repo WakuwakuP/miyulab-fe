@@ -41,6 +41,7 @@ export default function RootLayout({
       <body className={inter.className}>
         <SuspenseProvider>
           <AppsProvider>
+            <QueryLogBridge />
             <PostAccountProvider>
               <SettingProvider>
                 <TimelineProvider>
@@ -74,7 +75,6 @@ export default function RootLayout({
             </PostAccountProvider>
           </AppsProvider>
         </SuspenseProvider>
-        <QueryLogBridge />
         <Analytics />
       </body>
     </html>

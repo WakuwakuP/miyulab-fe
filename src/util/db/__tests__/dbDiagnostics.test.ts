@@ -224,6 +224,63 @@ describe('DB診断の計測契約', () => {
     ).toBeNull()
   })
 
+  it.each(['recordDroppedWindow', 'recordTransportFailure'] as const)(
+    '%s が一度増えた時、その後のアイドル窓を出し続けないこと',
+    (method) => {
+      f.recorder[method]()
+      f.at(10_000)
+
+      const first = f.recorder.capture() as DbDiagnosticWindow
+      f.at(20_000)
+      const idle = f.recorder.capture()
+      f.recorder[method]()
+      f.at(30_000)
+      const second = f.recorder.capture() as DbDiagnosticWindow
+      f.at(40_000)
+      const nextIdle = f.recorder.capture()
+
+      const field =
+        method === 'recordDroppedWindow'
+          ? 'droppedWindows'
+          : 'transportFailures'
+      expect(first[field]).toBe(1)
+      expect(idle).toBeNull()
+      expect(second[field]).toBe(2)
+      expect(second.sequence).toBe(first.sequence + 1)
+      expect(nextIdle).toBeNull()
+      expect(analyzeDbDiagnosticWindows([first, second])[field]).toBe(2)
+    },
+  )
+
+  it('イベント欠落を記録した時、累積値は維持しつつ後続のアイドル窓を止めること', () => {
+    const overflow = () => {
+      for (let i = 0; i < 129; i++) {
+        f.recorder.recordIngress(
+          'statusIngress',
+          `https://source${i % 64}.test`,
+          (['home', 'local', 'public'] as const)[Math.floor(i / 64)],
+        )
+      }
+    }
+    overflow()
+    f.at(10_000)
+
+    const first = f.recorder.capture() as DbDiagnosticWindow
+    f.at(20_000)
+    const idle = f.recorder.capture()
+    overflow()
+    f.at(30_000)
+    const second = f.recorder.capture() as DbDiagnosticWindow
+    f.at(40_000)
+    const nextIdle = f.recorder.capture()
+
+    expect(first.droppedEvents).toBe(1)
+    expect(idle).toBeNull()
+    expect(second.droppedEvents).toBe(2)
+    expect(nextIdle).toBeNull()
+    expect(analyzeDbDiagnosticWindows([first, second]).droppedEvents).toBe(2)
+  })
+
   it('診断窓に欠落と累積損失がある時、欠落数と損失を二重加算しないこと', () => {
     sample(f.recorder, 1)
     f.at(100)

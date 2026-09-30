@@ -93,6 +93,11 @@ export class DbDiagnosticRecorder {
   private droppedEvents = 0
   private droppedWindows = 0
   private transportFailures = 0
+  private capturedLosses = {
+    droppedEvents: 0,
+    droppedWindows: 0,
+    transportFailures: 0,
+  }
   private execution: DbDiagnosticWindow['execution'] = 'unknown'
   private storage: DbDiagnosticWindow['storage'] = 'unknown'
 
@@ -284,20 +289,22 @@ export class DbDiagnosticRecorder {
     this.operations.clear()
     const queueMax = this.queueMax
     this.queueMax = { ...this.queue }
-    if (
-      !operations.length &&
-      !active &&
-      !this.pending.size &&
-      !this.droppedEvents &&
-      !this.droppedWindows &&
-      !this.transportFailures
-    )
+    const losses = {
+      droppedEvents: this.droppedEvents,
+      droppedWindows: this.droppedWindows,
+      transportFailures: this.transportFailures,
+    }
+    const lossesChanged = (
+      ['droppedEvents', 'droppedWindows', 'transportFailures'] as const
+    ).some((field) => losses[field] !== this.capturedLosses[field])
+    if (!operations.length && !active && !this.pending.size && !lossesChanged)
       return null
+    this.capturedLosses = losses
     return {
       active,
       capturedAt: new Date(this.clock.date()).toISOString(),
-      droppedEvents: this.droppedEvents,
-      droppedWindows: this.droppedWindows,
+      droppedEvents: losses.droppedEvents,
+      droppedWindows: losses.droppedWindows,
       execution: this.execution,
       intervalMs,
       operations,
@@ -305,7 +312,7 @@ export class DbDiagnosticRecorder {
       queueMax,
       sequence: ++this.sequence,
       storage: this.storage,
-      transportFailures: this.transportFailures,
+      transportFailures: losses.transportFailures,
       version: 1,
     }
   }

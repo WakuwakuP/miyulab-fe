@@ -12,6 +12,6 @@ import { useWorkerQueryLogBridge } from 'hooks/useWorkerQueryLogBridge'
 
 export function QueryLogBridge() {
   useWorkerQueryLogBridge()
-  useDbDiagnosticUploader()
+  useDbDiagnosticUploader(true)
   return null
 }

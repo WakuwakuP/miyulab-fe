@@ -1,16 +1,51 @@
 import { createDbDiagnosticLogs } from 'app/actions/dbDiagnostics.server'
+import {
+  authorizeDbDiagnostics,
+  getDbDiagnosticAuthorizationTarget,
+} from 'app/actions/dbDiagnosticsAuth.server'
+import type { App } from 'types/types'
+import { createDbDiagnosticAuthorizer } from './dbDiagnosticAuth'
 import { dbDiagnosticRecorder } from './dbDiagnostics'
-import { DbDiagnosticTransport } from './dbDiagnosticTransport'
-import { DB_DIAGNOSTIC_WINDOW_MS } from './dbDiagnosticTypes'
+import {
+  type DbDiagnosticSaveResult,
+  DbDiagnosticTransport,
+} from './dbDiagnosticTransport'
+import {
+  DB_DIAGNOSTIC_WINDOW_MS,
+  type DbDiagnosticWindow,
+} from './dbDiagnosticTypes'
 
 let transport: DbDiagnosticTransport | null = null
 let intervalId: ReturnType<typeof setInterval> | null = null
 let pagehideHandler: (() => void) | null = null
 let visibilityHandler: (() => void) | null = null
 let subscriberCount = 0
+let currentApps: App[] = []
+
+export function updateDbDiagnosticApps(apps: App[]): void {
+  currentApps = apps
+}
+
+export const ensureDbDiagnosticAuthorization = createDbDiagnosticAuthorizer({
+  apps: () => currentApps,
+  authorize: authorizeDbDiagnostics,
+  getTarget: getDbDiagnosticAuthorizationTarget,
+})
 
 export function isDbDiagnosticsClientEnabled(): boolean {
   return process.env.NEXT_PUBLIC_DB_DIAGNOSTICS_ENABLED !== 'false'
+}
+
+async function submitWithOwnerAuthorization(
+  sessionId: string,
+  windows: DbDiagnosticWindow[],
+): Promise<DbDiagnosticSaveResult> {
+  try {
+    await ensureDbDiagnosticAuthorization()
+  } catch {
+    return { error: 'Owner authorization required', success: false }
+  }
+  return createDbDiagnosticLogs(sessionId, windows)
 }
 
 function flush(): void {
@@ -23,7 +58,7 @@ export function acquireDbDiagnosticUploader(): {
 } {
   transport ??= new DbDiagnosticTransport(
     dbDiagnosticRecorder,
-    (sessionId, windows) => createDbDiagnosticLogs(sessionId, windows),
+    submitWithOwnerAuthorization,
   )
   if (intervalId == null) {
     intervalId = setInterval(flush, DB_DIAGNOSTIC_WINDOW_MS)

@@ -1,5 +1,6 @@
 'use server'
 
+import { isDbDiagnosticOwnerAuthenticated } from 'app/actions/dbDiagnosticsAuth.server'
 import type { DbDiagnosticSaveResult } from 'util/db/dbDiagnosticTransport'
 import {
   DB_DIAGNOSTIC_BATCH_SIZE,
@@ -20,6 +21,8 @@ export async function createDbDiagnosticLogs(
 ): Promise<DbDiagnosticSaveResult> {
   if (process.env.DB_DIAGNOSTICS_ENABLED === 'false')
     return { error: 'Diagnostics are disabled', success: false }
+  if (!(await isDbDiagnosticOwnerAuthenticated()))
+    return { error: 'Owner authorization required', success: false }
   if (
     !isDbDiagnosticSessionId(sessionId) ||
     !Array.isArray(input) ||
@@ -78,6 +81,8 @@ export async function getDbDiagnosticLogs(
 ): Promise<ReadResult> {
   if (process.env.DB_DIAGNOSTICS_ENABLED === 'false')
     return { error: 'Diagnostics are disabled', success: false }
+  if (!(await isDbDiagnosticOwnerAuthenticated()))
+    return { error: 'Owner authorization required', success: false }
   if (!isDbDiagnosticSessionId(sessionId))
     return { error: 'Invalid diagnostic session', success: false }
   const now = Date.now()
