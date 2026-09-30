@@ -35,9 +35,9 @@ function fmtMs(value: number | null | undefined): string {
 
 function OperationReportRow({
   report,
-}: {
+}: Readonly<{
   report: DbDiagnosticOperationReport
-}) {
+}>) {
   const op = report.operation
   return (
     <tr className="border-b border-gray-700 text-left align-top">
@@ -88,7 +88,7 @@ function OperationReportRow({
   )
 }
 
-function WindowRow({ window }: { window: DbDiagnosticWindow }) {
+function WindowRow({ window }: Readonly<{ window: DbDiagnosticWindow }>) {
   return (
     <tr className="border-b border-gray-700 text-left">
       <td className="py-1 pr-2">#{window.sequence}</td>

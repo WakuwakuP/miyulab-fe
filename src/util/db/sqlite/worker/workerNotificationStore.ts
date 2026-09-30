@@ -112,6 +112,49 @@ export function resolveNotificationTypeId(
   return NOTIFICATION_TYPE_MAP.get(notificationType) ?? UNKNOWN_TYPE_ID
 }
 
+function findPostIdByUri(db: DbExec, uri: string): number | null {
+  const rows = db.exec(
+    "SELECT id FROM posts WHERE object_uri = ? AND object_uri != '' LIMIT 1;",
+    { bind: [uri], returnValue: 'resultRows' },
+  ) as number[][]
+  return rows.length > 0 ? rows[0][0] : null
+}
+
+/**
+ * 通知の関連投稿が既に DB に存在すれば postId を返す。
+ * URI で見つかった場合は post_backend_ids マッピングを追加する。
+ */
+function findExistingPostForNotification(
+  db: DbExec,
+  status: Entity.Status,
+  backendUrl: string,
+  localAccountId: number,
+  collector?: Set<TableName>,
+): number | undefined {
+  // post_backend_ids で既存チェック
+  const existing = resolvePostId(db, backendUrl, status.id)
+  if (existing !== undefined) return existing
+
+  // URI で既存チェック
+  const normalizedUri = status.uri?.trim() || ''
+  if (!normalizedUri) return undefined
+  const uriRows = db.exec(
+    "SELECT id FROM posts WHERE object_uri = ? AND object_uri != '';",
+    { bind: [normalizedUri], returnValue: 'resultRows' },
+  ) as number[][]
+  if (uriRows.length === 0) return undefined
+
+  const postId = uriRows[0][0]
+  // post_backend_ids マッピングを追加
+  db.exec(
+    `INSERT OR IGNORE INTO post_backend_ids (local_account_id, local_id, post_id)
+     VALUES (?, ?, ?);`,
+    { bind: [localAccountId, status.id, postId] },
+  )
+  if (lastChangeCount(db) > 0) collector?.add('post_backend_ids')
+  return postId
+}
+
 /**
  * 通知の関連投稿が DB に存在しない場合、Entity.Status から投稿を挿入して postId を返す。
  * 既に存在する場合も postId を返す。
@@ -127,38 +170,19 @@ function ensurePostForNotification(
   localAccountId: number,
   collector?: Set<TableName>,
 ): { postId: number; updatedPollOnExistingPost: boolean } {
-  // post_backend_ids で既存チェック
-  const existing = resolvePostId(db, backendUrl, status.id)
+  const existing = findExistingPostForNotification(
+    db,
+    status,
+    backendUrl,
+    localAccountId,
+    collector,
+  )
   if (existing !== undefined) {
     if (status.poll) {
       syncPollData(db, existing, status.poll, collector)
       return { postId: existing, updatedPollOnExistingPost: true }
     }
     return { postId: existing, updatedPollOnExistingPost: false }
-  }
-
-  // URI で既存チェック
-  const normalizedUri = status.uri?.trim() || ''
-  if (normalizedUri) {
-    const uriRows = db.exec(
-      "SELECT id FROM posts WHERE object_uri = ? AND object_uri != '';",
-      { bind: [normalizedUri], returnValue: 'resultRows' },
-    ) as number[][]
-    if (uriRows.length > 0) {
-      const postId = uriRows[0][0]
-      // post_backend_ids マッピングを追加
-      db.exec(
-        `INSERT OR IGNORE INTO post_backend_ids (local_account_id, local_id, post_id)
-         VALUES (?, ?, ?);`,
-        { bind: [localAccountId, status.id, postId] },
-      )
-      if (lastChangeCount(db) > 0) collector?.add('post_backend_ids')
-      if (status.poll) {
-        syncPollData(db, postId, status.poll, collector)
-        return { postId, updatedPollOnExistingPost: true }
-      }
-      return { postId, updatedPollOnExistingPost: false }
-    }
   }
 
   // 新規投稿を挿入
@@ -177,13 +201,7 @@ function ensurePostForNotification(
 
   // Resolve FK references
   const repostOfPostId = status.reblog?.uri
-    ? (() => {
-        const rows = db.exec(
-          "SELECT id FROM posts WHERE object_uri = ? AND object_uri != '' LIMIT 1;",
-          { bind: [status.reblog.uri], returnValue: 'resultRows' },
-        ) as number[][]
-        return rows.length > 0 ? rows[0][0] : null
-      })()
+    ? findPostIdByUri(db, status.reblog.uri)
     : null
 
   db.exec(

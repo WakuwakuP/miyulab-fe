@@ -308,14 +308,7 @@ function processPostsBatch(
     }
   }
 
-  // 削除する件数の上限。
-  //   - 上限超過分があるならその分まで (budget で頭打ち)
-  //   - forceCleanup のみ (excess <= 0) のときは追従掃除として budget ぶんまで許容
-  const desiredLimit = isEmergency
-    ? Math.min(Math.max(0, excess), budget)
-    : excess > 0
-      ? Math.min(excess, budget)
-      : budget
+  const desiredLimit = resolvePostsDeleteLimit(excess, budget, isEmergency)
   if (desiredLimit <= 0) {
     return {
       countElapsedMs,
@@ -371,6 +364,20 @@ function processPostsBatch(
     hasRemainingExcess,
     issuedDelete: deleted > 0,
   }
+}
+
+/**
+ * processPostsBatch で 1 バッチに削除する件数の上限。
+ *   - 上限超過分があるならその分まで (budget で頭打ち)
+ *   - forceCleanup のみ (excess <= 0) のときは追従掃除として budget ぶんまで許容
+ */
+function resolvePostsDeleteLimit(
+  excess: number,
+  budget: number,
+  isEmergency: boolean,
+): number {
+  if (isEmergency) return Math.min(Math.max(0, excess), budget)
+  return excess > 0 ? Math.min(excess, budget) : budget
 }
 
 /**

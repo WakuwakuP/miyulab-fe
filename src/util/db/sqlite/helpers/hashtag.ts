@@ -2,6 +2,56 @@ import type { WrittenTableCollector } from '../protocol'
 import { lastChangeCount } from './changes'
 import type { DbExecCompat } from './types'
 
+function hasIdenticalHashtagLinks(
+  db: DbExecCompat,
+  postId: number,
+  expectedNames: Set<string>,
+): boolean {
+  const currentNames = (
+    db.exec(
+      `SELECT ht.name FROM post_hashtags pht
+       JOIN hashtags ht ON ht.id = pht.hashtag_id
+       WHERE pht.post_id = ?;`,
+      { bind: [postId], returnValue: 'resultRows' },
+    ) as string[][]
+  ).map((row) => row[0])
+  return (
+    currentNames.length === expectedNames.size &&
+    currentNames.every((name) => expectedNames.has(name))
+  )
+}
+
+/**
+ * post_hashtags のリンクを keepIds に置き換える。
+ * @returns リンクが変化したかどうか
+ */
+function replaceHashtagLinks(
+  db: DbExecCompat,
+  postId: number,
+  keepIds: number[],
+): boolean {
+  // post_hashtags にリンク（multi-value INSERT）
+  const linkPlaceholders = keepIds.map(() => '(?, ?)').join(',')
+  const linkBinds: number[] = []
+  for (const id of keepIds) {
+    linkBinds.push(postId, id)
+  }
+  db.exec(
+    `INSERT OR IGNORE INTO post_hashtags (post_id, hashtag_id) VALUES ${linkPlaceholders};`,
+    { bind: linkBinds },
+  )
+  let linksChanged = lastChangeCount(db) > 0
+
+  // 不要なリンクを削除
+  const ph = keepIds.map(() => '?').join(',')
+  db.exec(
+    `DELETE FROM post_hashtags WHERE post_id = ? AND hashtag_id NOT IN (${ph});`,
+    { bind: [postId, ...keepIds] },
+  )
+  if (lastChangeCount(db) > 0) linksChanged = true
+  return linksChanged
+}
+
 /**
  * 投稿のハッシュタグを同期する。
  * hashtags テーブルに UPSERT し、post_hashtags でリンクを管理する。
@@ -20,20 +70,8 @@ export function syncPostHashtags(
     return
   }
 
-  const expectedNames = [
-    ...new Set(tags.map((t) => t.name.toLowerCase())),
-  ].sort()
-  const currentNames = (
-    db.exec(
-      `SELECT ht.name FROM post_hashtags pht
-       JOIN hashtags ht ON ht.id = pht.hashtag_id
-       WHERE pht.post_id = ? ORDER BY ht.name;`,
-      { bind: [postId], returnValue: 'resultRows' },
-    ) as string[][]
-  ).map((row) => row[0])
-  const linksIdentical =
-    currentNames.length === expectedNames.length &&
-    currentNames.every((name, i) => name === expectedNames[i])
+  const expectedNames = new Set(tags.map((t) => t.name.toLowerCase()))
+  const linksIdentical = hasIdenticalHashtagLinks(db, postId, expectedNames)
 
   const seen = new Set<string>()
   const keepIds: number[] = []
@@ -67,24 +105,5 @@ export function syncPostHashtags(
   if (hashtagsChanged) collector?.add('hashtags')
   if (linksIdentical) return
 
-  // post_hashtags にリンク（multi-value INSERT）
-  const linkPlaceholders = keepIds.map(() => '(?, ?)').join(',')
-  const linkBinds: number[] = []
-  for (const id of keepIds) {
-    linkBinds.push(postId, id)
-  }
-  db.exec(
-    `INSERT OR IGNORE INTO post_hashtags (post_id, hashtag_id) VALUES ${linkPlaceholders};`,
-    { bind: linkBinds },
-  )
-  let linksChanged = lastChangeCount(db) > 0
-
-  // 不要なリンクを削除
-  const ph = keepIds.map(() => '?').join(',')
-  db.exec(
-    `DELETE FROM post_hashtags WHERE post_id = ? AND hashtag_id NOT IN (${ph});`,
-    { bind: [postId, ...keepIds] },
-  )
-  if (lastChangeCount(db) > 0) linksChanged = true
-  if (linksChanged) collector?.add('post_hashtags')
+  if (replaceHashtagLinks(db, postId, keepIds)) collector?.add('post_hashtags')
 }

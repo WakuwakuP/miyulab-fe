@@ -38,6 +38,13 @@ import type { DbExec, WrittenTableCollector } from './types'
 
 const STALE_INTERACTION_FALSE_PROTECTION_MS = 60_000
 
+type SqlValue = string | number | null
+
+function compareCodeUnits(a: string, b: string): number {
+  if (a < b) return -1
+  return a > b ? 1 : 0
+}
+
 // ================================================================
 // メンション同期
 // ================================================================
@@ -69,9 +76,9 @@ export function upsertMentionsInternal(
   const currentRows = db.exec(
     'SELECT acct, username, url, profile_id FROM post_mentions WHERE post_id = ? ORDER BY acct;',
     { bind: [postId], returnValue: 'resultRows' },
-  ) as (string | number | null)[][]
+  ) as SqlValue[][]
   const expectedRows = [...expectedByAcct.entries()]
-    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .sort(([a], [b]) => compareCodeUnits(a, b))
     .map(([acct, [username, url, profileId]]) => [
       acct,
       username,
@@ -140,7 +147,7 @@ export function syncPostMedia(
             preview_url, description, blurhash, media_local_id
      FROM post_media WHERE post_id = ? ORDER BY sort_order;`,
     { bind: [postId], returnValue: 'resultRows' },
-  ) as (string | number | null)[][]
+  ) as SqlValue[][]
 
   const expectedRows = mediaAttachments.map((media, i) => {
     const meta = media.meta as
@@ -175,7 +182,7 @@ export function syncPostMedia(
 
   // multi-value INSERT で一括挿入
   const placeholders: string[] = []
-  const binds: (string | number | null)[] = []
+  const binds: SqlValue[] = []
 
   for (let i = 0; i < mediaAttachments.length; i++) {
     const media = mediaAttachments[i]
@@ -403,11 +410,7 @@ function upsertReblogOriginalPostRow(
         quote_of_post_id       IS NOT ?
       );`,
       {
-        bind: [
-          ...(setValues as (string | number | null)[]),
-          existingPostId,
-          ...(setValues as (string | number | null)[]),
-        ],
+        bind: [...setValues, existingPostId, ...setValues],
       },
     )
     return existingPostId

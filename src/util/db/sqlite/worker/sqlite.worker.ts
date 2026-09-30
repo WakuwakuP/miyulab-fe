@@ -107,6 +107,15 @@ function handleExportDatabaseMessage(id: number): void {
   }
 }
 
+function diagnosticCacheNodeIds(msg: WorkerRequest): string[] {
+  if (msg.type !== 'executeGraphPlan') return []
+  return msg.plan.nodes
+    .filter(
+      (n) => n.node.kind === 'get-ids' || n.node.kind === 'lookup-related',
+    )
+    .map((n) => n.id)
+}
+
 function dispatchWorkerRequest(msg: WorkerRequest, db: WorkerDb): void {
   switch (msg.type) {
     // ---- 汎用 ----
@@ -425,19 +434,7 @@ globalThis.onmessage = (
   try {
     const db = getDb()
     const measuredDb = db
-      ? beginWorkerDiagnostics(
-          msg.id,
-          db,
-          msg.type === 'executeGraphPlan'
-            ? msg.plan.nodes
-                .filter(
-                  (n) =>
-                    n.node.kind === 'get-ids' ||
-                    n.node.kind === 'lookup-related',
-                )
-                .map((n) => n.id)
-            : [],
-        )
+      ? beginWorkerDiagnostics(msg.id, db, diagnosticCacheNodeIds(msg))
       : db
 
     dispatchWorkerRequest(msg, measuredDb ?? db)

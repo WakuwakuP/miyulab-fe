@@ -42,27 +42,34 @@ export function deriveRequiredPublicFeeds(
     const filter = normalizeBackendFilter(config.backendFilter, apps)
     const urls = resolveBackendUrls(filter, apps)
     if (urls.length === 0) continue
+    addConfigFeeds(config, urls, add)
+  }
+  return [...feeds.values()]
+}
 
-    if (isOpaqueFeedConsumer(config)) {
-      for (const url of urls) {
-        add('local', url)
-        add('public', url)
-      }
-      continue
+function addConfigFeeds(
+  config: TimelineConfigV2,
+  urls: string[],
+  add: (type: 'local' | 'public', backendUrl: string) => void,
+): void {
+  if (isOpaqueFeedConsumer(config)) {
+    for (const url of urls) {
+      add('local', url)
+      add('public', url)
     }
-    const types =
-      config.timelineTypes && config.timelineTypes.length > 0
-        ? config.timelineTypes
-        : [config.type]
-    for (const type of types) {
-      if (type === 'local' || type === 'public') {
-        for (const url of urls) {
-          add(type, url)
-        }
+    return
+  }
+  const types =
+    config.timelineTypes && config.timelineTypes.length > 0
+      ? config.timelineTypes
+      : [config.type]
+  for (const type of types) {
+    if (type === 'local' || type === 'public') {
+      for (const url of urls) {
+        add(type, url)
       }
     }
   }
-  return [...feeds.values()]
 }
 
 /**

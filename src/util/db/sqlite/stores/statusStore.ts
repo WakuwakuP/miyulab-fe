@@ -56,6 +56,61 @@ type WriteLaneTask =
       run: (handle: StatusWriteHandle) => Promise<unknown>
     }
 
+function resolveWaiters(items: Iterable<BufferedUpsert>): void {
+  for (const item of items) {
+    for (const waiter of item.waiters) waiter.resolve()
+  }
+}
+
+function rejectWaiters(items: Iterable<BufferedUpsert>, error: unknown): void {
+  for (const item of items) {
+    for (const waiter of item.waiters) waiter.reject(error)
+  }
+}
+
+function rejectBuckets(
+  buckets: Map<string, UpsertBucket>,
+  error: unknown,
+): void {
+  console.error('Failed to flush upsert buffer:', error)
+  for (const bucket of buckets.values()) {
+    rejectWaiters(bucket.items.values(), error)
+    bucket.items.clear()
+  }
+  buckets.clear()
+}
+
+function takeUpsertBatch(bucket: UpsertBucket): BufferedUpsert[] {
+  const batch: BufferedUpsert[] = []
+  for (const [id, item] of bucket.items) {
+    batch.push(item)
+    bucket.items.delete(id)
+    if (batch.length >= MAX_STATUSES_PER_COMMAND) break
+  }
+  return batch
+}
+
+async function sendUpsertBatch(
+  handle: StatusWriteHandle,
+  bucket: UpsertBucket,
+  batch: BufferedUpsert[],
+): Promise<void> {
+  try {
+    await handle.sendCommand({
+      backendUrl: bucket.meta.backendUrl,
+      skipProfileUpdate: bucket.meta.skipProfileUpdate,
+      statusesJson: batch.map((item) => JSON.stringify(item.status)),
+      tag: bucket.meta.tag,
+      timelineType: bucket.meta.timelineType,
+      type: 'bulkUpsertStatuses',
+    })
+    resolveWaiters(batch)
+  } catch (error) {
+    console.error('Failed to flush upsert buffer:', error)
+    rejectWaiters(batch, error)
+  }
+}
+
 export function createStatusWriteStore(
   getHandle: () => Promise<StatusWriteHandle>,
 ) {
@@ -82,31 +137,28 @@ export function createStatusWriteStore(
     })
   }
 
+  async function runTask(task: WriteLaneTask): Promise<void> {
+    try {
+      const handle = await getHandle()
+      if (task.kind === 'flush') {
+        await flushBuckets(handle, task.buckets)
+      } else {
+        await task.run(handle)
+        task.resolve()
+      }
+    } catch (error) {
+      if (task.kind === 'flush') {
+        rejectBuckets(task.buckets, error)
+      } else {
+        task.reject(error)
+      }
+    }
+  }
+
   async function runLane(): Promise<void> {
     while (lane.length > 0) {
       const task = lane.shift() as WriteLaneTask
-      try {
-        const handle = await getHandle()
-        if (task.kind === 'flush') {
-          await flushBuckets(handle, task.buckets)
-        } else {
-          await task.run(handle)
-          task.resolve()
-        }
-      } catch (error) {
-        if (task.kind === 'flush') {
-          console.error('Failed to flush upsert buffer:', error)
-          for (const bucket of task.buckets.values()) {
-            for (const item of bucket.items.values()) {
-              for (const waiter of item.waiters) waiter.reject(error)
-            }
-            bucket.items.clear()
-          }
-          task.buckets.clear()
-        } else {
-          task.reject(error)
-        }
-      }
+      await runTask(task)
       if (task.kind === 'flush') {
         queuedBuckets.delete(task.buckets)
       }
@@ -125,31 +177,8 @@ export function createStatusWriteStore(
       if (bucket.items.size === 0) continue
       buckets.set(key, bucket)
 
-      const batch: BufferedUpsert[] = []
-      for (const [id, item] of bucket.items) {
-        batch.push(item)
-        bucket.items.delete(id)
-        if (batch.length >= MAX_STATUSES_PER_COMMAND) break
-      }
-
-      try {
-        await handle.sendCommand({
-          backendUrl: bucket.meta.backendUrl,
-          skipProfileUpdate: bucket.meta.skipProfileUpdate,
-          statusesJson: batch.map((item) => JSON.stringify(item.status)),
-          tag: bucket.meta.tag,
-          timelineType: bucket.meta.timelineType,
-          type: 'bulkUpsertStatuses',
-        })
-        for (const item of batch) {
-          for (const waiter of item.waiters) waiter.resolve()
-        }
-      } catch (error) {
-        console.error('Failed to flush upsert buffer:', error)
-        for (const item of batch) {
-          for (const waiter of item.waiters) waiter.reject(error)
-        }
-      }
+      const batch = takeUpsertBatch(bucket)
+      await sendUpsertBatch(handle, bucket, batch)
     }
   }
 
@@ -189,6 +218,12 @@ export function createStatusWriteStore(
     })
   }
 
+  function createBucket(key: string, meta: UpsertBucket['meta']): UpsertBucket {
+    const bucket: UpsertBucket = { items: new Map(), meta }
+    pendingBuckets.set(key, bucket)
+    return bucket
+  }
+
   function enqueueUpsert(
     status: Entity.Status,
     backendUrl: string,
@@ -197,20 +232,13 @@ export function createStatusWriteStore(
     skipProfileUpdate: boolean | undefined,
   ): Promise<void> {
     const key = makeBufferKey(backendUrl, timelineType, tag, skipProfileUpdate)
-    let bucket = pendingBuckets.get(key)
-    if (!bucket) {
-      bucket = {
-        items: new Map(),
-        meta: { backendUrl, skipProfileUpdate, tag, timelineType },
-      }
-      pendingBuckets.set(key, bucket)
-    }
+    const meta = { backendUrl, skipProfileUpdate, tag, timelineType }
+    const bucket = pendingBuckets.get(key) ?? createBucket(key, meta)
     return new Promise<void>((resolve, reject) => {
-      const bucketRef = bucket as UpsertBucket
-      const existing = bucketRef.items.get(status.id)
+      const existing = bucket.items.get(status.id)
       const waiters = existing?.waiters ?? []
       waiters.push({ reject, resolve })
-      bucketRef.items.set(status.id, { status, waiters })
+      bucket.items.set(status.id, { status, waiters })
       scheduleFlush()
     })
   }

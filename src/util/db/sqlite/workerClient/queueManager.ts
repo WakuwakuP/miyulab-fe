@@ -260,44 +260,64 @@ export function sendRequest(
         ? (value, durationMs) =>
             resolve({ durationMs: durationMs ?? 0, result: value })
         : (value) => resolve(value)
-
-    // タイムラインキューの重複排除（sessionTag 付きはスキップ）
-    if (kind === 'timeline' && !sessionTag) {
-      if (tryEnqueueTimelineDedup(message, wrappedResolve, reject)) return
-    }
-
-    // sessionTag 付き: 同じ sessionTag のキュー内アイテムをインプレース置換
-    if (kind === 'timeline' && sessionTag) {
-      if (
-        tryReplaceTimelineSessionTag(
-          sessionTag,
-          message,
-          wrappedResolve,
-          reject,
-        )
-      ) {
-        return
-      }
-    }
-
-    const queue = getQueueForKind(kind)
-    const enqueuedAt = kind === 'timeline' ? performance.now() : undefined
-    queue.push({
-      enqueuedAt,
-      kind,
-      message,
-      reject,
-      resolve: wrappedResolve,
-      sessionTag,
-    })
-    reportEnqueue(kind)
-    dbDiagnosticRecorder.recordEnqueue(message.id, message, kind)
-    if (kind === 'timeline') {
-      evictOldestIfOverflow()
-    }
-    observeDiagnosticQueues()
-    processQueue()
+    enqueueRequest(message, kind, sessionTag, wrappedResolve, reject)
   })
+}
+
+/**
+ * timeline キューの重複排除またはインプレース置換で処理できたら true。
+ */
+function tryMergeTimelineRequest(
+  message: {
+    type: string
+    id: number
+    [key: string]: unknown
+  },
+  kind: QueueKind,
+  sessionTag: string | undefined,
+  resolve: (value: unknown, durationMs?: number) => void,
+  reject: (reason: Error) => void,
+): boolean {
+  if (kind !== 'timeline') return false
+  // sessionTag 付き: 同じ sessionTag のキュー内アイテムをインプレース置換
+  // sessionTag なし: タイムラインキューの重複排除
+  return sessionTag
+    ? tryReplaceTimelineSessionTag(sessionTag, message, resolve, reject)
+    : tryEnqueueTimelineDedup(message, resolve, reject)
+}
+
+function enqueueRequest(
+  message: {
+    type: string
+    id: number
+    [key: string]: unknown
+  },
+  kind: QueueKind,
+  sessionTag: string | undefined,
+  resolve: (value: unknown, durationMs?: number) => void,
+  reject: (reason: Error) => void,
+): void {
+  if (tryMergeTimelineRequest(message, kind, sessionTag, resolve, reject)) {
+    return
+  }
+
+  const queue = getQueueForKind(kind)
+  const enqueuedAt = kind === 'timeline' ? performance.now() : undefined
+  queue.push({
+    enqueuedAt,
+    kind,
+    message,
+    reject,
+    resolve,
+    sessionTag,
+  })
+  reportEnqueue(kind)
+  dbDiagnosticRecorder.recordEnqueue(message.id, message, kind)
+  if (kind === 'timeline') {
+    evictOldestIfOverflow()
+  }
+  observeDiagnosticQueues()
+  processQueue()
 }
 
 const OTHER_TIME_BUDGET_MS = 50
@@ -317,38 +337,43 @@ export function resetQueueFairnessState(): void {
   otherActiveStartMs = null
 }
 
+function dequeueNext(): QueuedRequest | undefined {
+  // priority キューは常に最優先で処理する（maxConsecutiveOther の制約外）
+  // priority 処理は consecutiveOther カウンタに影響させない
+  if (priorityQueue.length > 0) return priorityQueue.shift()
+
+  // other キューを優先するが、timeline キューの飢餓を防ぐため
+  // maxConsecutiveOther 回連続処理したら timeline に譲る
+  const maxConsecutive = getMaxConsecutiveOther(
+    otherQueue.length,
+    timelineQueue.length,
+  )
+  const otherBudgetExceeded =
+    getQueuePriority().preset === 'auto' &&
+    otherServiceElapsedMs >= OTHER_TIME_BUDGET_MS
+  if (
+    otherQueue.length > 0 &&
+    (timelineQueue.length === 0 ||
+      (getConsecutiveOther() < maxConsecutive && !otherBudgetExceeded))
+  ) {
+    const next = otherQueue.shift()
+    setConsecutiveOther(getConsecutiveOther() + 1)
+    return next
+  }
+  if (timelineQueue.length > 0) {
+    const next = timelineQueue.shift()
+    setConsecutiveOther(0)
+    otherServiceElapsedMs = 0
+    return next
+  }
+  return undefined
+}
+
 function processQueue(): void {
   const worker = getWorker()
   if (getActiveRequest() || !worker) return
 
-  // priority キューは常に最優先で処理する（maxConsecutiveOther の制約外）
-  let next: QueuedRequest | undefined
-  if (priorityQueue.length > 0) {
-    next = priorityQueue.shift()
-    // priority 処理は consecutiveOther カウンタに影響させない
-  } else {
-    // other キューを優先するが、timeline キューの飢餓を防ぐため
-    // maxConsecutiveOther 回連続処理したら timeline に譲る
-    const maxConsecutive = getMaxConsecutiveOther(
-      otherQueue.length,
-      timelineQueue.length,
-    )
-    const otherBudgetExceeded =
-      getQueuePriority().preset === 'auto' &&
-      otherServiceElapsedMs >= OTHER_TIME_BUDGET_MS
-    if (
-      otherQueue.length > 0 &&
-      (timelineQueue.length === 0 ||
-        (getConsecutiveOther() < maxConsecutive && !otherBudgetExceeded))
-    ) {
-      next = otherQueue.shift()
-      setConsecutiveOther(getConsecutiveOther() + 1)
-    } else if (timelineQueue.length > 0) {
-      next = timelineQueue.shift()
-      setConsecutiveOther(0)
-      otherServiceElapsedMs = 0
-    }
-  }
+  const next = dequeueNext()
   if (!next) {
     otherServiceElapsedMs = 0
     return

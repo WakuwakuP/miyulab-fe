@@ -361,48 +361,78 @@ export function replacePlaceholders(sql: string, count: number): string {
   return sql.replace('__PH__', ph)
 }
 
+/** 引用符で囲まれたリテラル／識別子をスキップし、閉じ引用符の次の位置を返す */
+function skipQuoted(sql: string, start: number): number {
+  const quote = sql[start]
+  let i = start + 1
+  while (i < sql.length) {
+    if (sql[i] !== quote) {
+      i++
+      continue
+    }
+    if (quote !== '`' && sql[i + 1] === quote) {
+      i += 2
+      continue
+    }
+    return i + 1
+  }
+  return i
+}
+
+function skipBracketIdentifier(sql: string, start: number): number {
+  let i = start + 1
+  while (i < sql.length && sql[i] !== ']') i++
+  return i + 1
+}
+
+function skipLineComment(sql: string, start: number): number {
+  let i = start
+  while (i < sql.length && sql[i] !== '\n') i++
+  return i
+}
+
+function skipBlockComment(sql: string, start: number): number {
+  let i = start + 2
+  while (i < sql.length && !(sql[i] === '*' && sql[i + 1] === '/')) i++
+  return i + 2
+}
+
+/**
+ * start 位置がリテラル・識別子・コメントの開始であれば、
+ * スキップ後の位置と出力に置き換える文字列を返す。
+ */
+function skipNonCode(
+  sql: string,
+  start: number,
+): { next: number; replacement: string } | null {
+  const c = sql[start]
+  if (c === "'" || c === '"' || c === '`') {
+    return { next: skipQuoted(sql, start), replacement: ' ' }
+  }
+  if (c === '[') {
+    return { next: skipBracketIdentifier(sql, start), replacement: ' ' }
+  }
+  if (c === '-' && sql[start + 1] === '-') {
+    return { next: skipLineComment(sql, start), replacement: '' }
+  }
+  if (c === '/' && sql[start + 1] === '*') {
+    return { next: skipBlockComment(sql, start), replacement: '' }
+  }
+  return null
+}
+
 function stripSqlLiteralsAndComments(sql: string): string {
   let out = ''
   let i = 0
-  const n = sql.length
-  while (i < n) {
-    const c = sql[i]
-    if (c === "'" || c === '"' || c === '`') {
-      const quote = c
+  while (i < sql.length) {
+    const skipped = skipNonCode(sql, i)
+    if (skipped) {
+      out += skipped.replacement
+      i = skipped.next
+    } else {
+      out += sql[i]
       i++
-      while (i < n) {
-        if (sql[i] === quote) {
-          if (quote !== '`' && sql[i + 1] === quote) {
-            i += 2
-            continue
-          }
-          i++
-          break
-        }
-        i++
-      }
-      out += ' '
-      continue
     }
-    if (c === '[') {
-      i++
-      while (i < n && sql[i] !== ']') i++
-      i++
-      out += ' '
-      continue
-    }
-    if (c === '-' && sql[i + 1] === '-') {
-      while (i < n && sql[i] !== '\n') i++
-      continue
-    }
-    if (c === '/' && sql[i + 1] === '*') {
-      i += 2
-      while (i < n && !(sql[i] === '*' && sql[i + 1] === '/')) i++
-      i += 2
-      continue
-    }
-    out += c
-    i++
   }
   return out
 }

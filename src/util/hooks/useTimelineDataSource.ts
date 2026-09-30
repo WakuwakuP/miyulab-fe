@@ -85,6 +85,38 @@ export type UseTimelineDataSourceOptions = {
   disabled?: boolean
 }
 
+// --------------- 変更通知ハンドラ ---------------
+
+type ChangeCoalescer = ReturnType<typeof createChangeCoalescer>
+
+function createHintHandler(
+  coalescer: ChangeCoalescer,
+  configTimelineTypes: string[],
+  targetBackendUrls: string[],
+  isLookup: boolean,
+): (hints: ChangeHint[]) => void {
+  return (hints) => {
+    if (hints.length === 0) {
+      coalescer.push({ hintless: true, matched: false })
+      return
+    }
+    const matchedHints = hints.filter((h) =>
+      hintMatchesTimeline(h, configTimelineTypes, targetBackendUrls, isLookup),
+    )
+    const matched = matchedHints.length > 0
+    coalescer.push({
+      hintless: false,
+      matched,
+      ...(matched
+        ? {
+            postIds: mergeChangedPostIds(matchedHints),
+            tables: aggregateChangedTables(matchedHints),
+          }
+        : {}),
+    })
+  }
+}
+
 // --------------- メインフック ---------------
 
 export function useTimelineDataSource(
@@ -317,32 +349,13 @@ export function useTimelineDataSource(
       const coalescer = createChangeCoalescer(onMatched, onHintless)
 
       const unsubs = subscribeTables.map((table) => {
-        const isLookup = lookupTables.has(table)
-        return subscribe(table, (hints: ChangeHint[]) => {
-          if (hints.length === 0) {
-            coalescer.push({ hintless: true, matched: false })
-            return
-          }
-          const matchedHints = hints.filter((h) =>
-            hintMatchesTimeline(
-              h,
-              configTimelineTypes,
-              targetBackendUrls,
-              isLookup,
-            ),
-          )
-          const matched = matchedHints.length > 0
-          coalescer.push({
-            hintless: false,
-            matched,
-            ...(matched
-              ? {
-                  postIds: mergeChangedPostIds(matchedHints),
-                  tables: aggregateChangedTables(matchedHints),
-                }
-              : {}),
-          })
-        })
+        const onHints = createHintHandler(
+          coalescer,
+          configTimelineTypes,
+          targetBackendUrls,
+          lookupTables.has(table),
+        )
+        return subscribe(table, onHints)
       })
       return () => {
         coalescer.dispose()

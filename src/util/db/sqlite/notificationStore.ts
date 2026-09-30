@@ -340,6 +340,63 @@ type NotificationLaneTask =
       run: (handle: NotificationWriteHandle) => Promise<unknown>
     }
 
+function resolveWaiters(items: Iterable<PendingNotification>): void {
+  for (const item of items) {
+    for (const waiter of item.waiters) waiter.resolve()
+  }
+}
+
+function rejectWaiters(
+  items: Iterable<PendingNotification>,
+  error: unknown,
+): void {
+  for (const item of items) {
+    for (const waiter of item.waiters) waiter.reject(error)
+  }
+}
+
+function rejectBuckets(
+  buckets: Map<string, NotificationBucket>,
+  error: unknown,
+): void {
+  console.error('Failed to flush notification buffer:', error)
+  for (const bucket of buckets.values()) {
+    rejectWaiters(bucket.items.values(), error)
+    bucket.items.clear()
+  }
+  buckets.clear()
+}
+
+function takeNotificationBatch(
+  bucket: NotificationBucket,
+): PendingNotification[] {
+  const batch: PendingNotification[] = []
+  for (const [id, item] of bucket.items) {
+    batch.push(item)
+    bucket.items.delete(id)
+    if (batch.length >= MAX_NOTIFICATIONS_PER_COMMAND) break
+  }
+  return batch
+}
+
+async function sendNotificationBatch(
+  handle: NotificationWriteHandle,
+  backendUrl: string,
+  batch: PendingNotification[],
+): Promise<void> {
+  try {
+    await handle.sendCommand({
+      backendUrl,
+      notificationsJson: batch.map((item) => JSON.stringify(item.notification)),
+      type: 'bulkAddNotifications',
+    })
+    resolveWaiters(batch)
+  } catch (error) {
+    console.error('Failed to flush notification buffer:', error)
+    rejectWaiters(batch, error)
+  }
+}
+
 export function createNotificationWriteStore(
   getHandle: () => Promise<NotificationWriteHandle>,
 ) {
@@ -366,31 +423,28 @@ export function createNotificationWriteStore(
     })
   }
 
+  async function runTask(task: NotificationLaneTask): Promise<void> {
+    try {
+      const handle = await getHandle()
+      if (task.kind === 'flush') {
+        await flushBuckets(handle, task.buckets)
+      } else {
+        await task.run(handle)
+        task.resolve()
+      }
+    } catch (error) {
+      if (task.kind === 'flush') {
+        rejectBuckets(task.buckets, error)
+      } else {
+        task.reject(error)
+      }
+    }
+  }
+
   async function runLane(): Promise<void> {
     while (lane.length > 0) {
       const task = lane.shift() as NotificationLaneTask
-      try {
-        const handle = await getHandle()
-        if (task.kind === 'flush') {
-          await flushBuckets(handle, task.buckets)
-        } else {
-          await task.run(handle)
-          task.resolve()
-        }
-      } catch (error) {
-        if (task.kind === 'flush') {
-          console.error('Failed to flush notification buffer:', error)
-          for (const bucket of task.buckets.values()) {
-            for (const item of bucket.items.values()) {
-              for (const waiter of item.waiters) waiter.reject(error)
-            }
-            bucket.items.clear()
-          }
-          task.buckets.clear()
-        } else {
-          task.reject(error)
-        }
-      }
+      await runTask(task)
       if (task.kind === 'flush') {
         queuedBuckets.delete(task.buckets)
       }
@@ -409,30 +463,8 @@ export function createNotificationWriteStore(
       if (bucket.items.size === 0) continue
       buckets.set(backendUrl, bucket)
 
-      const batch: PendingNotification[] = []
-      for (const [id, item] of bucket.items) {
-        batch.push(item)
-        bucket.items.delete(id)
-        if (batch.length >= MAX_NOTIFICATIONS_PER_COMMAND) break
-      }
-
-      try {
-        await handle.sendCommand({
-          backendUrl,
-          notificationsJson: batch.map((item) =>
-            JSON.stringify(item.notification),
-          ),
-          type: 'bulkAddNotifications',
-        })
-        for (const item of batch) {
-          for (const waiter of item.waiters) waiter.resolve()
-        }
-      } catch (error) {
-        console.error('Failed to flush notification buffer:', error)
-        for (const item of batch) {
-          for (const waiter of item.waiters) waiter.reject(error)
-        }
-      }
+      const batch = takeNotificationBatch(bucket)
+      await sendNotificationBatch(handle, backendUrl, batch)
     }
   }
 
@@ -470,21 +502,22 @@ export function createNotificationWriteStore(
     })
   }
 
+  function createBucket(backendUrl: string): NotificationBucket {
+    const bucket: NotificationBucket = { items: new Map() }
+    pendingBuckets.set(backendUrl, bucket)
+    return bucket
+  }
+
   function enqueueNotification(
     notification: Entity.Notification,
     backendUrl: string,
   ): Promise<void> {
-    let bucket = pendingBuckets.get(backendUrl)
-    if (!bucket) {
-      bucket = { items: new Map() }
-      pendingBuckets.set(backendUrl, bucket)
-    }
+    const bucket = pendingBuckets.get(backendUrl) ?? createBucket(backendUrl)
     return new Promise<void>((resolve, reject) => {
-      const bucketRef = bucket as NotificationBucket
-      const existing = bucketRef.items.get(notification.id)
+      const existing = bucket.items.get(notification.id)
       const waiters = existing?.waiters ?? []
       waiters.push({ reject, resolve })
-      bucketRef.items.set(notification.id, { notification, waiters })
+      bucket.items.set(notification.id, { notification, waiters })
       scheduleFlush()
     })
   }

@@ -30,7 +30,7 @@ export function isReadOnlySql(sql: string): boolean {
   if (trimmed.endsWith(';')) {
     trimmed = trimmed.slice(0, -1)
   }
-  if (!/^[ ]*(SELECT|EXPLAIN)\b/i.test(trimmed)) return false
+  if (!/^ *(SELECT|EXPLAIN)\b/i.test(trimmed)) return false
   return !trimmed.includes(';')
 }
 

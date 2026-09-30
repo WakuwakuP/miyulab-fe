@@ -164,6 +164,19 @@ const OPERATION_NUMBERS = [
   'sqlTimeMs',
   'resultRows',
 ] as const
+const INTEGER_OPERATION_NUMBERS = [
+  'receivedItems',
+  'enqueued',
+  'requestedItems',
+  'started',
+  'succeeded',
+  'failed',
+  'timedOut',
+  'cancelled',
+  'workerMeasured',
+  'sqlCalls',
+  'resultRows',
+] as const
 const KINDS = ['priority', 'other', 'timeline', 'input'] as const
 const TIMELINES = [
   'home',
@@ -222,7 +235,7 @@ function metadata(
     !choice(v.kind, KINDS) ||
     !choice(v.requestType, DB_DIAGNOSTIC_REQUEST_TYPES) ||
     typeof v.sourceId !== 'string' ||
-    !/^s(?:[0-9]{1,2}|overflow|none)$/.test(v.sourceId) ||
+    !/^s(?:\d{1,2}|overflow|none)$/.test(v.sourceId) ||
     !choice(v.timelineType, TIMELINES) ||
     !choice(v.sqlVerb, VERBS)
   )
@@ -246,6 +259,39 @@ export function isDbDiagnosticSessionId(value: unknown): value is string {
 }
 export function dbDiagnosticMarker(sessionId: string): string {
   return `DB_DIAGNOSTICS_V1:${sessionId.toLowerCase()}`
+}
+function isIntegerDetailField(
+  key: (typeof DB_DIAGNOSTIC_DETAIL_FIELDS)[number],
+): boolean {
+  return key.endsWith('Deleted') || key === 'cacheHits' || key === 'cacheMisses'
+}
+function sanitizeDetailFields(
+  entry: Record<string, unknown>,
+  values: Record<string, number>,
+): boolean {
+  for (const key of DB_DIAGNOSTIC_DETAIL_FIELDS) {
+    const value = entry[key]
+    if (value === undefined) continue
+    if (!number(value)) return false
+    if (isIntegerDetailField(key) && !integer(value)) return false
+    values[key] = value
+  }
+  return true
+}
+function sanitizeOperation(raw: unknown): DbDiagnosticOperation | null {
+  const entry = object(raw)
+  const meta = metadata(raw)
+  if (!entry || !meta) return null
+  const values: Record<string, number> = {}
+  for (const key of OPERATION_NUMBERS) {
+    const value = entry[key]
+    if (!number(value)) return null
+    values[key] = value
+  }
+  if (!INTEGER_OPERATION_NUMBERS.every((key) => integer(values[key])))
+    return null
+  if (!sanitizeDetailFields(entry, values)) return null
+  return { ...meta, ...values } as DbDiagnosticOperation
 }
 export function sanitizeDbDiagnosticWindow(
   value: unknown,
@@ -272,43 +318,9 @@ export function sanitizeDbDiagnosticWindow(
   if (!queue || !queueMax) return null
   const operations: DbDiagnosticOperation[] = []
   for (const raw of v.operations) {
-    const entry = object(raw)
-    const meta = metadata(raw)
-    if (!entry || !meta) return null
-    const values: Record<string, number> = {}
-    for (const key of OPERATION_NUMBERS) {
-      if (!number(entry[key])) return null
-      values[key] = entry[key]
-    }
-    for (const key of [
-      'receivedItems',
-      'enqueued',
-      'requestedItems',
-      'started',
-      'succeeded',
-      'failed',
-      'timedOut',
-      'cancelled',
-      'workerMeasured',
-      'sqlCalls',
-      'resultRows',
-    ] as const) {
-      if (!integer(values[key])) return null
-    }
-    for (const key of DB_DIAGNOSTIC_DETAIL_FIELDS) {
-      const value = entry[key]
-      if (value === undefined) continue
-      if (!number(value)) return null
-      if (
-        (key.endsWith('Deleted') ||
-          key === 'cacheHits' ||
-          key === 'cacheMisses') &&
-        !integer(value)
-      )
-        return null
-      values[key] = value
-    }
-    operations.push({ ...meta, ...values } as DbDiagnosticOperation)
+    const operation = sanitizeOperation(raw)
+    if (!operation) return null
+    operations.push(operation)
   }
   let active: DbDiagnosticActive | null = null
   if (v.active !== null) {
