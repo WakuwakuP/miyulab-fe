@@ -982,4 +982,123 @@ describe('WorkerNodeCache', () => {
       expect(result).toEqual(rows)
     })
   })
+
+  describe('上限 (LRU)', () => {
+    const makeRows = (n: number): NodeOutputRow[] =>
+      Array.from({ length: n }, (_, i) => ({
+        createdAtMs: i,
+        id: i + 1,
+        table: 'posts',
+      }))
+    const makeKey = (i: number): NodeCacheKey => ({
+      binds: [i],
+      nodeId: `n${i}`,
+      sql: 'SELECT 1',
+    })
+
+    it('エントリ数が 200 を超えると最古のエントリが追い出されること', () => {
+      for (let i = 0; i < 200; i++) {
+        cache.set(makeKey(i), makeRows(1), ['t'])
+      }
+      expect(cache.size).toBe(200)
+
+      cache.set(makeKey(200), makeRows(1), ['t'])
+
+      expect(cache.size).toBe(200)
+      expect(cache.get(makeKey(0))).toBeNull()
+      expect(cache.get(makeKey(200))).not.toBeNull()
+      expect(cache.get(makeKey(1))).not.toBeNull()
+    })
+
+    it('get ヒットしたエントリは LRU 順で末尾に移り追い出されないこと', () => {
+      for (let i = 0; i < 200; i++) {
+        cache.set(makeKey(i), makeRows(1), ['t'])
+      }
+      expect(cache.get(makeKey(0))).not.toBeNull()
+
+      cache.set(makeKey(200), makeRows(1), ['t'])
+
+      expect(cache.get(makeKey(0))).not.toBeNull()
+      expect(cache.get(makeKey(1))).toBeNull()
+    })
+
+    it('合計行数が 50,000 を超える場合、収まるまで最古エントリから追い出されること', () => {
+      cache.set(makeKey(0), makeRows(30_000), ['t'])
+      cache.set(makeKey(1), makeRows(20_000), ['t'])
+
+      cache.set(makeKey(2), makeRows(20_000), ['t'])
+
+      expect(cache.get(makeKey(0))).toBeNull()
+      expect(cache.get(makeKey(1))).not.toBeNull()
+      expect(cache.get(makeKey(2))).not.toBeNull()
+      expect(cache.size).toBe(2)
+    })
+
+    it('同一キーの置き換えでは旧行数を差し引いてから予算を再計上すること', () => {
+      cache.set(makeKey(0), makeRows(30_000), ['t'])
+      cache.set(makeKey(1), makeRows(20_000), ['t'])
+
+      cache.set(makeKey(0), makeRows(10_000), ['t'])
+      cache.set(makeKey(2), makeRows(20_000), ['t'])
+
+      expect(cache.size).toBe(3)
+      expect(cache.get(makeKey(0))).toHaveLength(10_000)
+      expect(cache.get(makeKey(1))).not.toBeNull()
+      expect(cache.get(makeKey(2))).not.toBeNull()
+    })
+
+    it('行数予算を超える単体エントリはキャッシュされないこと', () => {
+      cache.set(makeKey(0), makeRows(50_001), ['t'])
+
+      expect(cache.size).toBe(0)
+      expect(cache.get(makeKey(0))).toBeNull()
+
+      cache.set(makeKey(1), makeRows(1), ['t'])
+      cache.set(makeKey(2), makeRows(60_000), ['t'])
+      expect(cache.get(makeKey(1))).not.toBeNull()
+      expect(cache.size).toBe(1)
+    })
+
+    it('同一キーへの予算超過置き換えは旧値を残さない', () => {
+      cache.set(makeKey(0), makeRows(1), ['t'])
+
+      cache.set(makeKey(0), makeRows(50_001), ['t'])
+
+      expect(cache.get(makeKey(0))).toBeNull()
+      expect(cache.size).toBe(0)
+    })
+
+    it('bumpVersion で依存エントリが即座に削除され size が減ること', () => {
+      cache.set(makeKey(0), makeRows(5), ['tableA'])
+      cache.set(makeKey(1), makeRows(3), ['tableB'])
+      expect(cache.size).toBe(2)
+
+      cache.bumpVersion('tableA')
+
+      expect(cache.size).toBe(1)
+      expect(cache.get(makeKey(0))).toBeNull()
+      expect(cache.get(makeKey(1))).not.toBeNull()
+    })
+
+    it('syncVersions でバージョンが上がったテーブルの依存エントリが即座に削除されること', () => {
+      cache.set(makeKey(0), makeRows(5), ['tableA'])
+      cache.set(makeKey(1), makeRows(5), ['tableB'])
+
+      cache.syncVersions(new Map([['tableA', 2]]))
+
+      expect(cache.size).toBe(1)
+      expect(cache.get(makeKey(0))).toBeNull()
+      expect(cache.get(makeKey(1))).not.toBeNull()
+    })
+
+    it('無関係なテーブルの変更ではエントリが無効化されないこと', () => {
+      cache.set(makeKey(0), makeRows(5), ['tableA'])
+
+      cache.bumpVersion('tableUnrelated')
+      cache.syncVersions(new Map([['tableOther', 9]]))
+
+      expect(cache.size).toBe(1)
+      expect(cache.get(makeKey(0))).toHaveLength(5)
+    })
+  })
 })

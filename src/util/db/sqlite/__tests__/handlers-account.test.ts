@@ -32,6 +32,7 @@ function createMockDb(selectResults: unknown[] = []): {
     exec: vi.fn((sql: string, opts?: Parameters<DbExecCompat['exec']>[1]) => {
       calls.push({ opts, sql })
       if (opts?.returnValue === 'resultRows') {
+        if (/^\s*SELECT\s+changes\s*\(\s*\)/i.test(sql)) return [[0]]
         const result = selectResults[selectIndex]
         selectIndex++
         return result === undefined ? [] : [[result]]
@@ -283,6 +284,12 @@ describe('handleBulkUpsertCustomEmojis', () => {
     const db: DbExecCompat = {
       exec: vi.fn((sql: string, opts?: Parameters<DbExecCompat['exec']>[1]) => {
         calls.push({ opts, sql })
+        if (
+          opts?.returnValue === 'resultRows' &&
+          /^\s*SELECT\s+changes\s*\(\s*\)/i.test(sql)
+        ) {
+          return [[0]]
+        }
         // ensureServer の SELECT で正常に返す
         if (opts?.returnValue === 'resultRows' && sql.includes('servers')) {
           return [[1]]

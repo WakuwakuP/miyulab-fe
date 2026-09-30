@@ -52,9 +52,16 @@ vi.mock('util/db/sqlite/helpers', () => ({
   resolveLocalAccountId: mocks.resolveLocalAccountId,
 }))
 
-vi.mock('util/db/sqlite/queries/executionEngine', () => ({
-  executeQueryPlan: mocks.runQueryPlan,
-}))
+vi.mock('util/db/sqlite/queries/executionEngine', async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import('util/db/sqlite/queries/executionEngine')
+    >()
+  return {
+    ...actual,
+    executeQueryPlan: mocks.runQueryPlan,
+  }
+})
 
 vi.mock('util/db/sqlite/worker/handlers/statusHelpers', () => ({
   resolvePostIdInternal: mocks.resolvePostIdInternal,
@@ -122,9 +129,13 @@ vi.mock('util/db/sqlite/worker/workerStatusStore', () => ({
   handleUpsertStatus: mocks.handleUpsertStatus,
 }))
 
+const { finishWorkerDiagnostics } = await import(
+  'util/db/sqlite/worker/workerDiagnostics'
+)
 await import('util/db/sqlite/worker/sqlite.worker')
 
 const db = { exec: vi.fn() }
+const measuredDbArg = expect.objectContaining({ exec: expect.any(Function) })
 const sqlite3 = { capi: {} }
 const postMessage = vi.fn()
 
@@ -159,6 +170,12 @@ describe('SQLite worker entrypoint', () => {
     vi.resetAllMocks()
     vi.stubGlobal('self', { postMessage })
 
+    mocks.sendResponse.mockImplementation((id: number, result?: unknown) => {
+      finishWorkerDiagnostics(id, result)
+    })
+    mocks.sendError.mockImplementation((id: number) => {
+      finishWorkerDiagnostics(id)
+    })
     mocks.getDb.mockReturnValue(db)
     mocks.getSqlite3Module.mockReturnValue(sqlite3)
     mocks.getTableVersionsMap.mockReturnValue(new Map([['posts', 4]]))
@@ -291,8 +308,8 @@ describe('SQLite worker entrypoint', () => {
       await vi.waitFor(() => {
         expect(mocks.sendResponse).toHaveBeenCalledWith(31, { ok: true })
       })
-      expect(mocks.handleExportDatabase).toHaveBeenCalledOnce()
-      expect(mocks.getDb).not.toHaveBeenCalled()
+      expect(mocks.handleExportDatabase).toHaveBeenCalledWith(measuredDbArg)
+      expect(mocks.getDb).toHaveBeenCalledOnce()
     })
 
     it('reports export errors through the common error channel', async () => {
@@ -304,6 +321,18 @@ describe('SQLite worker entrypoint', () => {
       await vi.waitFor(() => {
         expect(mocks.sendError).toHaveBeenCalledWith(32, error)
       })
+    })
+
+    it('reports synchronous getDb failures for export requests', () => {
+      const error = new Error('db unavailable')
+      mocks.getDb.mockImplementation(() => {
+        throw error
+      })
+
+      dispatch({ id: 33, type: 'exportDatabase' })
+
+      expect(mocks.sendError).toHaveBeenCalledWith(33, error)
+      expect(mocks.handleExportDatabase).not.toHaveBeenCalled()
     })
   })
 
@@ -321,6 +350,7 @@ describe('SQLite worker entrypoint', () => {
         'SELECT * FROM posts WHERE id = ?',
         [7, 'value'],
         'resultRows',
+        measuredDbArg,
       )
       expect(mocks.sendResponse).toHaveBeenCalledWith(
         1,
@@ -341,7 +371,12 @@ describe('SQLite worker entrypoint', () => {
         type: 'execBatch',
       })
 
-      expect(mocks.handleExecBatch).toHaveBeenCalledWith(statements, true, [0])
+      expect(mocks.handleExecBatch).toHaveBeenCalledWith(
+        statements,
+        true,
+        [0],
+        measuredDbArg,
+      )
       expect(mocks.sendResponse).toHaveBeenCalledWith(2, {
         1: [['batch']],
       })
@@ -368,7 +403,7 @@ describe('SQLite worker entrypoint', () => {
       })
 
       expect(mocks.handleUpsertStatus).toHaveBeenCalledWith(
-        db,
+        measuredDbArg,
         '{"id":"one"}',
         'https://social.example',
         'tag',
@@ -392,7 +427,7 @@ describe('SQLite worker entrypoint', () => {
       })
 
       expect(mocks.handleBulkUpsertStatuses).toHaveBeenCalledWith(
-        db,
+        measuredDbArg,
         ['{"id":"one"}', '{"id":"two"}'],
         'https://social.example',
         'home',
@@ -417,7 +452,7 @@ describe('SQLite worker entrypoint', () => {
       })
 
       expect(mocks.handleUpdateStatusAction).toHaveBeenCalledWith(
-        db,
+        measuredDbArg,
         11,
         'remote-12',
         'favourited',
@@ -453,7 +488,7 @@ describe('SQLite worker entrypoint', () => {
       })
 
       expect(mocks.handleUpdateStatus).toHaveBeenCalledWith(
-        db,
+        measuredDbArg,
         '{"id":"edited"}',
         'https://social.example',
       )
@@ -472,7 +507,11 @@ describe('SQLite worker entrypoint', () => {
         type: 'handleDeleteEvent',
       })
 
-      expect(mocks.handleDeleteEvent).toHaveBeenCalledWith(db, 11, 'remote-15')
+      expect(mocks.handleDeleteEvent).toHaveBeenCalledWith(
+        measuredDbArg,
+        11,
+        'remote-15',
+      )
       expectOkResponse(15, ['posts'], {
         backendUrl: 'https://social.example',
         tag: 'news',
@@ -509,12 +548,12 @@ describe('SQLite worker entrypoint', () => {
         tag: 'vitest',
       })
       expect(mocks.resolvePostIdInternal).toHaveBeenCalledWith(
-        db,
+        measuredDbArg,
         11,
         'remote-17',
       )
       expect(mocks.handleRemoveFromTimeline).toHaveBeenCalledWith(
-        db,
+        measuredDbArg,
         11,
         'tag:vitest',
         22,
@@ -572,7 +611,7 @@ describe('SQLite worker entrypoint', () => {
       })
 
       expect(mocks.handleAddNotification).toHaveBeenCalledWith(
-        db,
+        measuredDbArg,
         '{"id":"notification"}',
         'https://social.example',
       )
@@ -590,7 +629,7 @@ describe('SQLite worker entrypoint', () => {
       })
 
       expect(mocks.handleBulkAddNotifications).toHaveBeenCalledWith(
-        db,
+        measuredDbArg,
         ['{"id":"one"}', '{"id":"two"}'],
         'https://social.example',
       )
@@ -610,7 +649,7 @@ describe('SQLite worker entrypoint', () => {
       })
 
       expect(mocks.handleUpdateNotificationStatusAction).toHaveBeenCalledWith(
-        db,
+        measuredDbArg,
         'https://social.example',
         'remote-22',
         'reblogged',
@@ -631,7 +670,7 @@ describe('SQLite worker entrypoint', () => {
       })
 
       expect(mocks.handleEnforceMaxLength).toHaveBeenCalledWith(
-        db,
+        measuredDbArg,
         100,
         200,
         300,
@@ -674,7 +713,7 @@ describe('SQLite worker entrypoint', () => {
       })
 
       expect(mocks.handleEnsureLocalAccount).toHaveBeenCalledWith(
-        db,
+        measuredDbArg,
         'https://social.example',
         '{"id":"me"}',
       )
@@ -694,7 +733,7 @@ describe('SQLite worker entrypoint', () => {
       })
 
       expect(mocks.handleToggleReaction).toHaveBeenCalledWith(
-        db,
+        measuredDbArg,
         11,
         'remote-25',
         true,
@@ -730,7 +769,7 @@ describe('SQLite worker entrypoint', () => {
       })
 
       expect(mocks.handleBulkUpsertCustomEmojis).toHaveBeenCalledWith(
-        db,
+        measuredDbArg,
         'https://social.example',
         '[{"shortcode":"blobcat"}]',
       )
@@ -746,7 +785,7 @@ describe('SQLite worker entrypoint', () => {
 
       dispatch({ id: 40, plan, type: 'executeQueryPlan' })
 
-      expect(mocks.runQueryPlan).toHaveBeenCalledWith(db, plan)
+      expect(mocks.runQueryPlan).toHaveBeenCalledWith(measuredDbArg, plan)
       expect(mocks.captureTableVersions).toHaveBeenCalledOnce()
       expect(mocks.sendResponse).toHaveBeenCalledWith(
         40,
@@ -773,7 +812,7 @@ describe('SQLite worker entrypoint', () => {
         mocks.getTableVersionsMap.mock.results[0].value,
       )
       expect(mocks.runGraphPlan).toHaveBeenCalledWith(
-        db,
+        measuredDbArg,
         plan,
         options,
         mocks.captureTableVersions,
@@ -794,7 +833,7 @@ describe('SQLite worker entrypoint', () => {
 
       dispatch({ id: 42, request, type: 'executeFlatFetch' })
 
-      expect(mocks.runFlatFetch).toHaveBeenCalledWith(db, request)
+      expect(mocks.runFlatFetch).toHaveBeenCalledWith(measuredDbArg, request)
       expect(mocks.sendResponse).toHaveBeenCalledWith(
         42,
         {
@@ -817,7 +856,10 @@ describe('SQLite worker entrypoint', () => {
 
       dispatch(message)
 
-      expect(mocks.handleFetchTimeline).toHaveBeenCalledWith(message)
+      expect(mocks.handleFetchTimeline).toHaveBeenCalledWith(
+        message,
+        measuredDbArg,
+      )
       expect(mocks.sendResponse).toHaveBeenCalledWith(43, {
         phase1Rows: [],
       })
@@ -845,6 +887,22 @@ describe('SQLite worker entrypoint', () => {
       expect(mocks.sendError).toHaveBeenCalledWith(51, error)
       expect(mocks.isSqliteCorruptError).toHaveBeenCalledWith(error)
       expect(mocks.recoverFromCorruption).not.toHaveBeenCalled()
+    })
+
+    it('reports malformed graph plans and still serves following requests', () => {
+      dispatch({ id: 53, plan: {}, type: 'executeGraphPlan' })
+
+      expect(mocks.sendError).toHaveBeenCalledWith(53, expect.any(Error))
+      expect(mocks.runGraphPlan).not.toHaveBeenCalled()
+
+      dispatch({ id: 54, sql: 'SELECT 1', type: 'exec' })
+
+      expect(mocks.sendResponse).toHaveBeenLastCalledWith(
+        54,
+        [['row']],
+        undefined,
+        2.5,
+      )
     })
 
     it.each([
@@ -875,6 +933,7 @@ describe('SQLite worker entrypoint', () => {
         expect(mocks.isDatabaseHealthy).toHaveBeenCalledWith(db)
         expect(mocks.bumpTableVersions).toHaveBeenCalledWith([
           'cards',
+          'custom_emojis',
           'hashtags',
           'local_accounts',
           'notifications',

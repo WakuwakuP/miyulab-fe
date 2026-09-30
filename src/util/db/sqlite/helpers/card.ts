@@ -1,4 +1,5 @@
 import type { WrittenTableCollector } from '../protocol'
+import { lastChangeCount } from './changes'
 import type { DbExecCompat } from './types'
 
 const CARD_TYPE_MAP: Record<string, number> = {
@@ -38,7 +39,7 @@ export function syncLinkCard(
 ): void {
   if (!card) {
     db.exec('DELETE FROM link_cards WHERE post_id = ?;', { bind: [postId] })
-    collector?.add('cards')
+    if (lastChangeCount(db) > 0) collector?.add('cards')
     return
   }
 
@@ -64,7 +65,21 @@ export function syncLinkCard(
       width         = excluded.width,
       height        = excluded.height,
       embed_url     = excluded.embed_url,
-      blurhash      = excluded.blurhash;`,
+      blurhash      = excluded.blurhash
+    WHERE link_cards.card_type_id  IS NOT excluded.card_type_id
+       OR link_cards.url           IS NOT excluded.url
+       OR link_cards.title         IS NOT excluded.title
+       OR link_cards.description   IS NOT excluded.description
+       OR link_cards.image         IS NOT excluded.image
+       OR link_cards.author_name   IS NOT excluded.author_name
+       OR link_cards.author_url    IS NOT excluded.author_url
+       OR link_cards.provider_name IS NOT excluded.provider_name
+       OR link_cards.provider_url  IS NOT excluded.provider_url
+       OR link_cards.html          IS NOT excluded.html
+       OR link_cards.width         IS NOT excluded.width
+       OR link_cards.height        IS NOT excluded.height
+       OR link_cards.embed_url     IS NOT excluded.embed_url
+       OR link_cards.blurhash      IS NOT excluded.blurhash;`,
     {
       bind: [
         postId,
@@ -85,5 +100,5 @@ export function syncLinkCard(
       ],
     },
   )
-  collector?.add('cards')
+  if (lastChangeCount(db) > 0) collector?.add('cards')
 }

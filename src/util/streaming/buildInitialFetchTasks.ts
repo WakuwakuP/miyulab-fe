@@ -1,5 +1,6 @@
 import type { App, TimelineConfigV2 } from 'types/types'
 import { GetClient } from 'util/GetClient'
+import { deriveRequiredPublicFeeds } from 'util/streaming/deriveRequiredStreams'
 import {
   normalizeBackendFilter,
   resolveBackendUrls,
@@ -46,7 +47,9 @@ function appendTagFetchTasks(
 /**
  * apps と timelineSettings から初期データ取得タスク配列を構築する。
  *
- * - local / public は全 backendUrl に対してデフォルトで取得
+ * - local / public は backgroundPublicStreaming === true の場合は全
+ *   backendUrl に対してデフォルトで取得。false の場合は
+ *   deriveRequiredStreams と同じ必要フィード集合に限定する
  * - tag は tagConfig を持つタイムライン設定から取得
  * - fetchedKeys で取得済みキーを追跡し、重複フェッチを防止する
  *
@@ -57,34 +60,38 @@ export function buildInitialFetchTasks(
   apps: App[],
   timelines: TimelineConfigV2[],
   fetchedKeys: Set<string>,
+  backgroundPublicStreaming = true,
 ): (() => Promise<void>)[] {
   const tasks: (() => Promise<void>)[] = []
 
-  // local / public は全 backendUrl に対してデフォルトで初期データを取得
-  for (const app of apps) {
-    const { backendUrl } = app
+  for (const feed of deriveRequiredPublicFeeds(
+    timelines,
+    apps,
+    backgroundPublicStreaming,
+  )) {
+    const { backendUrl, type } = feed
+    const key = `${type}|${backendUrl}`
+    if (fetchedKeys.has(key)) continue
+    fetchedKeys.add(key)
+    const app = apps.find((a) => a.backendUrl === backendUrl)
+    if (!app) continue
     const client = GetClient(app)
-    for (const type of ['local', 'public'] as const) {
-      const key = `${type}|${backendUrl}`
-      if (fetchedKeys.has(key)) continue
-      fetchedKeys.add(key)
-      // fetchInitialData は config.type に基づいて動作するため、
-      // local/public 用の最小限の設定を構築して渡す
-      const config: TimelineConfigV2 = {
-        id: `__default_${type}`,
-        order: 0,
-        type,
-        visible: false,
-      }
-      tasks.push(() =>
-        fetchInitialData(client, config, backendUrl).catch((error) => {
-          console.error(
-            `Failed to fetch initial data for ${type} (${backendUrl}):`,
-            error,
-          )
-        }),
-      )
+    // fetchInitialData は config.type に基づいて動作するため、
+    // local/public 用の最小限の設定を構築して渡す
+    const config: TimelineConfigV2 = {
+      id: `__default_${type}`,
+      order: 0,
+      type,
+      visible: false,
     }
+    tasks.push(() =>
+      fetchInitialData(client, config, backendUrl).catch((error) => {
+        console.error(
+          `Failed to fetch initial data for ${type} (${backendUrl}):`,
+          error,
+        )
+      }),
+    )
   }
 
   // tag タイムラインの初期データ取得（tagConfig を持つ全設定が対象）

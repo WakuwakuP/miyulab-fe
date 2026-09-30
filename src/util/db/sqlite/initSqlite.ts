@@ -7,6 +7,7 @@
  * いずれの場合も同一の DbHandle インターフェースを提供する。
  */
 
+import { dbDiagnosticRecorder } from '../dbDiagnostics'
 import type { ChangeHint } from './connection'
 import { logSlowQueryExplain } from './explainLogger'
 import { buildTimelineKey, resolveLocalAccountId } from './helpers'
@@ -16,9 +17,13 @@ import type {
   SqliteResultRows,
   TableName,
 } from './protocol'
+import { ALL_TABLE_NAMES } from './protocol'
+import { isReadOnlySql } from './queries/executionEngine'
+import { batchBindForIds } from './queries/statusBatch'
 import { loadSqliteWasmInitializer } from './sqliteWasmLoader'
 import type { DbHandle } from './types'
 import { resolvePostIdInternal } from './worker/handlers/statusHelpers'
+import type { DbExec } from './worker/handlers/types'
 
 export type { DbHandle }
 
@@ -211,76 +216,106 @@ async function initMainThreadFallback(
     handleBulkAddNotifications,
     handleUpdateNotificationStatusAction,
   } = await import('./worker/workerNotificationStore')
-  const { handleEnforceMaxLength } = await import('./worker/workerCleanup')
-  const handle: DbHandle = {
+  const {
+    DEFAULT_MAX_NOTIFICATIONS,
+    DEFAULT_MAX_POSTS,
+    DEFAULT_MAX_TIMELINE_ENTRIES,
+    handleEnforceMaxLength,
+  } = await import('./worker/workerCleanup')
+  const {
+    bumpAllGraphCacheVersions,
+    bumpGraphCacheVersion,
+    captureGraphCacheVersions,
+    executeGraphPlan: runGraphPlan,
+  } = await import('../query-ir/executor/graphExecutor')
+  const createHandle = (db: DbExec): DbHandle => ({
     cancelStaleRequests: () => 0,
     execAsync: async (sql, opts) => {
-      const start = performance.now()
-      let result: unknown
-      if (opts?.returnValue === 'resultRows') {
-        result = db.exec(sql, {
-          bind: opts.bind ?? undefined,
-          returnValue: 'resultRows',
-        })
-      } else {
-        db.exec(sql, { bind: opts?.bind ?? undefined })
-        result = undefined
+      try {
+        const start = performance.now()
+        let result: unknown
+        if (opts?.returnValue === 'resultRows') {
+          result = db.exec(sql, {
+            bind: opts.bind ?? undefined,
+            returnValue: 'resultRows',
+          })
+        } else {
+          db.exec(sql, { bind: opts?.bind ?? undefined })
+          result = undefined
+        }
+        const durationMs = performance.now() - start
+        logSlowQueryExplain(db, sql, opts?.bind, durationMs)
+        return result
+      } finally {
+        if (!isReadOnlySql(sql)) {
+          bumpAllGraphCacheVersions(ALL_TABLE_NAMES)
+        }
       }
-      const durationMs = performance.now() - start
-      logSlowQueryExplain(db, sql, opts?.bind, durationMs)
-      return result
     },
 
     execAsyncTimed: async (sql, opts) => {
-      const start = performance.now()
-      let result: unknown
-      if (opts?.returnValue === 'resultRows') {
-        result = db.exec(sql, {
-          bind: opts.bind ?? undefined,
-          returnValue: 'resultRows',
-        })
-      } else {
-        db.exec(sql, { bind: opts?.bind ?? undefined })
-        result = undefined
+      try {
+        const start = performance.now()
+        let result: unknown
+        if (opts?.returnValue === 'resultRows') {
+          result = db.exec(sql, {
+            bind: opts.bind ?? undefined,
+            returnValue: 'resultRows',
+          })
+        } else {
+          db.exec(sql, { bind: opts?.bind ?? undefined })
+          result = undefined
+        }
+        const durationMs = performance.now() - start
+        logSlowQueryExplain(db, sql, opts?.bind, durationMs)
+        return { durationMs, result }
+      } finally {
+        if (!isReadOnlySql(sql)) {
+          bumpAllGraphCacheVersions(ALL_TABLE_NAMES)
+        }
       }
-      const durationMs = performance.now() - start
-      logSlowQueryExplain(db, sql, opts?.bind, durationMs)
-      return { durationMs, result }
     },
 
     execBatch: async (statements, opts) => {
-      const rollback = opts?.rollbackOnError ?? true
-      const returnSet = new Set(opts?.returnIndices ?? [])
-      if (rollback) db.exec('BEGIN;')
+      const hasMutation = statements.some((s) => !isReadOnlySql(s.sql))
       try {
-        const resultObj: Record<number, unknown> = {}
-        for (let i = 0; i < statements.length; i++) {
-          const s = statements[i]
-          let val: unknown
-          if (s.returnValue === 'resultRows') {
-            val = db.exec(s.sql, {
-              bind: s.bind ?? undefined,
-              returnValue: 'resultRows',
-            })
-          } else {
-            db.exec(s.sql, { bind: s.bind ?? undefined })
-            val = undefined
+        const rollback = opts?.rollbackOnError ?? true
+        const returnSet = new Set(opts?.returnIndices ?? [])
+        if (rollback) db.exec('BEGIN;')
+        try {
+          const resultObj: Record<number, unknown> = {}
+          for (let i = 0; i < statements.length; i++) {
+            const s = statements[i]
+            let val: unknown
+            if (s.returnValue === 'resultRows') {
+              val = db.exec(s.sql, {
+                bind: s.bind ?? undefined,
+                returnValue: 'resultRows',
+              })
+            } else {
+              db.exec(s.sql, { bind: s.bind ?? undefined })
+              val = undefined
+            }
+            if (returnSet.has(i) || !opts?.returnIndices) {
+              resultObj[i] = val
+            }
           }
-          if (returnSet.has(i) || !opts?.returnIndices) {
-            resultObj[i] = val
+          if (rollback) db.exec('COMMIT;')
+          return resultObj
+        } catch (e) {
+          if (rollback) {
+            try {
+              db.exec('ROLLBACK;')
+            } catch {
+              /* ignore */
+            }
           }
+          throw e
         }
-        if (rollback) db.exec('COMMIT;')
-        return resultObj
-      } catch (e) {
-        if (rollback) {
-          try {
-            db.exec('ROLLBACK;')
-          } catch {
-            /* ignore */
-          }
+      } finally {
+        if (hasMutation) {
+          bumpAllGraphCacheVersions(ALL_TABLE_NAMES)
         }
-        throw e
       }
     },
 
@@ -291,12 +326,8 @@ async function initMainThreadFallback(
       return runFlatFetch(db as never, request)
     },
 
-    executeGraphPlan: async (plan, options) => {
-      const { executeGraphPlan: runGraph } = await import(
-        '../query-ir/executor/graphExecutor'
-      )
-      return runGraph(db as never, plan, options, () => ({}))
-    },
+    executeGraphPlan: async (plan, options) =>
+      runGraphPlan(db as never, plan, options, captureGraphCacheVersions),
 
     executeQueryPlan: async (plan) => {
       const { executeQueryPlan: runPlan } = await import(
@@ -352,11 +383,13 @@ async function initMainThreadFallback(
       const allPlaceholders = allPostIds.map(() => '?').join(',')
 
       // Batch 7本を同期実行
-      const runBatch = (sql: string) =>
-        db.exec(sql.replaceAll('{IDS}', allPlaceholders), {
-          bind: allPostIds,
+      const runBatch = (sql: string) => {
+        const substituted = sql.replaceAll('{IDS}', allPlaceholders)
+        return db.exec(substituted, {
+          bind: batchBindForIds(substituted, allPostIds),
           returnValue: 'resultRows',
         }) as SqliteResultRows
+      }
 
       const batchResults = {
         belongingTags: runBatch(request.batchSqls.belongingTags),
@@ -479,15 +512,24 @@ async function initMainThreadFallback(
           )
           break
         case 'enforceMaxLength': {
-          const r = handleEnforceMaxLength(db, 100000, 100000, 100000, {
-            batchLimit: command.batchLimit,
-            mode: command.mode,
-            targetRatio: command.targetRatio,
-          })
+          const r = handleEnforceMaxLength(
+            db,
+            DEFAULT_MAX_TIMELINE_ENTRIES,
+            DEFAULT_MAX_NOTIFICATIONS,
+            DEFAULT_MAX_POSTS,
+            {
+              batchLimit: command.batchLimit,
+              mode: command.mode,
+              targetCounts: command.targetCounts,
+              targetRatio: command.targetRatio,
+            },
+          )
           result = {
             changedTables: r.changedTables,
             deletedCounts: r.deletedCounts,
             hasMore: r.hasMore,
+            phaseTimings: r.phaseTimings,
+            targetCounts: r.targetCounts,
           }
           break
         }
@@ -533,13 +575,117 @@ async function initMainThreadFallback(
       }
       // changedTables があれば notifyChange を発火（Plan B: ヒント付き）
       if (result?.changedTables) {
-        const hint = buildChangeHint(command)
+        const baseHint = buildChangeHint(command)
+        const resultPostIds = (
+          result as { changedPostIds?: readonly number[] } | undefined
+        )?.changedPostIds
+        const hint: ChangeHint | undefined = baseHint
+          ? {
+              ...baseHint,
+              changedPostIds: resultPostIds,
+              changedTables: result.changedTables,
+            }
+          : undefined
         for (const table of result.changedTables as TableName[]) {
+          bumpGraphCacheVersion(table)
           onNotify(table, hint)
         }
       }
       return result
     },
+  })
+
+  dbDiagnosticRecorder.setEnvironment('main-thread', 'memory')
+  const { beginWorkerDiagnostics, finishWorkerDiagnostics } = await import(
+    './worker/workerDiagnostics'
+  )
+
+  let fallbackRequestId = 0
+  const invokeMeasured = async <T>(
+    kind: 'priority' | 'other' | 'timeline',
+    message: Record<string, unknown>,
+    cacheNodeIds: string[],
+    call: (measuredDb: DbExec) => T | Promise<T>,
+  ): Promise<T> => {
+    const id = --fallbackRequestId
+    dbDiagnosticRecorder.recordEnqueue(id, message, kind)
+    dbDiagnosticRecorder.recordStart(id)
+    const measuredDb = beginWorkerDiagnostics(id, db, cacheNodeIds)
+    try {
+      const result = await call(measuredDb)
+      dbDiagnosticRecorder.recordEnd(
+        id,
+        'success',
+        finishWorkerDiagnostics(id, result),
+      )
+      return result
+    } catch (e) {
+      dbDiagnosticRecorder.recordEnd(id, 'error', finishWorkerDiagnostics(id))
+      throw e
+    }
+  }
+
+  const handle: DbHandle = {
+    cancelStaleRequests: () => 0,
+    execAsync: (sql, opts) =>
+      invokeMeasured(
+        opts?.kind ?? 'other',
+        { sql, type: 'exec' },
+        [],
+        (measuredDb) => createHandle(measuredDb).execAsync(sql, opts),
+      ),
+    execAsyncTimed: (sql, opts) =>
+      invokeMeasured(
+        opts?.kind ?? 'other',
+        { sql, type: 'exec' },
+        [],
+        (measuredDb) => createHandle(measuredDb).execAsyncTimed(sql, opts),
+      ),
+    execBatch: (statements, opts) =>
+      invokeMeasured(
+        'other',
+        { statements, type: 'execBatch' },
+        [],
+        (measuredDb) => createHandle(measuredDb).execBatch(statements, opts),
+      ),
+    executeFlatFetch: (request, sessionTag) =>
+      invokeMeasured(
+        'timeline',
+        { type: 'executeFlatFetch' },
+        [],
+        (measuredDb) =>
+          createHandle(measuredDb).executeFlatFetch(request, sessionTag),
+      ),
+    executeGraphPlan: (plan, options, sessionTag) =>
+      invokeMeasured(
+        'timeline',
+        { type: 'executeGraphPlan' },
+        plan.nodes
+          .filter(
+            (n) =>
+              n.node.kind === 'get-ids' || n.node.kind === 'lookup-related',
+          )
+          .map((n) => n.id),
+        (measuredDb) =>
+          createHandle(measuredDb).executeGraphPlan(plan, options, sessionTag),
+      ),
+    executeQueryPlan: (plan, sessionTag) =>
+      invokeMeasured(
+        'timeline',
+        { type: 'executeQueryPlan' },
+        [],
+        (measuredDb) =>
+          createHandle(measuredDb).executeQueryPlan(plan, sessionTag),
+      ),
+    fetchTimeline: (request, sessionTag) =>
+      invokeMeasured('timeline', { type: 'fetchTimeline' }, [], (measuredDb) =>
+        createHandle(measuredDb).fetchTimeline(request, sessionTag),
+      ),
+    persistence: 'memory',
+    sendCommand: (command, opts) =>
+      invokeMeasured(opts?.kind ?? 'other', { ...command }, [], (measuredDb) =>
+        createHandle(measuredDb).sendCommand(command),
+      ),
   }
 
   return handle

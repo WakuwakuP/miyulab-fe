@@ -67,6 +67,7 @@ export type TimelineListEvent =
   | { items: TimelineItem[]; type: 'INITIAL_FETCH_SUCCEEDED' }
   | { type: 'INITIAL_FETCH_EMPTY' }
   | { items: TimelineItem[]; type: 'STREAMING_FETCH_SUCCEEDED' }
+  | { items: TimelineItem[]; type: 'INTERACTION_UPDATES_SUCCEEDED' }
   | { changedTables: ReadonlySet<string>; type: 'STREAMING_DEFERRED' }
   | { items: TimelineItem[]; type: 'DEFERRED_STREAMING_FLUSH_SUCCEEDED' }
   | { type: 'SCROLLBACK_STARTED' }
@@ -91,6 +92,27 @@ export function timelineListReducer(
 
     case 'STREAMING_FETCH_SUCCEEDED':
       return mergeItems(state, event.items)
+
+    case 'INTERACTION_UPDATES_SUCCEEDED': {
+      if (event.items.length === 0) return state
+      const nextMap = new Map(state.itemMap)
+      let touched = false
+      for (const item of event.items) {
+        const key = itemKey(item)
+        if (nextMap.has(key)) {
+          nextMap.set(key, item)
+          touched = true
+        }
+      }
+      if (!touched) return state
+      return {
+        ...state,
+        itemMap: nextMap,
+        sortedItems: state.sortedItems.map(
+          (item) => nextMap.get(itemKey(item)) ?? item,
+        ),
+      }
+    }
 
     case 'STREAMING_DEFERRED':
       return {

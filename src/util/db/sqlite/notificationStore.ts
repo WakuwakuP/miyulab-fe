@@ -27,6 +27,7 @@ import {
   NOTIFICATION_BASE_JOINS,
   NOTIFICATION_SELECT,
 } from './queries/notificationSelect'
+import type { DbHandle } from './types'
 
 export { NOTIFICATION_BASE_JOINS, NOTIFICATION_SELECT }
 
@@ -261,6 +262,7 @@ export function rowToStoredNotification(
       url: (row[17] as string | null) ?? undefined,
       visibility: ((row[21] as string) ?? 'public') as Entity.StatusVisibility,
     }
+    ;(status as Entity.Status & { post_id?: number }).post_id = rpPostId
   }
 
   const reactionName = row[40] as string | null
@@ -314,37 +316,238 @@ export function rowToStoredNotification(
   }
 }
 
-/**
- * Notification を追加 — Worker に委譲
- */
-export async function addNotification(
-  notification: Entity.Notification,
-  backendUrl: string,
-): Promise<void> {
-  const handle = await getSqliteDb()
-  await handle.sendCommand({
-    backendUrl,
-    notificationJson: JSON.stringify(notification),
-    type: 'addNotification',
-  })
+type PendingNotification = {
+  notification: Entity.Notification
+  waiters: { reject: (e: unknown) => void; resolve: () => void }[]
 }
 
-/**
- * 複数の Notification を一括追加 — Worker に委譲
- */
-export async function bulkAddNotifications(
-  notifications: Entity.Notification[],
-  backendUrl: string,
-): Promise<void> {
-  if (notifications.length === 0) return
-
-  const handle = await getSqliteDb()
-  await handle.sendCommand({
-    backendUrl,
-    notificationsJson: notifications.map((n) => JSON.stringify(n)),
-    type: 'bulkAddNotifications',
-  })
+type NotificationBucket = {
+  items: Map<string, PendingNotification>
 }
+
+const NOTIFICATION_FLUSH_INTERVAL_MS = 100
+const NOTIFICATION_FLUSH_SIZE_THRESHOLD = 20
+const MAX_NOTIFICATIONS_PER_COMMAND = 20
+
+type NotificationWriteHandle = Pick<DbHandle, 'sendCommand'>
+
+type NotificationLaneTask =
+  | { buckets: Map<string, NotificationBucket>; kind: 'flush' }
+  | {
+      kind: 'op'
+      reject: (error: unknown) => void
+      resolve: () => void
+      run: (handle: NotificationWriteHandle) => Promise<unknown>
+    }
+
+export function createNotificationWriteStore(
+  getHandle: () => Promise<NotificationWriteHandle>,
+) {
+  let pendingBuckets = new Map<string, NotificationBucket>()
+  const queuedBuckets = new WeakSet<Map<string, NotificationBucket>>()
+  let notificationFlushTimer: ReturnType<typeof setTimeout> | null = null
+  const lane: NotificationLaneTask[] = []
+  let laneRunning = false
+
+  function bufferedNotificationCount(): number {
+    let total = 0
+    for (const bucket of pendingBuckets.values()) {
+      total += bucket.items.size
+    }
+    return total
+  }
+
+  function pumpLane(): void {
+    if (laneRunning) return
+    laneRunning = true
+    void runLane().finally(() => {
+      laneRunning = false
+      if (lane.length > 0) pumpLane()
+    })
+  }
+
+  async function runLane(): Promise<void> {
+    while (lane.length > 0) {
+      const task = lane.shift() as NotificationLaneTask
+      try {
+        const handle = await getHandle()
+        if (task.kind === 'flush') {
+          await flushBuckets(handle, task.buckets)
+        } else {
+          await task.run(handle)
+          task.resolve()
+        }
+      } catch (error) {
+        if (task.kind === 'flush') {
+          console.error('Failed to flush notification buffer:', error)
+          for (const bucket of task.buckets.values()) {
+            for (const item of bucket.items.values()) {
+              for (const waiter of item.waiters) waiter.reject(error)
+            }
+            bucket.items.clear()
+          }
+          task.buckets.clear()
+        } else {
+          task.reject(error)
+        }
+      }
+      if (task.kind === 'flush') {
+        queuedBuckets.delete(task.buckets)
+      }
+    }
+  }
+
+  async function flushBuckets(
+    handle: NotificationWriteHandle,
+    buckets: Map<string, NotificationBucket>,
+  ): Promise<void> {
+    for (;;) {
+      const first = buckets.entries().next().value
+      if (!first) break
+      const [backendUrl, bucket] = first
+      buckets.delete(backendUrl)
+      if (bucket.items.size === 0) continue
+      buckets.set(backendUrl, bucket)
+
+      const batch: PendingNotification[] = []
+      for (const [id, item] of bucket.items) {
+        batch.push(item)
+        bucket.items.delete(id)
+        if (batch.length >= MAX_NOTIFICATIONS_PER_COMMAND) break
+      }
+
+      try {
+        await handle.sendCommand({
+          backendUrl,
+          notificationsJson: batch.map((item) =>
+            JSON.stringify(item.notification),
+          ),
+          type: 'bulkAddNotifications',
+        })
+        for (const item of batch) {
+          for (const waiter of item.waiters) waiter.resolve()
+        }
+      } catch (error) {
+        console.error('Failed to flush notification buffer:', error)
+        for (const item of batch) {
+          for (const waiter of item.waiters) waiter.reject(error)
+        }
+      }
+    }
+  }
+
+  function ensureBucketsQueued(): void {
+    if (pendingBuckets.size === 0) return
+    if (queuedBuckets.has(pendingBuckets)) return
+    queuedBuckets.add(pendingBuckets)
+    lane.push({ buckets: pendingBuckets, kind: 'flush' })
+    pumpLane()
+  }
+
+  function scheduleFlush(): void {
+    if (bufferedNotificationCount() >= NOTIFICATION_FLUSH_SIZE_THRESHOLD) {
+      if (notificationFlushTimer !== null) {
+        clearTimeout(notificationFlushTimer)
+        notificationFlushTimer = null
+      }
+      ensureBucketsQueued()
+      return
+    }
+    notificationFlushTimer ??= setTimeout(() => {
+      notificationFlushTimer = null
+      ensureBucketsQueued()
+    }, NOTIFICATION_FLUSH_INTERVAL_MS)
+  }
+
+  function enqueueOperation(
+    run: (handle: NotificationWriteHandle) => Promise<unknown>,
+  ): Promise<void> {
+    ensureBucketsQueued()
+    pendingBuckets = new Map()
+    return new Promise<void>((resolve, reject) => {
+      lane.push({ kind: 'op', reject, resolve, run })
+      pumpLane()
+    })
+  }
+
+  function enqueueNotification(
+    notification: Entity.Notification,
+    backendUrl: string,
+  ): Promise<void> {
+    let bucket = pendingBuckets.get(backendUrl)
+    if (!bucket) {
+      bucket = { items: new Map() }
+      pendingBuckets.set(backendUrl, bucket)
+    }
+    return new Promise<void>((resolve, reject) => {
+      const bucketRef = bucket as NotificationBucket
+      const existing = bucketRef.items.get(notification.id)
+      const waiters = existing?.waiters ?? []
+      waiters.push({ reject, resolve })
+      bucketRef.items.set(notification.id, { notification, waiters })
+      scheduleFlush()
+    })
+  }
+
+  /**
+   * Notification を追加 — Worker に委譲
+   */
+  function addNotification(
+    notification: Entity.Notification,
+    backendUrl: string,
+  ): Promise<void> {
+    return enqueueNotification(notification, backendUrl)
+  }
+
+  /**
+   * 複数の Notification を一括追加 — Worker に委譲
+   */
+  async function bulkAddNotifications(
+    notifications: Entity.Notification[],
+    backendUrl: string,
+  ): Promise<void> {
+    if (notifications.length === 0) return
+    await Promise.all(
+      notifications.map((n) => enqueueNotification(n, backendUrl)),
+    )
+  }
+
+  /**
+   * Notification 内の Status アクション状態を更新 — Worker に委譲
+   *
+   * statusId は特定バックエンドのローカル ID のため、
+   * post_backend_ids 経由でグローバルな status を特定し、
+   * その status.uri に紐づく通知も含めて更新する。
+   */
+  function updateNotificationStatusAction(
+    backendUrl: string,
+    statusId: string,
+    action: 'reblogged' | 'favourited' | 'bookmarked',
+    value: boolean,
+  ): Promise<void> {
+    return enqueueOperation(async (handle) => {
+      await handle.sendCommand({
+        action,
+        backendUrl,
+        statusId,
+        type: 'updateNotificationStatusAction',
+        value,
+      })
+    })
+  }
+
+  return {
+    addNotification,
+    bulkAddNotifications,
+    updateNotificationStatusAction,
+  }
+}
+
+const defaultNotificationWriteStore = createNotificationWriteStore(getSqliteDb)
+
+export const addNotification = defaultNotificationWriteStore.addNotification
+export const bulkAddNotifications =
+  defaultNotificationWriteStore.bulkAddNotifications
 
 /**
  * Notification を取得 — execAsync で直接クエリ
@@ -390,25 +593,5 @@ export async function getNotifications(
   return rows.map(rowToStoredNotification)
 }
 
-/**
- * Notification 内の Status アクション状態を更新 — Worker に委譲
- *
- * statusId は特定バックエンドのローカル ID のため、
- * post_backend_ids 経由でグローバルな status を特定し、
- * その status.uri に紐づく通知も含めて更新する。
- */
-export async function updateNotificationStatusAction(
-  backendUrl: string,
-  statusId: string,
-  action: 'reblogged' | 'favourited' | 'bookmarked',
-  value: boolean,
-): Promise<void> {
-  const handle = await getSqliteDb()
-  await handle.sendCommand({
-    action,
-    backendUrl,
-    statusId,
-    type: 'updateNotificationStatusAction',
-    value,
-  })
-}
+export const updateNotificationStatusAction =
+  defaultNotificationWriteStore.updateNotificationStatusAction

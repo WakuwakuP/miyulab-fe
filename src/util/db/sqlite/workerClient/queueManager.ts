@@ -6,9 +6,11 @@
  * timeline キューは同一クエリ (SQL + bind + returnValue) が未処理なら重複追加しない。
  */
 
+import { dbDiagnosticRecorder } from '../../dbDiagnostics'
 import type { QueueKind } from '../../dbQueue'
 import {
   getMaxConsecutiveOther,
+  getQueuePriority,
   MAX_TIMELINE_QUEUE_SIZE,
   recordWaitTime,
   reportDequeue,
@@ -34,6 +36,14 @@ import type { QueuedRequest } from './types'
 // タイムラインキュー重複排除ユーティリティ
 // ================================================================
 
+function observeDiagnosticQueues(): void {
+  dbDiagnosticRecorder.observeQueues({
+    other: otherQueue.length,
+    priority: priorityQueue.length,
+    timeline: timelineQueue.length,
+  })
+}
+
 /**
  * タイムラインキューが上限を超えている場合に最古のリクエストを破棄する。
  * 破棄されたリクエストの Promise は undefined で resolve される。
@@ -44,6 +54,7 @@ function evictOldestIfOverflow(): void {
     const oldest = timelineQueue.shift()
     if (oldest) {
       reportDequeue('timeline')
+      dbDiagnosticRecorder.recordEnd(oldest.message.id, 'cancelled')
       oldest.resolve(undefined)
     }
   }
@@ -94,7 +105,7 @@ function tryEnqueueTimelineDedup(
     id: number
     [key: string]: unknown
   },
-  resolve: (value: unknown) => void,
+  resolve: (value: unknown, durationMs?: number) => void,
   reject: (reason: Error) => void,
 ): boolean {
   const dedupKey = makeTimelineDedupKey(message)
@@ -111,11 +122,11 @@ function tryEnqueueTimelineDedup(
     rejectors: [reject],
     resolvers: [resolve],
   })
-  const sharedResolve = (value: unknown) => {
+  const sharedResolve = (value: unknown, durationMs?: number) => {
     const entry = timelineDedup.get(dedupKey)
     timelineDedup.delete(dedupKey)
     if (entry) {
-      for (const r of entry.resolvers) r(value)
+      for (const r of entry.resolvers) r(value, durationMs)
     }
   }
   const sharedReject = (reason: Error) => {
@@ -133,7 +144,9 @@ function tryEnqueueTimelineDedup(
     resolve: sharedResolve,
   })
   reportEnqueue('timeline')
+  dbDiagnosticRecorder.recordEnqueue(message.id, message, 'timeline')
   evictOldestIfOverflow()
+  observeDiagnosticQueues()
   processQueue()
   return true
 }
@@ -148,7 +161,7 @@ function tryReplaceTimelineSessionTag(
     id: number
     [key: string]: unknown
   },
-  resolve: (value: unknown) => void,
+  resolve: (value: unknown, durationMs?: number) => void,
   reject: (reason: Error) => void,
 ): boolean {
   const existingIndex = timelineQueue.findIndex(
@@ -157,6 +170,7 @@ function tryReplaceTimelineSessionTag(
   if (existingIndex === -1) return false
 
   const old = timelineQueue[existingIndex]
+  dbDiagnosticRecorder.recordEnd(old.message.id, 'cancelled')
   old.resolve(undefined)
   timelineQueue[existingIndex] = {
     enqueuedAt: old.enqueuedAt,
@@ -166,6 +180,8 @@ function tryReplaceTimelineSessionTag(
     resolve,
     sessionTag,
   }
+  dbDiagnosticRecorder.recordEnqueue(message.id, message, 'timeline')
+  observeDiagnosticQueues()
   processQueue()
   return true
 }
@@ -195,10 +211,12 @@ export function cancelStaleRequests(
     if (item.sessionTag === sessionTag) {
       timelineQueue.splice(i, 1)
       reportDequeue('timeline')
+      dbDiagnosticRecorder.recordEnd(item.message.id, 'cancelled')
       item.resolve(staleValue)
       cancelled++
     }
   }
+  if (cancelled > 0) observeDiagnosticQueues()
   return cancelled
 }
 
@@ -230,33 +248,73 @@ export function sendRequest(
   },
   kind: QueueKind = 'other',
   sessionTag?: string,
+  captureDuration = false,
 ): Promise<unknown> {
   if (!getWorker()) {
     return Promise.reject(new Error('Worker not initialized'))
   }
 
   return new Promise<unknown>((resolve, reject) => {
+    const wrappedResolve: (value: unknown, durationMs?: number) => void =
+      captureDuration
+        ? (value, durationMs) =>
+            resolve({ durationMs: durationMs ?? 0, result: value })
+        : (value) => resolve(value)
+
     // タイムラインキューの重複排除（sessionTag 付きはスキップ）
     if (kind === 'timeline' && !sessionTag) {
-      if (tryEnqueueTimelineDedup(message, resolve, reject)) return
+      if (tryEnqueueTimelineDedup(message, wrappedResolve, reject)) return
     }
 
     // sessionTag 付き: 同じ sessionTag のキュー内アイテムをインプレース置換
     if (kind === 'timeline' && sessionTag) {
-      if (tryReplaceTimelineSessionTag(sessionTag, message, resolve, reject)) {
+      if (
+        tryReplaceTimelineSessionTag(
+          sessionTag,
+          message,
+          wrappedResolve,
+          reject,
+        )
+      ) {
         return
       }
     }
 
     const queue = getQueueForKind(kind)
     const enqueuedAt = kind === 'timeline' ? performance.now() : undefined
-    queue.push({ enqueuedAt, kind, message, reject, resolve, sessionTag })
+    queue.push({
+      enqueuedAt,
+      kind,
+      message,
+      reject,
+      resolve: wrappedResolve,
+      sessionTag,
+    })
     reportEnqueue(kind)
+    dbDiagnosticRecorder.recordEnqueue(message.id, message, kind)
     if (kind === 'timeline') {
       evictOldestIfOverflow()
     }
+    observeDiagnosticQueues()
     processQueue()
   })
+}
+
+const OTHER_TIME_BUDGET_MS = 50
+
+let otherServiceElapsedMs = 0
+let otherActiveStartMs: number | null = null
+
+function accumulateOtherService(kind: QueueKind): void {
+  if (kind === 'other' && otherActiveStartMs != null) {
+    otherServiceElapsedMs += performance.now() - otherActiveStartMs
+  }
+  otherActiveStartMs = null
+}
+
+export function resetQueueFairnessState(): void {
+  otherServiceElapsedMs = 0
+  otherActiveStartMs = null
 }
 
 function processQueue(): void {
@@ -275,20 +333,29 @@ function processQueue(): void {
       otherQueue.length,
       timelineQueue.length,
     )
+    const otherBudgetExceeded =
+      getQueuePriority().preset === 'auto' &&
+      otherServiceElapsedMs >= OTHER_TIME_BUDGET_MS
     if (
       otherQueue.length > 0 &&
-      (timelineQueue.length === 0 || getConsecutiveOther() < maxConsecutive)
+      (timelineQueue.length === 0 ||
+        (getConsecutiveOther() < maxConsecutive && !otherBudgetExceeded))
     ) {
       next = otherQueue.shift()
       setConsecutiveOther(getConsecutiveOther() + 1)
     } else if (timelineQueue.length > 0) {
       next = timelineQueue.shift()
       setConsecutiveOther(0)
+      otherServiceElapsedMs = 0
     }
   }
-  if (!next) return
+  if (!next) {
+    otherServiceElapsedMs = 0
+    return
+  }
   setActiveRequest(true)
   const { kind, message, resolve, reject } = next
+  otherActiveStartMs = kind === 'other' ? performance.now() : null
   // timeline キューの待機時間を記録
   if (kind === 'timeline' && next.enqueuedAt != null) {
     recordWaitTime(performance.now() - next.enqueuedAt)
@@ -299,7 +366,10 @@ function processQueue(): void {
   const timer = setTimeout(() => {
     pending.delete(id)
     setActiveRequest(false)
+    accumulateOtherService(kind)
     reportDequeue(kind)
+    dbDiagnosticRecorder.recordEnd(id, 'timeout')
+    observeDiagnosticQueues()
     reject(
       new Error(`Worker request timed out (id=${id}, type=${message.type})`),
     )
@@ -311,19 +381,37 @@ function processQueue(): void {
     reject: (reason: Error) => {
       clearTimeout(timer)
       setActiveRequest(false)
+      accumulateOtherService(kind)
       reportDequeue(kind)
+      observeDiagnosticQueues()
       reject(reason)
       processQueue()
     },
-    resolve: (value: unknown) => {
+    resolve: (value: unknown, durationMs?: number) => {
       clearTimeout(timer)
       setActiveRequest(false)
+      accumulateOtherService(kind)
       reportDequeue(kind)
-      resolve(value)
+      observeDiagnosticQueues()
+      resolve(value, durationMs)
       processQueue()
     },
     timer,
   })
 
-  worker.postMessage(message)
+  dbDiagnosticRecorder.recordStart(id)
+  observeDiagnosticQueues()
+  try {
+    worker.postMessage(message)
+  } catch (e) {
+    pending.delete(id)
+    clearTimeout(timer)
+    setActiveRequest(false)
+    accumulateOtherService(kind)
+    reportDequeue(kind)
+    dbDiagnosticRecorder.recordEnd(id, 'error')
+    observeDiagnosticQueues()
+    reject(e instanceof Error ? e : new Error(String(e)))
+    processQueue()
+  }
 }

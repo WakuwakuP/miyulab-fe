@@ -1,5 +1,6 @@
 import type { Entity, WebSocketInterface } from 'megalodon'
 import type { Backend } from 'types/types'
+import { dbDiagnosticRecorder } from 'util/db/dbDiagnostics'
 import type { TimelineType as DbTimelineType } from 'util/db/sqlite/statusStore'
 import {
   handleDeleteEvent,
@@ -47,7 +48,17 @@ export function setupStreamHandlers(
         tag,
       })
     }
-    await upsertStatus(status, backendUrl, timelineType, tag)
+    dbDiagnosticRecorder.recordIngress(
+      'statusIngress',
+      backendUrl,
+      timelineType,
+      1,
+    )
+    try {
+      await upsertStatus(status, backendUrl, timelineType, tag)
+    } catch (error) {
+      console.error('upsertStatus failed:', error)
+    }
   })
 
   stream.on('status_update', async (status: Entity.Status) => {
@@ -62,7 +73,11 @@ export function setupStreamHandlers(
         tag,
       })
     }
-    await updateStatus(status, backendUrl)
+    try {
+      await updateStatus(status, backendUrl)
+    } catch (error) {
+      console.error('updateStatus failed:', error)
+    }
   })
 
   stream.on('delete', async (id: string) => {
@@ -77,7 +92,11 @@ export function setupStreamHandlers(
         tag,
       })
     }
-    await handleDeleteEvent(backendUrl, id, timelineType, tag)
+    try {
+      await handleDeleteEvent(backendUrl, id, timelineType, tag)
+    } catch (error) {
+      console.error('handleDeleteEvent failed:', error)
+    }
   })
 
   stream.on('connect', () => {

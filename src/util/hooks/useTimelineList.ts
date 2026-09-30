@@ -50,8 +50,12 @@ export function useTimelineList(
   queryDuration: number | null
 } {
   const apps = useContext(AppsContext)
-  const { fetchPage, subscribeToChanges, targetBackendUrls } =
-    useTimelineDataSource(config, options)
+  const {
+    fetchInteractionUpdates,
+    fetchPage,
+    subscribeToChanges,
+    targetBackendUrls,
+  } = useTimelineDataSource(config, options)
 
   const { queryDuration, recordDuration } = useQueryDuration()
 
@@ -116,6 +120,7 @@ export function useTimelineList(
   useTimelineStreamingController({
     configId: config.id ?? '',
     dispatch,
+    fetchInteractionUpdates,
     fetchPage,
     recordDuration,
     stateRef,

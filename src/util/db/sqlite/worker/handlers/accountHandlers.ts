@@ -16,6 +16,7 @@ import {
   syncProfileCustomEmojis,
 } from '../../helpers'
 import { localAccountIdCache } from '../../helpers/cache'
+import type { WrittenTableCollector } from '../../protocol'
 import type { DbExec, HandlerResult } from './types'
 
 /**
@@ -42,9 +43,10 @@ export function handleEnsureLocalAccount(
   const account = JSON.parse(accountJson) as Entity.Account
   const host = extractHost(backendUrl)
   const serverId = ensureServer(db, host)
-  const profileId = ensureProfile(db, account, serverId)
+  const collector: WrittenTableCollector = new Set(['local_accounts'])
+  const profileId = ensureProfile(db, account, serverId, collector)
   if (account.emojis.length > 0) {
-    syncProfileCustomEmojis(db, profileId, serverId, account.emojis)
+    syncProfileCustomEmojis(db, profileId, serverId, account.emojis, collector)
   }
   const now = Date.now()
   db.exec(
@@ -73,7 +75,7 @@ export function handleEnsureLocalAccount(
   )
   // local_accounts が変わったのでキャッシュを破棄する
   localAccountIdCache.delete(backendUrl)
-  return { changedTables: ['local_accounts'] }
+  return { changedTables: [...collector] }
 }
 
 // ================================================================
@@ -94,11 +96,12 @@ export function handleBulkUpsertCustomEmojis(
   if (emojis.length === 0) return { changedTables: [] }
 
   db.exec('BEGIN;')
+  const collector: WrittenTableCollector = new Set()
   try {
     const host = extractHost(backendUrl)
     const serverId = ensureServer(db, host)
     for (const emoji of emojis) {
-      ensureCustomEmoji(db, serverId, emoji)
+      ensureCustomEmoji(db, serverId, emoji, collector)
     }
     db.exec('COMMIT;')
   } catch (e) {
@@ -106,5 +109,5 @@ export function handleBulkUpsertCustomEmojis(
     throw e
   }
 
-  return { changedTables: [] }
+  return { changedTables: [...collector] }
 }

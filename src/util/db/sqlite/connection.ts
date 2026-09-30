@@ -39,6 +39,7 @@ export type ChangeHint = {
   tag?: string
   /** この書き込みバッチで変更された全テーブル名 */
   changedTables?: readonly string[]
+  changedPostIds?: readonly number[]
 }
 
 /** 変更リスナー */

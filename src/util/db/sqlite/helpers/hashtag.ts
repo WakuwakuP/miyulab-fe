@@ -1,4 +1,5 @@
 import type { WrittenTableCollector } from '../protocol'
+import { lastChangeCount } from './changes'
 import type { DbExecCompat } from './types'
 
 /**
@@ -15,21 +16,43 @@ export function syncPostHashtags(
     db.exec('DELETE FROM post_hashtags WHERE post_id = ?;', {
       bind: [postId],
     })
-    collector?.add('post_hashtags')
+    if (lastChangeCount(db) > 0) collector?.add('post_hashtags')
     return
   }
 
+  const expectedNames = [
+    ...new Set(tags.map((t) => t.name.toLowerCase())),
+  ].sort()
+  const currentNames = (
+    db.exec(
+      `SELECT ht.name FROM post_hashtags pht
+       JOIN hashtags ht ON ht.id = pht.hashtag_id
+       WHERE pht.post_id = ? ORDER BY ht.name;`,
+      { bind: [postId], returnValue: 'resultRows' },
+    ) as string[][]
+  ).map((row) => row[0])
+  const linksIdentical =
+    currentNames.length === expectedNames.length &&
+    currentNames.every((name, i) => name === expectedNames[i])
+
+  const seen = new Set<string>()
   const keepIds: number[] = []
+  let hashtagsChanged = false
 
   for (const tag of tags) {
     const normalizedName = tag.name.toLowerCase()
+    if (seen.has(normalizedName)) continue
+    seen.add(normalizedName)
 
     // hashtags テーブルに UPSERT
     db.exec(
       `INSERT INTO hashtags (name, url) VALUES (?, ?)
-       ON CONFLICT(name) DO UPDATE SET url = COALESCE(excluded.url, hashtags.url);`,
+       ON CONFLICT(name) DO UPDATE SET url = COALESCE(excluded.url, hashtags.url)
+       WHERE hashtags.url IS NOT COALESCE(excluded.url, hashtags.url);`,
       { bind: [normalizedName, tag.url ?? null] },
     )
+    if (lastChangeCount(db) > 0) hashtagsChanged = true
+    if (linksIdentical) continue
 
     // ID 取得
     const rows = db.exec('SELECT id FROM hashtags WHERE name = ?;', {
@@ -41,7 +64,8 @@ export function syncPostHashtags(
     keepIds.push(hashtagId)
   }
 
-  collector?.add('hashtags')
+  if (hashtagsChanged) collector?.add('hashtags')
+  if (linksIdentical) return
 
   // post_hashtags にリンク（multi-value INSERT）
   const linkPlaceholders = keepIds.map(() => '(?, ?)').join(',')
@@ -53,6 +77,7 @@ export function syncPostHashtags(
     `INSERT OR IGNORE INTO post_hashtags (post_id, hashtag_id) VALUES ${linkPlaceholders};`,
     { bind: linkBinds },
   )
+  let linksChanged = lastChangeCount(db) > 0
 
   // 不要なリンクを削除
   const ph = keepIds.map(() => '?').join(',')
@@ -60,5 +85,6 @@ export function syncPostHashtags(
     `DELETE FROM post_hashtags WHERE post_id = ? AND hashtag_id NOT IN (${ph});`,
     { bind: [postId, ...keepIds] },
   )
-  collector?.add('post_hashtags')
+  if (lastChangeCount(db) > 0) linksChanged = true
+  if (linksChanged) collector?.add('post_hashtags')
 }

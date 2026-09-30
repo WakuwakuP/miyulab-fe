@@ -74,7 +74,12 @@ export const Actions = ({
           onReactionAdd?.(emoji)
           setShowReactionPicker(false)
           // DB にリアクションを保存
-          toggleReactionInDb(reactionApp.backendUrl, statusId, true, emoji)
+          toggleReactionInDb(
+            reactionApp.backendUrl,
+            statusId,
+            true,
+            emoji,
+          ).catch((error) => console.error('Failed to save reaction:', error))
         })
         .catch((error) => {
           console.error('Failed to add reaction:', error)

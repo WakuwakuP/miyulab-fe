@@ -12,6 +12,7 @@ import type {
   SerializedStep,
   StepResult,
 } from '../protocol'
+import { batchBindForIds } from './statusBatch'
 
 /**
  * Minimal db interface for step execution.
@@ -22,6 +23,15 @@ export type DbExec = {
     sql: string,
     opts: { bind?: (string | number | null)[]; returnValue: 'resultRows' },
   ) => (string | number | null)[][]
+}
+
+export function isReadOnlySql(sql: string): boolean {
+  let trimmed = sql.trim()
+  if (trimmed.endsWith(';')) {
+    trimmed = trimmed.slice(0, -1)
+  }
+  if (!/^[ ]*(SELECT|EXPLAIN)\b/i.test(trimmed)) return false
+  return !trimmed.includes(';')
 }
 
 /** Mutable context passed between steps */
@@ -142,7 +152,7 @@ function executeBatchEnrich(
   for (const [key, sqlTemplate] of Object.entries(step.queries)) {
     const sql = sqlTemplate.replaceAll('{IDS}', placeholders)
     results[key] = db.exec(sql, {
-      bind: ids,
+      bind: batchBindForIds(sql, ids),
       returnValue: 'resultRows',
     })
   }

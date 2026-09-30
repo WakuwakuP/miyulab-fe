@@ -15,25 +15,49 @@ import type { ChangeHint } from 'util/db/sqlite/connection'
  * @param targetBackendUrls - 対象バックエンド URL 一覧
  * @param isLookup - lookup テーブルの場合 true（timelineType チェックをスキップ）
  */
+export function hintMatchesTimeline(
+  hint: ChangeHint,
+  configTimelineTypes: string[],
+  targetBackendUrls: string[],
+  isLookup: boolean,
+): boolean {
+  // lookup テーブルの場合は timelineType チェックをスキップ
+  // (lookup 対象データはどの stream から到着するか分からないため)
+  if (!isLookup && hint.timelineType) {
+    if (!configTimelineTypes.includes(hint.timelineType)) {
+      return false
+    }
+  }
+  if (hint.backendUrl) {
+    if (!targetBackendUrls.includes(hint.backendUrl)) {
+      return false
+    }
+  }
+  return true
+}
+
 export function hintsMatchTimeline(
   hints: ChangeHint[],
   configTimelineTypes: string[],
   targetBackendUrls: string[],
   isLookup: boolean,
 ): boolean {
-  return hints.some((hint) => {
-    // lookup テーブルの場合は timelineType チェックをスキップ
-    // (lookup 対象データはどの stream から到着するか分からないため)
-    if (!isLookup && hint.timelineType) {
-      if (!configTimelineTypes.includes(hint.timelineType)) {
-        return false
-      }
+  return hints.some((hint) =>
+    hintMatchesTimeline(hint, configTimelineTypes, targetBackendUrls, isLookup),
+  )
+}
+
+export function mergeChangedPostIds(
+  hints: readonly ChangeHint[],
+): ReadonlySet<number> | undefined {
+  const ids = new Set<number>()
+  for (const hint of hints) {
+    if (hint.changedPostIds === undefined) {
+      return undefined
     }
-    if (hint.backendUrl) {
-      if (!targetBackendUrls.includes(hint.backendUrl)) {
-        return false
-      }
+    for (const id of hint.changedPostIds) {
+      ids.add(id)
     }
-    return true
-  })
+  }
+  return ids
 }

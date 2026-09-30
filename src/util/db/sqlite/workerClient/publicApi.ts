@@ -2,6 +2,7 @@
  * 公開 API — Worker に対する型安全な RPC 呼び出し
  */
 
+import { dbDiagnosticRecorder } from '../../dbDiagnostics'
 import type { QueueKind } from '../../dbQueue'
 import { reportDequeue, stopSnapshotRecording } from '../../dbQueue'
 import type {
@@ -32,7 +33,7 @@ import type {
   TableName,
 } from '../protocol'
 import { handleMessage } from './messageHandler'
-import { sendRequest } from './queueManager'
+import { resetQueueFairnessState, sendRequest } from './queueManager'
 import {
   durationForId,
   getInitPromise,
@@ -181,14 +182,12 @@ export async function execAsyncTimed(
     sql,
     type: 'exec',
   }
-  const result = await sendRequest(
+  return (await sendRequest(
     request,
     opts?.kind ?? 'other',
     opts?.sessionTag,
-  )
-  const durationMs = durationForId.get(id) ?? 0
-  durationForId.delete(id)
-  return { durationMs, result }
+    true,
+  )) as { durationMs: number; result: unknown }
 }
 
 /**
@@ -391,31 +390,40 @@ export function terminateWorker(): void {
   getWorker()?.terminate()
   setWorker(null)
   // 実行中 (in-flight) のリクエストを拒否してクリア
-  for (const req of pending.values()) {
-    clearTimeout(req.timer)
-    reportDequeue(req.kind)
+  for (const [id, req] of pending) {
+    dbDiagnosticRecorder.recordEnd(id, 'error')
     req.reject(new Error('Worker terminated'))
   }
   pending.clear()
   // キュー内の未送信リクエストを拒否してクリア（stats カウンタも減算）
   for (const queued of priorityQueue) {
     reportDequeue('priority')
+    dbDiagnosticRecorder.recordEnd(queued.message.id, 'cancelled')
     queued.reject(new Error('Worker terminated'))
   }
   for (const queued of otherQueue) {
     reportDequeue('other')
+    dbDiagnosticRecorder.recordEnd(queued.message.id, 'cancelled')
     queued.reject(new Error('Worker terminated'))
   }
   for (const queued of timelineQueue) {
     reportDequeue('timeline')
+    dbDiagnosticRecorder.recordEnd(queued.message.id, 'cancelled')
     queued.reject(new Error('Worker terminated'))
   }
+  dbDiagnosticRecorder.observeQueues({
+    other: 0,
+    priority: 0,
+    timeline: 0,
+  })
   priorityQueue.length = 0
   otherQueue.length = 0
   timelineQueue.length = 0
   timelineDedup.clear()
+  durationForId.clear()
   setActiveRequest(false)
   setConsecutiveOther(0)
+  resetQueueFairnessState()
   setInitPromise(null)
   setInitResolve(null)
   setInitReject(null)

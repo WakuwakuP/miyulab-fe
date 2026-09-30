@@ -38,7 +38,7 @@ describe('ensureServer', () => {
     const id = ensureServer(db, 'example.com')
 
     expect(id).toBe(42)
-    expect(calls).toHaveLength(2)
+    expect(calls).toHaveLength(3)
 
     // INSERT OR IGNORE
     expect(calls[0].sql).toBe(
@@ -46,10 +46,12 @@ describe('ensureServer', () => {
     )
     expect(calls[0].opts?.bind).toEqual(['example.com'])
 
+    expect(calls[1].sql).toBe('SELECT changes();')
+
     // SELECT id
-    expect(calls[1].sql).toBe('SELECT id FROM servers WHERE host = ?;')
-    expect(calls[1].opts?.bind).toEqual(['example.com'])
-    expect(calls[1].opts?.returnValue).toBe('resultRows')
+    expect(calls[2].sql).toBe('SELECT id FROM servers WHERE host = ?;')
+    expect(calls[2].opts?.bind).toEqual(['example.com'])
+    expect(calls[2].opts?.returnValue).toBe('resultRows')
   })
 
   it('既にDBにあるサーバーのIDを返す（INSERT OR IGNORE）', () => {
@@ -62,8 +64,8 @@ describe('ensureServer', () => {
 
     expect(id1).toBe(7)
     expect(id2).toBe(7)
-    // 2回とも INSERT + SELECT が実行される
-    expect(calls).toHaveLength(4)
+    // 2回とも INSERT + changes() + SELECT が実行される
+    expect(calls).toHaveLength(6)
   })
 
   it('キャッシュヒット時はDBアクセスをスキップする', () => {
@@ -72,19 +74,19 @@ describe('ensureServer', () => {
     // 1回目: DB にアクセスしてキャッシュに保存
     const id1 = ensureServer(db, 'misskey.io')
     expect(id1).toBe(99)
-    expect(calls).toHaveLength(2)
+    expect(calls).toHaveLength(3)
 
-    // 2回目: INSERT OR IGNORE は常に実行し、SELECT はキャッシュから返すのでスキップ
+    // 2回目: INSERT OR IGNORE + changes() は常に実行し、SELECT はキャッシュから返すのでスキップ
     const id2 = ensureServer(db, 'misskey.io')
     expect(id2).toBe(99)
-    expect(calls).toHaveLength(3) // INSERT OR IGNORE のみ追加
+    expect(calls).toHaveLength(5) // INSERT OR IGNORE + changes() のみ追加
   })
 
   it('キャッシュをクリアするとDBから再取得する', () => {
     const { db, calls } = createMockDb(15)
 
     ensureServer(db, 'pleroma.example')
-    expect(calls).toHaveLength(2)
+    expect(calls).toHaveLength(3)
 
     // キャッシュクリア
     serverIdCache.clear()
@@ -92,6 +94,6 @@ describe('ensureServer', () => {
     // 再度呼ぶと DB にアクセスする
     const id = ensureServer(db, 'pleroma.example')
     expect(id).toBe(15)
-    expect(calls).toHaveLength(4) // 新たに INSERT + SELECT
+    expect(calls).toHaveLength(6)
   })
 })

@@ -17,6 +17,7 @@ import type { Entity } from 'megalodon'
 import {
   ensureProfile,
   extractPostColumns,
+  lastChangeCount,
   resolveEmojisFromDb,
   syncLinkCard,
   syncPollData,
@@ -47,8 +48,10 @@ export function upsertMentionsInternal(
   mentions: Entity.Mention[],
   collector?: WrittenTableCollector,
 ): void {
-  const keepAccts: string[] = []
-
+  const expectedByAcct = new Map<
+    string,
+    [string, string | null, number | null]
+  >()
   for (const mention of mentions) {
     // profile_id を acct で profiles テーブルから検索
     let profileId: number | null = null
@@ -61,6 +64,36 @@ export function upsertMentionsInternal(
         profileId = profileRows[0][0]
       }
     }
+    expectedByAcct.set(mention.acct, [mention.username, mention.url, profileId])
+  }
+  const currentRows = db.exec(
+    'SELECT acct, username, url, profile_id FROM post_mentions WHERE post_id = ? ORDER BY acct;',
+    { bind: [postId], returnValue: 'resultRows' },
+  ) as (string | number | null)[][]
+  const expectedRows = [...expectedByAcct.entries()]
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([acct, [username, url, profileId]]) => [
+      acct,
+      username,
+      url,
+      profileId,
+    ])
+  const identical =
+    currentRows.length === expectedRows.length &&
+    currentRows.every(
+      (row, i) =>
+        row[0] === expectedRows[i][0] &&
+        row[1] === expectedRows[i][1] &&
+        row[2] === expectedRows[i][2] &&
+        (expectedRows[i][3] === null || row[3] === expectedRows[i][3]),
+    )
+  if (identical) return
+
+  const keepAccts: string[] = []
+  let changed = false
+
+  for (const mention of mentions) {
+    const profileId = expectedByAcct.get(mention.acct)?.[2] ?? null
 
     db.exec(
       `INSERT INTO post_mentions (post_id, acct, username, url, profile_id)
@@ -68,11 +101,15 @@ export function upsertMentionsInternal(
        ON CONFLICT(post_id, acct) DO UPDATE SET
          username   = excluded.username,
          url        = excluded.url,
-         profile_id = COALESCE(excluded.profile_id, post_mentions.profile_id);`,
+         profile_id = COALESCE(excluded.profile_id, post_mentions.profile_id)
+       WHERE post_mentions.username   IS NOT excluded.username
+          OR post_mentions.url        IS NOT excluded.url
+          OR post_mentions.profile_id IS NOT COALESCE(excluded.profile_id, post_mentions.profile_id);`,
       {
         bind: [postId, mention.acct, mention.username, mention.url, profileId],
       },
     )
+    if (lastChangeCount(db) > 0) changed = true
     keepAccts.push(mention.acct)
   }
 
@@ -88,7 +125,8 @@ export function upsertMentionsInternal(
       { bind: [postId, ...keepAccts] },
     )
   }
-  collector?.add('post_mentions')
+  if (lastChangeCount(db) > 0) changed = true
+  if (changed) collector?.add('post_mentions')
 }
 
 export function syncPostMedia(
@@ -97,6 +135,36 @@ export function syncPostMedia(
   mediaAttachments: Entity.Attachment[],
   collector?: WrittenTableCollector,
 ): void {
+  const currentRows = db.exec(
+    `SELECT sort_order, media_type_id, url, width, height, remote_url,
+            preview_url, description, blurhash, media_local_id
+     FROM post_media WHERE post_id = ? ORDER BY sort_order;`,
+    { bind: [postId], returnValue: 'resultRows' },
+  ) as (string | number | null)[][]
+
+  const expectedRows = mediaAttachments.map((media, i) => {
+    const meta = media.meta as
+      | { original?: { width?: number; height?: number } }
+      | null
+      | undefined
+    return [
+      i,
+      resolveMediaTypeId(db, media.type),
+      media.url,
+      meta?.original?.width ?? null,
+      meta?.original?.height ?? null,
+      media.remote_url ?? null,
+      media.preview_url ?? null,
+      media.description ?? null,
+      media.blurhash ?? null,
+      media.id ?? null,
+    ]
+  })
+  const identical =
+    currentRows.length === expectedRows.length &&
+    currentRows.every((row, i) => row.every((v, j) => v === expectedRows[i][j]))
+  if (identical) return
+
   // DELETE + INSERT 方式
   db.exec('DELETE FROM post_media WHERE post_id = ?;', {
     bind: [postId],
@@ -155,6 +223,7 @@ export function syncPostStats(
   postId: number,
   status: Entity.Status,
   collector?: WrittenTableCollector,
+  now?: number,
 ): void {
   // emoji_reactions を JSON 文字列に変換（account_ids のみ保持、accounts は省略）
   const emojiReactionsJson =
@@ -171,7 +240,7 @@ export function syncPostStats(
         )
       : '[]'
 
-  const now = Date.now()
+  const nowTs = now ?? Date.now()
 
   db.exec(
     `INSERT INTO post_stats (
@@ -182,7 +251,12 @@ export function syncPostStats(
       reblogs_count        = excluded.reblogs_count,
       favourites_count     = excluded.favourites_count,
       emoji_reactions_json = excluded.emoji_reactions_json,
-      updated_at           = excluded.updated_at;`,
+      updated_at           = excluded.updated_at
+    WHERE post_stats.replies_count        IS NOT excluded.replies_count
+       OR post_stats.reblogs_count        IS NOT excluded.reblogs_count
+       OR post_stats.favourites_count     IS NOT excluded.favourites_count
+       OR post_stats.emoji_reactions_json IS NOT excluded.emoji_reactions_json
+       OR post_stats.updated_at           IS NOT excluded.updated_at;`,
     {
       bind: [
         postId,
@@ -190,11 +264,11 @@ export function syncPostStats(
         status.reblogs_count,
         status.favourites_count,
         emojiReactionsJson,
-        now,
+        nowTs,
       ],
     },
   )
-  collector?.add('post_stats')
+  if (lastChangeCount(db) > 0) collector?.add('post_stats')
 }
 
 // ================================================================
@@ -243,7 +317,7 @@ function resolveReblogOriginalPostId(
   remotePostId: string,
 ): number | undefined {
   const existingRows = db.exec(
-    'SELECT id, is_reblog FROM posts WHERE object_uri = ?;',
+    "SELECT id, is_reblog FROM posts WHERE object_uri = ? AND object_uri != '';",
     { bind: [normalizedUri], returnValue: 'resultRows' },
   ) as number[][]
   if (existingRows.length > 0 && existingRows[0][1] === 0) {
@@ -271,6 +345,25 @@ function upsertReblogOriginalPostRow(
 ): number {
   if (existingPostId !== undefined) {
     // author_profile_id は更新しない（handleUpsertStatus と同一方針）
+    const setValues = [
+      now,
+      visibilityId ?? cols.visibility_id,
+      cols.language,
+      cols.content_html,
+      cols.spoiler_text,
+      cols.canonical_url,
+      0,
+      cols.is_sensitive,
+      cols.in_reply_to_uri,
+      cols.in_reply_to_account_acct,
+      cols.edited_at_ms,
+      cols.plain_content,
+      cols.quote_state,
+      cols.is_local_only,
+      cols.application_name,
+      repostOfPostId,
+      null, // quote_of_post_id: 将来拡張用
+    ]
     db.exec(
       `UPDATE posts SET
         last_fetched_at        = ?,
@@ -279,7 +372,7 @@ function upsertReblogOriginalPostRow(
         content_html           = ?,
         spoiler_text           = ?,
         canonical_url          = ?,
-        is_reblog              = 0,
+        is_reblog              = ?,
         is_sensitive           = ?,
         in_reply_to_uri        = ?,
         in_reply_to_account_acct = ?,
@@ -290,26 +383,30 @@ function upsertReblogOriginalPostRow(
         application_name       = ?,
         reblog_of_post_id      = ?,
         quote_of_post_id       = ?
-      WHERE id = ?;`,
+      WHERE id = ? AND (
+        last_fetched_at        IS NOT ? OR
+        visibility_id          IS NOT ? OR
+        language               IS NOT ? OR
+        content_html           IS NOT ? OR
+        spoiler_text           IS NOT ? OR
+        canonical_url          IS NOT ? OR
+        is_reblog              IS NOT ? OR
+        is_sensitive           IS NOT ? OR
+        in_reply_to_uri        IS NOT ? OR
+        in_reply_to_account_acct IS NOT ? OR
+        edited_at_ms           IS NOT ? OR
+        plain_content          IS NOT ? OR
+        quote_state            IS NOT ? OR
+        is_local_only          IS NOT ? OR
+        application_name       IS NOT ? OR
+        reblog_of_post_id      IS NOT ? OR
+        quote_of_post_id       IS NOT ?
+      );`,
       {
         bind: [
-          now,
-          visibilityId ?? cols.visibility_id,
-          cols.language,
-          cols.content_html,
-          cols.spoiler_text,
-          cols.canonical_url,
-          cols.is_sensitive,
-          cols.in_reply_to_uri,
-          cols.in_reply_to_account_acct,
-          cols.edited_at_ms,
-          cols.plain_content,
-          cols.quote_state,
-          cols.is_local_only,
-          cols.application_name,
-          repostOfPostId,
-          null, // quote_of_post_id: 将来拡張用
+          ...(setValues as (string | number | null)[]),
           existingPostId,
+          ...(setValues as (string | number | null)[]),
         ],
       },
     )
@@ -370,7 +467,7 @@ function registerReblogOriginalBackendId(
      VALUES (?, ?, ?, ?);`,
     { bind: [postId, localAccountId, remotePostId, serverId] },
   )
-  collector?.add('post_backend_ids')
+  if (lastChangeCount(db) > 0) collector?.add('post_backend_ids')
 }
 
 function syncReblogOriginalRelatedData(
@@ -380,10 +477,11 @@ function syncReblogOriginalRelatedData(
   serverId: number,
   accountDomain: string,
   collector?: WrittenTableCollector,
+  now?: number,
 ): void {
   upsertMentionsInternal(db, postId, originalStatus.mentions, collector)
   syncPostMedia(db, postId, originalStatus.media_attachments, collector)
-  syncPostStats(db, postId, originalStatus, collector)
+  syncPostStats(db, postId, originalStatus, collector, now)
 
   const resolvedStatusEmojis =
     originalStatus.emojis?.length > 0
@@ -422,11 +520,22 @@ function syncReblogOriginalInteractions(
   localAccountId: number | null,
   originalStatus: Entity.Status,
   collector?: WrittenTableCollector,
+  now?: number,
 ): void {
   if (localAccountId === null) return
 
   if (originalStatus.favourited === true) {
-    updateInteraction(db, postId, localAccountId, 'favourite', true, collector)
+    updateInteraction(
+      db,
+      postId,
+      localAccountId,
+      'favourite',
+      true,
+      collector,
+      {
+        now,
+      },
+    )
   } else if (originalStatus.favourited === false) {
     updateInteraction(
       db,
@@ -436,19 +545,25 @@ function syncReblogOriginalInteractions(
       false,
       collector,
       {
+        now,
         preserveRecentLocalTrueMs: STALE_INTERACTION_FALSE_PROTECTION_MS,
       },
     )
   }
   if (originalStatus.reblogged === true) {
-    updateInteraction(db, postId, localAccountId, 'reblog', true, collector)
+    updateInteraction(db, postId, localAccountId, 'reblog', true, collector, {
+      now,
+    })
   } else if (originalStatus.reblogged === false) {
     updateInteraction(db, postId, localAccountId, 'reblog', false, collector, {
+      now,
       preserveRecentLocalTrueMs: STALE_INTERACTION_FALSE_PROTECTION_MS,
     })
   }
   if (originalStatus.bookmarked === true) {
-    updateInteraction(db, postId, localAccountId, 'bookmark', true, collector)
+    updateInteraction(db, postId, localAccountId, 'bookmark', true, collector, {
+      now,
+    })
   } else if (originalStatus.bookmarked === false) {
     updateInteraction(
       db,
@@ -458,6 +573,7 @@ function syncReblogOriginalInteractions(
       false,
       collector,
       {
+        now,
         preserveRecentLocalTrueMs: STALE_INTERACTION_FALSE_PROTECTION_MS,
       },
     )
@@ -488,6 +604,7 @@ export function ensureReblogOriginalPost(
     serverId,
     collector,
     skipProfileUpdate,
+    now,
   )
   if (!skipProfileUpdate) {
     syncReblogOriginalProfileEmojis(
@@ -522,7 +639,7 @@ export function ensureReblogOriginalPost(
     serverId,
     visibilityId,
   })
-  collector?.add('posts')
+  if (lastChangeCount(db) > 0) collector?.add('posts')
 
   registerReblogOriginalBackendId(
     db,
@@ -539,6 +656,7 @@ export function ensureReblogOriginalPost(
     serverId,
     accountDomain,
     collector,
+    now,
   )
   syncReblogOriginalInteractions(
     db,
@@ -546,5 +664,6 @@ export function ensureReblogOriginalPost(
     localAccountId,
     originalStatus,
     collector,
+    now,
   )
 }

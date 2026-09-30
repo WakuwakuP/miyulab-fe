@@ -118,7 +118,7 @@ describe('workerClient messageHandler', () => {
     })
 
     expect(pending.has(7)).toBe(false)
-    expect(resolve).toHaveBeenCalledWith({ ok: true })
+    expect(resolve).toHaveBeenCalledWith({ ok: true }, 12.5)
     expect(reject).not.toHaveBeenCalled()
     expect(notify).toHaveBeenCalledTimes(2)
     expect(notify.mock.calls).toEqual([
@@ -139,7 +139,7 @@ describe('workerClient messageHandler', () => {
         },
       ],
     ])
-    expect(durationForId.get(7)).toBe(12.5)
+    expect(durationForId.has(7)).toBe(false)
     clearTimeout(timer)
   })
 
@@ -164,7 +164,7 @@ describe('workerClient messageHandler', () => {
       type: 'response',
     })
 
-    expect(resolve).toHaveBeenCalledWith('done')
+    expect(resolve).toHaveBeenCalledWith('done', undefined)
     expect(notify).not.toHaveBeenCalled()
     expect(durationForId.has(8)).toBe(false)
     expect(durationForId.has(999)).toBe(false)

@@ -12,6 +12,7 @@ import {
 import { setRawDataCaptureEnabled } from 'util/debug/rawDataCapture'
 
 type SettingData = {
+  backgroundPublicStreaming: boolean
   showSensitive: boolean
   playerSize: 'small' | 'medium' | 'large'
   defaultStatusVisibility: Entity.StatusVisibility
@@ -24,6 +25,7 @@ type SettingData = {
 const DEFAULT_REACTION_EMOJIS = ['👍', '❤️', '😃', '😢', '🙏', '👎', '😡']
 
 const initialSettingData: SettingData = {
+  backgroundPublicStreaming: false,
   captureRawData: false,
   defaultStatusVisibility: 'public',
   playerSize: 'medium',
@@ -47,10 +49,14 @@ export const SettingProvider = ({
   useEffect(() => {
     const settingStr = localStorage.getItem('setting')
     if (settingStr != null) {
-      setSetting((prev) => ({
-        ...prev,
-        ...JSON.parse(settingStr),
-      }))
+      setSetting((prev) => {
+        const parsed = JSON.parse(settingStr) as Partial<SettingData>
+        return {
+          ...prev,
+          ...parsed,
+          backgroundPublicStreaming: parsed.backgroundPublicStreaming === true,
+        }
+      })
     }
 
     setStorageLoading(false)

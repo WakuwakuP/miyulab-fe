@@ -508,3 +508,59 @@ describe('複合シナリオ', () => {
     expect(timestamps).toEqual([800, 700, 600, 500, 400, 300, 200, 100])
   })
 })
+
+describe('INTERACTION_UPDATES_SUCCEEDED', () => {
+  it('既存キーのみ差し替え、順序とカーソルは維持される', () => {
+    const s0 = createInitialState()
+    const s1 = dispatch(s0, {
+      items: [makeStatus('1', 100), makeStatus('2', 300), makeStatus('3', 200)],
+      type: 'INITIAL_FETCH_SUCCEEDED',
+    })
+
+    const updated = {
+      ...makeStatus('2', 300),
+      content: 'post 2 (favourited)',
+      favourited: true,
+    } as unknown as TimelineItem
+    const s2 = dispatch(s1, {
+      items: [updated],
+      type: 'INTERACTION_UPDATES_SUCCEEDED',
+    })
+
+    expect(s2.itemMap.size).toBe(3)
+    expect(s2.sortedItems.map((i) => itemTimestamp(i))).toEqual([300, 200, 100])
+    expect((s2.itemMap.get('p:2') as { favourited?: boolean }).favourited).toBe(
+      true,
+    )
+    expect(s2.newestMs).toBe(s1.newestMs)
+    expect(s2.newestId).toBe(s1.newestId)
+    expect(s2.oldestMs).toBe(s1.oldestMs)
+  })
+
+  it('存在しないキーは挿入しない (ソートも行わない)', () => {
+    const s0 = createInitialState()
+    const s1 = dispatch(s0, {
+      items: [makeStatus('1', 100), makeStatus('2', 300)],
+      type: 'INITIAL_FETCH_SUCCEEDED',
+    })
+    const s2 = dispatch(s1, {
+      items: [makeStatus('9', 900)],
+      type: 'INTERACTION_UPDATES_SUCCEEDED',
+    })
+    expect(s2.itemMap.size).toBe(2)
+    expect(s2.sortedItems.map((i) => itemTimestamp(i))).toEqual([300, 100])
+  })
+
+  it('空配列は状態を変えない', () => {
+    const s0 = createInitialState()
+    const s1 = dispatch(s0, {
+      items: [makeStatus('1', 100)],
+      type: 'INITIAL_FETCH_SUCCEEDED',
+    })
+    const s2 = dispatch(s1, {
+      items: [],
+      type: 'INTERACTION_UPDATES_SUCCEEDED',
+    })
+    expect(s2).toBe(s1)
+  })
+})

@@ -12,6 +12,7 @@ import type { WrittenTableCollector } from '../types'
  */
 function createMockDb(returnRows: Record<string, unknown[][]> = {}) {
   const calls: string[] = []
+  let lastChange = 0
   return {
     calls,
     db: {
@@ -24,11 +25,17 @@ function createMockDb(returnRows: Record<string, unknown[][]> = {}) {
       ): unknown => {
         calls.push(sql)
         if (opts?.returnValue === 'resultRows') {
+          if (/^\s*SELECT\s+changes\s*\(\s*\)/i.test(sql)) {
+            const n = lastChange
+            lastChange = 0
+            return [[n]]
+          }
           for (const [pattern, rows] of Object.entries(returnRows)) {
             if (sql.includes(pattern)) return rows
           }
           return []
         }
+        if (/^\s*(INSERT|UPDATE|DELETE|REPLACE)\b/i.test(sql)) lastChange = 1
         return undefined
       },
     },
@@ -115,14 +122,33 @@ describe('syncPostMedia collector', () => {
   const importPostSync = () =>
     import('../postSync').then((m) => m.syncPostMedia)
 
-  it('should report post_media when called', async () => {
+  it('should report post_media when media rows change', async () => {
     const syncPostMedia = await importPostSync()
     const collector: WrittenTableCollector = new Set()
     const { db } = createMockDb({
       'SELECT id FROM media_types': [[1]],
     })
-    syncPostMedia(db, 1, [], collector)
+    syncPostMedia(
+      db,
+      1,
+      [
+        {
+          id: 'm1',
+          type: 'image',
+          url: 'https://example.com/m.png',
+        },
+      ] as Parameters<typeof syncPostMedia>[2],
+      collector,
+    )
     expect(collector.has('post_media')).toBe(true)
+  })
+
+  it('should not report post_media when stored rows are already identical', async () => {
+    const syncPostMedia = await importPostSync()
+    const collector: WrittenTableCollector = new Set()
+    const { db } = createMockDb()
+    syncPostMedia(db, 1, [], collector)
+    expect(collector.has('post_media')).toBe(false)
   })
 
   it('should not break when collector is undefined (backward compat)', async () => {
@@ -177,11 +203,23 @@ describe('upsertMentionsInternal collector', () => {
   const importPostSync = () =>
     import('../postSync').then((m) => m.upsertMentionsInternal)
 
-  it('should report post_mentions when called', async () => {
+  it('should report post_mentions when mentions change', async () => {
     const upsertMentionsInternal = await importPostSync()
     const collector: WrittenTableCollector = new Set()
     const { db } = createMockDb()
-    upsertMentionsInternal(db, 1, [], collector)
+    upsertMentionsInternal(
+      db,
+      1,
+      [
+        {
+          acct: 'bob@remote.example',
+          id: 'm1',
+          url: 'https://remote.example/@bob',
+          username: 'bob',
+        },
+      ],
+      collector,
+    )
     expect(collector.has('post_mentions')).toBe(true)
   })
 

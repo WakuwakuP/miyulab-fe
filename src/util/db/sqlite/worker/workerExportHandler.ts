@@ -8,8 +8,9 @@
 import { isDatabaseHealthy } from './workerRecovery'
 import { getDb, getSqlite3Module } from './workerState'
 
-export async function handleExportDatabase(): Promise<void> {
-  const db = getDb()
+export async function handleExportDatabase(
+  db: ReturnType<typeof getDb> = getDb(),
+): Promise<void> {
   const sqlite3Module = getSqlite3Module()
 
   if (!db || !sqlite3Module) {
@@ -30,7 +31,9 @@ export async function handleExportDatabase(): Promise<void> {
   db.exec('PRAGMA wal_checkpoint(PASSIVE);')
 
   // DB をシリアライズ
-  const bytes: Uint8Array = sqlite3Module.capi.sqlite3_js_db_export(db)
+  const bytes: Uint8Array = sqlite3Module.capi.sqlite3_js_db_export(
+    getDb() ?? db,
+  )
   // 新しい ArrayBuffer にコピー（TypeScript 型互換性対策）
   const copy = new Uint8Array(bytes)
 

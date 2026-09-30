@@ -28,6 +28,7 @@ import {
   SetSettingContext,
   SettingContext,
 } from 'util/provider/SettingProvider'
+import { DbDiagnosticsSection } from './DbDiagnosticsSection'
 import { TimelineManagement } from './TimelineManagement'
 
 const EmojiPicker = dynamic(() => import('emoji-picker-react'), { ssr: false })
@@ -425,6 +426,25 @@ export const SettingPanel = () => {
       />
       <ReactionEmojisSetting />
 
+      <SettingItem className="flex-col items-start gap-0">
+        <SettingCheckbox
+          checked={setting.backgroundPublicStreaming}
+          id="backgroundPublicStreaming"
+          label="Background streaming for unconfigured local/public feeds"
+          onChange={(e) =>
+            setSetting({
+              ...setting,
+              backgroundPublicStreaming: e.target.checked,
+            })
+          }
+        />
+        <p className="pl-4 text-xs text-gray-400">
+          When off, local/public streams connect only for configured timelines.
+          Timelines you have configured (including hidden ones) keep streaming.
+          Turn on to keep ingesting all local/public feeds in the background.
+        </p>
+      </SettingItem>
+
       <div className="mt-6 border-t border-gray-600 pt-4">
         <p className="mb-2 text-lg font-semibold text-gray-400">Developer</p>
         <SettingCheckbox
@@ -439,6 +459,7 @@ export const SettingPanel = () => {
           }
         />
         {setting.captureRawData && <CaptureDataSection />}
+        <DbDiagnosticsSection />
       </div>
     </div>
   )

@@ -11,6 +11,7 @@ import {
   useRef,
 } from 'react'
 import type { App } from 'types/types'
+import { dbDiagnosticRecorder } from 'util/db/dbDiagnostics'
 import { startPeriodicCleanup } from 'util/db/sqlite/cleanup'
 import { startPeriodicExport } from 'util/db/sqlite/dbExport'
 import {
@@ -252,6 +253,7 @@ async function handleStreamUpdate(
   const account = status.reblog?.account ?? status.account
   prependUserToUsersState(setUsersEvent, account)
 
+  dbDiagnosticRecorder.recordIngress('statusIngress', backendUrl, 'home', 1)
   await upsertStatus(status, backendUrl, 'home')
 }
 
@@ -271,6 +273,12 @@ async function handleStreamNotification(
   setUsersEvent: SetUsersFn,
 ): Promise<void> {
   captureHomeStreamEventIfEnabled(app, backendUrl, 'notification', notification)
+  dbDiagnosticRecorder.recordIngress(
+    'notificationIngress',
+    backendUrl,
+    'notification',
+    1,
+  )
   await addNotification(notification, backendUrl)
 
   const account = notification.account
@@ -307,7 +315,9 @@ function buildStreamHandlers(
   }
 
   function onDelete(id: string): void {
-    void handleStreamDelete(app, backendUrl, id)
+    void handleStreamDelete(app, backendUrl, id).catch((error) =>
+      console.error('handleStreamDelete failed:', error),
+    )
   }
 
   function onError(stream: WebSocketInterface) {
@@ -315,11 +325,18 @@ function buildStreamHandlers(
   }
 
   function onNotification(notification: Entity.Notification): void {
-    void handleStreamNotification(app, backendUrl, notification, setUsersEvent)
+    void handleStreamNotification(
+      app,
+      backendUrl,
+      notification,
+      setUsersEvent,
+    ).catch((error) => console.error('handleStreamNotification failed:', error))
   }
 
   function onStatusUpdate(status: Entity.Status): void {
-    void handleStreamStatusUpdate(app, backendUrl, status)
+    void handleStreamStatusUpdate(app, backendUrl, status).catch((error) =>
+      console.error('handleStreamStatusUpdate failed:', error),
+    )
   }
 
   function onUpdate(status: Entity.Status): void {
@@ -329,7 +346,7 @@ function buildStreamHandlers(
       status,
       setUsersEvent,
       setTagsEvent,
-    )
+    ).catch((error) => console.error('handleStreamUpdate failed:', error))
   }
 
   return {
@@ -401,12 +418,11 @@ async function updateStatusInteractionField(
 }
 
 function createStatusInteractionUpdater(field: StatusInteractionField) {
-  return async (
-    backendUrl: string,
-    statusId: string,
-    value: boolean,
-  ): Promise<void> =>
-    updateStatusInteractionField(backendUrl, statusId, field, value)
+  return (backendUrl: string, statusId: string, value: boolean): void => {
+    void updateStatusInteractionField(backendUrl, statusId, field, value).catch(
+      (error) => console.error(`Failed to update ${field}:`, error),
+    )
+  }
 }
 
 const setFavouritedAction = createStatusInteractionUpdater('favourited')

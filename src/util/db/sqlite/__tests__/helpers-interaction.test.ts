@@ -19,6 +19,9 @@ function createMockDb(): {
   const db: DbExecCompat = {
     exec: vi.fn((sql: string, opts?: Parameters<DbExecCompat['exec']>[1]) => {
       calls.push({ opts, sql })
+      if (opts?.returnValue === 'resultRows') {
+        return [[1]]
+      }
       return undefined
     }),
   }
@@ -32,7 +35,7 @@ describe('updateInteraction', () => {
 
     updateInteraction(db, 100, 1, 'favourite', true)
 
-    expect(calls).toHaveLength(1)
+    expect(calls).toHaveLength(2)
     expect(calls[0].sql).toContain('is_favourited')
     expect(calls[0].opts?.bind).toEqual([100, 1, 1, expect.any(Number)])
   })
@@ -42,7 +45,7 @@ describe('updateInteraction', () => {
 
     updateInteraction(db, 200, 2, 'reblog', true)
 
-    expect(calls).toHaveLength(1)
+    expect(calls).toHaveLength(2)
     expect(calls[0].sql).toContain('is_reblogged')
     expect(calls[0].opts?.bind).toEqual([200, 2, 1, expect.any(Number)])
   })
@@ -52,7 +55,7 @@ describe('updateInteraction', () => {
 
     updateInteraction(db, 300, 3, 'bookmark', false)
 
-    expect(calls).toHaveLength(1)
+    expect(calls).toHaveLength(2)
     expect(calls[0].sql).toContain('is_bookmarked')
     expect(calls[0].opts?.bind).toEqual([300, 3, 0, expect.any(Number)])
   })
@@ -62,7 +65,7 @@ describe('updateInteraction', () => {
 
     updateInteraction(db, 400, 4, 'mute', true)
 
-    expect(calls).toHaveLength(1)
+    expect(calls).toHaveLength(2)
     expect(calls[0].sql).toContain('is_muted')
     expect(calls[0].opts?.bind).toEqual([400, 4, 1, expect.any(Number)])
   })
@@ -72,7 +75,7 @@ describe('updateInteraction', () => {
 
     updateInteraction(db, 500, 5, 'pin', false)
 
-    expect(calls).toHaveLength(1)
+    expect(calls).toHaveLength(2)
     expect(calls[0].sql).toContain('is_pinned')
     expect(calls[0].opts?.bind).toEqual([500, 5, 0, expect.any(Number)])
   })
@@ -83,16 +86,16 @@ describe('updateInteraction', () => {
     updateInteraction(db, 100, 1, 'favourite', true)
     updateInteraction(db, 100, 1, 'favourite', false)
 
-    expect(calls).toHaveLength(2)
+    expect(calls).toHaveLength(4)
 
     // 両方とも UPSERT SQL（ON CONFLICT … DO UPDATE）が発行される
     expect(calls[0].sql).toContain('ON CONFLICT')
     expect(calls[0].sql).toContain('DO UPDATE SET')
     expect(calls[0].opts?.bind).toEqual([100, 1, 1, expect.any(Number)])
 
-    expect(calls[1].sql).toContain('ON CONFLICT')
-    expect(calls[1].sql).toContain('DO UPDATE SET')
-    expect(calls[1].opts?.bind).toEqual([100, 1, 0, expect.any(Number)])
+    expect(calls[2].sql).toContain('ON CONFLICT')
+    expect(calls[2].sql).toContain('DO UPDATE SET')
+    expect(calls[2].opts?.bind).toEqual([100, 1, 0, expect.any(Number)])
   })
 
   it('preserveRecentLocalTrueMs 指定時は記録済み同一 action の stale false を書き込まない', () => {
@@ -105,7 +108,7 @@ describe('updateInteraction', () => {
       preserveRecentLocalTrueMs: 60_000,
     })
 
-    expect(calls).toHaveLength(1)
+    expect(calls).toHaveLength(2)
     expect(calls[0].opts?.bind).toEqual([100, 1, 1, expect.any(Number)])
   })
 
@@ -119,8 +122,8 @@ describe('updateInteraction', () => {
       preserveRecentLocalTrueMs: 60_000,
     })
 
-    expect(calls).toHaveLength(2)
-    expect(calls[1].opts?.bind).toEqual([101, 1, 0, expect.any(Number)])
+    expect(calls).toHaveLength(4)
+    expect(calls[2].opts?.bind).toEqual([101, 1, 0, expect.any(Number)])
   })
 
   it('不明なアクション名の場合何もしない', () => {
@@ -139,7 +142,7 @@ describe('toggleReaction', () => {
 
     toggleReaction(db, 100, 1, '👍', 'https://example.com/thumbsup.png')
 
-    expect(calls).toHaveLength(1)
+    expect(calls).toHaveLength(2)
     expect(calls[0].sql).toContain('my_reaction_name')
     expect(calls[0].sql).toContain('my_reaction_url')
     expect(calls[0].sql).toContain('ON CONFLICT')
@@ -158,7 +161,7 @@ describe('toggleReaction', () => {
 
     toggleReaction(db, 100, 1, null, null)
 
-    expect(calls).toHaveLength(1)
+    expect(calls).toHaveLength(2)
     expect(calls[0].sql).toContain('my_reaction_name')
     expect(calls[0].sql).toContain('my_reaction_url')
     expect(calls[0].opts?.bind).toEqual([

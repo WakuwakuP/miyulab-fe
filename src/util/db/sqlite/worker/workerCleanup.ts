@@ -70,6 +70,12 @@ type DbExec = {
  */
 const DEFAULT_BATCH_LIMIT = 2_000
 
+export type EmergencyTargetCounts = {
+  timeline_entries: number
+  notifications: number
+  posts: number
+}
+
 export type EnforceMaxLengthOptions = {
   /** 'periodic' (default) または 'emergency' */
   mode?: 'periodic' | 'emergency'
@@ -77,6 +83,7 @@ export type EnforceMaxLengthOptions = {
   targetRatio?: number
   /** 1 バッチあたりの削除上限。default 2,000 */
   batchLimit?: number
+  targetCounts?: EmergencyTargetCounts
 }
 
 /**
@@ -110,6 +117,7 @@ export type EnforceMaxLengthHandlerResult = {
   }
   /** フェーズ別経過時間 (ms)。デバッグ・タイムアウト切り分け用 */
   phaseTimings: CleanupPhaseTimings
+  targetCounts?: EmergencyTargetCounts
 }
 
 function readChanges(db: DbExec): number {
@@ -133,9 +141,7 @@ function readChanges(db: DbExec): number {
  */
 function processTimelineBatch(
   db: DbExec,
-  maxTimeline: number,
-  mode: 'periodic' | 'emergency',
-  targetRatio: number,
+  target: number,
   budget: number,
 ): {
   deleted: number
@@ -150,10 +156,6 @@ function processTimelineBatch(
   }) as number[][]
   const cnt = cntRows[0]?.[0] ?? 0
 
-  // emergency モード: cnt * targetRatio を残す
-  // periodic モード: maxTimeline を残す
-  const target =
-    mode === 'emergency' ? Math.floor(cnt * targetRatio) : maxTimeline
   const excess = cnt - target
 
   if (excess <= 0 || budget <= 0) {
@@ -194,9 +196,7 @@ function processTimelineBatch(
  */
 function processNotificationsBatch(
   db: DbExec,
-  maxNotifications: number,
-  mode: 'periodic' | 'emergency',
-  targetRatio: number,
+  target: number,
   budget: number,
 ): {
   deleted: number
@@ -211,8 +211,6 @@ function processNotificationsBatch(
   }) as number[][]
   const cnt = cntRows[0]?.[0] ?? 0
 
-  const target =
-    mode === 'emergency' ? Math.floor(cnt * targetRatio) : maxNotifications
   const excess = cnt - target
 
   if (excess <= 0 || budget <= 0) {
@@ -259,20 +257,19 @@ function processNotificationsBatch(
  * SQLITE_CONSTRAINT_FOREIGNKEY が発生する。先に子 (reblog post 側) が
  * 孤立化して削除されれば、次バッチで親も孤立化して削除可能になる。
  *
- * @param maxPosts 残したい posts 総件数の上限
- * @param mode 'periodic' なら maxPosts まで、'emergency' なら cnt * targetRatio まで
- * @param targetRatio emergency モードで残す割合
+ * @param postsTarget 残したい posts 総件数の上限
+ *   （periodic モードでは maxPosts、emergency モードでは呼び出し元で固定した cnt * targetRatio）
  * @param budget 1 バッチで削除可能な上限
  * @param forceCleanup true ならば総件数が上限以下でも 1 バッチだけ孤立 posts を削除する
  *   (timeline_entries / notifications で削除が発生した直後の追従用)
+ * @param isEmergency true ならば固定ターゲットを下回るまでの削除に限定する
  */
 function processPostsBatch(
   db: DbExec,
-  maxPosts: number,
-  mode: 'periodic' | 'emergency',
-  targetRatio: number,
+  postsTarget: number,
   budget: number,
   forceCleanup: boolean,
+  isEmergency: boolean,
 ): {
   deleted: number
   issuedDelete: boolean
@@ -298,10 +295,7 @@ function processPostsBatch(
   const cnt = cntRows[0]?.[0] ?? 0
   const countElapsedMs = nowMs() - countStartedAt
 
-  // emergency モード: cnt * targetRatio を残す
-  // periodic モード: maxPosts を残す
-  const target = mode === 'emergency' ? Math.floor(cnt * targetRatio) : maxPosts
-  const excess = cnt - target
+  const excess = cnt - postsTarget
 
   // 上限以内かつ forceCleanup でなければ何もしない
   if (excess <= 0 && !forceCleanup) {
@@ -317,7 +311,11 @@ function processPostsBatch(
   // 削除する件数の上限。
   //   - 上限超過分があるならその分まで (budget で頭打ち)
   //   - forceCleanup のみ (excess <= 0) のときは追従掃除として budget ぶんまで許容
-  const desiredLimit = excess > 0 ? Math.min(excess, budget) : budget
+  const desiredLimit = isEmergency
+    ? Math.min(Math.max(0, excess), budget)
+    : excess > 0
+      ? Math.min(excess, budget)
+      : budget
   if (desiredLimit <= 0) {
     return {
       countElapsedMs,
@@ -402,10 +400,8 @@ type EnforceMaxLengthPhase1Result = {
 
 function runEnforceMaxLengthPhase1(
   db: DbExec,
-  maxTimeline: number,
-  maxNotifications: number,
-  mode: 'periodic' | 'emergency',
-  targetRatio: number,
+  timelineTarget: number,
+  notificationsTarget: number,
   batchLimit: number,
 ): EnforceMaxLengthPhase1Result {
   const changedTables: TableName[] = []
@@ -417,13 +413,7 @@ function runEnforceMaxLengthPhase1(
   const phase1StartedAt = nowMs()
   db.exec('BEGIN;')
   try {
-    const tlResult = processTimelineBatch(
-      db,
-      maxTimeline,
-      mode,
-      targetRatio,
-      batchLimit,
-    )
+    const tlResult = processTimelineBatch(db, timelineTarget, batchLimit)
     deletedCounts.timeline_entries = tlResult.deleted
     phaseTimings.timeline = tlResult.elapsedMs
     if (tlResult.issuedDelete) {
@@ -440,9 +430,7 @@ function runEnforceMaxLengthPhase1(
     if (notifBudget > 0) {
       const notifResult = processNotificationsBatch(
         db,
-        maxNotifications,
-        mode,
-        targetRatio,
+        notificationsTarget,
         notifBudget,
       )
       deletedCounts.notifications = notifResult.deleted
@@ -489,12 +477,11 @@ type EnforceMaxLengthPhase2Result = {
 
 function runEnforceMaxLengthPhase2(
   db: DbExec,
-  maxPosts: number,
-  mode: 'periodic' | 'emergency',
-  targetRatio: number,
+  postsTarget: number,
   batchLimit: number,
   needPostsFollowup: boolean,
   changedTables: TableName[],
+  isEmergency: boolean,
 ): EnforceMaxLengthPhase2Result {
   let hasMore = false
   let deletedPosts = 0
@@ -505,11 +492,10 @@ function runEnforceMaxLengthPhase2(
   try {
     const postsResult = processPostsBatch(
       db,
-      maxPosts,
-      mode,
-      targetRatio,
+      postsTarget,
       batchLimit,
       needPostsFollowup,
+      isEmergency,
     )
     deletedPosts = postsResult.deleted
     phaseTimings.postsCount = postsResult.countElapsedMs
@@ -544,6 +530,41 @@ function runEnforceMaxLengthPhase2(
   }
 }
 
+function countRows(db: DbExec, table: string): number {
+  const rows = db.exec(`SELECT COUNT(*) FROM ${table};`, {
+    returnValue: 'resultRows',
+  }) as number[][]
+  return rows[0]?.[0] ?? 0
+}
+
+function isValidEmergencyTargetCounts(
+  value: unknown,
+): value is EmergencyTargetCounts {
+  if (typeof value !== 'object' || value === null) return false
+  const t = value as Record<string, unknown>
+  return (
+    Number.isSafeInteger(t.timeline_entries) &&
+    (t.timeline_entries as number) >= 0 &&
+    Number.isSafeInteger(t.notifications) &&
+    (t.notifications as number) >= 0 &&
+    Number.isSafeInteger(t.posts) &&
+    (t.posts as number) >= 0
+  )
+}
+
+function deriveEmergencyTargetCounts(
+  db: DbExec,
+  targetRatio: number,
+): EmergencyTargetCounts {
+  return {
+    notifications: Math.floor(countRows(db, 'notifications') * targetRatio),
+    posts: Math.floor(countRows(db, 'posts') * targetRatio),
+    timeline_entries: Math.floor(
+      countRows(db, 'timeline_entries') * targetRatio,
+    ),
+  }
+}
+
 /**
  * MAX_LENGTH を超えるデータを 1 バッチ削除する。
  *
@@ -561,17 +582,46 @@ export function handleEnforceMaxLength(
   options: EnforceMaxLengthOptions = {},
 ): EnforceMaxLengthHandlerResult {
   const mode = options.mode ?? 'periodic'
-  const targetRatio = options.targetRatio ?? 0.5
-  const batchLimit = options.batchLimit ?? DEFAULT_BATCH_LIMIT
+  const ratio = options.targetRatio
+  const targetRatio =
+    typeof ratio === 'number' &&
+    Number.isFinite(ratio) &&
+    ratio > 0 &&
+    ratio <= 1
+      ? ratio
+      : 0.5
+  const limit = options.batchLimit
+  const batchLimit =
+    Number.isSafeInteger(limit) && (limit as number) > 0
+      ? (limit as number)
+      : DEFAULT_BATCH_LIMIT
+
+  if (
+    options.targetCounts !== undefined &&
+    !isValidEmergencyTargetCounts(options.targetCounts)
+  ) {
+    throw new Error('enforceMaxLength: invalid targetCounts')
+  }
 
   const totalStartedAt = nowMs()
 
+  const emergencyTargets =
+    mode === 'emergency'
+      ? (options.targetCounts ?? deriveEmergencyTargetCounts(db, targetRatio))
+      : undefined
+  // emergency モード: cnt * targetRatio を残す
+  // periodic モード: maxTimeline を残す
+  const timelineTarget = emergencyTargets?.timeline_entries ?? maxTimeline
+  const notificationsTarget =
+    emergencyTargets?.notifications ?? maxNotifications
+  // emergency モード: cnt * targetRatio を残す
+  // periodic モード: maxPosts を残す
+  const postsTarget = emergencyTargets?.posts ?? maxPosts
+
   const phase1 = runEnforceMaxLengthPhase1(
     db,
-    maxTimeline,
-    maxNotifications,
-    mode,
-    targetRatio,
+    timelineTarget,
+    notificationsTarget,
     batchLimit,
   )
 
@@ -580,12 +630,11 @@ export function handleEnforceMaxLength(
 
   const phase2 = runEnforceMaxLengthPhase2(
     db,
-    maxPosts,
-    mode,
-    targetRatio,
+    postsTarget,
     batchLimit,
     phase1.needPostsFollowup,
     changedTables,
+    mode === 'emergency',
   )
 
   if (phase2.hasMore) {
@@ -606,5 +655,6 @@ export function handleEnforceMaxLength(
     },
     hasMore,
     phaseTimings,
+    targetCounts: emergencyTargets,
   }
 }

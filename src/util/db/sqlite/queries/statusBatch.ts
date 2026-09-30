@@ -361,6 +361,69 @@ export function replacePlaceholders(sql: string, count: number): string {
   return sql.replace('__PH__', ph)
 }
 
+function stripSqlLiteralsAndComments(sql: string): string {
+  let out = ''
+  let i = 0
+  const n = sql.length
+  while (i < n) {
+    const c = sql[i]
+    if (c === "'" || c === '"' || c === '`') {
+      const quote = c
+      i++
+      while (i < n) {
+        if (sql[i] === quote) {
+          if (quote !== '`' && sql[i + 1] === quote) {
+            i += 2
+            continue
+          }
+          i++
+          break
+        }
+        i++
+      }
+      out += ' '
+      continue
+    }
+    if (c === '[') {
+      i++
+      while (i < n && sql[i] !== ']') i++
+      i++
+      out += ' '
+      continue
+    }
+    if (c === '-' && sql[i + 1] === '-') {
+      while (i < n && sql[i] !== '\n') i++
+      continue
+    }
+    if (c === '/' && sql[i + 1] === '*') {
+      i += 2
+      while (i < n && !(sql[i] === '*' && sql[i + 1] === '/')) i++
+      i += 2
+      continue
+    }
+    out += c
+    i++
+  }
+  return out
+}
+
+export function batchBindForIds(
+  substitutedSql: string,
+  postIds: number[],
+  leadingValue: number | null = null,
+): (number | null)[] {
+  const stripped = stripSqlLiteralsAndComments(substitutedSql)
+  const placeholderCount = (stripped.match(/\?/g) ?? []).length
+  const extra = placeholderCount - postIds.length
+  if (extra === 0) return [...postIds]
+  if (extra === 1 && /\bpv\.local_account_id\s*=\s*\?/.test(stripped)) {
+    return [leadingValue, ...postIds]
+  }
+  throw new Error(
+    `batchBindForIds: unexpected placeholder count ${placeholderCount} for ${postIds.length} post ids`,
+  )
+}
+
 /**
  * allPostIds に対して子テーブルのバッチクエリをまとめて実行し、
  * post_id をキーとした Map 群を返す。

@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { setQueuePriority } from '../../dbQueue'
-import { cancelStaleRequests, sendRequest } from './queueManager'
 import {
+  cancelStaleRequests,
+  resetQueueFairnessState,
+  sendRequest,
+} from './queueManager'
+import {
+  durationForId,
   getActiveRequest,
   otherQueue,
   pending,
@@ -31,17 +36,18 @@ function resetWorkerClientState(): void {
   timelineDedup.clear()
   setActiveRequest(false)
   setConsecutiveOther(0)
+  resetQueueFairnessState()
   setWorker(null)
   setQueuePriority('auto')
 }
 
-function resolvePending(id: number, value: unknown): void {
+function resolvePending(id: number, value: unknown, durationMs?: number): void {
   const request = pending.get(id)
   if (!request) {
     throw new Error(`No pending request for id=${id}`)
   }
   pending.delete(id)
-  request.resolve(value)
+  request.resolve(value, durationMs)
 }
 
 function rejectPending(id: number, reason: Error): void {
@@ -385,4 +391,165 @@ describe('workerClient queueManager', () => {
       await expect(following).resolves.toBe('continued')
     },
   )
+
+  it('captureDuration=true の呼び出し元は { result, durationMs } で解決する', async () => {
+    const timed = sendRequest(
+      { id: 1, type: 'ready' },
+      'other',
+      undefined,
+      true,
+    )
+    const normal = sendRequest({ id: 2, type: 'ready' }, 'other')
+
+    resolvePending(1, 'row', 8.25)
+    resolvePending(2, 'raw')
+
+    await expect(timed).resolves.toEqual({ durationMs: 8.25, result: 'row' })
+    await expect(normal).resolves.toBe('raw')
+  })
+
+  it('dedup した呼び出し元は同じ物理 duration を受け取りつつ形は個別になる', async () => {
+    const normal = sendRequest(
+      { id: 1, sql: 'SELECT shared', type: 'exec' },
+      'timeline',
+    )
+    const timed = sendRequest(
+      { id: 2, sql: 'SELECT shared', type: 'exec' },
+      'timeline',
+      undefined,
+      true,
+    )
+
+    expect(worker.postMessage).toHaveBeenCalledOnce()
+    const rows = [[1]]
+    resolvePending(1, rows, 15)
+
+    await expect(normal).resolves.toBe(rows)
+    await expect(timed).resolves.toEqual({ durationMs: 15, result: rows })
+    expect(timelineDedup).toHaveLength(0)
+  })
+
+  it('通常レスポンスは durationForId に何も残さない (200 件連続)', async () => {
+    const requests = Array.from({ length: 200 }, (_, i) =>
+      sendRequest({ id: i + 1, type: 'ready' }, 'other'),
+    )
+    for (let i = 1; i <= 200; i++) {
+      resolvePending(i, i, 12.5)
+    }
+
+    await Promise.all(requests)
+    expect(durationForId.size).toBe(0)
+  })
+
+  it('sessionTag キャンセルで duration なしの値が来ても timed wrapper は durationMs:0 で解決する', async () => {
+    const blocker = sendRequest({ id: 1, type: 'ready' })
+    const timed = sendRequest(
+      { id: 2, sql: 'SELECT stale', type: 'exec' },
+      'timeline',
+      'stale-tab',
+      true,
+    )
+
+    expect(cancelStaleRequests('stale-tab', [])).toBe(1)
+    await expect(timed).resolves.toEqual({ durationMs: 0, result: [] })
+
+    resolvePending(1, undefined)
+    await blocker
+  })
+
+  it('timeline キュー上限で追い出された timed 呼び出し元は { result: undefined, durationMs: 0 } で解決する', async () => {
+    const blocker = sendRequest({ id: 1, type: 'ready' })
+    const requests = Array.from({ length: 21 }, (_, index) =>
+      sendRequest(
+        { id: 100 + index, sql: `SELECT ${index}`, type: 'exec' },
+        'timeline',
+        undefined,
+        index === 0,
+      ),
+    )
+
+    await expect(requests[0]).resolves.toEqual({
+      durationMs: 0,
+      result: undefined,
+    })
+    expect(timelineQueue).toHaveLength(20)
+
+    resolvePending(1, undefined)
+    for (let id = 101; id <= 120; id++) {
+      resolvePending(id, id)
+    }
+    await blocker
+    await Promise.all(requests.slice(1))
+  })
+
+  it('auto モードで other の連続サービスが 50ms を超えたら timeline に譲る', async () => {
+    vi.useFakeTimers()
+    setQueuePriority('auto')
+    const first = sendRequest({ id: 1, type: 'ready' }, 'other')
+    const second = sendRequest({ id: 2, type: 'ready' }, 'other')
+    const timeline = sendRequest(
+      { id: 3, sql: 'SELECT tl', type: 'exec' },
+      'timeline',
+    )
+
+    await vi.advanceTimersByTimeAsync(60)
+    resolvePending(1, undefined)
+    expect(
+      worker.postMessage.mock.calls.map(([message]) => message.id),
+    ).toEqual([1, 3])
+
+    resolvePending(3, undefined)
+    expect(
+      worker.postMessage.mock.calls.map(([message]) => message.id),
+    ).toEqual([1, 3, 2])
+    resolvePending(2, undefined)
+
+    await Promise.all([first, second, timeline])
+  })
+
+  it('50ms 未満の連続 other サービスは回数上限まで優先される', async () => {
+    vi.useFakeTimers()
+    setQueuePriority('auto')
+    const first = sendRequest({ id: 1, type: 'ready' }, 'other')
+    const second = sendRequest({ id: 2, type: 'ready' }, 'other')
+    const timeline = sendRequest(
+      { id: 3, sql: 'SELECT tl', type: 'exec' },
+      'timeline',
+    )
+
+    await vi.advanceTimersByTimeAsync(30)
+    resolvePending(1, undefined)
+    expect(
+      worker.postMessage.mock.calls.map(([message]) => message.id),
+    ).toEqual([1, 2])
+
+    resolvePending(2, undefined)
+    expect(
+      worker.postMessage.mock.calls.map(([message]) => message.id),
+    ).toEqual([1, 2, 3])
+    resolvePending(3, undefined)
+
+    await Promise.all([first, second, timeline])
+  })
+
+  it('auto 以外のプリセットでは経過時間ではなく回数上限だけで譲る', async () => {
+    vi.useFakeTimers()
+    setQueuePriority('balanced')
+    const first = sendRequest({ id: 1, type: 'ready' }, 'other')
+    const second = sendRequest({ id: 2, type: 'ready' }, 'other')
+    const timeline = sendRequest(
+      { id: 3, sql: 'SELECT tl', type: 'exec' },
+      'timeline',
+    )
+
+    await vi.advanceTimersByTimeAsync(120)
+    resolvePending(1, undefined)
+    expect(
+      worker.postMessage.mock.calls.map(([message]) => message.id),
+    ).toEqual([1, 2])
+
+    resolvePending(2, undefined)
+    resolvePending(3, undefined)
+    await Promise.all([first, second, timeline])
+  })
 })

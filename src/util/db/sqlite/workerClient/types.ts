@@ -5,7 +5,7 @@
 import type { QueueKind } from '../../dbQueue'
 
 export type PendingRequest = {
-  resolve: (value: unknown) => void
+  resolve: (value: unknown, durationMs?: number) => void
   reject: (reason: Error) => void
   kind: QueueKind
   timer: ReturnType<typeof setTimeout>
@@ -13,7 +13,7 @@ export type PendingRequest = {
 
 export type QueuedRequest = {
   message: { type: string; id: number; [key: string]: unknown }
-  resolve: (value: unknown) => void
+  resolve: (value: unknown, durationMs?: number) => void
   reject: (reason: Error) => void
   kind: QueueKind
   sessionTag?: string

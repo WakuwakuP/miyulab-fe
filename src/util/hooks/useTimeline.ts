@@ -13,6 +13,7 @@ import type {
   TimelineType,
 } from 'util/db/sqlite/queries/statusMapperTypes'
 import {
+  buildRepFilter,
   buildSpbFilter,
   buildStatusBaseJoins,
   STATUS_SELECT,
@@ -62,7 +63,8 @@ export function useTimeline(timelineType: TimelineType): StatusAddAppIndex[] {
 
       const placeholders = backendUrls.map(() => '?').join(',')
       const spbFilter = buildSpbFilter(backendUrls)
-      const statusBaseJoins = buildStatusBaseJoins(spbFilter)
+      const repFilter = buildRepFilter(backendUrls)
+      const statusBaseJoins = buildStatusBaseJoins(spbFilter, repFilter)
       const sql = `
         SELECT ${STATUS_SELECT}
         FROM posts p
@@ -151,7 +153,11 @@ export function useTagTimeline(
 
       const placeholders = backendUrls.map(() => '?').join(',')
       const spbFilterTag = buildSpbFilter(backendUrls)
-      const statusBaseJoinsTag = buildStatusBaseJoins(spbFilterTag)
+      const repFilterTag = buildRepFilter(backendUrls)
+      const statusBaseJoinsTag = buildStatusBaseJoins(
+        spbFilterTag,
+        repFilterTag,
+      )
       const sql = `
         SELECT ${STATUS_SELECT}
         FROM posts p

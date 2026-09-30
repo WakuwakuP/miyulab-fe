@@ -90,6 +90,9 @@ vi.mock('util/db/sqlite/worker/workerNotificationStore', () => ({
 }))
 
 vi.mock('util/db/sqlite/worker/workerCleanup', () => ({
+  DEFAULT_MAX_NOTIFICATIONS: 10000,
+  DEFAULT_MAX_POSTS: 100000,
+  DEFAULT_MAX_TIMELINE_ENTRIES: 100000,
   handleEnforceMaxLength: mocks.handleEnforceMaxLength,
 }))
 
@@ -98,16 +101,27 @@ vi.mock('util/db/query-ir/executor/flatFetchExecutor', () => ({
 }))
 
 vi.mock('util/db/query-ir/executor/graphExecutor', () => ({
+  bumpAllGraphCacheVersions: vi.fn(),
+  bumpGraphCacheVersion: vi.fn(),
+  captureGraphCacheVersions: () => ({}),
   executeGraphPlan: mocks.executeGraphPlan,
 }))
 
 vi.mock('util/db/sqlite/queries/executionEngine', () => ({
   executeQueryPlan: mocks.executeQueryPlan,
+  isReadOnlySql: (sql: string) => {
+    const head = sql.trimStart().toUpperCase()
+    return head.startsWith('SELECT') || head.startsWith('EXPLAIN')
+  },
 }))
 
 const rawDb = {
   exec: mocks.rawExec,
 }
+
+const measuredDb = expect.objectContaining({
+  exec: expect.any(Function),
+})
 
 const notify = vi.fn<(table: TableName, hint?: object) => void>()
 
@@ -303,16 +317,18 @@ describe('main-thread SQL API', () => {
     const handle = await createFallbackHandle()
     mocks.rawExec.mockReset()
     mocks.logSlowQueryExplain.mockReset()
-    const now = vi
-      .fn()
-      .mockReturnValueOnce(10)
-      .mockReturnValueOnce(14)
-      .mockReturnValueOnce(20)
-      .mockReturnValueOnce(27)
-      .mockReturnValueOnce(30)
-      .mockReturnValueOnce(39)
-      .mockReturnValueOnce(50)
-      .mockReturnValueOnce(61)
+    const now = vi.fn()
+    for (const [start, end] of [
+      [10, 14],
+      [20, 27],
+      [30, 39],
+      [50, 61],
+    ] as const) {
+      for (const value of [0, 0, 0, start, 0, 0, end, 0, 0]) {
+        now.mockReturnValueOnce(value)
+      }
+    }
+    now.mockReturnValue(0)
     vi.stubGlobal('performance', { now })
     mocks.rawExec
       .mockReturnValueOnce([[1, 'row']])
@@ -362,10 +378,10 @@ describe('main-thread SQL API', () => {
       ['DELETE rows', { bind: [3] }],
     ])
     expect(mocks.logSlowQueryExplain.mock.calls).toEqual([
-      [rawDb, 'SELECT rows', [1], 4],
-      [rawDb, 'UPDATE rows', undefined, 7],
-      [rawDb, 'SELECT timed', [2], 9],
-      [rawDb, 'DELETE rows', [3], 11],
+      [measuredDb, 'SELECT rows', [1], 4],
+      [measuredDb, 'UPDATE rows', undefined, 7],
+      [measuredDb, 'SELECT timed', [2], 9],
+      [measuredDb, 'DELETE rows', [3], 11],
     ])
   })
 
@@ -478,15 +494,89 @@ describe('main-thread SQL API', () => {
       queryResult,
     )
 
-    expect(mocks.executeFlatFetch).toHaveBeenCalledWith(rawDb, flatRequest)
-    expect(mocks.executeQueryPlan).toHaveBeenCalledWith(rawDb, queryPlan)
+    expect(mocks.executeFlatFetch).toHaveBeenCalledWith(measuredDb, flatRequest)
+    expect(mocks.executeQueryPlan).toHaveBeenCalledWith(measuredDb, queryPlan)
     expect(mocks.executeGraphPlan).toHaveBeenCalledWith(
-      rawDb,
+      measuredDb,
       graphPlan,
       graphOptions,
       expect.any(Function),
     )
     expect(mocks.executeGraphPlan.mock.calls[0][3]()).toEqual({})
+  })
+
+  it('raw write と並行する executeGraphPlan は無効化済みのバージョンを観測する', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const handle = await createFallbackHandle()
+    const { bumpAllGraphCacheVersions } = await import(
+      'util/db/query-ir/executor/graphExecutor'
+    )
+    const bumpAll = vi.mocked(bumpAllGraphCacheVersions)
+    bumpAll.mockClear()
+    mocks.rawExec.mockReset()
+
+    let bumpsAtRead = -1
+    let writeVisibleAtRead = false
+    mocks.executeGraphPlan.mockImplementation(() => {
+      bumpsAtRead = bumpAll.mock.calls.length
+      writeVisibleAtRead = mocks.rawExec.mock.calls.some(
+        (call) => call[0] === 'UPDATE posts SET text = ?',
+      )
+      return { items: [] }
+    })
+
+    const write = handle.execAsync('UPDATE posts SET text = ?', {
+      bind: ['fresh'],
+    })
+    const read = handle.executeGraphPlan({ nodes: [] } as never, {} as never)
+    await Promise.all([write, read])
+
+    expect(bumpAll).toHaveBeenCalledOnce()
+    expect(bumpsAtRead).toBe(1)
+    expect(writeVisibleAtRead).toBe(true)
+  })
+
+  it('計測プロキシ経由の呼び出しを診断レコーダへ記録し結果をそのまま返す', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const handle = await createFallbackHandle()
+    mocks.rawExec.mockReset()
+    mocks.rawExec.mockImplementation((sql) =>
+      sql.startsWith('SELECT') ? [[1, 'row']] : undefined,
+    )
+
+    await expect(
+      handle.execAsync('SELECT one', { returnValue: 'resultRows' }),
+    ).resolves.toEqual([[1, 'row']])
+    await expect(
+      handle.execBatch([{ sql: 'UPDATE rows' }], {
+        rollbackOnError: false,
+      }),
+    ).resolves.toEqual({ 0: undefined })
+
+    const { dbDiagnosticRecorder } = await import('util/db/dbDiagnostics')
+    const window = dbDiagnosticRecorder.capture()
+    expect(window).toMatchObject({
+      execution: 'main-thread',
+      storage: 'memory',
+    })
+    const exec = window?.operations.find((o) => o.requestType === 'exec')
+    const batch = window?.operations.find((o) => o.requestType === 'execBatch')
+    expect(exec).toMatchObject({
+      enqueued: 1,
+      kind: 'other',
+      resultRows: 1,
+      sqlCalls: 1,
+      sqlVerb: 'SELECT',
+      started: 1,
+      succeeded: 1,
+      workerMeasured: 1,
+    })
+    expect(batch).toMatchObject({
+      enqueued: 1,
+      sqlCalls: 1,
+      sqlVerb: 'OTHER',
+      succeeded: 1,
+    })
   })
 })
 
@@ -496,7 +586,11 @@ describe('main-thread timeline fetch', () => {
     const handle = await createFallbackHandle()
     mocks.rawExec.mockReset()
     mocks.rawExec.mockReturnValue([])
-    const now = vi.fn().mockReturnValueOnce(100).mockReturnValueOnce(106)
+    const now = vi.fn()
+    for (const value of [0, 0, 0, 100, 0, 0, 106, 0]) {
+      now.mockReturnValueOnce(value)
+    }
+    now.mockReturnValue(0)
     vi.stubGlobal('performance', { now })
 
     const result = await handle.fetchTimeline(timelineRequest)
@@ -538,7 +632,11 @@ describe('main-thread timeline fetch', () => {
       }
       return [[sql]]
     })
-    const now = vi.fn().mockReturnValueOnce(200).mockReturnValueOnce(215)
+    const now = vi.fn()
+    for (const value of [0, 0, 0, 200, ...Array<number>(20).fill(0), 215, 0]) {
+      now.mockReturnValueOnce(value)
+    }
+    now.mockReturnValue(0)
     vi.stubGlobal('performance', { now })
 
     const result = await handle.fetchTimeline({
@@ -601,7 +699,7 @@ describe('main-thread command API', () => {
           type: 'upsertStatus',
         },
         expectedArgs: [
-          rawDb,
+          measuredDb,
           '{"id":"1"}',
           'https://example.test',
           'tag',
@@ -622,7 +720,7 @@ describe('main-thread command API', () => {
           type: 'bulkUpsertStatuses',
         },
         expectedArgs: [
-          rawDb,
+          measuredDb,
           ['{"id":"1"}'],
           'https://example.test',
           'home',
@@ -641,7 +739,7 @@ describe('main-thread command API', () => {
           statusJson: '{"id":"2"}',
           type: 'updateStatus',
         },
-        expectedArgs: [rawDb, '{"id":"2"}', 'https://example.test'],
+        expectedArgs: [measuredDb, '{"id":"2"}', 'https://example.test'],
         handler: mocks.handleUpdateStatus,
         hint: { backendUrl: 'https://example.test' },
       },
@@ -651,7 +749,7 @@ describe('main-thread command API', () => {
           notificationJson: '{"id":"n1"}',
           type: 'addNotification',
         },
-        expectedArgs: [rawDb, '{"id":"n1"}', 'https://example.test'],
+        expectedArgs: [measuredDb, '{"id":"n1"}', 'https://example.test'],
         handler: mocks.handleAddNotification,
         hint: { backendUrl: 'https://example.test' },
       },
@@ -661,7 +759,7 @@ describe('main-thread command API', () => {
           notificationsJson: ['{"id":"n2"}'],
           type: 'bulkAddNotifications',
         },
-        expectedArgs: [rawDb, ['{"id":"n2"}'], 'https://example.test'],
+        expectedArgs: [measuredDb, ['{"id":"n2"}'], 'https://example.test'],
         handler: mocks.handleBulkAddNotifications,
         hint: { backendUrl: 'https://example.test' },
       },
@@ -673,7 +771,13 @@ describe('main-thread command API', () => {
           type: 'updateNotificationStatusAction',
           value: true,
         },
-        expectedArgs: [rawDb, 'https://example.test', '2', 'favourited', true],
+        expectedArgs: [
+          measuredDb,
+          'https://example.test',
+          '2',
+          'favourited',
+          true,
+        ],
         handler: mocks.handleUpdateNotificationStatusAction,
         hint: { backendUrl: 'https://example.test' },
       },
@@ -683,7 +787,7 @@ describe('main-thread command API', () => {
           backendUrl: 'https://example.test',
           type: 'ensureLocalAccount',
         },
-        expectedArgs: [rawDb, 'https://example.test', '{"id":"me"}'],
+        expectedArgs: [measuredDb, 'https://example.test', '{"id":"me"}'],
         handler: mocks.handleEnsureLocalAccount,
         hint: undefined,
       },
@@ -693,7 +797,7 @@ describe('main-thread command API', () => {
           emojisJson: '[]',
           type: 'bulkUpsertCustomEmojis',
         },
-        expectedArgs: [rawDb, 'https://example.test', '[]'],
+        expectedArgs: [measuredDb, 'https://example.test', '[]'],
         handler: mocks.handleBulkUpsertCustomEmojis,
         hint: undefined,
       },
@@ -705,7 +809,12 @@ describe('main-thread command API', () => {
         changedTables: ['posts'],
       })
       expect(handler).toHaveBeenLastCalledWith(...expectedArgs)
-      expect(notify).toHaveBeenCalledWith('posts', hint)
+      expect(notify).toHaveBeenCalledWith(
+        'posts',
+        hint === undefined
+          ? hint
+          : { ...hint, changedPostIds: undefined, changedTables: ['posts'] },
+      )
     }
   })
 
@@ -721,7 +830,7 @@ describe('main-thread command API', () => {
       value: false,
     })
     expect(mocks.handleUpdateStatusAction).toHaveBeenCalledWith(
-      rawDb,
+      measuredDb,
       7,
       '10',
       'bookmarked',
@@ -735,9 +844,11 @@ describe('main-thread command API', () => {
       tag: 'town',
       type: 'handleDeleteEvent',
     })
-    expect(mocks.handleDeleteEvent).toHaveBeenCalledWith(rawDb, 7, '11')
+    expect(mocks.handleDeleteEvent).toHaveBeenCalledWith(measuredDb, 7, '11')
     expect(notify).toHaveBeenLastCalledWith('posts', {
       backendUrl: 'https://example.test',
+      changedPostIds: undefined,
+      changedTables: ['posts'],
       tag: 'town',
       timelineType: 'local',
     })
@@ -750,7 +861,7 @@ describe('main-thread command API', () => {
       value: true,
     })
     expect(mocks.handleToggleReaction).toHaveBeenCalledWith(
-      rawDb,
+      measuredDb,
       7,
       '12',
       true,
@@ -758,6 +869,8 @@ describe('main-thread command API', () => {
     )
     expect(notify).toHaveBeenLastCalledWith('posts', {
       backendUrl: 'https://example.test',
+      changedPostIds: undefined,
+      changedTables: ['posts'],
     })
   })
 
@@ -796,15 +909,21 @@ describe('main-thread command API', () => {
     expect(mocks.buildTimelineKey).toHaveBeenCalledWith('tag', {
       tag: 'typescript',
     })
-    expect(mocks.resolvePostIdInternal).toHaveBeenCalledWith(rawDb, 7, '20')
+    expect(mocks.resolvePostIdInternal).toHaveBeenCalledWith(
+      measuredDb,
+      7,
+      '20',
+    )
     expect(mocks.handleRemoveFromTimeline).toHaveBeenCalledWith(
-      rawDb,
+      measuredDb,
       7,
       'home:#vitest',
       99,
     )
     expect(notify).toHaveBeenCalledWith('posts', {
       backendUrl: 'https://example.test',
+      changedPostIds: undefined,
+      changedTables: ['posts'],
       tag: 'typescript',
       timelineType: 'tag',
     })
@@ -850,13 +969,14 @@ describe('main-thread command API', () => {
       hasMore: true,
     })
     expect(mocks.handleEnforceMaxLength).toHaveBeenCalledWith(
-      rawDb,
+      measuredDb,
       100000,
-      100000,
+      10000,
       100000,
       {
         batchLimit: 50,
         mode: 'emergency',
+        targetCounts: undefined,
         targetRatio: 0.25,
       },
     )

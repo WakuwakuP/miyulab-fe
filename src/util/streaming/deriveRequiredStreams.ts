@@ -5,6 +5,66 @@ import {
 } from 'util/timelineConfigValidator'
 import { createStreamKey } from './streamKey'
 
+export type RequiredPublicFeed = {
+  backendUrl: string
+  type: 'local' | 'public'
+}
+
+function isOpaqueFeedConsumer(config: TimelineConfigV2): boolean {
+  return (
+    config.customQuery != null ||
+    config.queryPlan != null ||
+    config.advancedQuery === true
+  )
+}
+
+export function deriveRequiredPublicFeeds(
+  timelines: TimelineConfigV2[],
+  apps: App[],
+  backgroundPublicStreaming = true,
+): RequiredPublicFeed[] {
+  const feeds = new Map<string, RequiredPublicFeed>()
+  const add = (type: 'local' | 'public', backendUrl: string) => {
+    feeds.set(`${type}|${backendUrl}`, { backendUrl, type })
+  }
+
+  if (backgroundPublicStreaming) {
+    // local / public は全 backendUrl に対してデフォルトで初期データを取得
+    // local / public は全 backendUrl に対してデフォルトでストリーミング接続
+    for (const app of apps) {
+      add('local', app.backendUrl)
+      add('public', app.backendUrl)
+    }
+    return [...feeds.values()]
+  }
+
+  for (const config of timelines) {
+    const filter = normalizeBackendFilter(config.backendFilter, apps)
+    const urls = resolveBackendUrls(filter, apps)
+    if (urls.length === 0) continue
+
+    if (isOpaqueFeedConsumer(config)) {
+      for (const url of urls) {
+        add('local', url)
+        add('public', url)
+      }
+      continue
+    }
+    const types =
+      config.timelineTypes && config.timelineTypes.length > 0
+        ? config.timelineTypes
+        : [config.type]
+    for (const type of types) {
+      if (type === 'local' || type === 'public') {
+        for (const url of urls) {
+          add(type, url)
+        }
+      }
+    }
+  }
+  return [...feeds.values()]
+}
+
 /**
  * タイムライン設定一覧から必要なストリーム接続キーを算出する
  *
@@ -12,8 +72,10 @@ import { createStreamKey } from './streamKey'
  *
  * - type === 'home': userStreaming は StatusStoreProvider 管理のため対象外
  * - type === 'notification': userStreaming に含まれるため対象外
- * - local / public: 全 backendUrl に対してデフォルトでストリーミング接続する
- *   （タイムライン設定の有無に関わらず常時接続）
+ * - local / public: backgroundPublicStreaming が true の場合は全 backendUrl
+ *   に対してデフォルトでストリーミング接続する（タイムライン設定の有無に
+ *   関わらず常時接続）。false の場合は設定されたタイムラインが必要とする
+ *   組み合わせのみ接続する。
  * - type === 'tag': 全タイムライン設定の tagConfig から
  *   各対象 backendUrl × 各タグに対して tagStreaming を要求
  *
@@ -29,13 +91,16 @@ import { createStreamKey } from './streamKey'
 export function deriveRequiredStreams(
   timelines: TimelineConfigV2[],
   apps: App[],
+  backgroundPublicStreaming = true,
 ): Set<string> {
   const keys = new Set<string>()
 
-  // local / public は全 backendUrl に対してデフォルトでストリーミング接続
-  for (const app of apps) {
-    keys.add(createStreamKey('local', app.backendUrl))
-    keys.add(createStreamKey('public', app.backendUrl))
+  for (const feed of deriveRequiredPublicFeeds(
+    timelines,
+    apps,
+    backgroundPublicStreaming,
+  )) {
+    keys.add(createStreamKey(feed.type, feed.backendUrl))
   }
 
   // tag: 全タイムライン設定の tagConfig からストリームを作成

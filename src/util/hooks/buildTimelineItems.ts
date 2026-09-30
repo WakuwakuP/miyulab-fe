@@ -7,6 +7,7 @@
  */
 
 import type { NotificationAddAppIndex, StatusAddAppIndex } from 'types/types'
+import type { FlatFetchResult } from 'util/db/query-ir/executor/flatFetchTypes'
 import type { GraphExecuteResult } from 'util/db/query-ir/executor/types'
 import { rowToStoredNotification } from 'util/db/sqlite/notificationStore'
 import {
@@ -105,5 +106,33 @@ export function buildTimelineItemsFromGraphResult(
 ): TimelineItemFromGraph[] {
   const postMap = buildPostMapFromGraphResult(result, apps, targetBackendUrls)
   const notifMap = buildNotifMapFromGraphResult(result, apps)
+  return collectItemsFromDisplayOrder(result.displayOrder, postMap, notifMap)
+}
+
+export function buildTimelineItemsFromFlatResult(
+  result: FlatFetchResult,
+  apps: BackendApp[],
+  targetBackendUrls: string[],
+): TimelineItemFromGraph[] {
+  const postMap = new Map<number, StatusAddAppIndex>()
+  const fallbackAppIndex =
+    targetBackendUrls.length > 0
+      ? resolveAppIndex(targetBackendUrls[0], apps)
+      : -1
+  for (const [id, status] of result.posts) {
+    let appIndex = resolveAppIndex(status.backendUrl, apps)
+    if (appIndex < 0 && status.backendUrl === '' && fallbackAppIndex >= 0) {
+      appIndex = fallbackAppIndex
+      status.backendUrl = targetBackendUrls[0]
+    }
+    if (appIndex < 0) continue
+    postMap.set(id, { ...status, appIndex })
+  }
+  const notifMap = new Map<number, NotificationAddAppIndex>()
+  for (const [id, notif] of result.notifications) {
+    const appIndex = resolveAppIndex(notif.backendUrl, apps)
+    if (appIndex < 0) continue
+    notifMap.set(id, { ...notif, appIndex })
+  }
   return collectItemsFromDisplayOrder(result.displayOrder, postMap, notifMap)
 }

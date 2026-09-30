@@ -58,3 +58,10 @@ src/util/db/
 - Focused tests live heavily under `sqlite/__tests__` and `query-ir/__tests__`; run the smallest matching file first.
 - Interaction freshness needs tests for `post_interactions`, `changedTables`, and `backendUrl` hints, not only API toggle success.
 - Migration changes need schema creation tests plus versioned migration tests.
+
+## DIAGNOSTICS
+
+- Continuous queue/worker diagnostics use `dbDiagnostics.ts`, `dbDiagnosticTransport.ts`, `dbDiagnosticUploader.ts`, and `src/app/actions/dbDiagnostics.server.ts`; Developer settings can load the current or a pasted session UUID.
+- Diagnostic windows use `QueryLog` rows with `DB_DIAGNOSTICS_V1:<session UUID>` markers, zero SQL duration, and validated JSON in `bind`; keep them separate from slow SQL analysis. Session/zero-padded sequence primary keys make retries idempotent and latest-window reads bounded.
+- Set both `NEXT_PUBLIC_DB_DIAGNOSTICS_ENABLED=false` and `DB_DIAGNOSTICS_ENABLED=false` and redeploy to stop client uploads and disable server reads/writes. `DATABASE_URL` stays server-only.
+- Verify telemetry arithmetic with `yarn test:run src/util/db/__tests__/dbDiagnostics.test.ts`; `yarn typecheck` covers app and worker interfaces. Never test a production build's database migration against a shared database unintentionally.

@@ -1,4 +1,5 @@
 import type { WrittenTableCollector } from '../protocol'
+import { lastChangeCount } from './changes'
 import type { DbExecCompat } from './types'
 
 /**
@@ -32,7 +33,12 @@ export function syncPollData(
        expires_at    = excluded.expires_at,
        expired       = excluded.expired,
        multiple      = excluded.multiple,
-       votes_count   = excluded.votes_count;`,
+       votes_count   = excluded.votes_count
+     WHERE polls.poll_local_id IS NOT excluded.poll_local_id
+        OR polls.expires_at    IS NOT excluded.expires_at
+        OR polls.expired       IS NOT excluded.expired
+        OR polls.multiple      IS NOT excluded.multiple
+        OR polls.votes_count   IS NOT excluded.votes_count;`,
     {
       bind: [
         postId,
@@ -44,7 +50,7 @@ export function syncPollData(
       ],
     },
   )
-  collector?.add('polls')
+  if (lastChangeCount(db) > 0) collector?.add('polls')
 
   // poll ID を取得
   const rows = db.exec('SELECT id FROM polls WHERE post_id = ?;', {
@@ -54,6 +60,20 @@ export function syncPollData(
 
   if (rows.length === 0) return
   const pollId = rows[0][0]
+
+  const currentOptions = db.exec(
+    'SELECT sort_order, title, votes_count FROM poll_options WHERE poll_id = ? ORDER BY sort_order;',
+    { bind: [pollId], returnValue: 'resultRows' },
+  ) as (string | number | null)[][]
+  const optionsIdentical =
+    currentOptions.length === poll.options.length &&
+    currentOptions.every(
+      (row, i) =>
+        row[0] === i &&
+        row[1] === poll.options[i].title &&
+        row[2] === (poll.options[i].votes_count ?? null),
+    )
+  if (optionsIdentical) return
 
   // poll_options を再同期（DELETE + multi-value INSERT）
   db.exec('DELETE FROM poll_options WHERE poll_id = ?;', { bind: [pollId] })
@@ -101,7 +121,9 @@ export function syncPollVotes(
      VALUES (?, ?, ?, ?)
      ON CONFLICT(poll_id, local_account_id) DO UPDATE SET
        voted          = excluded.voted,
-       own_votes_json = excluded.own_votes_json;`,
+       own_votes_json = excluded.own_votes_json
+     WHERE poll_votes.voted          IS NOT excluded.voted
+        OR poll_votes.own_votes_json IS NOT excluded.own_votes_json;`,
     {
       bind: [pollId, localAccountId, voted ? 1 : 0, JSON.stringify(ownVotes)],
     },

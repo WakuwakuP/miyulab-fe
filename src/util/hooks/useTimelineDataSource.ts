@@ -38,9 +38,18 @@ import {
   type TableName,
 } from 'util/db/sqlite/connection'
 import { TIMELINE_QUERY_LIMIT } from 'util/environment'
-import { buildTimelineItemsFromGraphResult } from 'util/hooks/buildTimelineItems'
-import { hintsMatchTimeline } from 'util/hooks/timelineList'
+import {
+  buildTimelineItemsFromFlatResult,
+  buildTimelineItemsFromGraphResult,
+} from 'util/hooks/buildTimelineItems'
+import {
+  collectAffectedTimelineEntries,
+  hintMatchesTimeline,
+  mergeChangedPostIds,
+  planReferencesTableDeep,
+} from 'util/hooks/timelineList'
 import { aggregateChangedTables } from 'util/hooks/timelineList/streamingHelpers'
+import { createChangeCoalescer } from 'util/hooks/timelineList/subscriptionCoalescer'
 import {
   useLocalAccountIds,
   useServerIds,
@@ -135,6 +144,7 @@ export function useTimelineDataSource(
     const tables = new Set<TableName>()
     if (config.type === 'notification') {
       tables.add('notifications')
+      tables.add('post_interactions')
     } else {
       tables.add('posts')
       tables.add('post_interactions')
@@ -227,39 +237,115 @@ export function useTimelineDataSource(
     [basePlan, targetBackendUrls, apps],
   )
 
+  const fetchInteractionUpdates = useCallback(
+    async (
+      changedPostIds: ReadonlySet<number>,
+      visibleItems: readonly TimelineItem[],
+    ): Promise<FetchPageResult | null> => {
+      if (disabledRef.current) return null
+      if (config.customQuery) return null
+      if (config.advancedQuery) return null
+      if (config.queryPlan != null) return null
+      if (!basePlan || !isQueryPlanV2(basePlan)) return null
+      if (basePlan.legacyV1Overlay) return null
+      if (planReferencesTableDeep(basePlan, 'post_interactions')) return null
+      if (targetBackendUrls.length === 0) return null
+
+      const { notificationIds, postIds } = collectAffectedTimelineEntries(
+        changedPostIds,
+        visibleItems,
+      )
+      if (postIds.size === 0 && notificationIds.size === 0) {
+        return { durationMs: 0, items: [] }
+      }
+
+      const displayOrder = [
+        ...[...postIds].map((id) => ({ id, table: 'posts' as const })),
+        ...[...notificationIds].map((id) => ({
+          id,
+          table: 'notifications' as const,
+        })),
+      ]
+      const version = ++fetchVersionRef.current
+
+      try {
+        const handle = await getSqliteDb()
+        const result = await handle.executeFlatFetch({
+          backendUrls: targetBackendUrls,
+          displayOrder,
+          notificationIds: [...notificationIds],
+          postIds: [...postIds],
+        })
+        if (fetchVersionRef.current !== version) return null
+        const items = buildTimelineItemsFromFlatResult(
+          result,
+          apps,
+          targetBackendUrls,
+        )
+        return { durationMs: result.meta.totalDurationMs, items }
+      } catch (e) {
+        console.error('[useTimelineDataSource] interaction refresh error:', e)
+        return null
+      }
+    },
+    [
+      apps,
+      basePlan,
+      config.customQuery,
+      config.queryPlan,
+      targetBackendUrls,
+      config.advancedQuery,
+    ],
+  )
+
   /**
    * DB 変更通知を購読する。
    *
-   * @param onMatched — hint がこのタイムラインにマッチしたときのコールバック
+   * @param onMatched — hint がこのタイムラインにマッチしたときのコールバック。
+   *   changedPostIds が undefined の場合は変更 post_id 不明を意味する。
    * @param onHintless — hint なしの変更（mute/block 等）のコールバック
    * @returns cleanup 関数
    */
   const subscribeToChanges = useCallback(
     (
-      onMatched: (changedTables: ReadonlySet<string>) => void,
+      onMatched: (
+        changedTables: ReadonlySet<string>,
+        changedPostIds: ReadonlySet<number> | undefined,
+      ) => void,
       onHintless: () => void,
     ) => {
+      const coalescer = createChangeCoalescer(onMatched, onHintless)
+
       const unsubs = subscribeTables.map((table) => {
         const isLookup = lookupTables.has(table)
         return subscribe(table, (hints: ChangeHint[]) => {
           if (hints.length === 0) {
-            onHintless()
+            coalescer.push({ hintless: true, matched: false })
             return
           }
-
-          const matched = hintsMatchTimeline(
-            hints,
-            configTimelineTypes,
-            targetBackendUrls,
-            isLookup,
+          const matchedHints = hints.filter((h) =>
+            hintMatchesTimeline(
+              h,
+              configTimelineTypes,
+              targetBackendUrls,
+              isLookup,
+            ),
           )
-
-          if (matched) {
-            onMatched(aggregateChangedTables(hints))
-          }
+          const matched = matchedHints.length > 0
+          coalescer.push({
+            hintless: false,
+            matched,
+            ...(matched
+              ? {
+                  postIds: mergeChangedPostIds(matchedHints),
+                  tables: aggregateChangedTables(matchedHints),
+                }
+              : {}),
+          })
         })
       })
       return () => {
+        coalescer.dispose()
         for (const u of unsubs) u()
       }
     },
@@ -268,6 +354,7 @@ export function useTimelineDataSource(
 
   return {
     apps,
+    fetchInteractionUpdates,
     fetchPage,
     subscribeToChanges,
     targetBackendUrls,

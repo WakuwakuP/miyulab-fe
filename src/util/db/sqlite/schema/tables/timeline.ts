@@ -29,4 +29,14 @@ export function createTimelineTables(db: DbExec): void {
     CREATE INDEX IF NOT EXISTS idx_timeline_entries_post
       ON timeline_entries(post_id);
   `)
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_timeline_entries_display_post
+      ON timeline_entries(display_post_id);
+  `)
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_timeline_entries_created_at
+      ON timeline_entries(created_at_ms, id);
+  `)
 }

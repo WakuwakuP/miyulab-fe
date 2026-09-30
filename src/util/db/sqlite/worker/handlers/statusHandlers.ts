@@ -23,6 +23,7 @@ import {
   ensureProfile,
   ensureServer,
   extractPostColumns,
+  lastChangeCount,
   type PostColumns,
   resolveEmojisFromDb,
   resolveLocalAccountId,
@@ -64,9 +65,20 @@ function syncInteractions(
   localAccountId: number,
   status: Entity.Status,
   collector?: WrittenTableCollector,
+  now?: number,
 ): void {
   if (status.favourited === true) {
-    updateInteraction(db, postId, localAccountId, 'favourite', true, collector)
+    updateInteraction(
+      db,
+      postId,
+      localAccountId,
+      'favourite',
+      true,
+      collector,
+      {
+        now,
+      },
+    )
   } else if (status.favourited === false) {
     updateInteraction(
       db,
@@ -76,19 +88,25 @@ function syncInteractions(
       false,
       collector,
       {
+        now,
         preserveRecentLocalTrueMs: STALE_INTERACTION_FALSE_PROTECTION_MS,
       },
     )
   }
   if (status.reblogged === true) {
-    updateInteraction(db, postId, localAccountId, 'reblog', true, collector)
+    updateInteraction(db, postId, localAccountId, 'reblog', true, collector, {
+      now,
+    })
   } else if (status.reblogged === false) {
     updateInteraction(db, postId, localAccountId, 'reblog', false, collector, {
+      now,
       preserveRecentLocalTrueMs: STALE_INTERACTION_FALSE_PROTECTION_MS,
     })
   }
   if (status.bookmarked === true) {
-    updateInteraction(db, postId, localAccountId, 'bookmark', true, collector)
+    updateInteraction(db, postId, localAccountId, 'bookmark', true, collector, {
+      now,
+    })
   } else if (status.bookmarked === false) {
     updateInteraction(
       db,
@@ -98,6 +116,7 @@ function syncInteractions(
       false,
       collector,
       {
+        now,
         preserveRecentLocalTrueMs: STALE_INTERACTION_FALSE_PROTECTION_MS,
       },
     )
@@ -155,7 +174,7 @@ function lookupPostIdFromUri(
   isReblog: number,
 ): UriPostLookup {
   const existingRows = db.exec(
-    'SELECT id, is_reblog FROM posts WHERE object_uri = ?;',
+    "SELECT id, is_reblog FROM posts WHERE object_uri = ? AND object_uri != '';",
     { bind: [normalizedUri], returnValue: 'resultRows' },
   ) as number[][]
 
@@ -193,6 +212,7 @@ function lookupExistingReblogByAuthor(
      JOIN posts orig ON orig.id = p.reblog_of_post_id
      WHERE p.is_reblog = 1
        AND orig.object_uri = ?
+       AND orig.object_uri != ''
        AND pr.username = ?
        AND (s.host = ? OR pr.actor_uri LIKE ?)
      LIMIT 1;`,
@@ -292,6 +312,25 @@ function updateExistingPostRow(
   isReblog: number,
   reblogOfPostId: number | null,
 ): void {
+  const setValues = [
+    now,
+    visibilityId ?? cols.visibility_id,
+    cols.language,
+    cols.content_html,
+    cols.spoiler_text,
+    cols.canonical_url,
+    isReblog,
+    cols.is_sensitive,
+    cols.in_reply_to_uri,
+    cols.in_reply_to_account_acct,
+    cols.edited_at_ms,
+    cols.plain_content,
+    cols.quote_state,
+    cols.is_local_only,
+    cols.application_name,
+    reblogOfPostId,
+    null,
+  ]
   db.exec(
     `UPDATE posts SET
       last_fetched_at        = ?,
@@ -311,27 +350,30 @@ function updateExistingPostRow(
       application_name       = ?,
       reblog_of_post_id      = ?,
       quote_of_post_id       = ?
-    WHERE id = ?;`,
+    WHERE id = ? AND (
+      last_fetched_at        IS NOT ? OR
+      visibility_id          IS NOT ? OR
+      language               IS NOT ? OR
+      content_html           IS NOT ? OR
+      spoiler_text           IS NOT ? OR
+      canonical_url          IS NOT ? OR
+      is_reblog              IS NOT ? OR
+      is_sensitive           IS NOT ? OR
+      in_reply_to_uri        IS NOT ? OR
+      in_reply_to_account_acct IS NOT ? OR
+      edited_at_ms           IS NOT ? OR
+      plain_content          IS NOT ? OR
+      quote_state            IS NOT ? OR
+      is_local_only          IS NOT ? OR
+      application_name       IS NOT ? OR
+      reblog_of_post_id      IS NOT ? OR
+      quote_of_post_id       IS NOT ?
+    );`,
     {
       bind: [
-        now,
-        visibilityId ?? cols.visibility_id,
-        cols.language,
-        cols.content_html,
-        cols.spoiler_text,
-        cols.canonical_url,
-        isReblog,
-        cols.is_sensitive,
-        cols.in_reply_to_uri,
-        cols.in_reply_to_account_acct,
-        cols.edited_at_ms,
-        cols.plain_content,
-        cols.quote_state,
-        cols.is_local_only,
-        cols.application_name,
-        reblogOfPostId,
-        null,
+        ...(setValues as (string | number | null)[]),
         postId,
+        ...(setValues as (string | number | null)[]),
       ],
     },
   )
@@ -400,12 +442,14 @@ function updatePostUriCache(
   isReblog: number,
   reblogOfUri: string | null,
   foundViaReblogDedup: boolean,
+  collector?: WrittenTableCollector,
 ): void {
   if (foundViaReblogDedup && normalizedUri && normalizedUri !== reblogOfUri) {
     db.exec(
       `UPDATE posts SET object_uri = ? WHERE id = ? AND object_uri = '';`,
       { bind: [normalizedUri, postId] },
     )
+    if (lastChangeCount(db) > 0) collector?.add('posts')
     uriCache?.set(normalizedUri, postId)
   }
 
@@ -437,7 +481,7 @@ function registerPostBackendAndTimeline(
      VALUES (?, ?, ?, ?);`,
     { bind: [postId, localAccountId, localId, serverId] },
   )
-  collector?.add('post_backend_ids')
+  if (lastChangeCount(db) > 0) collector?.add('post_backend_ids')
 
   const displayPostId = isReblog === 1 ? reblogOfPostId : null
   db.exec(
@@ -447,7 +491,7 @@ function registerPostBackendAndTimeline(
       bind: [localAccountId, timelineKey, postId, displayPostId, createdAtMs],
     },
   )
-  collector?.add('timeline_entries')
+  if (lastChangeCount(db) > 0) collector?.add('timeline_entries')
 }
 
 function syncPostRelatedData(
@@ -458,13 +502,14 @@ function syncPostRelatedData(
   localAccountId: number | null,
   accountDomain: string,
   collector?: WrittenTableCollector,
+  now?: number,
 ): void {
   upsertMentionsInternal(db, postId, status.mentions, collector)
   syncPostMedia(db, postId, status.media_attachments, collector)
-  syncPostStats(db, postId, status, collector)
+  syncPostStats(db, postId, status, collector, now)
 
   if (localAccountId !== null) {
-    syncInteractions(db, postId, localAccountId, status, collector)
+    syncInteractions(db, postId, localAccountId, status, collector, now)
   }
 
   const statusEmojisResolved =
@@ -529,6 +574,7 @@ function upsertSingleStatus(
     serverId,
     collector,
     skipProfileUpdate,
+    now,
   )
   const accountDomain = deriveAccountDomain(status.account)
 
@@ -587,6 +633,7 @@ function upsertSingleStatus(
       serverId,
       visibilityId,
     })
+    collector?.add('posts')
   } else {
     updateExistingPostRow(
       db,
@@ -598,8 +645,8 @@ function upsertSingleStatus(
       reblogOfPostId,
     )
     postId = existingPostId
+    if (lastChangeCount(db) > 0) collector?.add('posts')
   }
-  collector?.add('posts')
 
   updatePostUriCache(
     db,
@@ -609,6 +656,7 @@ function upsertSingleStatus(
     isReblog,
     reblogOfUri,
     foundViaReblogDedup,
+    collector,
   )
 
   if (localAccountId !== null) {
@@ -633,6 +681,7 @@ function upsertSingleStatus(
     localAccountId,
     accountDomain,
     collector,
+    now,
   )
 
   return postId
@@ -758,7 +807,7 @@ function ensureTagForPost(
   db.exec(`INSERT OR IGNORE INTO hashtags (name) VALUES (?);`, {
     bind: [normalizedTag],
   })
-  collector?.add('hashtags')
+  if (lastChangeCount(db) > 0) collector?.add('hashtags')
   const tagRows = db.exec('SELECT id FROM hashtags WHERE name = ?;', {
     bind: [normalizedTag],
     returnValue: 'resultRows',
@@ -768,6 +817,6 @@ function ensureTagForPost(
       'INSERT OR IGNORE INTO post_hashtags (post_id, hashtag_id) VALUES (?, ?);',
       { bind: [postId, tagRows[0][0]] },
     )
-    collector?.add('post_hashtags')
+    if (lastChangeCount(db) > 0) collector?.add('post_hashtags')
   }
 }

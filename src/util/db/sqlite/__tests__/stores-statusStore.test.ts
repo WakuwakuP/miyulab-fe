@@ -30,15 +30,23 @@ describe('upsertStatus のマイクロバッチ', () => {
     const first = { content: 'first', id: 'status-1' }
     const second = { content: 'second', id: 'status-2' }
 
-    await store.upsertStatus(first as never, 'https://social.example', 'home')
-    await store.upsertStatus(second as never, 'https://social.example', 'home')
+    const firstPending = store.upsertStatus(
+      first as never,
+      'https://social.example',
+      'home',
+    )
+    const secondPending = store.upsertStatus(
+      second as never,
+      'https://social.example',
+      'home',
+    )
 
     expect(getSqliteDb).not.toHaveBeenCalled()
     await vi.advanceTimersByTimeAsync(99)
     expect(sendCommand).not.toHaveBeenCalled()
 
     await vi.advanceTimersByTimeAsync(1)
-    await Promise.resolve()
+    await Promise.all([firstPending, secondPending])
 
     expect(sendCommand).toHaveBeenCalledTimes(1)
     expect(sendCommand).toHaveBeenCalledWith({
@@ -53,25 +61,27 @@ describe('upsertStatus のマイクロバッチ', () => {
   it('backend、timelineType、tag が異なる投稿を別々のコマンドに分ける', async () => {
     const { sendCommand, store } = await loadStatusStore()
 
-    await store.upsertStatus(
-      { id: 'home' } as never,
-      'https://one.example',
-      'home',
-    )
-    await store.upsertStatus(
-      { id: 'tagged' } as never,
-      'https://one.example',
-      'tag',
-      'testing',
-    )
-    await store.upsertStatus(
-      { id: 'other-backend' } as never,
-      'https://two.example',
-      'home',
-    )
+    const pending = [
+      store.upsertStatus(
+        { id: 'home' } as never,
+        'https://one.example',
+        'home',
+      ),
+      store.upsertStatus(
+        { id: 'tagged' } as never,
+        'https://one.example',
+        'tag',
+        'testing',
+      ),
+      store.upsertStatus(
+        { id: 'other-backend' } as never,
+        'https://two.example',
+        'home',
+      ),
+    ]
 
     await vi.advanceTimersByTimeAsync(100)
-    await Promise.resolve()
+    await Promise.all(pending)
 
     expect(sendCommand).toHaveBeenCalledTimes(3)
     expect(sendCommand.mock.calls.map(([command]) => command)).toEqual([
@@ -102,21 +112,27 @@ describe('upsertStatus のマイクロバッチ', () => {
   it('全バッファ合計が20件に達したらタイマーを待たず即座に全キーを flush する', async () => {
     const { sendCommand, store } = await loadStatusStore()
 
+    const pending: Promise<void>[] = []
     for (let index = 0; index < 10; index++) {
-      await store.upsertStatus(
-        { id: `home-${index}` } as never,
-        'https://social.example',
-        'home',
+      pending.push(
+        store.upsertStatus(
+          { id: `home-${index}` } as never,
+          'https://social.example',
+          'home',
+        ),
       )
     }
     for (let index = 0; index < 10; index++) {
-      await store.upsertStatus(
-        { id: `local-${index}` } as never,
-        'https://social.example',
-        'local',
+      pending.push(
+        store.upsertStatus(
+          { id: `local-${index}` } as never,
+          'https://social.example',
+          'local',
+        ),
       )
     }
 
+    await Promise.all(pending)
     expect(sendCommand).toHaveBeenCalledTimes(2)
     expect(sendCommand.mock.calls[0][0].statusesJson).toHaveLength(10)
     expect(sendCommand.mock.calls[1][0].statusesJson).toHaveLength(10)
@@ -128,14 +144,18 @@ describe('upsertStatus のマイクロバッチ', () => {
     vi.mocked(getSqliteDb).mockRejectedValue(new Error('database not ready'))
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
-    await store.upsertStatus(
-      { id: 'status-1' } as never,
-      'https://social.example',
-      'home',
-    )
+    const rejected = store
+      .upsertStatus(
+        { id: 'status-1' } as never,
+        'https://social.example',
+        'home',
+      )
+      .catch((error: unknown) => error)
     await vi.advanceTimersByTimeAsync(100)
-    await Promise.resolve()
 
+    expect(await rejected).toEqual(
+      expect.objectContaining({ message: 'database not ready' }),
+    )
     expect(sendCommand).not.toHaveBeenCalled()
     expect(errorSpy).toHaveBeenCalledWith(
       'Failed to flush upsert buffer:',
@@ -171,13 +191,15 @@ describe('直接書き込み API', () => {
       },
     ]
 
-    await store.bulkUpsertStatuses(
+    const bulk = store.bulkUpsertStatuses(
       statuses as never,
       'https://social.example',
       'tag',
       'testing',
       true,
     )
+    await vi.advanceTimersByTimeAsync(100)
+    await bulk
     await store.removeFromTimeline(
       'https://social.example',
       'status-1',

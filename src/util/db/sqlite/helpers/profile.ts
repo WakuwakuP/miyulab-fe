@@ -1,6 +1,7 @@
 import type { Entity } from 'megalodon'
 import type { WrittenTableCollector } from '../protocol'
 import { profileIdCache, serverHostCache } from './cache'
+import { lastChangeCount } from './changes'
 import { ensureCustomEmoji } from './emoji'
 import type { DbExecCompat } from './types'
 
@@ -46,10 +47,12 @@ export function ensureProfile(
   serverId: number,
   collector?: WrittenTableCollector,
   skipUpdate?: boolean,
+  now?: number,
 ): number {
   const acct = account.acct
   const host = resolveServerHost(db, serverId)
   const canonicalAcct = computeCanonicalAcct(acct, host)
+  const nowTs = now ?? Date.now()
 
   if (skipUpdate) {
     // キャッシュヒット → DB アクセス不要
@@ -79,11 +82,11 @@ export function ensureProfile(
           account.note ?? '',
           account.locked ? 1 : 0,
           account.bot ? 1 : 0,
-          Date.now(),
+          nowTs,
         ],
       },
     )
-    collector?.add('profiles')
+    if (lastChangeCount(db) > 0) collector?.add('profiles')
 
     const rows = db.exec('SELECT id FROM profiles WHERE canonical_acct = ?;', {
       bind: [canonicalAcct],
@@ -113,6 +116,17 @@ export function ensureProfile(
       is_locked         = excluded.is_locked,
       is_bot            = excluded.is_bot,
       last_fetched_at   = excluded.last_fetched_at
+    WHERE profiles.actor_uri         IS NOT COALESCE(excluded.actor_uri, profiles.actor_uri)
+       OR profiles.display_name      IS NOT excluded.display_name
+       OR profiles.url               IS NOT excluded.url
+       OR profiles.avatar_url        IS NOT excluded.avatar_url
+       OR profiles.avatar_static_url IS NOT excluded.avatar_static_url
+       OR profiles.header_url        IS NOT excluded.header_url
+       OR profiles.header_static_url IS NOT excluded.header_static_url
+       OR profiles.bio               IS NOT excluded.bio
+       OR profiles.is_locked         IS NOT excluded.is_locked
+       OR profiles.is_bot            IS NOT excluded.is_bot
+       OR profiles.last_fetched_at   IS NOT excluded.last_fetched_at
     ON CONFLICT(username, server_id) DO UPDATE SET
       actor_uri         = COALESCE(excluded.actor_uri, profiles.actor_uri),
       acct              = excluded.acct,
@@ -126,7 +140,20 @@ export function ensureProfile(
       bio               = excluded.bio,
       is_locked         = excluded.is_locked,
       is_bot            = excluded.is_bot,
-      last_fetched_at   = excluded.last_fetched_at;`,
+      last_fetched_at   = excluded.last_fetched_at
+    WHERE profiles.actor_uri         IS NOT COALESCE(excluded.actor_uri, profiles.actor_uri)
+       OR profiles.acct              IS NOT excluded.acct
+       OR profiles.canonical_acct    IS NOT excluded.canonical_acct
+       OR profiles.display_name      IS NOT excluded.display_name
+       OR profiles.url               IS NOT excluded.url
+       OR profiles.avatar_url        IS NOT excluded.avatar_url
+       OR profiles.avatar_static_url IS NOT excluded.avatar_static_url
+       OR profiles.header_url        IS NOT excluded.header_url
+       OR profiles.header_static_url IS NOT excluded.header_static_url
+       OR profiles.bio               IS NOT excluded.bio
+       OR profiles.is_locked         IS NOT excluded.is_locked
+       OR profiles.is_bot            IS NOT excluded.is_bot
+       OR profiles.last_fetched_at   IS NOT excluded.last_fetched_at;`,
     {
       bind: [
         account.url || null, // actor_uri
@@ -143,11 +170,11 @@ export function ensureProfile(
         account.note ?? '', // bio
         account.locked ? 1 : 0, // is_locked
         account.bot ? 1 : 0, // is_bot
-        Date.now(), // last_fetched_at
+        nowTs, // last_fetched_at
       ],
     },
   )
-  collector?.add('profiles')
+  if (lastChangeCount(db) > 0) collector?.add('profiles')
 
   const cached = profileIdCache.get(canonicalAcct)
   if (cached !== undefined) return cached
@@ -173,6 +200,7 @@ export function syncProfileStats(
     following_count?: number
     statuses_count?: number
   },
+  now?: number,
 ): void {
   db.exec(
     `INSERT INTO profile_stats (profile_id, followers_count, following_count, statuses_count, updated_at)
@@ -181,14 +209,18 @@ export function syncProfileStats(
        followers_count = excluded.followers_count,
        following_count = excluded.following_count,
        statuses_count  = excluded.statuses_count,
-       updated_at      = excluded.updated_at;`,
+       updated_at      = excluded.updated_at
+     WHERE profile_stats.followers_count IS NOT excluded.followers_count
+        OR profile_stats.following_count IS NOT excluded.following_count
+        OR profile_stats.statuses_count  IS NOT excluded.statuses_count
+        OR profile_stats.updated_at      IS NOT excluded.updated_at;`,
     {
       bind: [
         profileId,
         stats.followers_count ?? 0,
         stats.following_count ?? 0,
         stats.statuses_count ?? 0,
-        Date.now(),
+        now ?? Date.now(),
       ],
     },
   )
@@ -202,6 +234,17 @@ export function syncProfileFields(
   profileId: number,
   fields: { name: string; value: string; verified_at?: string | null }[],
 ): void {
+  const current = db.exec(
+    'SELECT name, value, verified_at FROM profile_fields WHERE profile_id = ? ORDER BY sort_order;',
+    { bind: [profileId], returnValue: 'resultRows' },
+  ) as (string | number | null)[][]
+
+  const expected = fields.map((f) => [f.name, f.value, f.verified_at ?? null])
+  const identical =
+    current.length === expected.length &&
+    current.every((row, i) => row.every((v, j) => v === expected[i][j]))
+  if (identical) return
+
   db.exec('DELETE FROM profile_fields WHERE profile_id = ?;', {
     bind: [profileId],
   })
@@ -243,20 +286,40 @@ export function syncProfileCustomEmojis(
     db.exec('DELETE FROM profile_custom_emojis WHERE profile_id = ?;', {
       bind: [profileId],
     })
-    collector?.add('profile_custom_emojis')
+    if (lastChangeCount(db) > 0) collector?.add('profile_custom_emojis')
     return
   }
 
   const keepIds: number[] = []
-
+  const seenIds = new Set<number>()
   for (const emoji of emojis) {
-    const emojiId = ensureCustomEmoji(db, serverId, emoji)
+    const emojiId = ensureCustomEmoji(db, serverId, emoji, collector)
+    if (seenIds.has(emojiId)) continue
+    seenIds.add(emojiId)
+    keepIds.push(emojiId)
+  }
+
+  const currentIds = new Set(
+    (
+      db.exec(
+        'SELECT custom_emoji_id FROM profile_custom_emojis WHERE profile_id = ?;',
+        { bind: [profileId], returnValue: 'resultRows' },
+      ) as number[][]
+    ).map((row) => row[0]),
+  )
+  const linksIdentical =
+    currentIds.size === keepIds.length &&
+    keepIds.every((id) => currentIds.has(id))
+  if (linksIdentical) return
+
+  let linksChanged = false
+  for (const emojiId of keepIds) {
     db.exec(
       `INSERT OR IGNORE INTO profile_custom_emojis (profile_id, custom_emoji_id)
        VALUES (?, ?);`,
       { bind: [profileId, emojiId] },
     )
-    keepIds.push(emojiId)
+    if (lastChangeCount(db) > 0) linksChanged = true
   }
 
   const ph = keepIds.map(() => '?').join(',')
@@ -264,5 +327,6 @@ export function syncProfileCustomEmojis(
     `DELETE FROM profile_custom_emojis WHERE profile_id = ? AND custom_emoji_id NOT IN (${ph});`,
     { bind: [profileId, ...keepIds] },
   )
-  collector?.add('profile_custom_emojis')
+  if (lastChangeCount(db) > 0) linksChanged = true
+  if (linksChanged) collector?.add('profile_custom_emojis')
 }

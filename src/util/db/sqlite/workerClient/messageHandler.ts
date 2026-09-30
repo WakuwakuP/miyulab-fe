@@ -4,6 +4,7 @@
  * Worker が返す init / response / error / slowQueryLogs メッセージを処理する。
  */
 
+import { dbDiagnosticRecorder } from '../../dbDiagnostics'
 import { startSnapshotRecording } from '../../dbQueue'
 import type { ChangeHint } from '../connection'
 import type {
@@ -17,7 +18,6 @@ import type {
 } from '../protocol'
 import { ALL_TABLE_NAMES, isTableName } from '../protocol'
 import {
-  durationForId,
   getInitReject,
   getInitResolve,
   getInitTimer,
@@ -44,6 +44,7 @@ function handleInitMessage(msg: InitMessage): void {
     return
   }
   startSnapshotRecording()
+  dbDiagnosticRecorder.setEnvironment('worker', msg.persistence)
   if (msg.recovered) {
     console.warn(`SQLite: database was recovered at startup (${msg.recovered})`)
   }
@@ -59,6 +60,7 @@ function handleResponseMessage(msg: SuccessResponse): void {
     return
   }
   pending.delete(msg.id)
+  dbDiagnosticRecorder.recordEnd(msg.id, 'success', msg.diagnostics)
   if (msg.changedTables) {
     const enrichedHint: ChangeHint = {
       ...msg.changeHint,
@@ -68,10 +70,7 @@ function handleResponseMessage(msg: SuccessResponse): void {
       getNotifyChangeCallback()?.(table, enrichedHint)
     }
   }
-  if (msg.durationMs != null) {
-    durationForId.set(msg.id, msg.durationMs)
-  }
-  req.resolve(msg.result)
+  req.resolve(msg.result, msg.durationMs)
 }
 
 function handleErrorMessage(msg: ErrorResponse): void {
@@ -88,6 +87,7 @@ function handleErrorMessage(msg: ErrorResponse): void {
     return
   }
   pending.delete(msg.id)
+  dbDiagnosticRecorder.recordEnd(msg.id, 'error', msg.diagnostics)
   req.reject(new Error(msg.error))
 }
 

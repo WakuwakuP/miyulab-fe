@@ -111,7 +111,7 @@ function enqueueSourceReblogs(
   }
 }
 
-function resolveRelatedInteractionPostIds(
+export function resolveRelatedInteractionPostIds(
   db: DbExec,
   postId: number,
 ): number[] {
@@ -160,7 +160,8 @@ export function handleUpdateStatusAction(
   const normalizedAction = ACTION_NAME_MAP[action]
   if (!normalizedAction) return { changedTables: [] }
 
-  for (const relatedPostId of resolveRelatedInteractionPostIds(db, postId)) {
+  const relatedPostIds = resolveRelatedInteractionPostIds(db, postId)
+  for (const relatedPostId of relatedPostIds) {
     updateInteraction(
       db,
       relatedPostId,
@@ -172,7 +173,10 @@ export function handleUpdateStatusAction(
     )
   }
 
-  return { changedTables: ['post_interactions'] }
+  return {
+    changedPostIds: relatedPostIds,
+    changedTables: ['post_interactions'],
+  }
 }
 
 export function handleToggleReaction(
@@ -185,13 +189,17 @@ export function handleToggleReaction(
   const postId = resolvePostIdInternal(db, localAccountId, localId)
   if (postId === undefined) return { changedTables: [] }
   const relatedPostIds = resolveRelatedInteractionPostIds(db, postId)
+  const result: HandlerResult = {
+    changedPostIds: relatedPostIds,
+    changedTables: ['post_interactions'],
+  }
 
   // value=false の場合はリアクションをクリア
   if (!value) {
     for (const relatedPostId of relatedPostIds) {
       toggleReaction(db, relatedPostId, localAccountId, null, null)
     }
-    return { changedTables: ['post_interactions'] }
+    return result
   }
 
   const isCustom = emoji.startsWith(':') && emoji.endsWith(':')
@@ -215,5 +223,5 @@ export function handleToggleReaction(
     }
   }
 
-  return { changedTables: ['post_interactions'] }
+  return result
 }

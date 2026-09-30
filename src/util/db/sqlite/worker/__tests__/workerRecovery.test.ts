@@ -184,7 +184,7 @@ describe('recoverFromCorruption backup restore', () => {
     expect(db.exec.mock.calls.map(([sql]) => sql)).toEqual([
       'PRAGMA user_version = 0;',
       'BEGIN;',
-      'PRAGMA user_version = 20007;',
+      'PRAGMA user_version = 20008;',
       'COMMIT;',
       'VACUUM;',
     ])
@@ -319,7 +319,7 @@ describe('recoverFromCorruption reset fallbacks', () => {
     expect(memoryDb.exec.mock.calls.map(([sql]) => sql)).toEqual([
       'PRAGMA foreign_keys = ON;',
       'BEGIN;',
-      'PRAGMA user_version = 20007;',
+      'PRAGMA user_version = 20008;',
       'COMMIT;',
     ])
     expect(schemaMocks.createFreshSchema).toHaveBeenNthCalledWith(1, { db })
