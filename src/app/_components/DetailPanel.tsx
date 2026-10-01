@@ -264,8 +264,11 @@ export const DetailPanel = () => {
       )}
 
       {detail.type === 'Account' && (
-        <div className="h-[calc(100%-32px)] overflow-y-scroll scroll-smooth">
-          <AccountDetail account={detail.content} />
+        <div className="h-[calc(100%-32px)]">
+          <AccountDetail
+            account={detail.content}
+            key={`${apps[detail.content.appIndex]?.backendUrl}:${detail.content.appIndex}:${detail.content.id || detail.content.acct}`}
+          />
         </div>
       )}
       {detail.type === 'Hashtag' && (

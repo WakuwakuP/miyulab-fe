@@ -19,8 +19,10 @@ function isPollClosed(p: Entity.Poll): boolean {
 
 export const Poll = ({
   poll: initialPoll,
+  onChange,
 }: {
   poll?: PollWithOwnVotes | null
+  onChange?: (poll: Entity.Poll & { own_votes: number[] }) => void
 }) => {
   const internalId = useId()
   const apps = useContext(AppsContext)
@@ -53,6 +55,7 @@ export const Poll = ({
           own_votes: selected,
         })
         setVoted(true)
+        onChange?.({ ...updatedPoll, own_votes: selected, voted: true })
       })
       .catch((error) => {
         console.error('Failed to vote poll:', error)
