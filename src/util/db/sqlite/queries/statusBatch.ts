@@ -361,48 +361,65 @@ export function replacePlaceholders(sql: string, count: number): string {
   return sql.replace('__PH__', ph)
 }
 
+/** start の引用符で始まるリテラル/識別子の直後の位置を返す */
+function skipQuoted(sql: string, start: number): number {
+  const quote = sql[start]
+  let i = start + 1
+  while (i < sql.length) {
+    if (sql[i] !== quote) {
+      i++
+      continue
+    }
+    if (quote !== '`' && sql[i + 1] === quote) {
+      i += 2
+      continue
+    }
+    return i + 1
+  }
+  return i
+}
+
+/** start の `[` で始まる識別子の直後の位置を返す */
+function skipBracketed(sql: string, start: number): number {
+  let i = start + 1
+  while (i < sql.length && sql[i] !== ']') i++
+  return i + 1
+}
+
+/** start の `--` で始まる行コメントの終端（改行の位置）を返す */
+function skipLineComment(sql: string, start: number): number {
+  let i = start
+  while (i < sql.length && sql[i] !== '\n') i++
+  return i
+}
+
+/** start の `/*` で始まるブロックコメントの直後の位置を返す */
+function skipBlockComment(sql: string, start: number): number {
+  let i = start + 2
+  while (i < sql.length && !(sql[i] === '*' && sql[i + 1] === '/')) i++
+  return i + 2
+}
+
 function stripSqlLiteralsAndComments(sql: string): string {
   let out = ''
   let i = 0
-  const n = sql.length
-  while (i < n) {
+  while (i < sql.length) {
     const c = sql[i]
+    const next = sql[i + 1]
     if (c === "'" || c === '"' || c === '`') {
-      const quote = c
-      i++
-      while (i < n) {
-        if (sql[i] === quote) {
-          if (quote !== '`' && sql[i + 1] === quote) {
-            i += 2
-            continue
-          }
-          i++
-          break
-        }
-        i++
-      }
+      i = skipQuoted(sql, i)
       out += ' '
-      continue
-    }
-    if (c === '[') {
-      i++
-      while (i < n && sql[i] !== ']') i++
-      i++
+    } else if (c === '[') {
+      i = skipBracketed(sql, i)
       out += ' '
-      continue
+    } else if (c === '-' && next === '-') {
+      i = skipLineComment(sql, i)
+    } else if (c === '/' && next === '*') {
+      i = skipBlockComment(sql, i)
+    } else {
+      out += c
+      i++
     }
-    if (c === '-' && sql[i + 1] === '-') {
-      while (i < n && sql[i] !== '\n') i++
-      continue
-    }
-    if (c === '/' && sql[i + 1] === '*') {
-      i += 2
-      while (i < n && !(sql[i] === '*' && sql[i + 1] === '/')) i++
-      i += 2
-      continue
-    }
-    out += c
-    i++
   }
   return out
 }

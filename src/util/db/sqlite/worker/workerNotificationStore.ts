@@ -119,6 +119,63 @@ export function resolveNotificationTypeId(
  * poll_expired 等で通知に付いてくる最新の poll（集計結果・期限）を、タイムライン上の同一投稿に反映するため、
  * 既存 post でも status.poll があれば polls / poll_options を上書き同期する。
  */
+/**
+ * URI が一致する既存投稿を探し、見つかれば post_backend_ids マッピングを追加して postId を返す。
+ */
+function linkExistingPostByUri(
+  db: DbExec,
+  status: Entity.Status,
+  localAccountId: number,
+  collector?: Set<TableName>,
+): number | undefined {
+  const normalizedUri = status.uri?.trim() || ''
+  if (!normalizedUri) return undefined
+
+  const uriRows = db.exec(
+    "SELECT id FROM posts WHERE object_uri = ? AND object_uri != '';",
+    { bind: [normalizedUri], returnValue: 'resultRows' },
+  ) as number[][]
+  if (uriRows.length === 0) return undefined
+
+  const postId = uriRows[0][0]
+  // post_backend_ids マッピングを追加
+  db.exec(
+    `INSERT OR IGNORE INTO post_backend_ids (local_account_id, local_id, post_id)
+     VALUES (?, ?, ?);`,
+    { bind: [localAccountId, status.id, postId] },
+  )
+  if (lastChangeCount(db) > 0) collector?.add('post_backend_ids')
+  return postId
+}
+
+/**
+ * 既存投稿に対し、status.poll があれば polls / poll_options を上書き同期する。
+ */
+function syncPollOnExistingPost(
+  db: DbExec,
+  postId: number,
+  status: Entity.Status,
+  collector?: Set<TableName>,
+): { postId: number; updatedPollOnExistingPost: boolean } {
+  if (status.poll) {
+    syncPollData(db, postId, status.poll, collector)
+    return { postId, updatedPollOnExistingPost: true }
+  }
+  return { postId, updatedPollOnExistingPost: false }
+}
+
+function resolveReblogOfPostId(
+  db: DbExec,
+  reblogUri: string | undefined,
+): number | null {
+  if (!reblogUri) return null
+  const rows = db.exec(
+    "SELECT id FROM posts WHERE object_uri = ? AND object_uri != '' LIMIT 1;",
+    { bind: [reblogUri], returnValue: 'resultRows' },
+  ) as number[][]
+  return rows.length > 0 ? rows[0][0] : null
+}
+
 function ensurePostForNotification(
   db: DbExec,
   status: Entity.Status,
@@ -127,38 +184,12 @@ function ensurePostForNotification(
   localAccountId: number,
   collector?: Set<TableName>,
 ): { postId: number; updatedPollOnExistingPost: boolean } {
-  // post_backend_ids で既存チェック
-  const existing = resolvePostId(db, backendUrl, status.id)
+  // post_backend_ids → URI の順で既存チェック
+  const existing =
+    resolvePostId(db, backendUrl, status.id) ??
+    linkExistingPostByUri(db, status, localAccountId, collector)
   if (existing !== undefined) {
-    if (status.poll) {
-      syncPollData(db, existing, status.poll, collector)
-      return { postId: existing, updatedPollOnExistingPost: true }
-    }
-    return { postId: existing, updatedPollOnExistingPost: false }
-  }
-
-  // URI で既存チェック
-  const normalizedUri = status.uri?.trim() || ''
-  if (normalizedUri) {
-    const uriRows = db.exec(
-      "SELECT id FROM posts WHERE object_uri = ? AND object_uri != '';",
-      { bind: [normalizedUri], returnValue: 'resultRows' },
-    ) as number[][]
-    if (uriRows.length > 0) {
-      const postId = uriRows[0][0]
-      // post_backend_ids マッピングを追加
-      db.exec(
-        `INSERT OR IGNORE INTO post_backend_ids (local_account_id, local_id, post_id)
-         VALUES (?, ?, ?);`,
-        { bind: [localAccountId, status.id, postId] },
-      )
-      if (lastChangeCount(db) > 0) collector?.add('post_backend_ids')
-      if (status.poll) {
-        syncPollData(db, postId, status.poll, collector)
-        return { postId, updatedPollOnExistingPost: true }
-      }
-      return { postId, updatedPollOnExistingPost: false }
-    }
+    return syncPollOnExistingPost(db, existing, status, collector)
   }
 
   // 新規投稿を挿入
@@ -176,15 +207,7 @@ function ensurePostForNotification(
   }
 
   // Resolve FK references
-  const repostOfPostId = status.reblog?.uri
-    ? (() => {
-        const rows = db.exec(
-          "SELECT id FROM posts WHERE object_uri = ? AND object_uri != '' LIMIT 1;",
-          { bind: [status.reblog.uri], returnValue: 'resultRows' },
-        ) as number[][]
-        return rows.length > 0 ? rows[0][0] : null
-      })()
-    : null
+  const repostOfPostId = resolveReblogOfPostId(db, status.reblog?.uri)
 
   db.exec(
     `INSERT INTO posts (

@@ -85,6 +85,31 @@ export type UseTimelineDataSourceOptions = {
   disabled?: boolean
 }
 
+type ChangeCoalescer = ReturnType<typeof createChangeCoalescer>
+type ChangeCoalescerEvent = Parameters<ChangeCoalescer['push']>[0]
+
+// --------------- ヘルパー ---------------
+
+/** テーブル変更通知の hints を、このタイムライン向けの coalescer イベントに変換する */
+function toChangeCoalescerEvent(
+  hints: ChangeHint[],
+  configTimelineTypes: string[],
+  targetBackendUrls: string[],
+  isLookup: boolean,
+): ChangeCoalescerEvent {
+  if (hints.length === 0) return { hintless: true, matched: false }
+  const matchedHints = hints.filter((h) =>
+    hintMatchesTimeline(h, configTimelineTypes, targetBackendUrls, isLookup),
+  )
+  if (matchedHints.length === 0) return { hintless: false, matched: false }
+  return {
+    hintless: false,
+    matched: true,
+    postIds: mergeChangedPostIds(matchedHints),
+    tables: aggregateChangedTables(matchedHints),
+  }
+}
+
 // --------------- メインフック ---------------
 
 export function useTimelineDataSource(
@@ -319,29 +344,14 @@ export function useTimelineDataSource(
       const unsubs = subscribeTables.map((table) => {
         const isLookup = lookupTables.has(table)
         return subscribe(table, (hints: ChangeHint[]) => {
-          if (hints.length === 0) {
-            coalescer.push({ hintless: true, matched: false })
-            return
-          }
-          const matchedHints = hints.filter((h) =>
-            hintMatchesTimeline(
-              h,
+          coalescer.push(
+            toChangeCoalescerEvent(
+              hints,
               configTimelineTypes,
               targetBackendUrls,
               isLookup,
             ),
           )
-          const matched = matchedHints.length > 0
-          coalescer.push({
-            hintless: false,
-            matched,
-            ...(matched
-              ? {
-                  postIds: mergeChangedPostIds(matchedHints),
-                  tables: aggregateChangedTables(matchedHints),
-                }
-              : {}),
-          })
         })
       })
       return () => {

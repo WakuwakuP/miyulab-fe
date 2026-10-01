@@ -148,7 +148,7 @@ export class DbDiagnosticRecorder {
       : 'none'
     const verb =
       typeof message.sql === 'string'
-        ? message.sql.trimStart().match(/^\w+/)?.[0].toUpperCase()
+        ? /^\w+/.exec(message.sql.trimStart())?.[0].toUpperCase()
         : undefined
     const sqlVerb = ['SELECT', 'INSERT', 'UPDATE', 'DELETE', 'PRAGMA'].includes(
       verb ?? '',
@@ -346,6 +346,59 @@ export type DbDiagnosticAnalysis = {
   transportFailures: number
 }
 
+function addOperationTotals(
+  total: DbDiagnosticOperation,
+  entry: DbDiagnosticOperation,
+): void {
+  for (const field of [
+    'receivedItems',
+    'enqueued',
+    'requestedItems',
+    'started',
+    'succeeded',
+    'failed',
+    'timedOut',
+    'cancelled',
+    'queueWaitSumMs',
+    'serviceSumMs',
+    'workerMeasured',
+    'workerSumMs',
+    'sqlCalls',
+    'sqlTimeMs',
+    'resultRows',
+  ] as const)
+    total[field] += entry[field]
+  for (const field of [
+    'queueWaitMaxMs',
+    'serviceMaxMs',
+    'workerMaxMs',
+  ] as const)
+    total[field] = Math.max(total[field], entry[field])
+  for (const field of DB_DIAGNOSTIC_DETAIL_FIELDS)
+    total[field] = (total[field] ?? 0) + (entry[field] ?? 0)
+}
+
+function operationReport(
+  operation: DbDiagnosticOperation,
+  seconds: number,
+): DbDiagnosticOperationReport {
+  const completed = operation.succeeded + operation.failed
+  return {
+    arrivalPerSecond: seconds > 0 ? operation.enqueued / seconds : 0,
+    averageServiceMs: completed > 0 ? operation.serviceSumMs / completed : null,
+    averageWaitMs:
+      operation.started > 0
+        ? operation.queueWaitSumMs / operation.started
+        : null,
+    averageWorkerMs:
+      operation.workerMeasured > 0
+        ? operation.workerSumMs / operation.workerMeasured
+        : null,
+    completionPerSecond: seconds > 0 ? completed / seconds : 0,
+    operation,
+  }
+}
+
 export function analyzeDbDiagnosticWindows(
   windows: readonly DbDiagnosticWindow[],
 ): DbDiagnosticAnalysis {
@@ -393,32 +446,7 @@ export function analyzeDbDiagnosticWindows(
         entry.sqlVerb,
       ].join(':')
       const total = operations.get(key) ?? emptyOperation(entry)
-      for (const field of [
-        'receivedItems',
-        'enqueued',
-        'requestedItems',
-        'started',
-        'succeeded',
-        'failed',
-        'timedOut',
-        'cancelled',
-        'queueWaitSumMs',
-        'serviceSumMs',
-        'workerMeasured',
-        'workerSumMs',
-        'sqlCalls',
-        'sqlTimeMs',
-        'resultRows',
-      ] as const)
-        total[field] += entry[field]
-      for (const field of [
-        'queueWaitMaxMs',
-        'serviceMaxMs',
-        'workerMaxMs',
-      ] as const)
-        total[field] = Math.max(total[field], entry[field])
-      for (const field of DB_DIAGNOSTIC_DETAIL_FIELDS)
-        total[field] = (total[field] ?? 0) + (entry[field] ?? 0)
+      addOperationTotals(total, entry)
       operations.set(key, total)
     }
   }
@@ -426,23 +454,8 @@ export function analyzeDbDiagnosticWindows(
     (a, b) => b.serviceSumMs - a.serviceSumMs,
   )
   const seconds = result.intervalMs / 1_000
-  result.operationReports = result.operations.map((operation) => ({
-    arrivalPerSecond: seconds > 0 ? operation.enqueued / seconds : 0,
-    averageServiceMs:
-      operation.succeeded + operation.failed > 0
-        ? operation.serviceSumMs / (operation.succeeded + operation.failed)
-        : null,
-    averageWaitMs:
-      operation.started > 0
-        ? operation.queueWaitSumMs / operation.started
-        : null,
-    averageWorkerMs:
-      operation.workerMeasured > 0
-        ? operation.workerSumMs / operation.workerMeasured
-        : null,
-    completionPerSecond:
-      seconds > 0 ? (operation.succeeded + operation.failed) / seconds : 0,
-    operation,
-  }))
+  result.operationReports = result.operations.map((operation) =>
+    operationReport(operation, seconds),
+  )
   return result
 }

@@ -18,13 +18,42 @@ function isOpaqueFeedConsumer(config: TimelineConfigV2): boolean {
   )
 }
 
+function addConfigPublicFeeds(
+  config: TimelineConfigV2,
+  apps: App[],
+  add: (type: RequiredPublicFeed['type'], backendUrl: string) => void,
+): void {
+  const filter = normalizeBackendFilter(config.backendFilter, apps)
+  const urls = resolveBackendUrls(filter, apps)
+  if (urls.length === 0) return
+
+  if (isOpaqueFeedConsumer(config)) {
+    for (const url of urls) {
+      add('local', url)
+      add('public', url)
+    }
+    return
+  }
+  const types =
+    config.timelineTypes && config.timelineTypes.length > 0
+      ? config.timelineTypes
+      : [config.type]
+  for (const type of types) {
+    if (type === 'local' || type === 'public') {
+      for (const url of urls) {
+        add(type, url)
+      }
+    }
+  }
+}
+
 export function deriveRequiredPublicFeeds(
   timelines: TimelineConfigV2[],
   apps: App[],
   backgroundPublicStreaming = true,
 ): RequiredPublicFeed[] {
   const feeds = new Map<string, RequiredPublicFeed>()
-  const add = (type: 'local' | 'public', backendUrl: string) => {
+  const add = (type: RequiredPublicFeed['type'], backendUrl: string) => {
     feeds.set(`${type}|${backendUrl}`, { backendUrl, type })
   }
 
@@ -39,28 +68,7 @@ export function deriveRequiredPublicFeeds(
   }
 
   for (const config of timelines) {
-    const filter = normalizeBackendFilter(config.backendFilter, apps)
-    const urls = resolveBackendUrls(filter, apps)
-    if (urls.length === 0) continue
-
-    if (isOpaqueFeedConsumer(config)) {
-      for (const url of urls) {
-        add('local', url)
-        add('public', url)
-      }
-      continue
-    }
-    const types =
-      config.timelineTypes && config.timelineTypes.length > 0
-        ? config.timelineTypes
-        : [config.type]
-    for (const type of types) {
-      if (type === 'local' || type === 'public') {
-        for (const url of urls) {
-          add(type, url)
-        }
-      }
-    }
+    addConfigPublicFeeds(config, apps, add)
   }
   return [...feeds.values()]
 }

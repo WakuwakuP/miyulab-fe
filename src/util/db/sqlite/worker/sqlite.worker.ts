@@ -402,6 +402,16 @@ function dispatchWorkerRequest(msg: WorkerRequest, db: WorkerDb): void {
   }
 }
 
+/** 診断でキャッシュ計測対象とするグラフノード ID を返す */
+function diagnosticCacheNodeIds(msg: WorkerRequest): string[] {
+  if (msg.type !== 'executeGraphPlan') return []
+  return msg.plan.nodes
+    .filter(
+      (n) => n.node.kind === 'get-ids' || n.node.kind === 'lookup-related',
+    )
+    .map((n) => n.id)
+}
+
 globalThis.onmessage = (
   event: MessageEvent<WorkerRequest | { type: '__init'; origin: string }>,
 ) => {
@@ -425,19 +435,7 @@ globalThis.onmessage = (
   try {
     const db = getDb()
     const measuredDb = db
-      ? beginWorkerDiagnostics(
-          msg.id,
-          db,
-          msg.type === 'executeGraphPlan'
-            ? msg.plan.nodes
-                .filter(
-                  (n) =>
-                    n.node.kind === 'get-ids' ||
-                    n.node.kind === 'lookup-related',
-                )
-                .map((n) => n.id)
-            : [],
-        )
+      ? beginWorkerDiagnostics(msg.id, db, diagnosticCacheNodeIds(msg))
       : db
 
     dispatchWorkerRequest(msg, measuredDb ?? db)

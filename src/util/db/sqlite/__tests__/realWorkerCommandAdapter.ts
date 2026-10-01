@@ -48,7 +48,7 @@ export function createRealWorkerDb(): { db: DbExec; native: DatabaseSync } {
       if (opts?.returnValue === 'resultRows') {
         const stmt = native.prepare(sql)
         stmt.setReturnArrays(true)
-        return (opts.bind ? stmt.all(...opts.bind) : stmt.all()) as unknown[][]
+        return opts.bind ? stmt.all(...opts.bind) : stmt.all()
       }
       if (opts?.bind) {
         return native.prepare(sql).run(...opts.bind)

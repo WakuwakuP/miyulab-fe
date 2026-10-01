@@ -243,11 +243,7 @@ function applyStatusUpdate(
        quote_of_post_id       IS NOT ?
      );`,
     {
-      bind: [
-        ...(postSetValues as (string | number | null)[]),
-        postId,
-        ...(postSetValues as (string | number | null)[]),
-      ],
+      bind: [...postSetValues, postId, ...postSetValues],
     },
   )
   if (lastChangeCount(db) > 0) collector.add('posts')

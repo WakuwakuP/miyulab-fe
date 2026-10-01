@@ -311,11 +311,12 @@ function processPostsBatch(
   // 削除する件数の上限。
   //   - 上限超過分があるならその分まで (budget で頭打ち)
   //   - forceCleanup のみ (excess <= 0) のときは追従掃除として budget ぶんまで許容
-  const desiredLimit = isEmergency
-    ? Math.min(Math.max(0, excess), budget)
-    : excess > 0
-      ? Math.min(excess, budget)
-      : budget
+  let desiredLimit = budget
+  if (isEmergency) {
+    desiredLimit = Math.min(Math.max(0, excess), budget)
+  } else if (excess > 0) {
+    desiredLimit = Math.min(excess, budget)
+  }
   if (desiredLimit <= 0) {
     return {
       countElapsedMs,
