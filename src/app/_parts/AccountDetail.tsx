@@ -11,6 +11,7 @@ import parse, {
 } from 'html-react-parser'
 import type { Entity } from 'megalodon'
 import {
+  type ReactNode,
   useCallback,
   useContext,
   useEffect,
@@ -20,29 +21,78 @@ import {
 } from 'react'
 
 import innerText from 'react-innertext'
+import { Virtuoso } from 'react-virtuoso'
 import type { AccountAddAppIndex } from 'types/types'
 import { replaceEmojis } from 'util/emojiReplacer'
 import { GetClient } from 'util/GetClient'
+import { useAccountStatuses } from 'util/hooks/useAccountStatuses'
 import { AppsContext } from 'util/provider/AppsProvider'
 import { SetDetailContext } from 'util/provider/DetailProvider'
 import { toSecureResourceUrl } from 'util/secureResourceUrl'
 
 import { Status } from './Status'
 
+type AccountDetailListContext = {
+  header: ReactNode
+  isLoading: boolean
+  error: boolean
+  loadMore: () => void
+}
+
+function AccountDetailHeader({
+  context,
+}: {
+  context?: AccountDetailListContext
+}) {
+  return context?.header
+}
+
+function AccountDetailFooter({
+  context,
+}: {
+  context?: AccountDetailListContext
+}) {
+  if (context?.isLoading) {
+    return (
+      <div className="flex items-center justify-center py-4" role="status">
+        読み込み中…
+      </div>
+    )
+  }
+  if (context?.error) {
+    return (
+      <button
+        className="w-full border-t border-gray-500 py-2 text-blue-500"
+        onClick={context.loadMore}
+        type="button"
+      >
+        読み込みに失敗しました。再試行
+      </button>
+    )
+  }
+  return null
+}
+
+const accountDetailComponents = {
+  Footer: AccountDetailFooter,
+  Header: AccountDetailHeader,
+}
+
 export const AccountDetail = ({ account }: { account: AccountAddAppIndex }) => {
   const apps = useContext(AppsContext)
   const setDetail = useContext(SetDetailContext)
-  const [toots, setToots] = useState<Entity.Status[]>([])
-  const [media, setMedia] = useState<Entity.Status[]>([])
+  const toots = useAccountStatuses(apps[account.appIndex], account.id)
+  const media = useAccountStatuses(apps[account.appIndex], account.id, true)
   const [relationship, setRelationship] = useState<
     Entity.Relationship | undefined
   >(undefined)
-  const [isLoading, setIsLoading] = useState(false)
+  const [isScrolling, setIsScrolling] = useState(false)
 
   // API で完全プロフィールを取得済みかを追跡
   const resolvedAccountIdRef = useRef<string | null>(null)
 
-  const [tab, setTab] = useState<'toots' | 'media' | 'favourite'>('toots')
+  const [tab, setTab] = useState<'toots' | 'media'>('toots')
+  const posts = tab === 'toots' ? toots : media
 
   const getEmojiText = useCallback(
     (str: string) =>
@@ -96,19 +146,15 @@ export const AccountDetail = ({ account }: { account: AccountAddAppIndex }) => {
     }
   }
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: account.id 変更時にリストをリセット
-  useEffect(() => {
-    setToots([])
-    setMedia([])
-  }, [account.id])
-
   // account の詳細データ（note, fields 等）が不足している場合、API で完全なデータを取得する
   useEffect(() => {
-    if (!account.acct || apps.length <= 0) return
+    const app = apps[account.appIndex]
+    if (!account.acct || !app) return
     // 既にこの account.id で解決済みならスキップ
     if (resolvedAccountIdRef.current === (account.id || account.acct)) return
 
-    const client = GetClient(apps[account.appIndex])
+    const client = GetClient(app)
+    let cancelled = false
 
     if (account.id) {
       // id がある場合は getAccount で完全なプロフィールを取得
@@ -116,6 +162,7 @@ export const AccountDetail = ({ account }: { account: AccountAddAppIndex }) => {
       client
         .getAccount(account.id)
         .then((res) => {
+          if (cancelled) return
           setDetail({
             content: { ...res.data, appIndex: account.appIndex },
             type: 'Account',
@@ -130,6 +177,7 @@ export const AccountDetail = ({ account }: { account: AccountAddAppIndex }) => {
       client
         .searchAccount(account.acct, { limit: 1, resolve: true })
         .then((res) => {
+          if (cancelled) return
           const found = res.data.find(
             (a) => a.acct === account.acct || a.url === account.url,
           )
@@ -144,87 +192,33 @@ export const AccountDetail = ({ account }: { account: AccountAddAppIndex }) => {
           console.error('Failed to resolve account:', error)
         })
     }
+    return () => {
+      cancelled = true
+      resolvedAccountIdRef.current = null
+    }
   }, [account.acct, account.appIndex, account.id, account.url, apps, setDetail])
 
   useEffect(() => {
-    if (apps.length <= 0) return
-    if (!account.id) return
-    setIsLoading(true)
-
-    const client = GetClient(apps[account.appIndex])
+    const app = apps[account.appIndex]
+    if (!app || !account.id) return
+    let cancelled = false
+    const client = GetClient(app)
 
     client
       .getRelationship(account.id)
       .then((res) => {
-        setRelationship(res.data)
+        if (!cancelled) setRelationship(res.data)
       })
       .catch((error) => {
         console.error('Failed to fetch relationship:', error)
       })
 
-    client
-      .getAccountStatuses(account.id, {
-        limit: 100,
-      })
-      .then((res) => {
-        setToots(res.data)
-        setIsLoading(false)
-      })
-      .catch((error) => {
-        console.error('Failed to fetch account statuses:', error)
-        setIsLoading(false)
-      })
-
-    client
-      .getAccountStatuses(account.id, {
-        limit: 100,
-        only_media: true,
-      })
-      .then((res) => {
-        setMedia(res.data)
-      })
-      .catch((error) => {
-        console.error('Failed to fetch account media:', error)
-      })
+    return () => {
+      cancelled = true
+    }
   }, [account.appIndex, account.id, apps])
 
-  const moreStatus = useCallback(() => {
-    if (apps.length <= 0) return
-    setIsLoading(true)
-    const client = GetClient(apps[account.appIndex])
-    client
-      .getAccountStatuses(account.id, {
-        limit: 40,
-        max_id: toots.at(-1)?.id,
-      })
-      .then((res) => {
-        setToots((prev) => [...prev, ...res.data])
-        setIsLoading(false)
-      })
-      .catch((error) => {
-        console.error('Failed to fetch more statuses:', error)
-        setIsLoading(false)
-      })
-  }, [account.appIndex, account.id, apps, toots])
-
-  const moreMedia = useCallback(() => {
-    if (apps.length <= 0) return
-    const client = GetClient(apps[account.appIndex])
-    client
-      .getAccountStatuses(account.id, {
-        limit: 40,
-        max_id: media.at(-1)?.id,
-        only_media: true,
-      })
-      .then((res) => {
-        setMedia((prev) => [...prev, ...res.data])
-      })
-      .catch((error) => {
-        console.error('Failed to fetch more media:', error)
-      })
-  }, [account.appIndex, account.id, apps, media])
-
-  return (
+  const header = (
     <>
       <div className="mb-2">
         <img
@@ -378,6 +372,7 @@ export const AccountDetail = ({ account }: { account: AccountAddAppIndex }) => {
               tab === 'toots' ? 'border-blue-500' : '',
             ].join(' ')}
             onClick={() => {
+              setIsScrolling(false)
               setTab('toots')
             }}
             type="button"
@@ -390,6 +385,7 @@ export const AccountDetail = ({ account }: { account: AccountAddAppIndex }) => {
               tab === 'media' ? 'border-blue-500' : '',
             ].join(' ')}
             onClick={() => {
+              setIsScrolling(false)
               setTab('media')
             }}
             type="button"
@@ -397,59 +393,36 @@ export const AccountDetail = ({ account }: { account: AccountAddAppIndex }) => {
             Media
           </button>
         </div>
-        {tab === 'toots' && (
-          <div>
-            {toots.map((status) => (
-              <Status
-                key={status.id}
-                status={{
-                  ...status,
-                  appIndex: account.appIndex,
-                }}
-              />
-            ))}
-            {isLoading ? (
-              <div className="box-border flex h-10 w-full items-center justify-center border-t border-t-gray-500">
-                loading...
-              </div>
-            ) : (
-              <button
-                className="box-border flex h-10 w-full items-center justify-center border-t border-t-gray-500"
-                onClick={moreStatus}
-                type="button"
-              >
-                more
-              </button>
-            )}
-          </div>
-        )}
-        {tab === 'media' && (
-          <div>
-            {media.map((status) => (
-              <Status
-                key={status.id}
-                status={{
-                  ...status,
-                  appIndex: account.appIndex,
-                }}
-              />
-            ))}
-            {isLoading ? (
-              <div className="box-border flex h-10 w-full items-center justify-center border-t border-t-gray-500">
-                loading...
-              </div>
-            ) : (
-              <button
-                className="box-border flex h-10 w-full items-center justify-center border-t border-t-gray-500"
-                onClick={moreMedia}
-                type="button"
-              >
-                more
-              </button>
-            )}
-          </div>
-        )}
       </div>
     </>
+  )
+
+  return (
+    <Virtuoso
+      components={accountDetailComponents}
+      computeItemKey={(_, status) => status.id}
+      context={{
+        error: posts.error,
+        header,
+        isLoading: posts.isLoading,
+        loadMore: posts.loadMore,
+      }}
+      data={posts.statuses}
+      endReached={posts.hasMore && !posts.error ? posts.loadMore : undefined}
+      increaseViewportBy={200}
+      isScrolling={setIsScrolling}
+      itemContent={(_, status) => (
+        <Status
+          onStatusChange={(updates) => {
+            const statusId = status.reblog?.id ?? status.id
+            toots.updateStatus(statusId, updates)
+            media.updateStatus(statusId, updates)
+          }}
+          scrolling={isScrolling}
+          status={{ ...status, appIndex: account.appIndex }}
+        />
+      )}
+      key={tab}
+    />
   )
 }

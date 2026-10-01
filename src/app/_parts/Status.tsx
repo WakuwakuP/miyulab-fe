@@ -23,6 +23,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react'
 import { RiRepeatFill, RiVideoLine } from 'react-icons/ri'
@@ -44,11 +45,13 @@ export const Status = ({
   className = '',
   small = false,
   scrolling = false,
+  onStatusChange,
 }: {
   status: StatusAddAppIndex
   className?: string
   small?: boolean
   scrolling?: boolean
+  onStatusChange?: (updates: Partial<Entity.Status>) => void
 }) => {
   const setDetail = useContext(SetDetailContext)
   const setPlayer = useContext(SetPlayerContext)
@@ -59,12 +62,24 @@ export const Status = ({
   const [localReactions, setLocalReactions] = useState<Entity.Reaction[]>(
     (status.reblog?.emoji_reactions ?? status.emoji_reactions) || [],
   )
+  const reactionsRef = useRef(localReactions)
 
   useEffect(() => {
-    setLocalReactions(
-      (status.reblog?.emoji_reactions ?? status.emoji_reactions) || [],
-    )
+    const reactions =
+      (status.reblog?.emoji_reactions ?? status.emoji_reactions) || []
+    reactionsRef.current = reactions
+    setLocalReactions(reactions)
   }, [status.emoji_reactions, status.reblog?.emoji_reactions])
+
+  const updateReactions = useCallback(
+    (update: (prev: Entity.Reaction[]) => Entity.Reaction[]) => {
+      const reactions = update(reactionsRef.current)
+      reactionsRef.current = reactions
+      setLocalReactions(reactions)
+      onStatusChange?.({ emoji_reactions: reactions })
+    },
+    [onStatusChange],
+  )
 
   // status が属するサーバの絵文字一覧を取得（カタログ優先、フォールバックで旧 EmojiContext）
   const serverEmojis = useMemo(() => {
@@ -78,7 +93,7 @@ export const Status = ({
 
   const handleReactionAdd = useCallback(
     (emoji: string) => {
-      setLocalReactions((prev) => {
+      updateReactions((prev) => {
         const isCustom = emoji.startsWith(':') && emoji.endsWith(':')
         const name = isCustom ? emoji.slice(1, -1) : emoji
 
@@ -103,12 +118,12 @@ export const Status = ({
         return [...prev, { count: 1, me: true, name, static_url, url }]
       })
     },
-    [serverEmojis],
+    [serverEmojis, updateReactions],
   )
 
   const handleReactionToggle = useCallback(
     (reactionName: string, currentlyMine: boolean) => {
-      setLocalReactions((prev) => {
+      updateReactions((prev) => {
         if (currentlyMine) {
           return prev
             .map((r) =>
@@ -123,7 +138,7 @@ export const Status = ({
         )
       })
     },
-    [],
+    [updateReactions],
   )
 
   const displayName = useMemo(
@@ -422,6 +437,9 @@ export const Status = ({
       </div>
 
       <Poll
+        onChange={
+          onStatusChange ? (poll) => onStatusChange({ poll }) : undefined
+        }
         poll={
           pollAddAppIndex as
             | (PollAddAppIndex & {
@@ -446,7 +464,11 @@ export const Status = ({
         reactions={localReactions}
         status={status}
       />
-      <Actions onReactionAdd={handleReactionAdd} status={status} />
+      <Actions
+        onReactionAdd={handleReactionAdd}
+        onStatusChange={onStatusChange}
+        status={status}
+      />
     </div>
   )
 }

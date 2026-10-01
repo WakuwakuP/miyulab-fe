@@ -1,6 +1,7 @@
 'use client'
 
 import { EmojiReactionPicker } from 'app/_parts/EmojiReactionPicker'
+import type { Entity } from 'megalodon'
 import { useCallback, useContext, useEffect, useRef, useState } from 'react'
 import { FaLock } from 'react-icons/fa'
 import {
@@ -24,9 +25,11 @@ import { SettingContext } from 'util/provider/SettingProvider'
 export const Actions = ({
   status,
   onReactionAdd,
+  onStatusChange,
 }: {
   status: StatusAddAppIndex
   onReactionAdd?: (emoji: string) => void
+  onStatusChange?: (updates: Partial<Entity.Status>) => void
 }) => {
   const apps = useContext(AppsContext)
 
@@ -159,6 +162,7 @@ export const Actions = ({
               false,
             )
             setReblogged(false)
+            onStatusChange?.({ reblogged: false })
           } else {
             client.reblogStatus(status.reblog?.id ?? status.id)
             setActions.setReblogged(
@@ -167,6 +171,7 @@ export const Actions = ({
               true,
             )
             setReblogged(true)
+            onStatusChange?.({ reblogged: true })
           }
         }}
         type="button"
@@ -183,6 +188,7 @@ export const Actions = ({
               false,
             )
             setFavourited(false)
+            onStatusChange?.({ favourited: false })
           } else {
             client.favouriteStatus(status.reblog?.id ?? status.id)
             setActions.setFavourited(
@@ -191,6 +197,7 @@ export const Actions = ({
               true,
             )
             setFavourited(true)
+            onStatusChange?.({ favourited: true })
           }
         }}
         type="button"
@@ -227,6 +234,7 @@ export const Actions = ({
               false,
             )
             setBookmarked(false)
+            onStatusChange?.({ bookmarked: false })
           } else {
             client.bookmarkStatus(status.reblog?.id ?? status.id)
             setActions.setBookmarked(
@@ -235,6 +243,7 @@ export const Actions = ({
               true,
             )
             setBookmarked(true)
+            onStatusChange?.({ bookmarked: true })
           }
         }}
         type="button"
