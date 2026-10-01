@@ -156,7 +156,7 @@ function renderPlayableMedia({
         className={['aspect-video w-full', classNamePlayerSize.hClass].join(
           ' ',
         )}
-        {...{ credentialless: '' }}
+        {...{ credentialless: true }}
         onError={onExternalEmbedError}
         src={getDirectEmbedUrl(currentUrl) ?? currentUrl}
         style={{ border: 'none' }}
