@@ -33,30 +33,33 @@ import { toSecureResourceUrl } from 'util/secureResourceUrl'
 import { Status } from './Status'
 
 type AccountDetailListContext = {
+  appIndex: number
   header: ReactNode
   isLoading: boolean
+  isScrolling: boolean
   error: boolean
   loadMore: () => void
+  onStatusChange: (statusId: string, updates: Partial<Entity.Status>) => void
 }
 
 function AccountDetailHeader({
   context,
-}: {
+}: Readonly<{
   context?: AccountDetailListContext
-}) {
+}>) {
   return context?.header
 }
 
 function AccountDetailFooter({
   context,
-}: {
+}: Readonly<{
   context?: AccountDetailListContext
-}) {
+}>) {
   if (context?.isLoading) {
     return (
-      <div className="flex items-center justify-center py-4" role="status">
+      <output className="flex items-center justify-center py-4">
         読み込み中…
-      </div>
+      </output>
     )
   }
   if (context?.error) {
@@ -78,6 +81,22 @@ const accountDetailComponents = {
   Header: AccountDetailHeader,
 }
 
+function renderAccountDetailItem(
+  _index: number,
+  status: Entity.Status,
+  context: AccountDetailListContext,
+) {
+  return (
+    <Status
+      onStatusChange={(updates) => {
+        context.onStatusChange(status.reblog?.id ?? status.id, updates)
+      }}
+      scrolling={context.isScrolling}
+      status={{ ...status, appIndex: context.appIndex }}
+    />
+  )
+}
+
 export const AccountDetail = ({ account }: { account: AccountAddAppIndex }) => {
   const apps = useContext(AppsContext)
   const setDetail = useContext(SetDetailContext)
@@ -93,6 +112,16 @@ export const AccountDetail = ({ account }: { account: AccountAddAppIndex }) => {
 
   const [tab, setTab] = useState<'toots' | 'media'>('toots')
   const posts = tab === 'toots' ? toots : media
+
+  const { updateStatus: updateTootStatus } = toots
+  const { updateStatus: updateMediaStatus } = media
+  const onStatusChange = useCallback(
+    (statusId: string, updates: Partial<Entity.Status>) => {
+      updateTootStatus(statusId, updates)
+      updateMediaStatus(statusId, updates)
+    },
+    [updateMediaStatus, updateTootStatus],
+  )
 
   const getEmojiText = useCallback(
     (str: string) =>
@@ -402,26 +431,19 @@ export const AccountDetail = ({ account }: { account: AccountAddAppIndex }) => {
       components={accountDetailComponents}
       computeItemKey={(_, status) => status.id}
       context={{
+        appIndex: account.appIndex,
         error: posts.error,
         header,
         isLoading: posts.isLoading,
+        isScrolling,
         loadMore: posts.loadMore,
+        onStatusChange,
       }}
       data={posts.statuses}
       endReached={posts.hasMore && !posts.error ? posts.loadMore : undefined}
       increaseViewportBy={200}
       isScrolling={setIsScrolling}
-      itemContent={(_, status) => (
-        <Status
-          onStatusChange={(updates) => {
-            const statusId = status.reblog?.id ?? status.id
-            toots.updateStatus(statusId, updates)
-            media.updateStatus(statusId, updates)
-          }}
-          scrolling={isScrolling}
-          status={{ ...status, appIndex: account.appIndex }}
-        />
-      )}
+      itemContent={renderAccountDetailItem}
       key={tab}
     />
   )
