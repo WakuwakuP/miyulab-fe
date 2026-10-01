@@ -76,6 +76,17 @@ type ReadResult =
     }
   | { success: false; error: string }
 
+function parseStoredDiagnosticWindow(
+  bind: string | null | undefined,
+): DbDiagnosticWindow | null {
+  if (!bind || bind.length > DB_DIAGNOSTIC_MAX_BYTES) return null
+  try {
+    return sanitizeDbDiagnosticWindow(JSON.parse(bind))
+  } catch {
+    return null
+  }
+}
+
 export async function getDbDiagnosticLogs(
   sessionId: unknown,
 ): Promise<ReadResult> {
@@ -107,14 +118,7 @@ export async function getDbDiagnosticLogs(
     const windows: DbDiagnosticWindow[] = []
     let invalidWindows = 0
     for (const row of rows.slice(0, 500)) {
-      let window: DbDiagnosticWindow | null = null
-      if (row.bind && row.bind.length <= DB_DIAGNOSTIC_MAX_BYTES) {
-        try {
-          window = sanitizeDbDiagnosticWindow(JSON.parse(row.bind))
-        } catch {
-          window = null
-        }
-      }
+      const window = parseStoredDiagnosticWindow(row.bind)
       if (window) windows.push(window)
       else invalidWindows++
     }

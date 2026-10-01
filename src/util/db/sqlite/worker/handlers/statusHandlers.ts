@@ -158,6 +158,24 @@ type RegisterPostBackendAndTimelineParams = {
   collector?: WrittenTableCollector
 }
 
+type UpdatePostUriCacheParams = {
+  uriCache: Map<string, number> | undefined
+  normalizedUri: string
+  postId: number
+  isReblog: number
+  reblogOfUri: string | null
+  foundViaReblogDedup: boolean
+  collector?: WrittenTableCollector
+}
+
+type SyncPostRelatedDataParams = {
+  serverId: number
+  localAccountId: number | null
+  accountDomain: string
+  collector?: WrittenTableCollector
+  now?: number
+}
+
 type UpsertSingleStatusParams = {
   serverId: number
   localAccountId: number | null
@@ -370,11 +388,7 @@ function updateExistingPostRow(
       quote_of_post_id       IS NOT ?
     );`,
     {
-      bind: [
-        ...(setValues as (string | number | null)[]),
-        postId,
-        ...(setValues as (string | number | null)[]),
-      ],
+      bind: [...setValues, postId, ...setValues],
     },
   )
 }
@@ -436,13 +450,15 @@ function insertNewPostRow(
 
 function updatePostUriCache(
   db: DbExec,
-  uriCache: Map<string, number> | undefined,
-  normalizedUri: string,
-  postId: number,
-  isReblog: number,
-  reblogOfUri: string | null,
-  foundViaReblogDedup: boolean,
-  collector?: WrittenTableCollector,
+  {
+    uriCache,
+    normalizedUri,
+    postId,
+    isReblog,
+    reblogOfUri,
+    foundViaReblogDedup,
+    collector,
+  }: UpdatePostUriCacheParams,
 ): void {
   if (foundViaReblogDedup && normalizedUri && normalizedUri !== reblogOfUri) {
     db.exec(
@@ -498,11 +514,13 @@ function syncPostRelatedData(
   db: DbExec,
   postId: number,
   status: Entity.Status,
-  serverId: number,
-  localAccountId: number | null,
-  accountDomain: string,
-  collector?: WrittenTableCollector,
-  now?: number,
+  {
+    serverId,
+    localAccountId,
+    accountDomain,
+    collector,
+    now,
+  }: SyncPostRelatedDataParams,
 ): void {
   upsertMentionsInternal(db, postId, status.mentions, collector)
   syncPostMedia(db, postId, status.media_attachments, collector)
@@ -648,16 +666,15 @@ function upsertSingleStatus(
     if (lastChangeCount(db) > 0) collector?.add('posts')
   }
 
-  updatePostUriCache(
-    db,
-    uriCache,
+  updatePostUriCache(db, {
+    collector,
+    foundViaReblogDedup,
+    isReblog,
     normalizedUri,
     postId,
-    isReblog,
     reblogOfUri,
-    foundViaReblogDedup,
-    collector,
-  )
+    uriCache,
+  })
 
   if (localAccountId !== null) {
     registerPostBackendAndTimeline(db, {
@@ -673,16 +690,13 @@ function upsertSingleStatus(
     })
   }
 
-  syncPostRelatedData(
-    db,
-    postId,
-    status,
-    serverId,
-    localAccountId,
+  syncPostRelatedData(db, postId, status, {
     accountDomain,
     collector,
+    localAccountId,
     now,
-  )
+    serverId,
+  })
 
   return postId
 }

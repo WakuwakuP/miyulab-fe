@@ -56,6 +56,89 @@ type WriteLaneTask =
       run: (handle: StatusWriteHandle) => Promise<unknown>
     }
 
+function resolveUpserts(items: Iterable<BufferedUpsert>): void {
+  for (const item of items) {
+    for (const waiter of item.waiters) waiter.resolve()
+  }
+}
+
+function rejectUpserts(items: Iterable<BufferedUpsert>, error: unknown): void {
+  for (const item of items) {
+    for (const waiter of item.waiters) waiter.reject(error)
+  }
+}
+
+function failFlushBuckets(
+  buckets: Map<string, UpsertBucket>,
+  error: unknown,
+): void {
+  console.error('Failed to flush upsert buffer:', error)
+  for (const bucket of buckets.values()) {
+    rejectUpserts(bucket.items.values(), error)
+    bucket.items.clear()
+  }
+  buckets.clear()
+}
+
+function takeBatch(bucket: UpsertBucket): BufferedUpsert[] {
+  const batch: BufferedUpsert[] = []
+  for (const [id, item] of bucket.items) {
+    batch.push(item)
+    bucket.items.delete(id)
+    if (batch.length >= MAX_STATUSES_PER_COMMAND) break
+  }
+  return batch
+}
+
+/**
+ * 先頭の非空バケットからバッチを取り出し、そのバケットを末尾に回す（round-robin）。
+ */
+function takeNextBatch(
+  buckets: Map<string, UpsertBucket>,
+): { batch: BufferedUpsert[]; meta: UpsertBucket['meta'] } | null {
+  for (;;) {
+    const first = buckets.entries().next().value
+    if (!first) return null
+    const [key, bucket] = first
+    buckets.delete(key)
+    if (bucket.items.size === 0) continue
+    buckets.set(key, bucket)
+    return { batch: takeBatch(bucket), meta: bucket.meta }
+  }
+}
+
+async function sendBatch(
+  handle: StatusWriteHandle,
+  meta: UpsertBucket['meta'],
+  batch: BufferedUpsert[],
+): Promise<void> {
+  try {
+    await handle.sendCommand({
+      backendUrl: meta.backendUrl,
+      skipProfileUpdate: meta.skipProfileUpdate,
+      statusesJson: batch.map((item) => JSON.stringify(item.status)),
+      tag: meta.tag,
+      timelineType: meta.timelineType,
+      type: 'bulkUpsertStatuses',
+    })
+    resolveUpserts(batch)
+  } catch (error) {
+    console.error('Failed to flush upsert buffer:', error)
+    rejectUpserts(batch, error)
+  }
+}
+
+async function flushBuckets(
+  handle: StatusWriteHandle,
+  buckets: Map<string, UpsertBucket>,
+): Promise<void> {
+  let next = takeNextBatch(buckets)
+  while (next) {
+    await sendBatch(handle, next.meta, next.batch)
+    next = takeNextBatch(buckets)
+  }
+}
+
 export function createStatusWriteStore(
   getHandle: () => Promise<StatusWriteHandle>,
 ) {
@@ -82,73 +165,30 @@ export function createStatusWriteStore(
     })
   }
 
-  async function runLane(): Promise<void> {
-    while (lane.length > 0) {
-      const task = lane.shift() as WriteLaneTask
-      try {
-        const handle = await getHandle()
-        if (task.kind === 'flush') {
-          await flushBuckets(handle, task.buckets)
-        } else {
-          await task.run(handle)
-          task.resolve()
-        }
-      } catch (error) {
-        if (task.kind === 'flush') {
-          console.error('Failed to flush upsert buffer:', error)
-          for (const bucket of task.buckets.values()) {
-            for (const item of bucket.items.values()) {
-              for (const waiter of item.waiters) waiter.reject(error)
-            }
-            bucket.items.clear()
-          }
-          task.buckets.clear()
-        } else {
-          task.reject(error)
-        }
-      }
+  async function runTask(task: WriteLaneTask): Promise<void> {
+    try {
+      const handle = await getHandle()
       if (task.kind === 'flush') {
-        queuedBuckets.delete(task.buckets)
+        await flushBuckets(handle, task.buckets)
+      } else {
+        await task.run(handle)
+        task.resolve()
+      }
+    } catch (error) {
+      if (task.kind === 'flush') {
+        failFlushBuckets(task.buckets, error)
+      } else {
+        task.reject(error)
       }
     }
   }
 
-  async function flushBuckets(
-    handle: StatusWriteHandle,
-    buckets: Map<string, UpsertBucket>,
-  ): Promise<void> {
-    for (;;) {
-      const first = buckets.entries().next().value
-      if (!first) break
-      const [key, bucket] = first
-      buckets.delete(key)
-      if (bucket.items.size === 0) continue
-      buckets.set(key, bucket)
-
-      const batch: BufferedUpsert[] = []
-      for (const [id, item] of bucket.items) {
-        batch.push(item)
-        bucket.items.delete(id)
-        if (batch.length >= MAX_STATUSES_PER_COMMAND) break
-      }
-
-      try {
-        await handle.sendCommand({
-          backendUrl: bucket.meta.backendUrl,
-          skipProfileUpdate: bucket.meta.skipProfileUpdate,
-          statusesJson: batch.map((item) => JSON.stringify(item.status)),
-          tag: bucket.meta.tag,
-          timelineType: bucket.meta.timelineType,
-          type: 'bulkUpsertStatuses',
-        })
-        for (const item of batch) {
-          for (const waiter of item.waiters) waiter.resolve()
-        }
-      } catch (error) {
-        console.error('Failed to flush upsert buffer:', error)
-        for (const item of batch) {
-          for (const waiter of item.waiters) waiter.reject(error)
-        }
+  async function runLane(): Promise<void> {
+    while (lane.length > 0) {
+      const task = lane.shift() as WriteLaneTask
+      await runTask(task)
+      if (task.kind === 'flush') {
+        queuedBuckets.delete(task.buckets)
       }
     }
   }
@@ -197,20 +237,17 @@ export function createStatusWriteStore(
     skipProfileUpdate: boolean | undefined,
   ): Promise<void> {
     const key = makeBufferKey(backendUrl, timelineType, tag, skipProfileUpdate)
-    let bucket = pendingBuckets.get(key)
-    if (!bucket) {
-      bucket = {
-        items: new Map(),
-        meta: { backendUrl, skipProfileUpdate, tag, timelineType },
-      }
-      pendingBuckets.set(key, bucket)
+    const existingBucket = pendingBuckets.get(key)
+    const bucket: UpsertBucket = existingBucket ?? {
+      items: new Map(),
+      meta: { backendUrl, skipProfileUpdate, tag, timelineType },
     }
+    if (!existingBucket) pendingBuckets.set(key, bucket)
     return new Promise<void>((resolve, reject) => {
-      const bucketRef = bucket as UpsertBucket
-      const existing = bucketRef.items.get(status.id)
+      const existing = bucket.items.get(status.id)
       const waiters = existing?.waiters ?? []
       waiters.push({ reject, resolve })
-      bucketRef.items.set(status.id, { status, waiters })
+      bucket.items.set(status.id, { status, waiters })
       scheduleFlush()
     })
   }

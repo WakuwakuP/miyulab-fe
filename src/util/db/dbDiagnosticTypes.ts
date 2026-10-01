@@ -222,7 +222,7 @@ function metadata(
     !choice(v.kind, KINDS) ||
     !choice(v.requestType, DB_DIAGNOSTIC_REQUEST_TYPES) ||
     typeof v.sourceId !== 'string' ||
-    !/^s(?:[0-9]{1,2}|overflow|none)$/.test(v.sourceId) ||
+    !/^s(?:\d{1,2}|overflow|none)$/.test(v.sourceId) ||
     !choice(v.timelineType, TIMELINES) ||
     !choice(v.sqlVerb, VERBS)
   )
@@ -234,6 +234,77 @@ function metadata(
     sqlVerb: v.sqlVerb,
     timelineType: v.timelineType,
   }
+}
+
+const OPERATION_INTEGERS = [
+  'receivedItems',
+  'enqueued',
+  'requestedItems',
+  'started',
+  'succeeded',
+  'failed',
+  'timedOut',
+  'cancelled',
+  'workerMeasured',
+  'sqlCalls',
+  'resultRows',
+] as const
+
+function isIntegerDetailField(key: string): boolean {
+  return key.endsWith('Deleted') || key === 'cacheHits' || key === 'cacheMisses'
+}
+function operationValues(
+  entry: Record<string, unknown>,
+): Record<string, number> | null {
+  const values: Record<string, number> = {}
+  for (const key of OPERATION_NUMBERS) {
+    if (!number(entry[key])) return null
+    values[key] = entry[key]
+  }
+  for (const key of OPERATION_INTEGERS) {
+    if (!integer(values[key])) return null
+  }
+  return values
+}
+function addDetailValues(
+  entry: Record<string, unknown>,
+  values: Record<string, number>,
+): boolean {
+  for (const key of DB_DIAGNOSTIC_DETAIL_FIELDS) {
+    const value = entry[key]
+    if (value === undefined) continue
+    if (!number(value)) return false
+    if (isIntegerDetailField(key) && !integer(value)) return false
+    values[key] = value
+  }
+  return true
+}
+function operation(raw: unknown): DbDiagnosticOperation | null {
+  const entry = object(raw)
+  const meta = metadata(raw)
+  if (!entry || !meta) return null
+  const values = operationValues(entry)
+  if (!values || !addDetailValues(entry, values)) return null
+  return { ...meta, ...values } as DbDiagnosticOperation
+}
+function operations(list: unknown[]): DbDiagnosticOperation[] | null {
+  const result: DbDiagnosticOperation[] = []
+  for (const raw of list) {
+    const op = operation(raw)
+    if (!op) return null
+    result.push(op)
+  }
+  return result
+}
+/** active は null（実行中なし）を許容するため、不正値のみ null を返す */
+function activeOperation(
+  value: unknown,
+): { active: DbDiagnosticActive | null } | null {
+  if (value === null) return { active: null }
+  const meta = metadata(value)
+  const raw = object(value)
+  if (!meta || !raw || !number(raw.elapsedMs)) return null
+  return { active: { ...meta, elapsedMs: raw.elapsedMs } }
 }
 
 export function isDbDiagnosticSessionId(value: unknown): value is string {
@@ -270,61 +341,18 @@ export function sanitizeDbDiagnosticWindow(
   const queue = queues(v.queue)
   const queueMax = queues(v.queueMax)
   if (!queue || !queueMax) return null
-  const operations: DbDiagnosticOperation[] = []
-  for (const raw of v.operations) {
-    const entry = object(raw)
-    const meta = metadata(raw)
-    if (!entry || !meta) return null
-    const values: Record<string, number> = {}
-    for (const key of OPERATION_NUMBERS) {
-      if (!number(entry[key])) return null
-      values[key] = entry[key]
-    }
-    for (const key of [
-      'receivedItems',
-      'enqueued',
-      'requestedItems',
-      'started',
-      'succeeded',
-      'failed',
-      'timedOut',
-      'cancelled',
-      'workerMeasured',
-      'sqlCalls',
-      'resultRows',
-    ] as const) {
-      if (!integer(values[key])) return null
-    }
-    for (const key of DB_DIAGNOSTIC_DETAIL_FIELDS) {
-      const value = entry[key]
-      if (value === undefined) continue
-      if (!number(value)) return null
-      if (
-        (key.endsWith('Deleted') ||
-          key === 'cacheHits' ||
-          key === 'cacheMisses') &&
-        !integer(value)
-      )
-        return null
-      values[key] = value
-    }
-    operations.push({ ...meta, ...values } as DbDiagnosticOperation)
-  }
-  let active: DbDiagnosticActive | null = null
-  if (v.active !== null) {
-    const meta = metadata(v.active)
-    const raw = object(v.active)
-    if (!meta || !raw || !number(raw.elapsedMs)) return null
-    active = { ...meta, elapsedMs: raw.elapsedMs }
-  }
+  const sanitizedOperations = operations(v.operations)
+  if (!sanitizedOperations) return null
+  const activeResult = activeOperation(v.active)
+  if (!activeResult) return null
   const sanitized: DbDiagnosticWindow = {
-    active,
+    active: activeResult.active,
     capturedAt: new Date(v.capturedAt).toISOString(),
     droppedEvents: v.droppedEvents,
     droppedWindows: v.droppedWindows,
     execution: v.execution,
     intervalMs: v.intervalMs,
-    operations,
+    operations: sanitizedOperations,
     queue,
     queueMax,
     sequence: v.sequence,
