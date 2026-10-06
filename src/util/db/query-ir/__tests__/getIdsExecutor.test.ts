@@ -37,6 +37,24 @@ describe('compileGetIds', () => {
       expect(sql).toContain('ORDER BY p.created_at_ms DESC')
     })
 
+    it.each([
+      ['notifications', 'related_post_id', undefined, 'n.created_at_ms'],
+      ['timeline_entries', 'post_id', undefined, 't.created_at_ms'],
+      ['post_interactions', 'post_id', 'updated_at', 'p.updated_at'],
+    ])(
+      '%s は元テーブルの明示・既定時刻を保持する',
+      (table, outputIdColumn, outputTimeColumn, expectedTime) => {
+        const { sql, dependentTables } = compileGetIds(
+          makeNode({ outputIdColumn, outputTimeColumn, table }),
+          new Map(),
+          2,
+        )
+        expect(sql).toContain(`${expectedTime} AS created_at_ms`)
+        expect(sql).toContain(`ORDER BY ${expectedTime} DESC LIMIT 2`)
+        expect(sql).not.toContain('_time_src')
+        expect(dependentTables).not.toContain('posts')
+      },
+    )
     it('文字列指定時はそのカラムを使用する', () => {
       const node = makeNode({ outputTimeColumn: 'updated_at' })
       const { sql } = compileGetIds(node, new Map())
