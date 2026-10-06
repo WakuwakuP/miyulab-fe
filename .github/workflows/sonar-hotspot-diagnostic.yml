@@ -1,0 +1,77 @@
+name: Sonar Hotspot Diagnostic
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read pending new-code Security Hotspots
+        env:
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          SONAR_PROJECT_KEY: WakuwakuP_miyulab-fe_2b9f1381-5c7d-4b89-8aca-9a9a897900dc
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          set -euo pipefail
+          umask 077
+          response_file="$(mktemp)"
+          detail_file="$(mktemp)"
+          trap 'rm -f -- "$response_file" "$detail_file"' EXIT
+
+          if [[ -z "$SONAR_HOST_URL" || -z "$SONAR_TOKEN" ]]; then
+            echo "::error::Existing SonarQube configuration is unavailable."
+            exit 1
+          fi
+
+          http_status="$(curl --silent --max-time 60 \
+            --user "${SONAR_TOKEN}:" \
+            --output "$response_file" --write-out "%{http_code}" --get \
+            --data-urlencode "projectKey=${SONAR_PROJECT_KEY}" \
+            --data-urlencode "branch=main" \
+            --data-urlencode "status=TO_REVIEW" \
+            --data-urlencode "sinceLeakPeriod=true" \
+            --data-urlencode "ps=500" \
+            "${SONAR_HOST_URL%/}/api/hotspots/search")"
+
+          if [[ "$http_status" != "200" ]]; then
+            echo "::error::Security Hotspot search returned HTTP ${http_status}; no access changes were attempted."
+            exit 1
+          fi
+
+          jq '{paging, hotspots: [.hotspots[]? | {
+            key, component, line, message, status, securityCategory,
+            vulnerabilityProbability
+          }]}' "$response_file"
+
+          if ! jq -e '.paging.total <= 500' "$response_file" >/dev/null; then
+            echo "::error::Hotspot results exceed the diagnostic limit."
+            exit 1
+          fi
+
+          while IFS= read -r hotspot_key; do
+            detail_status="$(curl --silent --max-time 60 \
+              --user "${SONAR_TOKEN}:" \
+              --output "$detail_file" --write-out "%{http_code}" --get \
+              --data-urlencode "hotspot=${hotspot_key}" \
+              "${SONAR_HOST_URL%/}/api/hotspots/show")"
+
+            if [[ "$detail_status" != "200" ]]; then
+              echo "::error::Hotspot detail returned HTTP ${detail_status}; no access changes were attempted."
+              exit 1
+            fi
+
+            jq '{key, line, message, status, resolution,
+              component: {key: .component.key, path: .component.path},
+              rule: {key: .rule.key, name: .rule.name,
+                securityCategory: .rule.securityCategory,
+                vulnerabilityProbability: .rule.vulnerabilityProbability}
+            }' "$detail_file"
+          done < <(jq -r '.hotspots[]?.key' "$response_file")
