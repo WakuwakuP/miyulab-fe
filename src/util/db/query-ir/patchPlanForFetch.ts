@@ -11,7 +11,7 @@
  * - merge-v2: limit が不足していれば引き上げ
  */
 
-import { getDefaultTimeColumn, resolveOutputTable } from './completion'
+import { getDefaultTimeColumn, resolveGetIdsTimeSourceJoin } from './completion'
 import type {
   GetIdsNode,
   PaginationCursor,
@@ -30,26 +30,19 @@ function applyFkToPostsCursorPushDown(
   cursor: PaginationCursor,
   cursorOp: '<' | '>',
 ): QueryPlanV2Node | undefined {
-  if (cursor.field !== 'created_at_ms' || !node.outputIdColumn) return undefined
-  const outputTable = resolveOutputTable(node.table, node.outputIdColumn)
-  if (outputTable !== 'posts') return undefined
-
-  const timeColumn = 'created_at_ms'
+  if (cursor.field !== 'created_at_ms') return undefined
+  const timeSourceJoin = resolveGetIdsTimeSourceJoin(node)
+  if (!timeSourceJoin) return undefined
   return {
     ...entry,
     node: {
       ...node,
       cursor: {
-        column: timeColumn,
+        column: timeSourceJoin.timeColumn,
         op: cursorOp,
         value: cursor.value,
       },
-      timeSourceJoin: {
-        foreignColumn: 'id',
-        localColumn: node.outputIdColumn,
-        table: 'posts',
-        timeColumn,
-      },
+      timeSourceJoin,
     },
   }
 }
@@ -61,6 +54,7 @@ function resolveGetIdsCursorColumn(
   if (cursor.field === 'id') {
     return node.outputIdColumn ?? 'id'
   }
+  if (node.timeSourceJoin) return node.timeSourceJoin.timeColumn
   if (node.outputTimeColumn === null) {
     return undefined
   }
@@ -164,15 +158,7 @@ export function patchPlanForStreamingFetch(
           return entry
         }
 
-        let col: string | undefined
-        if (cursor.field === 'id') {
-          col = node.outputIdColumn ?? 'id'
-        } else if (node.outputTimeColumn !== null) {
-          col =
-            node.outputTimeColumn ??
-            getDefaultTimeColumn(node.table) ??
-            undefined
-        }
+        const col = resolveGetIdsCursorColumn(node, cursor)
         // cursor.field === 'created_at_ms' && outputTimeColumn === null:
         // ID フォールバックより先に FK→posts 判定を優先する
 

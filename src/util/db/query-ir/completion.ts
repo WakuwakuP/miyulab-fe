@@ -5,6 +5,7 @@
 // TABLE_REGISTRY からノードエディタ用の補完候補を抽出する。
 // テーブル一覧、カラム一覧、既知の値候補を提供する。
 
+import type { GetIdsNode } from './nodes'
 import type { ColumnMeta, TableRegistryEntry } from './registry'
 import { TABLE_REGISTRY } from './registry'
 
@@ -391,6 +392,31 @@ export function resolveOutputTable(
 ): string {
   if (outputIdColumn === 'id') return sourceTable
   return FK_TARGET_TABLE[outputIdColumn] ?? sourceTable
+}
+
+/** 時刻を持たない投稿 FK の出力には、参照先投稿の日時を使う。 */
+export function resolveGetIdsTimeSourceJoin(
+  node: GetIdsNode,
+): GetIdsNode['timeSourceJoin'] {
+  if (node.timeSourceJoin) return node.timeSourceJoin
+  const timeColumn =
+    node.outputTimeColumn === null
+      ? null
+      : (node.outputTimeColumn ?? getDefaultTimeColumn(node.table))
+  if (
+    timeColumn != null ||
+    !node.outputIdColumn ||
+    node.outputIdColumn === 'id' ||
+    resolveOutputTable(node.table, node.outputIdColumn) !== 'posts'
+  ) {
+    return undefined
+  }
+  return {
+    foreignColumn: 'id',
+    localColumn: node.outputIdColumn,
+    table: 'posts',
+    timeColumn: 'created_at_ms',
+  }
 }
 
 /** Output ノードで受入可能なテーブル */

@@ -6,7 +6,11 @@
 // ============================================================
 
 import type { DbExec } from '../../sqlite/queries/executionEngine'
-import { getDefaultTimeColumn, resolveOutputTable } from '../completion'
+import {
+  getDefaultTimeColumn,
+  resolveGetIdsTimeSourceJoin,
+  resolveOutputTable,
+} from '../completion'
 import type {
   BindValue,
   ExistsFilter,
@@ -256,7 +260,7 @@ export function compileGetIds(
       ? null
       : (node.outputTimeColumn ?? getDefaultTimeColumn(node.table))
 
-  const tsj = node.timeSourceJoin
+  const tsj = resolveGetIdsTimeSourceJoin(node)
   const tsjAlias = tsj ? '_time_src' : null
   const effectiveTimeCol = resolveEffectiveTimeCol(
     alias,
@@ -282,7 +286,8 @@ export function compileGetIds(
   }
 
   if (node.cursor) {
-    const cursorPrefix = tsjAlias ?? alias
+    const cursorPrefix =
+      tsjAlias && node.cursor.column === tsj?.timeColumn ? tsjAlias : alias
     ctx.whereConditions.push(
       `${cursorPrefix}.${node.cursor.column} ${node.cursor.op} ?`,
     )

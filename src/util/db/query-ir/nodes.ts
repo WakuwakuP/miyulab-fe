@@ -253,9 +253,9 @@ export type GetIdsNode = {
   /** 出力する ID カラム (省略時はテーブルの PK = 'id') */
   outputIdColumn?: string
   /**
-   * 出力する時刻カラム (省略時は 'created_at_ms')。マージ・キャッシュに使用。
+   * 出力する時刻カラム (省略時は元テーブルの既定時刻カラム)。マージ・キャッシュに使用。
    * `null` を指定するとテーブルに時刻カラムがないことを示し、
-   * createdAtMs には 0 が設定され ROWID 降順でソートされる。
+   * 投稿 FK の出力では参照先投稿の日時を使い、それ以外は 0 と ROWID 降順を使う。
    */
   outputTimeColumn?: string | null
   /**
@@ -269,7 +269,7 @@ export type GetIdsNode = {
    * FK 経由で別テーブルの時刻カラムを SELECT / ORDER BY / カーソル push-down に使用する。
    * `timeSourceJoin` が設定されている場合、`outputTimeColumn: null` であっても
    * JOIN 先の `timeColumn` が時刻カラムとして優先される。
-   * `patchPlanForFetch` および `patchPlanForStreamingFetch` が自動設定する。
+   * 時刻を持たない投稿 FK の出力では、初回・プレビューを含む SQL コンパイル時にも自動解決する。
    */
   timeSourceJoin?: {
     /** JOIN するテーブル名 (e.g. 'posts') */
