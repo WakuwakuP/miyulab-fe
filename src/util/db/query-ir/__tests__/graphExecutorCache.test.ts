@@ -1,11 +1,20 @@
 import { DatabaseSync } from 'node:sqlite'
+import { executeGetIds } from 'util/db/query-ir/executor/getIdsExecutor'
 import {
   bumpGraphCacheVersion,
   clearGraphCache,
   executeGraphPlan,
 } from 'util/db/query-ir/executor/graphExecutor'
 import type { SerializedGraphPlan } from 'util/db/query-ir/executor/types'
-import type { GetIdsNode, LookupRelatedNode } from 'util/db/query-ir/nodes'
+import type {
+  GetIdsNode,
+  LookupRelatedNode,
+  QueryPlanV2,
+} from 'util/db/query-ir/nodes'
+import {
+  patchPlanForFetch,
+  patchPlanForStreamingFetch,
+} from 'util/db/query-ir/patchPlanForFetch'
 import type { DbExecCompat } from 'util/db/sqlite/helpers/types'
 import { createFreshSchema } from 'util/db/sqlite/schema'
 import { beforeEach, describe, expect, it, onTestFinished } from 'vitest'
@@ -274,5 +283,164 @@ describe('executeGraphPlan — ノードキャッシュ (実 SQLite)', () => {
     expect(warm.displayOrder.length).toBe(2)
     expect(warm.meta.nodeStats.src?.cacheHit).toBe(true)
     expect(warm.meta.nodeStats.lk?.cacheHit).toBe(true)
+  })
+
+  describe('時刻を持たない投稿参照の取得順', () => {
+    beforeEach(() => {
+      seedPost(native, 4, 400)
+      native.exec(`
+        INSERT INTO hashtags (id, name) VALUES (9, 'food');
+        INSERT INTO post_hashtags (post_id, hashtag_id)
+        VALUES (4, 9), (3, 9), (2, 9), (1, 9);
+      `)
+    })
+
+    const makeHashtagPlan = (
+      overrides: Partial<GetIdsNode> = {},
+    ): QueryPlanV2 => ({
+      edges: [
+        { source: 'tags', target: 'tag-posts' },
+        { source: 'tag-posts', target: 'out' },
+      ],
+      nodes: [
+        {
+          id: 'tags',
+          node: {
+            filters: [
+              { column: 'name', op: '=', table: 'hashtags', value: 'food' },
+            ],
+            kind: 'get-ids',
+            table: 'hashtags',
+          },
+        },
+        {
+          id: 'tag-posts',
+          node: {
+            filters: [
+              {
+                column: 'hashtag_id',
+                op: 'IN',
+                table: 'post_hashtags',
+                upstreamSourceNodeId: 'tags',
+              },
+            ],
+            kind: 'get-ids',
+            outputIdColumn: 'post_id',
+            table: 'post_hashtags',
+            ...overrides,
+          },
+        },
+        {
+          id: 'out',
+          node: {
+            kind: 'output-v2',
+            pagination: { limit: 2 },
+            sort: { direction: 'DESC', field: 'created_at_ms' },
+          },
+        },
+      ],
+      version: 2,
+    })
+
+    it.each([undefined, null])(
+      'outputTimeColumn=%s: プレビューと初回取得は投稿時刻順で LIMIT する',
+      (outputTimeColumn) => {
+        const plan = makeHashtagPlan({ outputTimeColumn })
+        const original = JSON.stringify(plan)
+        for (const effectivePlan of [plan, patchPlanForFetch(plan, 2)]) {
+          const result = runPlan(effectivePlan)
+          expect(result.displayOrder).toEqual([
+            { id: 4, table: 'posts' },
+            { id: 3, table: 'posts' },
+          ])
+        }
+        expect(JSON.stringify(plan)).toBe(original)
+      },
+    )
+
+    it('初回、過去ページ、ストリーミングが同じ投稿時刻を使う', () => {
+      const plan = makeHashtagPlan()
+      expect(runPlan(plan).displayOrder.map((row) => row.id)).toEqual([4, 3])
+      const older = patchPlanForFetch(plan, 2, {
+        direction: 'before',
+        field: 'created_at_ms',
+        value: 300,
+      })
+      expect(runPlan(older).displayOrder.map((row) => row.id)).toEqual([2, 1])
+      const newer = patchPlanForStreamingFetch(
+        plan,
+        2,
+        { direction: 'after', field: 'created_at_ms', value: 200 },
+        new Set(['post_hashtags']),
+      )
+      expect(runPlan(newer).displayOrder.map((row) => row.id)).toEqual([4, 3])
+    })
+
+    it.each([false, true])(
+      '明示 JOIN=%s: 投稿 ID カーソルは元テーブルのカラムを使う',
+      (explicitJoin) => {
+        const result = executeGetIds(
+          db as never,
+          {
+            cursor: { column: 'post_id', op: '<', value: 3 },
+            filters: [],
+            kind: 'get-ids',
+            outputIdColumn: 'post_id',
+            table: 'post_hashtags',
+            timeSourceJoin: explicitJoin
+              ? {
+                  foreignColumn: 'id',
+                  localColumn: 'post_id',
+                  table: 'posts',
+                  timeColumn: 'created_at_ms',
+                }
+              : undefined,
+          },
+          new Map(),
+          2,
+        )
+        expect(result.output.rows).toEqual([
+          { createdAtMs: 200, id: 2, table: 'posts' },
+          { createdAtMs: 100, id: 1, table: 'posts' },
+        ])
+      },
+    )
+
+    it('明示した時刻 JOIN をページ・ストリーミング取得でも上書きしない', () => {
+      native.exec('UPDATE posts SET edited_at_ms = 1000 - created_at_ms')
+      const plan = makeHashtagPlan({
+        timeSourceJoin: {
+          foreignColumn: 'id',
+          localColumn: 'post_id',
+          table: 'posts',
+          timeColumn: 'edited_at_ms',
+        },
+      })
+      expect(runPlan(plan).displayOrder.map((row) => row.id)).toEqual([1, 2])
+      const cursor = {
+        direction: 'before' as const,
+        field: 'created_at_ms' as const,
+        value: 800,
+      }
+      for (const patched of [
+        patchPlanForFetch(plan, 2, cursor),
+        patchPlanForStreamingFetch(plan, 2, cursor, new Set(['post_hashtags'])),
+      ]) {
+        expect(runPlan(patched).displayOrder.map((row) => row.id)).toEqual([
+          3, 4,
+        ])
+      }
+    })
+
+    it('参照先 posts の時刻変更で中間テーブルのキャッシュも無効になる', () => {
+      const plan = makeHashtagPlan()
+      runPlan(plan)
+      expect(runPlan(plan).meta.nodeStats['tag-posts']?.cacheHit).toBe(true)
+      native.exec('UPDATE posts SET created_at_ms = 500 WHERE id = 1')
+      bumpGraphCacheVersion('posts')
+      const result = runPlan(plan)
+      expect(result.meta.nodeStats['tag-posts']?.cacheHit).toBe(false)
+      expect(result.displayOrder.map((row) => row.id)).toEqual([1, 4])
+    })
   })
 })
