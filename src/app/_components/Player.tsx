@@ -1,6 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 'use client'
 
+import { YouTubePlayer } from 'app/_components/YouTubePlayer'
 import type { Entity } from 'megalodon'
 import React, {
   type ChangeEventHandler,
@@ -16,7 +17,6 @@ import { createPortal } from 'react-dom'
 import { GrChapterNext, GrChapterPrevious } from 'react-icons/gr'
 import { RiCloseCircleLine, RiPauseFill, RiPlayFill } from 'react-icons/ri'
 import ReactPlayer from 'react-player'
-
 import {
   getPlayerControlCapabilities,
   getPlayerSizeTokens,
@@ -34,10 +34,11 @@ import {
 } from 'util/provider/PlayerProvider'
 import { SettingContext } from 'util/provider/SettingProvider'
 import { toSecureResourceUrl } from 'util/secureResourceUrl'
-import { extractYouTubeVideoId, getDirectEmbedUrl } from 'util/videoEmbed'
+import { extractYouTubeVideoId } from 'util/videoEmbed'
+import type { PlayerMediaHandle } from 'util/youtubePlayer'
 
 function seekPlayed(
-  player: React.RefObject<HTMLVideoElement | null>,
+  player: React.RefObject<PlayerMediaHandle | null>,
   delta: number,
   setPlayed: React.Dispatch<React.SetStateAction<number>>,
 ) {
@@ -51,8 +52,8 @@ function seekPlayed(
   })
 }
 
-function toggleNativePlayback(
-  player: React.RefObject<HTMLVideoElement | null>,
+function togglePlayback(
+  player: React.RefObject<PlayerMediaHandle | null>,
   setPlaying: React.Dispatch<React.SetStateAction<boolean>>,
 ) {
   const el = player.current
@@ -81,6 +82,7 @@ function renderPlayableMedia({
   handleProgress,
   mediaMode,
   onExternalEmbedError,
+  onPlayingChange,
   player,
   playing,
   volume,
@@ -89,10 +91,11 @@ function renderPlayableMedia({
   classNamePlayerSize: PlayerSizeTokens
   currentUrl: string
   currentYouTubeVideoId: string | null
-  handleProgress: (event: React.SyntheticEvent<HTMLVideoElement>) => void
+  handleProgress: (currentTime: number, duration: number) => void
   mediaMode: PlayerMediaMode
   onExternalEmbedError: () => void
-  player: React.RefObject<HTMLVideoElement | null>
+  onPlayingChange: (playing: boolean) => void
+  player: React.RefObject<PlayerMediaHandle | null>
   playing: boolean
   volume: number
 }): React.ReactNode {
@@ -106,9 +109,14 @@ function renderPlayableMedia({
         className="aspect-video"
         height={attachment.type === 'audio' ? 0 : classNamePlayerSize.hPx}
         loop
-        onTimeUpdate={handleProgress}
+        onTimeUpdate={(event: React.SyntheticEvent<HTMLVideoElement>) => {
+          handleProgress(
+            event.currentTarget.currentTime,
+            event.currentTarget.duration,
+          )
+        }}
         playing={playing}
-        ref={player}
+        ref={player as React.RefObject<HTMLVideoElement | null>}
         src={currentUrl}
         volume={volume}
         width="100%"
@@ -150,17 +158,17 @@ function renderPlayableMedia({
 
   if (mediaMode === 'iframe') {
     return (
-      <iframe
-        allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
-        allowFullScreen
+      <YouTubePlayer
         className={['aspect-video w-full', classNamePlayerSize.hClass].join(
           ' ',
         )}
-        {...{ credentialless: true }}
         onError={onExternalEmbedError}
-        src={getDirectEmbedUrl(currentUrl) ?? currentUrl}
-        style={{ border: 'none' }}
-        title="Video player"
+        onPlayingChange={onPlayingChange}
+        onProgress={handleProgress}
+        player={player}
+        playing={playing}
+        url={currentUrl}
+        volume={volume}
       />
     )
   }
@@ -175,7 +183,7 @@ const PlayerController = () => {
   const setPlayerSetting = useContext(SetPlayerSettingContext)
   const { playerSize } = useContext(SettingContext)
 
-  const player = useRef<HTMLVideoElement>(null)
+  const player = useRef<PlayerMediaHandle>(null)
   const [playing, setPlaying] = useState(false)
   const [played, setPlayed] = useState(0)
   const [seeking, setSeeking] = useState(false)
@@ -204,13 +212,14 @@ const PlayerController = () => {
     if (currentUrl !== '') {
       setExternalEmbedFailed(false)
       setPlayed(0)
+      setSeeking(false)
       setPlaying(false)
     }
   }
 
   const onClickPlay = () => {
     if (!controls.canPlayPause) return
-    toggleNativePlayback(player, setPlaying)
+    togglePlayback(player, setPlaying)
   }
 
   const onClickClose = () => {
@@ -226,7 +235,12 @@ const PlayerController = () => {
   }
 
   const handleSeekChange: ChangeEventHandler<HTMLInputElement> = (e) => {
-    setPlayed(Number.parseFloat(e.target.value))
+    const fraction = Number.parseFloat(e.target.value)
+    setPlayed(fraction)
+    // onChange also covers touch and keyboard range input, not just mouseup.
+    if (player.current != null && player.current.duration > 0) {
+      player.current.currentTime = fraction * player.current.duration
+    }
   }
 
   const onKeyDown = useEffectEvent((e: KeyboardEvent) => {
@@ -242,7 +256,7 @@ const PlayerController = () => {
       case 'Space':
         if (!controls.canPlayPause) break
         e.preventDefault()
-        toggleNativePlayback(player, setPlaying)
+        togglePlayback(player, setPlaying)
         break
       case 'ArrowLeft':
         if (!controls.canSeek) break
@@ -292,12 +306,9 @@ const PlayerController = () => {
     }
   }
 
-  const handleProgress = (event: React.SyntheticEvent<HTMLVideoElement>) => {
-    if (!seeking && event.currentTarget != null) {
-      const video = event.currentTarget
-      if (video.duration > 0) {
-        setPlayed(video.currentTime / video.duration)
-      }
+  const handleProgress = (currentTime: number, duration: number) => {
+    if (!seeking && Number.isFinite(duration) && duration > 0) {
+      setPlayed(currentTime / duration)
     }
   }
 
@@ -329,6 +340,7 @@ const PlayerController = () => {
     onExternalEmbedError: () => {
       setExternalEmbedFailed(true)
     },
+    onPlayingChange: setPlaying,
     player,
     playing,
     volume,
@@ -342,7 +354,7 @@ const PlayerController = () => {
       ].join(' ')}
       data-player
     >
-      {controls.canPlayPause ? (
+      {mediaMode === 'native' ? (
         <button
           aria-label={playing ? 'Pause media' : 'Play media'}
           aria-pressed={playing}
@@ -366,6 +378,7 @@ const PlayerController = () => {
       )}
       <div className="box-border flex h-12 items-center space-x-px bg-gray-500 pt-[2px]">
         <button
+          aria-label={playing ? 'Pause media' : 'Play media'}
           className="flex h-12 w-12 shrink-0 items-center justify-center bg-gray-800 hover:bg-gray-500 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-gray-800"
           disabled={!controls.canPlayPause}
           onClick={onClickPlay}
@@ -381,6 +394,7 @@ const PlayerController = () => {
         {controls.canPrevNext && (
           <>
             <button
+              aria-label="Previous media"
               className="flex h-12 w-12 shrink-0 items-center justify-center bg-gray-800 hover:bg-gray-500"
               onClick={playPrevious}
               type="button"
@@ -388,6 +402,7 @@ const PlayerController = () => {
               <GrChapterPrevious size={30} />
             </button>
             <button
+              aria-label="Next media"
               className="flex h-12 w-12 shrink-0 items-center justify-center bg-gray-800 hover:bg-gray-500"
               onClick={playNext}
               type="button"
@@ -398,6 +413,7 @@ const PlayerController = () => {
         )}
         <div className="flex h-12 w-full shrink bg-gray-800">
           <input
+            aria-label="Seek media"
             className="w-full disabled:cursor-not-allowed disabled:opacity-40"
             disabled={!controls.canSeek}
             max="0.9999999"
@@ -412,6 +428,7 @@ const PlayerController = () => {
         </div>
         <div className="flex h-12 w-32 shrink-0 bg-gray-800">
           <input
+            aria-label="Media volume"
             className="w-32 disabled:cursor-not-allowed disabled:opacity-40"
             disabled={!controls.canVolume}
             max="1"
@@ -427,6 +444,7 @@ const PlayerController = () => {
           />
         </div>
         <button
+          aria-label="Close player"
           className="flex h-12 w-12 shrink-0 items-center justify-center bg-gray-800 hover:bg-gray-500"
           onClick={onClickClose}
           type="button"

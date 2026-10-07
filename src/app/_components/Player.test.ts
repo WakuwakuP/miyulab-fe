@@ -10,7 +10,7 @@ vi.mock('react-dom', () => ({
 
 afterEach(() => vi.unstubAllGlobals())
 
-it('keeps the YouTube iframe credentialless so COEP allows it to load', () => {
+it('enables the component controls for YouTube playback', () => {
   vi.stubGlobal('document', { body: null })
 
   const html = renderToStaticMarkup(
@@ -38,8 +38,9 @@ it('keeps the YouTube iframe credentialless so COEP allows it to load', () => {
     ),
   )
 
-  expect(html).toContain(
-    'src="https://www.youtube-nocookie.com/embed/-2pJ1dyzEE0"',
-  )
-  expect(html).toContain('credentialless=""')
+  expect(html).toContain('aria-label="Play media"')
+  expect(html).toContain('aria-label="Seek media"')
+  expect(html).toContain('aria-label="Media volume"')
+  expect(html).not.toContain('disabled=""')
+  expect(html).not.toContain('Use the embedded player controls')
 })

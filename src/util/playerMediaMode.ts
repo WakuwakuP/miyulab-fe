@@ -30,7 +30,7 @@ export function isPlayableAttachmentType(
 /**
  * Derive how the current attachment should be rendered / controlled.
  * - native: ReactPlayer (direct media)
- * - iframe: credentialless external embed (YouTube etc.)
+ * - iframe: API-controlled credentialless YouTube embed
  * - fallback: embed failed; thumbnail + external link only
  * - image: still image attachment
  * - none: missing / unsupported
@@ -58,13 +58,13 @@ export function getPlayerControlCapabilities(
   mediaMode: PlayerMediaMode,
   trackCount: number,
 ): PlayerControlCapabilities {
-  const isNative = mediaMode === 'native'
+  const isControllable = mediaMode === 'native' || mediaMode === 'iframe'
   return {
     canClose: mediaMode !== 'none',
-    canPlayPause: isNative,
+    canPlayPause: isControllable,
     canPrevNext: trackCount > 1 && mediaMode !== 'none',
-    canSeek: isNative,
-    canVolume: isNative,
+    canSeek: isControllable,
+    canVolume: isControllable,
   }
 }
 
