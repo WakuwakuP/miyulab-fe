@@ -30,7 +30,7 @@ type YouTubeAPI = {
   ) => YouTubePlayer
 }
 
-type YouTubeWindow = Window & {
+type YouTubeGlobal = typeof globalThis & {
   YT?: YouTubeAPI
   onYouTubeIframeAPIReady?: () => void
 }
@@ -39,7 +39,7 @@ let apiPromise: Promise<YouTubeAPI> | undefined
 const INITIALIZATION_TIMEOUT_MS = 15_000
 
 export function loadYouTubeAPI(): Promise<YouTubeAPI> {
-  const host = window as YouTubeWindow
+  const host = globalThis as YouTubeGlobal
   if (host.YT?.Player) return Promise.resolve(host.YT)
   if (apiPromise) return apiPromise
 
@@ -101,7 +101,7 @@ export function mountYouTubePlayer(
   iframe.title = 'Video player'
   const embedUrl = new URL(getDirectEmbedUrl(url) ?? url)
   embedUrl.searchParams.set('enablejsapi', '1')
-  embedUrl.searchParams.set('origin', window.location.origin)
+  embedUrl.searchParams.set('origin', globalThis.location.origin)
   iframe.src = embedUrl.href
   container.append(iframe)
 

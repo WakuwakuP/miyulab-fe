@@ -34,10 +34,9 @@ function setup(apiLoaded = true) {
     events = options.events
     return apiPlayer
   })
-  const host = {
-    location: { origin: 'https://miyulab.example' },
-    onYouTubeIframeAPIReady: vi.fn(),
-    YT: apiLoaded ? { Player } : undefined,
+  const host = globalThis as unknown as {
+    onYouTubeIframeAPIReady: () => void
+    YT?: { Player: typeof Player }
   }
   const document = {
     createElement: vi.fn((tag: string) => (tag === 'iframe' ? iframe : script)),
@@ -49,7 +48,9 @@ function setup(apiLoaded = true) {
     onPlayingChange: vi.fn(),
     onProgress: vi.fn(),
   }
-  vi.stubGlobal('window', host)
+  vi.stubGlobal('location', { origin: 'https://miyulab.example' })
+  vi.stubGlobal('onYouTubeIframeAPIReady', vi.fn())
+  vi.stubGlobal('YT', apiLoaded ? { Player } : undefined)
   vi.stubGlobal('document', document)
   return {
     apiPlayer,
