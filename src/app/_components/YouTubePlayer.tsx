@@ -12,7 +12,7 @@ export function YouTubePlayer({
   playing,
   url,
   volume,
-}: {
+}: Readonly<{
   className: string
   onError: () => void
   onPlayingChange: (playing: boolean) => void
@@ -21,7 +21,7 @@ export function YouTubePlayer({
   playing: boolean
   url: string
   volume: number
-}) {
+}>) {
   const container = useRef<HTMLDivElement>(null)
   const controller = useRef<ReturnType<typeof mountYouTubePlayer> | null>(null)
   const handleError = useEffectEvent(onError)
