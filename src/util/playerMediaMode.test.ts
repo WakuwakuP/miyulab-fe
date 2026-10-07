@@ -80,18 +80,20 @@ describe('resolvePlayerMediaMode', () => {
 })
 
 describe('getPlayerControlCapabilities', () => {
-  it('enables playback controls only for native mode', () => {
-    expect(getPlayerControlCapabilities('native', 1)).toEqual({
-      canClose: true,
-      canPlayPause: true,
-      canPrevNext: false,
-      canSeek: true,
-      canVolume: true,
-    })
+  it('enables playback controls for native and API-controlled iframe modes', () => {
+    for (const mode of ['native', 'iframe'] as const) {
+      expect(getPlayerControlCapabilities(mode, 1)).toEqual({
+        canClose: true,
+        canPlayPause: true,
+        canPrevNext: false,
+        canSeek: true,
+        canVolume: true,
+      })
+    }
   })
 
-  it('disables playback/seek/volume for iframe and fallback', () => {
-    for (const mode of ['iframe', 'fallback'] as const) {
+  it('disables playback/seek/volume for fallback and image', () => {
+    for (const mode of ['fallback', 'image'] as const) {
       expect(getPlayerControlCapabilities(mode, 1)).toEqual({
         canClose: true,
         canPlayPause: false,
