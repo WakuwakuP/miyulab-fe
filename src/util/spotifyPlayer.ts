@@ -1,4 +1,4 @@
-import { getSpotifyEmbedUrl, getSpotifyUri } from 'util/spotifyEmbed'
+import { getSpotifyUri } from 'util/spotifyEmbed'
 import type { PlayerMediaHandle } from 'util/youtubePlayer'
 
 export type SpotifyPlaybackState = {
@@ -14,6 +14,7 @@ export type SpotifyEmbedController = {
     listener: (event: { data?: SpotifyPlaybackState }) => void,
   ) => void
   destroy: () => void
+  loadUri: (uri: string) => void
   pause: () => void
   play: () => void
   seek: (seconds: number) => void
@@ -21,8 +22,8 @@ export type SpotifyEmbedController = {
 
 export type SpotifyIFrameAPI = {
   createController: (
-    iframe: HTMLIFrameElement,
-    options: { uri: string },
+    element: HTMLElement,
+    options: { uri?: string },
     callback: (controller: SpotifyEmbedController) => void,
   ) => void
 }
@@ -32,7 +33,7 @@ type SpotifyGlobal = typeof globalThis & {
   SpotifyIframeApi?: SpotifyIFrameAPI
 }
 
-const API_URL = 'https://open.spotify.com/embed-podcast/iframe-api/v1'
+const API_URL = 'https://open.spotify.com/embed/iframe-api/v1'
 const INITIALIZATION_TIMEOUT_MS = 15_000
 
 let apiPromise: Promise<SpotifyIFrameAPI> | undefined
@@ -81,11 +82,8 @@ export function loadSpotifyAPI(): Promise<SpotifyIFrameAPI> {
 }
 
 /**
- * Attach the Spotify iFrame API to an existing credentialless iframe. The
- * embed is served without COEP/CORP headers, so a plain iframe would be
- * blocked inside this cross-origin isolated document; `credentialless` is what
- * makes it load. react-player cannot add that attribute to the iframe it builds
- * from `spotify-audio-element`, so the embed is mounted here instead.
+ * Spotify replaces the target with its own iframe. Create it without a URI so
+ * credentialless can be set before navigation inside this COEP-isolated app.
  */
 export function mountSpotifyPlayer(
   container: HTMLElement,
@@ -96,16 +94,10 @@ export function mountSpotifyPlayer(
     onProgress: (currentTime: number, duration: number) => void
   },
 ) {
-  const iframe = document.createElement('iframe')
-  iframe.setAttribute('credentialless', '')
-  iframe.allow =
-    'accelerometer; autoplay; encrypted-media; fullscreen; picture-in-picture'
-  iframe.allowFullscreen = true
-  iframe.className = 'h-full w-full border-0'
-  iframe.title = 'Spotify player'
-  iframe.src = getSpotifyEmbedUrl(url) ?? url
-  container.append(iframe)
+  const target = document.createElement('div')
+  container.append(target)
 
+  let iframe: HTMLIFrameElement | null = null
   let controller: SpotifyEmbedController | undefined
   let ready = false
   let disposed = false
@@ -152,7 +144,7 @@ export function mountSpotifyPlayer(
       destroy: () => {
         disposed = true
         clearTimeout(readyTimeout)
-        iframe.remove()
+        target.remove()
       },
       media,
       setPlaying,
@@ -183,9 +175,17 @@ export function mountSpotifyPlayer(
       readyTimeout = setTimeout(() => {
         if (!disposed && !ready) callbacks.onError()
       }, INITIALIZATION_TIMEOUT_MS)
-      api.createController(iframe, { uri }, (created) => {
-        if (disposed) return
+      api.createController(target, {}, (created) => {
+        if (disposed) {
+          created.destroy()
+          return
+        }
         controller = created
+        iframe = container.querySelector('iframe')
+        if (iframe == null) throw new Error('Spotify iframe was not created')
+        iframe.setAttribute('credentialless', '')
+        iframe.className = 'h-full w-full border-0'
+        iframe.title = 'Spotify player'
         created.addListener('ready', () => {
           if (disposed) return
           clearTimeout(readyTimeout)
@@ -196,6 +196,7 @@ export function mountSpotifyPlayer(
           callbacks.onProgress(currentTime, duration)
         })
         created.addListener('playback_update', handlePlaybackUpdate)
+        created.loadUri(uri)
       })
     })
     .catch(() => {
@@ -208,7 +209,8 @@ export function mountSpotifyPlayer(
       disposed = true
       clearTimeout(readyTimeout)
       controller?.destroy()
-      iframe.remove()
+      iframe?.remove()
+      target.remove()
     },
     media,
     setPlaying,

@@ -10,6 +10,7 @@ type EventListener = (event: { data?: SpotifyPlaybackState }) => void
 const TRACK_URL = 'https://open.spotify.com/track/6vYTJP8tL8vBQzKpZ3gXrY'
 
 function setup(apiLoaded = true) {
+  const target = { remove: vi.fn() }
   const iframe = {
     allow: '',
     allowFullscreen: false,
@@ -36,14 +37,15 @@ function setup(apiLoaded = true) {
       },
     ),
     destroy: vi.fn(),
+    loadUri: vi.fn(),
     pause: vi.fn(),
     play: vi.fn(),
     seek: vi.fn(),
   }
   const createController = vi.fn(
     (
-      _iframe: HTMLIFrameElement,
-      _options: { uri: string },
+      _element: HTMLElement,
+      _options: { uri?: string },
       callback: (created: SpotifyEmbedController) => void,
     ) => {
       callback(controller)
@@ -51,10 +53,10 @@ function setup(apiLoaded = true) {
   )
   const api: SpotifyIFrameAPI = { createController }
   const document = {
-    createElement: vi.fn((tag: string) => (tag === 'iframe' ? iframe : script)),
+    createElement: vi.fn((tag: string) => (tag === 'div' ? target : script)),
     head: { append: vi.fn() },
   }
-  const container = { append: vi.fn() }
+  const container = { append: vi.fn(), querySelector: vi.fn(() => iframe) }
   const callbacks = {
     onError: vi.fn(),
     onPlayingChange: vi.fn(),
@@ -81,6 +83,7 @@ function setup(apiLoaded = true) {
     iframe,
     listeners,
     script,
+    target,
   }
 }
 
@@ -95,28 +98,42 @@ afterEach(() => {
 })
 
 describe('mountSpotifyPlayer', () => {
-  it('keeps the embed credentialless and uses the canonical embed URL', async () => {
-    const mock = setup()
-    const { mountSpotifyPlayer } = await import('util/spotifyPlayer')
-    const mounted = mountSpotifyPlayer(
-      mock.container,
-      TRACK_URL,
-      mock.callbacks,
-    )
-    await Promise.resolve()
+  it.each([
+    [TRACK_URL, 'spotify:track:6vYTJP8tL8vBQzKpZ3gXrY'],
+    [
+      'https://open.spotify.com/playlist/6WTrT0UscJNq1W4koQ0szg',
+      'spotify:playlist:6WTrT0UscJNq1W4koQ0szg',
+    ],
+  ])(
+    'makes the API-generated iframe credentialless before loading %s',
+    async (url, uri) => {
+      const mock = setup()
+      mock.controller.loadUri = vi.fn(() => {
+        expect(mock.iframe.setAttribute).toHaveBeenCalledWith(
+          'credentialless',
+          '',
+        )
+        expect(mock.iframe.src).toBe('')
+      })
+      const { mountSpotifyPlayer } = await import('util/spotifyPlayer')
+      const mounted = mountSpotifyPlayer(mock.container, url, mock.callbacks)
+      await Promise.resolve()
 
-    expect(mock.container.append).toHaveBeenCalledWith(mock.iframe)
-    expect(mock.iframe.setAttribute).toHaveBeenCalledWith('credentialless', '')
-    expect(mock.iframe.src).toBe(
-      'https://open.spotify.com/embed/track/6vYTJP8tL8vBQzKpZ3gXrY',
-    )
-    expect(mock.createController).toHaveBeenCalledWith(
-      mock.iframe,
-      { uri: 'spotify:track:6vYTJP8tL8vBQzKpZ3gXrY' },
-      expect.any(Function),
-    )
-    mounted.destroy()
-  })
+      expect(mock.container.append).toHaveBeenCalledWith(mock.target)
+      expect(mock.iframe.setAttribute).toHaveBeenCalledWith(
+        'credentialless',
+        '',
+      )
+      expect(mock.iframe.title).toBe('Spotify player')
+      expect(mock.createController).toHaveBeenCalledWith(
+        mock.target,
+        {},
+        expect.any(Function),
+      )
+      expect(mock.controller.loadUri).toHaveBeenCalledWith(uri)
+      mounted.destroy()
+    },
+  )
 
   it('gates playback until the embed becomes ready', async () => {
     const mock = setup()
@@ -191,6 +208,41 @@ describe('mountSpotifyPlayer', () => {
     expect(mock.callbacks.onProgress).not.toHaveBeenCalled()
   })
 
+  it('does not create an embed after disposal while the API is loading', async () => {
+    const mock = setup(false)
+    const { mountSpotifyPlayer } = await import('util/spotifyPlayer')
+    const mounted = mountSpotifyPlayer(
+      mock.container,
+      TRACK_URL,
+      mock.callbacks,
+    )
+    mounted.destroy()
+    mock.host.onSpotifyIframeApiReady(mock.api)
+    await Promise.resolve()
+    expect(mock.createController).not.toHaveBeenCalled()
+    expect(mock.target.remove).toHaveBeenCalledOnce()
+  })
+
+  it('destroys a controller delivered after disposal', async () => {
+    const mock = setup()
+    let onCreate: ((created: SpotifyEmbedController) => void) | undefined
+    mock.createController.mockImplementation((_element, _options, callback) => {
+      onCreate = callback
+    })
+    const { mountSpotifyPlayer } = await import('util/spotifyPlayer')
+    const mounted = mountSpotifyPlayer(
+      mock.container,
+      TRACK_URL,
+      mock.callbacks,
+    )
+    await Promise.resolve()
+    mounted.destroy()
+    onCreate?.(mock.controller)
+    expect(mock.controller.destroy).toHaveBeenCalledOnce()
+    expect(mock.controller.loadUri).not.toHaveBeenCalled()
+    expect(mock.callbacks.onError).not.toHaveBeenCalled()
+  })
+
   it('falls back if the embed never becomes ready', async () => {
     const mock = setup()
     const { mountSpotifyPlayer } = await import('util/spotifyPlayer')
@@ -235,7 +287,7 @@ describe('mountSpotifyPlayer', () => {
     expect(mock.callbacks.onError).toHaveBeenCalledOnce()
     expect(mock.createController).not.toHaveBeenCalled()
     mounted.destroy()
-    expect(mock.iframe.remove).toHaveBeenCalledOnce()
+    expect(mock.target.remove).toHaveBeenCalledOnce()
   })
 })
 
