@@ -1,5 +1,6 @@
 'use client'
 
+import { captionsTrackSrc } from 'app/_parts/Media'
 import {
   type RefObject,
   useCallback,
@@ -85,7 +86,7 @@ export function SpotifyPlayer({
         {preview?.title ?? 'Spotify'}
       </a>
       <p className="text-sm text-gray-300">Spotify · プレビュー</p>
-      {!preview && <p role="status">読み込み中…</p>}
+      {!preview && <output className="block">読み込み中…</output>}
       {preview && (
         <div className="min-h-0 flex-1 overflow-y-auto">
           {preview.tracks.map((item, index) => (
@@ -135,7 +136,14 @@ export function SpotifyPlayer({
           preload="metadata"
           ref={attachAudio}
           src={track.url}
-        />
+        >
+          <track
+            kind="captions"
+            label="Captions"
+            src={captionsTrackSrc(track.title)}
+            srcLang="und"
+          />
+        </audio>
       )}
     </div>
   )
