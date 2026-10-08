@@ -1,6 +1,7 @@
 import type { Entity } from 'megalodon'
 
-import { isExternalVideo } from 'util/videoEmbed'
+import { extractSpotifyEmbedTarget } from 'util/spotifyEmbed'
+import { extractYouTubeVideoId } from 'util/videoEmbed'
 
 export const PLAYABLE_ATTACHMENT_TYPES = ['audio', 'video', 'gifv'] as const
 
@@ -12,6 +13,9 @@ export type PlayerMediaMode =
   | 'fallback'
   | 'image'
   | 'none'
+
+/** Which credentialless embed platform a URL resolves to, if any. */
+export type PlayerEmbedProvider = 'spotify' | 'youtube' | null
 
 export type PlayerControlCapabilities = {
   canPlayPause: boolean
@@ -27,10 +31,16 @@ export function isPlayableAttachmentType(
   return (PLAYABLE_ATTACHMENT_TYPES as readonly string[]).includes(type)
 }
 
+export function resolvePlayerEmbedProvider(url: string): PlayerEmbedProvider {
+  if (extractSpotifyEmbedTarget(url) !== null) return 'spotify'
+  if (extractYouTubeVideoId(url) !== null) return 'youtube'
+  return null
+}
+
 /**
  * Derive how the current attachment should be rendered / controlled.
  * - native: ReactPlayer (direct media)
- * - iframe: API-controlled credentialless YouTube embed
+ * - iframe: API-controlled credentialless embed (YouTube / Spotify)
  * - fallback: embed failed; thumbnail + external link only
  * - image: still image attachment
  * - none: missing / unsupported
@@ -38,10 +48,12 @@ export function isPlayableAttachmentType(
 export function resolvePlayerMediaMode({
   attachmentType,
   currentUrl,
+  embedProvider = resolvePlayerEmbedProvider(currentUrl),
   externalEmbedFailed,
 }: {
   attachmentType: Entity.Attachment['type'] | null | undefined
   currentUrl: string
+  embedProvider?: PlayerEmbedProvider
   externalEmbedFailed: boolean
 }): PlayerMediaMode {
   if (attachmentType == null) return 'none'
@@ -49,7 +61,7 @@ export function resolvePlayerMediaMode({
   if (!isPlayableAttachmentType(attachmentType)) return 'none'
   if (currentUrl === '') return 'none'
 
-  if (!isExternalVideo(currentUrl)) return 'native'
+  if (embedProvider == null) return 'native'
   if (externalEmbedFailed) return 'fallback'
   return 'iframe'
 }
@@ -57,6 +69,7 @@ export function resolvePlayerMediaMode({
 export function getPlayerControlCapabilities(
   mediaMode: PlayerMediaMode,
   trackCount: number,
+  embedProvider: PlayerEmbedProvider = null,
 ): PlayerControlCapabilities {
   const isControllable = mediaMode === 'native' || mediaMode === 'iframe'
   return {
@@ -64,7 +77,9 @@ export function getPlayerControlCapabilities(
     canPlayPause: isControllable,
     canPrevNext: trackCount > 1 && mediaMode !== 'none',
     canSeek: isControllable,
-    canVolume: isControllable,
+    // The Spotify iFrame API exposes no volume control, so the slider stays
+    // inert and the embed's own controls are the only volume source.
+    canVolume: isControllable && embedProvider !== 'spotify',
   }
 }
 
