@@ -172,12 +172,14 @@ function renderPlayableMedia({
       return (
         <SpotifyPlayer
           className={embedClassName}
+          key={currentUrl}
           onError={onExternalEmbedError}
           onPlayingChange={onPlayingChange}
           onProgress={handleProgress}
           player={player}
           playing={playing}
           url={currentUrl}
+          volume={volume}
         />
       )
     }
@@ -231,11 +233,7 @@ const PlayerController = () => {
     embedProvider,
     externalEmbedFailed,
   })
-  const controls = getPlayerControlCapabilities(
-    mediaMode,
-    attachment.length,
-    embedProvider,
-  )
+  const controls = getPlayerControlCapabilities(mediaMode, attachment.length)
 
   // Reset playback state while rendering so the first paint after a track
   // switch never keeps `playing={true}` with the new src (avoids a blip).
@@ -371,6 +369,7 @@ const PlayerController = () => {
     handleProgress,
     mediaMode,
     onExternalEmbedError: () => {
+      setPlaying(false)
       setExternalEmbedFailed(true)
     },
     onPlayingChange: setPlaying,

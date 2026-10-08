@@ -14,7 +14,7 @@ export type PlayerMediaMode =
   | 'image'
   | 'none'
 
-/** Which credentialless embed platform a URL resolves to, if any. */
+/** Which external media platform a URL resolves to, if any. */
 export type PlayerEmbedProvider = 'spotify' | 'youtube' | null
 
 export type PlayerControlCapabilities = {
@@ -40,7 +40,7 @@ export function resolvePlayerEmbedProvider(url: string): PlayerEmbedProvider {
 /**
  * Derive how the current attachment should be rendered / controlled.
  * - native: ReactPlayer (direct media)
- * - iframe: API-controlled credentialless embed (YouTube / Spotify)
+ * - iframe: provider player (YouTube iframe / Spotify audio previews)
  * - fallback: embed failed; thumbnail + external link only
  * - image: still image attachment
  * - none: missing / unsupported
@@ -69,7 +69,6 @@ export function resolvePlayerMediaMode({
 export function getPlayerControlCapabilities(
   mediaMode: PlayerMediaMode,
   trackCount: number,
-  embedProvider: PlayerEmbedProvider = null,
 ): PlayerControlCapabilities {
   const isControllable = mediaMode === 'native' || mediaMode === 'iframe'
   return {
@@ -77,9 +76,7 @@ export function getPlayerControlCapabilities(
     canPlayPause: isControllable,
     canPrevNext: trackCount > 1 && mediaMode !== 'none',
     canSeek: isControllable,
-    // The Spotify iFrame API exposes no volume control, so the slider stays
-    // inert and the embed's own controls are the only volume source.
-    canVolume: isControllable && embedProvider !== 'spotify',
+    canVolume: isControllable,
   }
 }
 

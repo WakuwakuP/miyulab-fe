@@ -45,7 +45,7 @@ it('enables the component controls for YouTube playback', () => {
   expect(html).not.toContain('Use the embedded player controls')
 })
 
-it('keeps the volume control disabled for Spotify playback', () => {
+it('enables the volume control for Spotify previews', () => {
   vi.stubGlobal('document', { body: null })
 
   const html = renderToStaticMarkup(
@@ -63,7 +63,7 @@ it('keeps the volume control disabled for Spotify playback', () => {
               remote_url: null,
               text_url: null,
               type: 'audio',
-              url: 'https://open.spotify.com/episode/7nFzHqM1pYrVx0kLdE9sTf',
+              url: 'https://open.spotify.com/track/1vpbLnUhfINQDr1Z8A0cPp',
             },
           ],
           index: 0,
@@ -73,10 +73,9 @@ it('keeps the volume control disabled for Spotify playback', () => {
     ),
   )
 
-  // Spotify is controllable through the iFrame API, but exposes no volume.
   expect(html).toContain('aria-label="Play media"')
   expect(html).toContain('aria-label="Seek media"')
   expect(html).toContain('aria-label="Media volume"')
-  expect(html).toContain('disabled=""')
+  expect(html).not.toContain('disabled=""')
   expect(html).not.toContain('Use the embedded player controls')
 })
