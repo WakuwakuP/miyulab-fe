@@ -2,6 +2,7 @@ import {
   getPlayerControlCapabilities,
   getPlayerSizeTokens,
   isPlayableAttachmentType,
+  resolvePlayerEmbedProvider,
   resolvePlayerMediaMode,
   shouldIgnorePlayerKeydownTarget,
 } from 'util/playerMediaMode'
@@ -46,6 +47,27 @@ describe('resolvePlayerMediaMode', () => {
       resolvePlayerMediaMode({
         attachmentType: 'video',
         currentUrl: 'https://youtu.be/dQw4w9WgXcQ',
+        externalEmbedFailed: true,
+      }),
+    ).toBe('fallback')
+  })
+
+  it('returns iframe for Spotify URLs when embed has not failed', () => {
+    expect(
+      resolvePlayerMediaMode({
+        attachmentType: 'audio',
+        currentUrl: 'https://open.spotify.com/episode/7nFzHqM1pYrVx0kLdE9sTf',
+        externalEmbedFailed: false,
+      }),
+    ).toBe('iframe')
+  })
+
+  it('returns fallback for Spotify URLs when embed failed', () => {
+    expect(
+      resolvePlayerMediaMode({
+        attachmentType: 'audio',
+        currentUrl:
+          'https://open.spotify.com/embed/track/6vYTJP8tL8vBQzKpZ3gXrY',
         externalEmbedFailed: true,
       }),
     ).toBe('fallback')
@@ -113,6 +135,41 @@ describe('getPlayerControlCapabilities', () => {
 
   it('does not enable seek on fallback (regression for #649)', () => {
     expect(getPlayerControlCapabilities('fallback', 1).canSeek).toBe(false)
+  })
+
+  it('disables volume only for Spotify, whose iFrame API has no volume', () => {
+    expect(getPlayerControlCapabilities('iframe', 1, 'spotify').canVolume).toBe(
+      false,
+    )
+    expect(getPlayerControlCapabilities('iframe', 1, 'youtube').canVolume).toBe(
+      true,
+    )
+    expect(
+      getPlayerControlCapabilities('fallback', 1, 'spotify').canVolume,
+    ).toBe(false)
+    expect(getPlayerControlCapabilities('iframe', 1, 'youtube').canVolume).toBe(
+      true,
+    )
+    expect(getPlayerControlCapabilities('native', 1).canVolume).toBe(true)
+  })
+})
+
+describe('resolvePlayerEmbedProvider', () => {
+  it('maps embeddable URLs to their credentialless provider', () => {
+    expect(
+      resolvePlayerEmbedProvider(
+        'https://open.spotify.com/track/6vYTJP8tL8vBQzKpZ3gXrY',
+      ),
+    ).toBe('spotify')
+    expect(resolvePlayerEmbedProvider('https://youtu.be/-2pJ1dyzEE0')).toBe(
+      'youtube',
+    )
+  })
+
+  it('returns null for direct media', () => {
+    expect(
+      resolvePlayerEmbedProvider('https://cdn.example.com/clip.mp4'),
+    ).toBeNull()
   })
 })
 

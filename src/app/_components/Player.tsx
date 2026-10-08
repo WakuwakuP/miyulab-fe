@@ -1,6 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 'use client'
 
+import { SpotifyPlayer } from 'app/_components/SpotifyPlayer'
 import { YouTubePlayer } from 'app/_components/YouTubePlayer'
 import type { Entity } from 'megalodon'
 import React, {
@@ -21,8 +22,10 @@ import {
   getPlayerControlCapabilities,
   getPlayerSizeTokens,
   isPlayableAttachmentType,
+  type PlayerEmbedProvider,
   type PlayerMediaMode,
   type PlayerSizeTokens,
+  resolvePlayerEmbedProvider,
   resolvePlayerMediaMode,
   shouldIgnorePlayerKeydownTarget,
 } from 'util/playerMediaMode'
@@ -34,6 +37,7 @@ import {
 } from 'util/provider/PlayerProvider'
 import { SettingContext } from 'util/provider/SettingProvider'
 import { toSecureResourceUrl } from 'util/secureResourceUrl'
+import { extractSpotifyEmbedTarget } from 'util/spotifyEmbed'
 import { extractYouTubeVideoId } from 'util/videoEmbed'
 import type { PlayerMediaHandle } from 'util/youtubePlayer'
 
@@ -78,7 +82,8 @@ function renderPlayableMedia({
   attachment,
   classNamePlayerSize,
   currentUrl,
-  currentYouTubeVideoId,
+  embedId,
+  embedProvider,
   handleProgress,
   mediaMode,
   onExternalEmbedError,
@@ -90,7 +95,8 @@ function renderPlayableMedia({
   attachment: Entity.Attachment
   classNamePlayerSize: PlayerSizeTokens
   currentUrl: string
-  currentYouTubeVideoId: string | null
+  embedId: string | null
+  embedProvider: PlayerEmbedProvider
   handleProgress: (currentTime: number, duration: number) => void
   mediaMode: PlayerMediaMode
   onExternalEmbedError: () => void
@@ -132,13 +138,13 @@ function renderPlayableMedia({
           classNamePlayerSize.hClass,
         ].join(' ')}
       >
-        {currentYouTubeVideoId == null ? (
+        {embedId == null || embedProvider !== 'youtube' ? (
           <div className="h-full w-full bg-black" />
         ) : (
           <img
             alt="YouTube thumbnail"
             className="h-full w-full object-contain"
-            src={`https://img.youtube.com/vi/${currentYouTubeVideoId}/hqdefault.jpg`}
+            src={`https://img.youtube.com/vi/${embedId}/hqdefault.jpg`}
           />
         )}
         <a
@@ -157,11 +163,28 @@ function renderPlayableMedia({
   }
 
   if (mediaMode === 'iframe') {
+    const embedClassName = [
+      'aspect-video w-full',
+      classNamePlayerSize.hClass,
+    ].join(' ')
+
+    if (embedProvider === 'spotify') {
+      return (
+        <SpotifyPlayer
+          className={embedClassName}
+          onError={onExternalEmbedError}
+          onPlayingChange={onPlayingChange}
+          onProgress={handleProgress}
+          player={player}
+          playing={playing}
+          url={currentUrl}
+        />
+      )
+    }
+
     return (
       <YouTubePlayer
-        className={['aspect-video w-full', classNamePlayerSize.hClass].join(
-          ' ',
-        )}
+        className={embedClassName}
         onError={onExternalEmbedError}
         onPlayingChange={onPlayingChange}
         onProgress={handleProgress}
@@ -197,13 +220,22 @@ const PlayerController = () => {
   const currentAttachment = index == null ? null : attachment[index]
   const currentUrl = toSecureResourceUrl(currentAttachment?.url) ?? ''
   const [trackedUrl, setTrackedUrl] = useState(currentUrl)
-  const currentYouTubeVideoId = extractYouTubeVideoId(currentUrl)
+  const embedProvider = resolvePlayerEmbedProvider(currentUrl)
+  const embedId =
+    embedProvider === 'spotify'
+      ? (extractSpotifyEmbedTarget(currentUrl)?.id ?? null)
+      : extractYouTubeVideoId(currentUrl)
   const mediaMode = resolvePlayerMediaMode({
     attachmentType: currentAttachment?.type,
     currentUrl,
+    embedProvider,
     externalEmbedFailed,
   })
-  const controls = getPlayerControlCapabilities(mediaMode, attachment.length)
+  const controls = getPlayerControlCapabilities(
+    mediaMode,
+    attachment.length,
+    embedProvider,
+  )
 
   // Reset playback state while rendering so the first paint after a track
   // switch never keeps `playing={true}` with the new src (avoids a blip).
@@ -334,7 +366,8 @@ const PlayerController = () => {
     attachment: currentAttachment,
     classNamePlayerSize,
     currentUrl,
-    currentYouTubeVideoId,
+    embedId,
+    embedProvider,
     handleProgress,
     mediaMode,
     onExternalEmbedError: () => {
