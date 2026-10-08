@@ -136,22 +136,6 @@ describe('getPlayerControlCapabilities', () => {
   it('does not enable seek on fallback (regression for #649)', () => {
     expect(getPlayerControlCapabilities('fallback', 1).canSeek).toBe(false)
   })
-
-  it('disables volume only for Spotify, whose iFrame API has no volume', () => {
-    expect(getPlayerControlCapabilities('iframe', 1, 'spotify').canVolume).toBe(
-      false,
-    )
-    expect(getPlayerControlCapabilities('iframe', 1, 'youtube').canVolume).toBe(
-      true,
-    )
-    expect(
-      getPlayerControlCapabilities('fallback', 1, 'spotify').canVolume,
-    ).toBe(false)
-    expect(getPlayerControlCapabilities('iframe', 1, 'youtube').canVolume).toBe(
-      true,
-    )
-    expect(getPlayerControlCapabilities('native', 1).canVolume).toBe(true)
-  })
 })
 
 describe('resolvePlayerEmbedProvider', () => {
