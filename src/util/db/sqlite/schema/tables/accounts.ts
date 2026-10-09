@@ -9,6 +9,7 @@ export function createAccountTables(db: DbExec): void {
       backend_type      TEXT    NOT NULL,
       acct              TEXT    NOT NULL,
       remote_account_id TEXT    NOT NULL,
+      notification_last_read_id TEXT,
       access_token      TEXT,
       profile_id        INTEGER,
       display_order     INTEGER NOT NULL DEFAULT 0,

@@ -436,3 +436,71 @@ describe('createStreamingController', () => {
     )
   })
 })
+
+describe('notification read refresh', () => {
+  it('reexecutes the entire plan without a cursor and replaces the visible result', async () => {
+    const h = setupController({
+      state: {
+        newestMs: 1000,
+        sortedItems: [
+          { created_at_ms: 100, id: '1' } as unknown as TimelineItem,
+        ],
+      },
+    })
+    h.callbacks.matched?.(
+      new Set(['notifications', 'notification-read']),
+      undefined,
+    )
+    await vi.waitFor(() =>
+      expect(
+        h.events.some(
+          (event) => event.type === 'NOTIFICATION_READ_REFRESH_SUCCEEDED',
+        ),
+      ).toBe(true),
+    )
+    expect(h.fetchPage).toHaveBeenCalledWith(
+      expect.objectContaining({ changedTables: undefined, cursor: undefined }),
+    )
+    h.dispose()
+  })
+  it('preserves the read reason across an in-flight normal fetch', async () => {
+    let finish: ((result: FetchPageResult) => void) | undefined
+    const fetchPage = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<FetchPageResult>((resolve) => {
+            finish = resolve
+          }),
+      )
+      .mockResolvedValue({ durationMs: 1, items: [] })
+    const h = setupController({ fetchPage })
+    h.callbacks.matched?.(new Set(['posts']), undefined)
+    h.callbacks.matched?.(
+      new Set(['notifications', 'notification-read']),
+      undefined,
+    )
+    finish?.({ durationMs: 1, items: [] })
+    await vi.waitFor(() => expect(fetchPage).toHaveBeenCalledTimes(2))
+    expect(fetchPage.mock.calls[1][0].changedTables).toBeUndefined()
+    expect(
+      h.events.some(
+        (event) => event.type === 'NOTIFICATION_READ_REFRESH_SUCCEEDED',
+      ),
+    ).toBe(true)
+    h.dispose()
+  })
+  it('keeps the read reason deferred during scrollback', () => {
+    const h = setupController({ state: { isScrollbackRunning: true } })
+    h.callbacks.matched?.(
+      new Set(['notifications', 'notification-read']),
+      undefined,
+    )
+    expect(h.events).toContainEqual({
+      changedTables: new Set(['notifications', 'notification-read']),
+      type: 'STREAMING_DEFERRED',
+    })
+    expect(h.fetchPage).not.toHaveBeenCalled()
+    h.dispose()
+  })
+})

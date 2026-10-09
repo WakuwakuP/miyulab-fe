@@ -16,6 +16,7 @@
  */
 
 import type { Entity } from 'megalodon'
+import { notificationReadState } from 'util/notificationReadState'
 import {
   ensureProfile,
   ensureServer,
@@ -45,6 +46,7 @@ type DbExec = {
 type HandlerResult = {
   changedTables: TableName[]
   changedPostIds?: readonly number[]
+  reason?: 'notification-read'
 }
 
 // ================================================================
@@ -322,6 +324,7 @@ export function upsertNotification(
   notification: Entity.Notification,
   backendUrl: string,
   collector?: Set<TableName>,
+  readChange?: { changed: boolean },
 ): boolean {
   const host = extractHost(backendUrl)
   const serverId = ensureServer(db, host, collector)
@@ -332,6 +335,26 @@ export function upsertNotification(
   }
 
   const created_at_ms = new Date(notification.created_at).getTime()
+  const readRows = (db.exec(
+    'SELECT la.notification_last_read_id, n.is_read, n.id FROM local_accounts la LEFT JOIN notifications n ON n.local_account_id = la.id AND n.local_id = ? WHERE la.id = ?;',
+    { bind: [notification.id, localAccountId], returnValue: 'resultRows' },
+  ) ?? []) as [string | null, number | null, number | null][]
+  const suppliedRead = (
+    notification as Entity.Notification & { isRead?: boolean | null }
+  ).isRead
+  const boundaryRead = notificationReadState(
+    notification.id,
+    readRows[0]?.[0] ?? null,
+  )
+  const read = boundaryRead === true ? true : (suppliedRead ?? boundaryRead)
+  if (
+    readChange &&
+    readRows[0]?.[2] != null &&
+    read !== null &&
+    readRows[0][1] !== 1 &&
+    readRows[0][1] !== (read ? 1 : 0)
+  )
+    readChange.changed = true
   const notificationTypeId = resolveNotificationTypeId(db, notification.type)
   const actorProfileId = notification.account
     ? ensureProfile(db, notification.account, serverId, collector)
@@ -414,12 +437,14 @@ export function upsertNotification(
       actor_profile_id     = excluded.actor_profile_id,
       related_post_id      = excluded.related_post_id,
       reaction_name        = excluded.reaction_name,
-      reaction_url         = excluded.reaction_url
+      reaction_url         = excluded.reaction_url,
+      is_read              = CASE WHEN notifications.is_read = 1 THEN 1 ELSE COALESCE(excluded.is_read, notifications.is_read) END
     WHERE notifications.notification_type_id IS NOT excluded.notification_type_id
        OR notifications.actor_profile_id     IS NOT excluded.actor_profile_id
        OR notifications.related_post_id      IS NOT excluded.related_post_id
        OR notifications.reaction_name        IS NOT excluded.reaction_name
-       OR notifications.reaction_url         IS NOT excluded.reaction_url;`,
+       OR notifications.reaction_url         IS NOT excluded.reaction_url
+       OR (notifications.is_read IS NOT 1 AND excluded.is_read IS NOT NULL AND notifications.is_read IS NOT excluded.is_read);`,
     {
       bind: [
         localAccountId,
@@ -430,7 +455,7 @@ export function upsertNotification(
         relatedPostId,
         reactionName,
         reactionUrl,
-        0, // is_read default
+        read === null ? null : read ? 1 : 0,
       ],
     },
   )
@@ -446,9 +471,19 @@ export function handleAddNotification(
 ): HandlerResult {
   const notification = JSON.parse(notificationJson) as Entity.Notification
   const collector: Set<TableName> = new Set()
-  const touchPosts = upsertNotification(db, notification, backendUrl, collector)
+  const readChange = { changed: false }
+  const touchPosts = upsertNotification(
+    db,
+    notification,
+    backendUrl,
+    collector,
+    readChange,
+  )
   if (touchPosts) collector.add('posts')
-  return { changedTables: [...collector] }
+  return {
+    changedTables: [...collector],
+    ...(readChange.changed ? { reason: 'notification-read' as const } : {}),
+  }
 }
 
 export function handleBulkAddNotifications(
@@ -459,12 +494,15 @@ export function handleBulkAddNotifications(
   if (notificationsJson.length === 0) return { changedTables: [] }
 
   const collector: Set<TableName> = new Set()
+  const readChange = { changed: false }
   db.exec('BEGIN;')
   let touchPosts = false
   try {
     for (const nJson of notificationsJson) {
       const notification = JSON.parse(nJson) as Entity.Notification
-      if (upsertNotification(db, notification, backendUrl, collector)) {
+      if (
+        upsertNotification(db, notification, backendUrl, collector, readChange)
+      ) {
         touchPosts = true
       }
     }
@@ -475,7 +513,10 @@ export function handleBulkAddNotifications(
   }
 
   if (touchPosts) collector.add('posts')
-  return { changedTables: [...collector] }
+  return {
+    changedTables: [...collector],
+    ...(readChange.changed ? { reason: 'notification-read' as const } : {}),
+  }
 }
 
 export function handleUpdateNotificationStatusAction(

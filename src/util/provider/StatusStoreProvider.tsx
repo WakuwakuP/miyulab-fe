@@ -36,6 +36,7 @@ import { GetClient } from 'util/GetClient'
 import { getRetryDelay, MAX_RETRY_COUNT } from 'util/streaming/constants'
 import { restartStream, stopStream } from 'util/streaming/stopStream'
 import { AppsContext } from './AppsProvider'
+import { NotificationReadContext } from './NotificationReadProvider'
 import { SetTagsContext, SetUsersContext } from './ResourceProvider'
 import {
   StartupCoordinatorContext,
@@ -306,12 +307,14 @@ function buildStreamHandlers(
   app: App,
   setUsersEvent: SetUsersFn,
   setTagsEvent: SetTagsFn,
+  syncReadState: (app: App) => void,
 ) {
   const { backendUrl } = app
   const retryState: StreamRetryState = { count: 0 }
 
   function onConnect(): void {
     handleStreamConnect(retryState)
+    syncReadState(app)
   }
 
   function onDelete(id: string): void {
@@ -383,13 +386,19 @@ async function connectUserStreamForApp(
   setUsersEvent: SetUsersFn,
   setTagsEvent: SetTagsFn,
   streams: Map<string, WebSocketInterface>,
+  syncReadState: (app: App) => void,
 ): Promise<void> {
   const client = GetClient(app)
   const { backendUrl } = app
 
   try {
     const stream = await client.userStreaming()
-    const handlers = buildStreamHandlers(app, setUsersEvent, setTagsEvent)
+    const handlers = buildStreamHandlers(
+      app,
+      setUsersEvent,
+      setTagsEvent,
+      syncReadState,
+    )
 
     // エラーハンドラを最初に登録して "Unhandled error" を防止する
     stream.on('error', handlers.onError(stream))
@@ -397,6 +406,7 @@ async function connectUserStreamForApp(
     stream.on('update', handlers.onUpdate)
     stream.on('status_update', handlers.onStatusUpdate)
     stream.on('notification', handlers.onNotification)
+    stream.on('notification-read', () => syncReadState(app))
     stream.on('delete', handlers.onDelete)
 
     streams.set(backendUrl, stream)
@@ -465,6 +475,7 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
   const setUsers = useContext(SetUsersContext)
   const setTags = useContext(SetTagsContext)
   const { isPhaseReached, advanceTo } = useContext(StartupCoordinatorContext)
+  const { sync: syncReadState } = useContext(NotificationReadContext)
   const refFirstRef = useRef(true)
   const refFirstRestRef = useRef(true)
   const refFirstStreamRef = useRef(true)
@@ -543,6 +554,7 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
         setUsersEvent,
         setTagsEvent,
         streamsRef.current,
+        syncReadState,
       )
     }
 
@@ -552,7 +564,7 @@ export const StatusStoreProvider = ({ children }: { children: ReactNode }) => {
       }
       streamsRef.current.clear()
     }
-  }, [apps, restFetched])
+  }, [apps, restFetched, syncReadState])
 
   const storeActionsValue = useMemo(
     () => ({

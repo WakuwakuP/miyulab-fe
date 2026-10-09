@@ -22,6 +22,7 @@ import { isReadOnlySql } from './queries/executionEngine'
 import { batchBindForIds } from './queries/statusBatch'
 import { loadSqliteWasmInitializer } from './sqliteWasmLoader'
 import type { DbHandle } from './types'
+import { handleUpdateNotificationReadState } from './worker/handlers/notificationReadHandlers'
 import { resolvePostIdInternal } from './worker/handlers/statusHelpers'
 import type { DbExec } from './worker/handlers/types'
 
@@ -44,6 +45,8 @@ function withLocalAccountId<T>(
 
 function buildChangeHint(command: SendCommandPayload): ChangeHint | undefined {
   switch (command.type) {
+    case 'updateNotificationReadState':
+      return { backendUrl: command.backendUrl, reason: 'notification-read' }
     case 'upsertStatus':
     case 'bulkUpsertStatuses':
     case 'removeFromTimeline':
@@ -502,6 +505,9 @@ async function initMainThreadFallback(
             command.backendUrl,
           )
           break
+        case 'updateNotificationReadState':
+          result = handleUpdateNotificationReadState(db, command)
+          break
         case 'updateNotificationStatusAction':
           result = handleUpdateNotificationStatusAction(
             db,
@@ -584,6 +590,7 @@ async function initMainThreadFallback(
               ...baseHint,
               changedPostIds: resultPostIds,
               changedTables: result.changedTables,
+              reason: result.reason ?? baseHint.reason,
             }
           : undefined
         for (const table of result.changedTables as TableName[]) {

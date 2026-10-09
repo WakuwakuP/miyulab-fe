@@ -261,6 +261,7 @@ export function assembleNotificationFromFlat(
     created_at: new Date(row[N.CREATED_AT_MS] as number).toISOString(),
     created_at_ms: row[N.CREATED_AT_MS] as number,
     id: (row[N.LOCAL_ID] as string) ?? String(row[N.ID]),
+    isRead: row[N.IS_READ] === null ? null : row[N.IS_READ] === 1,
     notification_id: row[N.ID] as number,
     ...(reaction ? { reaction } : {}),
     status: status ?? undefined,

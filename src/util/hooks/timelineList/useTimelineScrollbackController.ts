@@ -28,7 +28,10 @@ import {
 } from 'util/timelineFetcher'
 
 import type { TimelineListEvent, TimelineListState } from './reducer'
-import { resolveStreamingFetchWindow } from './streamingHelpers'
+import {
+  NOTIFICATION_READ_CHANGE,
+  resolveStreamingFetchWindow,
+} from './streamingHelpers'
 
 const PAGE_SIZE = TIMELINE_QUERY_LIMIT
 
@@ -146,17 +149,25 @@ export function useTimelineScrollbackController({
             PAGE_SIZE,
           )
           fetchPage({
-            changedTables: deferredChangedTables,
+            changedTables: deferredChangedTables.has(NOTIFICATION_READ_CHANGE)
+              ? undefined
+              : deferredChangedTables,
             cursor,
             limit,
-          }).then((result) => {
-            if (!result) return
-            recordDuration(result.durationMs)
-            dispatch({
-              items: result.items,
-              type: 'DEFERRED_STREAMING_FLUSH_SUCCEEDED',
-            })
           })
+            .then((result) => {
+              if (!result) return
+              recordDuration(result.durationMs)
+              dispatch({
+                items: result.items,
+                type: deferredChangedTables.has(NOTIFICATION_READ_CHANGE)
+                  ? 'NOTIFICATION_READ_REFRESH_SUCCEEDED'
+                  : 'DEFERRED_STREAMING_FLUSH_SUCCEEDED',
+              })
+            })
+            .catch(() => {
+              console.warn('Deferred timeline refresh failed')
+            })
         }
       }
     }
