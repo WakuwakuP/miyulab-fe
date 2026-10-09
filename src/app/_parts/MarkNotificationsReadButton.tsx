@@ -15,7 +15,7 @@ export function MarkNotificationsReadButton() {
     <button
       aria-busy={isRunning}
       aria-label={label}
-      className="inline-flex h-full min-w-[24px] shrink-0 items-center justify-center px-1 disabled:opacity-40 [@media(pointer:coarse)]:min-h-[44px] [@media(pointer:coarse)]:min-w-[44px]"
+      className="mr-6 inline-flex h-full min-w-[24px] shrink-0 items-center justify-center px-1 disabled:opacity-40 [@media(pointer:coarse)]:min-h-[44px] [@media(pointer:coarse)]:min-w-[44px]"
       disabled={isRunning || !available}
       onClick={markAllRead}
       title={label}
