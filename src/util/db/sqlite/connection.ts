@@ -100,6 +100,13 @@ const pendingByTable = new Map<TableName, PendingEntry>()
 /** debounce 用: スケジュール済みタイマー ID */
 let timerId: ReturnType<typeof setTimeout> | null = null
 
+/** hintless 変更時でも既読変更の理由だけは保持する */
+function hintlessChangeHints(hints: ChangeHint[]): ChangeHint[] {
+  return hints.some((hint) => hint.reason === 'notification-read')
+    ? [{ reason: 'notification-read' }]
+    : []
+}
+
 /**
  * 保留中の通知をフラッシュし、リスナーを発火する。
  *
@@ -115,9 +122,7 @@ function flushNotifications(): void {
     if (!set) continue
     // hintless 変更があった場合は空配列 → 全サブスクライバーが再取得
     const hints = entry.hasHintlessChange
-      ? entry.hints.some((hint) => hint.reason === 'notification-read')
-        ? [{ reason: 'notification-read' as const }]
-        : []
+      ? hintlessChangeHints(entry.hints)
       : entry.hints
     for (const fn of set) {
       try {

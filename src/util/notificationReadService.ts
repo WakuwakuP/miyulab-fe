@@ -141,137 +141,186 @@ export type NotificationReadTask = {
   mutation?: NotificationReadMutation
 }
 
+async function rethrowAfterSync(
+  app: App,
+  isCurrent: () => boolean,
+  error: unknown,
+): Promise<never> {
+  try {
+    await syncNotificationReadState(app, isCurrent)
+  } catch {
+    /* Keep the original failure. */
+  }
+  throw error
+}
+
+async function writeMisskeyRead(
+  task: NotificationReadTask,
+  account: NotificationReadMutation,
+  isCurrent: () => boolean,
+): Promise<void> {
+  const ids = await snapshotIds(account)
+  task.mutation = {
+    ...account,
+    updates: ids.map((id) => ({ id, isRead: true })),
+  }
+  assertCurrent(isCurrent)
+  // A lost response may already have marked the server; retries only confirm.
+  task.stage = 'confirm'
+  try {
+    await notificationApi(task.app, '/api/notifications/mark-all-as-read', {})
+  } catch (error) {
+    if (
+      error instanceof NotificationApiError &&
+      error.status < 500 &&
+      error.status !== 408
+    )
+      task.stage = 'write'
+    throw error
+  }
+}
+
+function markerCovers(existing: string, boundary: string): boolean {
+  const order = compareNotificationIds(existing, boundary)
+  if (order === null) throw new Error('既読境界の順序を確認できません')
+  return order >= 0
+}
+
+async function saveMarker(app: App, boundary: string): Promise<string> {
+  const saved = markerId(
+    await notificationApi(app, '/api/v1/markers', {
+      notifications: { last_read_id: boundary },
+    }),
+  )
+  const order = saved === null ? null : compareNotificationIds(saved, boundary)
+  if (saved === null || order === null || order < 0)
+    throw new Error('既読境界の保存を確認できません')
+  return saved
+}
+
+async function writeMastodonMarker(
+  app: App,
+  mutation: NotificationReadMutation,
+  boundary: string,
+  isCurrent: () => boolean,
+): Promise<void> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const existing = await fetchMarker(app)
+    assertCurrent(isCurrent)
+    if (existing && markerCovers(existing, boundary)) {
+      mutation.boundary = existing
+      return
+    }
+    try {
+      mutation.boundary = await saveMarker(app, boundary)
+      return
+    } catch (error) {
+      const retryable =
+        error instanceof NotificationApiError &&
+        error.status === 409 &&
+        attempt === 0
+      if (!retryable) await rethrowAfterSync(app, isCurrent, error)
+    }
+  }
+}
+
+async function writePleromaRead(
+  app: App,
+  mutation: NotificationReadMutation,
+  boundary: string,
+  isCurrent: () => boolean,
+): Promise<void> {
+  try {
+    const raw = await notificationApi(
+      app,
+      '/api/v1/pleroma/notifications/read',
+      { max_id: boundary },
+    )
+    mutation.updates = pleromaReadUpdates(raw)
+  } catch (error) {
+    await rethrowAfterSync(app, isCurrent, error)
+  }
+}
+
+/** @returns 既読にする通知が無い場合 false */
+async function writeBoundaryRead(
+  task: NotificationReadTask,
+  account: NotificationReadMutation,
+  isCurrent: () => boolean,
+): Promise<boolean> {
+  const { app } = task
+  const boundary = task.mutation?.boundary ?? (await latestId(app))
+  if (!boundary) return false
+  const mutation: NotificationReadMutation = { ...account, boundary }
+  task.mutation = mutation
+  assertCurrent(isCurrent)
+  if (app.backend === 'mastodon') {
+    await writeMastodonMarker(app, mutation, boundary, isCurrent)
+  } else {
+    await writePleromaRead(app, mutation, boundary, isCurrent)
+  }
+  task.stage = 'save'
+  return true
+}
+
+async function confirmMisskeyRead(
+  app: App,
+  isCurrent: () => boolean,
+): Promise<void> {
+  const deadline = Date.now() + 5000
+  do {
+    assertCurrent(isCurrent)
+    const data = (await notificationApi(
+      app,
+      '/api/i',
+      undefined,
+      undefined,
+      Math.max(1, deadline - Date.now()),
+    ).catch((cause) => {
+      assertCurrent(isCurrent)
+      throw new Error('既読操作は受付済み・状態を確認できませんでした', {
+        cause,
+      })
+    })) as { hasUnreadNotification?: boolean }
+    if (data?.hasUnreadNotification === false) return
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.min(500, Math.max(0, deadline - Date.now()))),
+    )
+  } while (Date.now() < deadline)
+  throw new Error('既読操作は受付済み・状態を確認できませんでした')
+}
+
+async function saveMutation(
+  mutation: NotificationReadMutation,
+  isCurrent: () => boolean,
+): Promise<void> {
+  try {
+    await persist(mutation, isCurrent)
+  } catch (error) {
+    assertCurrent(isCurrent)
+    throw new Error('サーバー反映済み・表示の同期に失敗しました', {
+      cause: error,
+    })
+  }
+}
+
 export async function runNotificationReadTask(
   task: NotificationReadTask,
   isCurrent: () => boolean,
 ): Promise<void> {
-  const { app } = task
-  const account = await resolveAccount(app, isCurrent)
+  const account = await resolveAccount(task.app, isCurrent)
   if (task.mutation && task.mutation.localAccountId !== account.localAccountId)
     throw new Error('通知のアカウントが変更されました')
   if (task.stage === 'write') {
-    if (app.backend === 'misskey') {
-      const ids = await snapshotIds(account)
-      task.mutation = {
-        ...account,
-        updates: ids.map((id) => ({ id, isRead: true })),
-      }
-      assertCurrent(isCurrent)
-      // A lost response may already have marked the server; retries only confirm.
-      task.stage = 'confirm'
-      try {
-        await notificationApi(app, '/api/notifications/mark-all-as-read', {})
-      } catch (error) {
-        if (
-          error instanceof NotificationApiError &&
-          error.status < 500 &&
-          error.status !== 408
-        )
-          task.stage = 'write'
-        throw error
-      }
-    } else {
-      const boundary = task.mutation?.boundary ?? (await latestId(app))
-      if (!boundary) return
-      task.mutation = { ...account, boundary }
-      assertCurrent(isCurrent)
-      if (app.backend === 'mastodon') {
-        for (let attempt = 0; attempt < 2; attempt++) {
-          const existing = await fetchMarker(app)
-          assertCurrent(isCurrent)
-          const order = existing
-            ? compareNotificationIds(existing, boundary)
-            : -1
-          if (order === null) throw new Error('既読境界の順序を確認できません')
-          if (order >= 0) {
-            task.mutation.boundary = existing ?? boundary
-            break
-          }
-          try {
-            const saved = markerId(
-              await notificationApi(app, '/api/v1/markers', {
-                notifications: { last_read_id: boundary },
-              }),
-            )
-            const savedOrder = saved
-              ? compareNotificationIds(saved, boundary)
-              : null
-            if (savedOrder === null || savedOrder < 0)
-              throw new Error('既読境界の保存を確認できません')
-            task.mutation.boundary = saved ?? boundary
-            break
-          } catch (error) {
-            if (
-              error instanceof NotificationApiError &&
-              error.status === 409 &&
-              attempt === 0
-            )
-              continue
-            try {
-              await syncNotificationReadState(app, isCurrent)
-            } catch {
-              /* Keep the original failure. */
-            }
-            throw error
-          }
-        }
-      } else {
-        try {
-          const raw = await notificationApi(
-            app,
-            '/api/v1/pleroma/notifications/read',
-            { max_id: boundary },
-          )
-          task.mutation.updates = pleromaReadUpdates(raw)
-        } catch (error) {
-          try {
-            await syncNotificationReadState(app, isCurrent)
-          } catch {
-            /* Keep the original failure. */
-          }
-          throw error
-        }
-      }
-      task.stage = 'save'
+    if (task.app.backend === 'misskey') {
+      await writeMisskeyRead(task, account, isCurrent)
+    } else if (!(await writeBoundaryRead(task, account, isCurrent))) {
+      return
     }
   }
   if (task.stage === 'confirm') {
-    const deadline = Date.now() + 5000
-    let confirmed = false
-    do {
-      assertCurrent(isCurrent)
-      const data = (await notificationApi(
-        app,
-        '/api/i',
-        undefined,
-        undefined,
-        Math.max(1, deadline - Date.now()),
-      ).catch((cause) => {
-        assertCurrent(isCurrent)
-        throw new Error('既読操作は受付済み・状態を確認できませんでした', {
-          cause,
-        })
-      })) as { hasUnreadNotification?: boolean }
-      if (data?.hasUnreadNotification === false) {
-        confirmed = true
-        break
-      }
-      await new Promise((resolve) =>
-        setTimeout(resolve, Math.min(500, Math.max(0, deadline - Date.now()))),
-      )
-    } while (Date.now() < deadline)
-    if (!confirmed)
-      throw new Error('既読操作は受付済み・状態を確認できませんでした')
+    await confirmMisskeyRead(task.app, isCurrent)
     task.stage = 'save'
   }
-  if (task.mutation) {
-    try {
-      await persist(task.mutation, isCurrent)
-    } catch (error) {
-      assertCurrent(isCurrent)
-      throw new Error('サーバー反映済み・表示の同期に失敗しました', {
-        cause: error,
-      })
-    }
-  }
+  if (task.mutation) await saveMutation(task.mutation, isCurrent)
 }

@@ -55,6 +55,12 @@ const ReactionDisplay = ({
   )
 }
 
+function readStateLabel(isRead: boolean | null | undefined): string {
+  if (isRead === true) return '既読'
+  if (isRead === false) return '未読'
+  return '未確認'
+}
+
 export const Notification = ({
   notification,
   scrolling = false,
@@ -63,13 +69,7 @@ export const Notification = ({
   scrolling?: boolean
 }) => (
   <div className="relative">
-    <span className="sr-only">
-      {notification.isRead === true
-        ? '既読'
-        : notification.isRead === false
-          ? '未読'
-          : '未確認'}
-    </span>
+    <span className="sr-only">{readStateLabel(notification.isRead)}</span>
     {notification.isRead !== true && (
       <span
         aria-hidden="true"
