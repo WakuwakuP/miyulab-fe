@@ -318,8 +318,10 @@ export function rowToStoredNotification(
   }
 }
 
+type ReadAwareNotification = Entity.Notification & { isRead?: boolean | null }
+
 type PendingNotification = {
-  notification: Entity.Notification
+  notification: ReadAwareNotification
   waiters: { reject: (e: unknown) => void; resolve: () => void }[]
 }
 
@@ -522,14 +524,8 @@ export function createNotificationWriteStore(
     if (!existingBucket) pendingBuckets.set(backendUrl, bucket)
     return new Promise<void>((resolve, reject) => {
       const existing = bucket.items.get(notification.id)
-      const previousRead = (
-        existing?.notification as
-          | (Entity.Notification & { isRead?: boolean | null })
-          | undefined
-      )?.isRead
-      const incomingRead = (
-        notification as Entity.Notification & { isRead?: boolean | null }
-      ).isRead
+      const previousRead = existing?.notification.isRead
+      const incomingRead = (notification as ReadAwareNotification).isRead
       if (
         previousRead != null &&
         (previousRead === true || incomingRead == null)

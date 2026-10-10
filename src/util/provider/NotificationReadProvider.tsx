@@ -6,6 +6,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react'
@@ -29,9 +30,9 @@ export const NotificationReadContext = createContext({
 
 export function NotificationReadProvider({
   children,
-}: {
+}: Readonly<{
   children: ReactNode
-}) {
+}>) {
   const apps = useContext(AppsContext)
   const { isPhaseReached } = useContext(StartupCoordinatorContext)
   const ready = isPhaseReached('rest-fetched')
@@ -159,20 +160,22 @@ export function NotificationReadProvider({
     )
   }, [run])
 
+  const value = useMemo(
+    () => ({
+      available:
+        ready &&
+        apps.some(
+          (app) => app.tokenData?.access_token && supportsNotificationRead(app),
+        ),
+      isRunning,
+      markAllRead,
+      sync,
+    }),
+    [apps, isRunning, markAllRead, ready, sync],
+  )
+
   return (
-    <NotificationReadContext.Provider
-      value={{
-        available:
-          ready &&
-          apps.some(
-            (app) =>
-              app.tokenData?.access_token && supportsNotificationRead(app),
-          ),
-        isRunning,
-        markAllRead,
-        sync,
-      }}
-    >
+    <NotificationReadContext.Provider value={value}>
       {children}
     </NotificationReadContext.Provider>
   )

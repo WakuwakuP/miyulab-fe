@@ -313,6 +313,74 @@ function syncPollOntoStoredPost(
   return r.updatedPollOnExistingPost
 }
 
+function toReadFlag(read: boolean | null): 0 | 1 | null {
+  if (read === null) return null
+  return read ? 1 : 0
+}
+
+/**
+ * 既読境界と通知に付与された既読状態から is_read を決定する。
+ * 既存行の未読状態が変わる場合は readChange.changed を立てる。
+ */
+function resolveNotificationRead(
+  db: DbExec,
+  notification: Entity.Notification,
+  localAccountId: number,
+  readChange?: { changed: boolean },
+): boolean | null {
+  const readRows = (db.exec(
+    'SELECT la.notification_last_read_id, n.is_read, n.id FROM local_accounts la LEFT JOIN notifications n ON n.local_account_id = la.id AND n.local_id = ? WHERE la.id = ?;',
+    { bind: [notification.id, localAccountId], returnValue: 'resultRows' },
+  ) ?? []) as [string | null, number | null, number | null][]
+  const suppliedRead = (
+    notification as Entity.Notification & { isRead?: boolean | null }
+  ).isRead
+  const boundaryRead = notificationReadState(
+    notification.id,
+    readRows[0]?.[0] ?? null,
+  )
+  const read = boundaryRead === true ? true : (suppliedRead ?? boundaryRead)
+  if (
+    readChange &&
+    readRows[0]?.[2] != null &&
+    read !== null &&
+    readRows[0][1] !== 1 &&
+    readRows[0][1] !== toReadFlag(read)
+  )
+    readChange.changed = true
+  return read
+}
+
+/**
+ * リアクション URL を解決する（カスタム絵文字の URL が欠落している場合は DB / Misskey フォールバックで補完）
+ */
+function resolveReactionUrl(
+  db: DbExec,
+  reaction: Entity.Notification['reaction'],
+  serverId: number,
+  backendUrl: string,
+): string | null {
+  const reactionName = reaction?.name ?? null
+  const reactionUrl = reaction?.url ?? reaction?.static_url ?? null
+  if (
+    reactionUrl != null ||
+    !reactionName?.startsWith(':') ||
+    !reactionName.endsWith(':') ||
+    reactionName.length <= 2
+  )
+    return reactionUrl
+  const shortcode = reactionName.slice(1, -1)
+  const emojiRows = db.exec(
+    'SELECT url, static_url FROM custom_emojis WHERE server_id = ? AND shortcode = ?;',
+    { bind: [serverId, shortcode], returnValue: 'resultRows' },
+  ) as (string | null)[][]
+  if (emojiRows.length > 0) {
+    return emojiRows[0][1] ?? emojiRows[0][0]
+  }
+  // Misskey URL パターンフォールバック
+  return `${backendUrl}/emoji/${encodeURIComponent(shortcode)}.webp`
+}
+
 /**
  * 単一通知を解決して notifications テーブルに upsert する。
  * handleAddNotification と handleBulkAddNotifications の共通処理を集約。
@@ -335,26 +403,12 @@ export function upsertNotification(
   }
 
   const created_at_ms = new Date(notification.created_at).getTime()
-  const readRows = (db.exec(
-    'SELECT la.notification_last_read_id, n.is_read, n.id FROM local_accounts la LEFT JOIN notifications n ON n.local_account_id = la.id AND n.local_id = ? WHERE la.id = ?;',
-    { bind: [notification.id, localAccountId], returnValue: 'resultRows' },
-  ) ?? []) as [string | null, number | null, number | null][]
-  const suppliedRead = (
-    notification as Entity.Notification & { isRead?: boolean | null }
-  ).isRead
-  const boundaryRead = notificationReadState(
-    notification.id,
-    readRows[0]?.[0] ?? null,
+  const read = resolveNotificationRead(
+    db,
+    notification,
+    localAccountId,
+    readChange,
   )
-  const read = boundaryRead === true ? true : (suppliedRead ?? boundaryRead)
-  if (
-    readChange &&
-    readRows[0]?.[2] != null &&
-    read !== null &&
-    readRows[0][1] !== 1 &&
-    readRows[0][1] !== (read ? 1 : 0)
-  )
-    readChange.changed = true
   const notificationTypeId = resolveNotificationTypeId(db, notification.type)
   const actorProfileId = notification.account
     ? ensureProfile(db, notification.account, serverId, collector)
@@ -402,29 +456,13 @@ export function upsertNotification(
     }
   }
 
-  // リアクション名・URL を解決（カスタム絵文字の URL が欠落している場合は DB / Misskey フォールバックで補完）
   const reactionName = notification.reaction?.name ?? null
-  let reactionUrl =
-    notification.reaction?.url ?? notification.reaction?.static_url ?? null
-
-  if (
-    reactionUrl == null &&
-    reactionName?.startsWith(':') &&
-    reactionName.endsWith(':') &&
-    reactionName.length > 2
-  ) {
-    const shortcode = reactionName.slice(1, -1)
-    const emojiRows = db.exec(
-      'SELECT url, static_url FROM custom_emojis WHERE server_id = ? AND shortcode = ?;',
-      { bind: [serverId, shortcode], returnValue: 'resultRows' },
-    ) as (string | null)[][]
-    if (emojiRows.length > 0) {
-      reactionUrl = emojiRows[0][1] ?? emojiRows[0][0]
-    } else {
-      // Misskey URL パターンフォールバック
-      reactionUrl = `${backendUrl}/emoji/${encodeURIComponent(shortcode)}.webp`
-    }
-  }
+  const reactionUrl = resolveReactionUrl(
+    db,
+    notification.reaction,
+    serverId,
+    backendUrl,
+  )
 
   // UPSERT: ON CONFLICT(local_account_id, local_id) DO UPDATE
   db.exec(
@@ -455,7 +493,7 @@ export function upsertNotification(
         relatedPostId,
         reactionName,
         reactionUrl,
-        read === null ? null : read ? 1 : 0,
+        toReadFlag(read),
       ],
     },
   )

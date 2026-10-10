@@ -47,6 +47,24 @@ type UseTimelineScrollbackControllerArgs = {
   targetBackendUrls: string[]
 }
 
+function isScrollbackExhausted(
+  config: TimelineConfigV2,
+  exhaustedResources: ExhaustedResources,
+  targetBackendUrls: string[],
+  includeNotifications: boolean,
+): boolean {
+  const isNotificationTimeline = config.type === 'notification'
+  const statusesExhausted =
+    isNotificationTimeline ||
+    allExhaustedFor(exhaustedResources, targetBackendUrls, 'statuses')
+  if (!statusesExhausted) return false
+  const fetchNotifs = isNotificationTimeline || includeNotifications
+  return (
+    !fetchNotifs ||
+    allExhaustedFor(exhaustedResources, targetBackendUrls, 'notifications')
+  )
+}
+
 export function useTimelineScrollbackController({
   apps,
   config,
@@ -112,22 +130,12 @@ export function useTimelineScrollbackController({
       }
 
       // API が全バックエンドで枯渇 かつ DB にも追加データなし → 終端
-      const fetchNotifs = config.type === 'notification' || includeNotifications
-      const statusesExhausted =
-        config.type === 'notification' ||
-        allExhaustedFor(
-          exhaustedResourcesRef.current,
-          targetBackendUrls,
-          'statuses',
-        )
-      const notifsExhausted =
-        !fetchNotifs ||
-        allExhaustedFor(
-          exhaustedResourcesRef.current,
-          targetBackendUrls,
-          'notifications',
-        )
-      const allExhausted = statusesExhausted && notifsExhausted
+      const allExhausted = isScrollbackExhausted(
+        config,
+        exhaustedResourcesRef.current,
+        targetBackendUrls,
+        includeNotifications,
+      )
       if (allExhausted && (!retry || retry.items.length === 0)) {
         dispatch({ hasMoreOlder: false, type: 'SCROLLBACK_COMPLETED' })
         return
