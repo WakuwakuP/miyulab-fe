@@ -47,6 +47,50 @@ type UseTimelineScrollbackControllerArgs = {
   targetBackendUrls: string[]
 }
 
+/**
+ * scrollback 完了を通知し、遡り中に保留されたストリーミング更新を flush する。
+ */
+function completeScrollback(
+  dispatch: Dispatch<TimelineListEvent>,
+  fetchPage: (options?: FetchPageOptions) => Promise<FetchPageResult | null>,
+  recordDuration: (ms: number) => void,
+  stateRef: RefObject<TimelineListState>,
+): void {
+  if (!stateRef.current.isScrollbackRunning) return
+  const flushState = stateRef.current
+  const deferredChangedTables = flushState.deferredChangedTables
+  dispatch({
+    hasMoreOlder: flushState.hasMoreOlder,
+    type: 'SCROLLBACK_COMPLETED',
+  })
+
+  if (!deferredChangedTables) return
+  const { cursor, limit } = resolveStreamingFetchWindow(
+    deferredChangedTables,
+    flushState,
+    PAGE_SIZE,
+  )
+  const isReadRefresh = deferredChangedTables.has(NOTIFICATION_READ_CHANGE)
+  fetchPage({
+    changedTables: isReadRefresh ? undefined : deferredChangedTables,
+    cursor,
+    limit,
+  })
+    .then((result) => {
+      if (!result) return
+      recordDuration(result.durationMs)
+      dispatch({
+        items: result.items,
+        type: isReadRefresh
+          ? 'NOTIFICATION_READ_REFRESH_SUCCEEDED'
+          : 'DEFERRED_STREAMING_FLUSH_SUCCEEDED',
+      })
+    })
+    .catch(() => {
+      console.warn('Deferred timeline refresh failed')
+    })
+}
+
 export function useTimelineScrollbackController({
   apps,
   config,
@@ -133,43 +177,7 @@ export function useTimelineScrollbackController({
         return
       }
     } finally {
-      // scrollback 完了
-      if (stateRef.current.isScrollbackRunning) {
-        const flushState = stateRef.current
-        const deferredChangedTables = flushState.deferredChangedTables
-        dispatch({
-          hasMoreOlder: flushState.hasMoreOlder,
-          type: 'SCROLLBACK_COMPLETED',
-        })
-
-        if (deferredChangedTables) {
-          const { cursor, limit } = resolveStreamingFetchWindow(
-            deferredChangedTables,
-            flushState,
-            PAGE_SIZE,
-          )
-          fetchPage({
-            changedTables: deferredChangedTables.has(NOTIFICATION_READ_CHANGE)
-              ? undefined
-              : deferredChangedTables,
-            cursor,
-            limit,
-          })
-            .then((result) => {
-              if (!result) return
-              recordDuration(result.durationMs)
-              dispatch({
-                items: result.items,
-                type: deferredChangedTables.has(NOTIFICATION_READ_CHANGE)
-                  ? 'NOTIFICATION_READ_REFRESH_SUCCEEDED'
-                  : 'DEFERRED_STREAMING_FLUSH_SUCCEEDED',
-              })
-            })
-            .catch(() => {
-              console.warn('Deferred timeline refresh failed')
-            })
-        }
-      }
+      completeScrollback(dispatch, fetchPage, recordDuration, stateRef)
     }
   }, [
     fetchPage,

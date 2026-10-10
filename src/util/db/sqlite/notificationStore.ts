@@ -318,8 +318,10 @@ export function rowToStoredNotification(
   }
 }
 
+type ReadableNotification = Entity.Notification & { isRead?: boolean | null }
+
 type PendingNotification = {
-  notification: Entity.Notification
+  notification: ReadableNotification
   waiters: { reject: (e: unknown) => void; resolve: () => void }[]
 }
 
@@ -514,7 +516,7 @@ export function createNotificationWriteStore(
   }
 
   function enqueueNotification(
-    notification: Entity.Notification,
+    notification: ReadableNotification,
     backendUrl: string,
   ): Promise<void> {
     const existingBucket = pendingBuckets.get(backendUrl)
@@ -522,14 +524,8 @@ export function createNotificationWriteStore(
     if (!existingBucket) pendingBuckets.set(backendUrl, bucket)
     return new Promise<void>((resolve, reject) => {
       const existing = bucket.items.get(notification.id)
-      const previousRead = (
-        existing?.notification as
-          | (Entity.Notification & { isRead?: boolean | null })
-          | undefined
-      )?.isRead
-      const incomingRead = (
-        notification as Entity.Notification & { isRead?: boolean | null }
-      ).isRead
+      const previousRead = existing?.notification.isRead
+      const incomingRead = notification.isRead
       if (
         previousRead != null &&
         (previousRead === true || incomingRead == null)
@@ -537,7 +533,7 @@ export function createNotificationWriteStore(
         notification = {
           ...notification,
           isRead: previousRead,
-        } as Entity.Notification
+        }
       }
       const waiters = existing?.waiters ?? []
       waiters.push({ reject, resolve })

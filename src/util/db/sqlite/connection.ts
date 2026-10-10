@@ -100,6 +100,14 @@ const pendingByTable = new Map<TableName, PendingEntry>()
 /** debounce 用: スケジュール済みタイマー ID */
 let timerId: ReturnType<typeof setTimeout> | null = null
 
+function resolveHints(entry: PendingEntry): ChangeHint[] {
+  if (!entry.hasHintlessChange) return entry.hints
+  // hintless 変更があった場合は空配列 → 全サブスクライバーが再取得
+  if (entry.hints.some((hint) => hint.reason === 'notification-read'))
+    return [{ reason: 'notification-read' }]
+  return []
+}
+
 /**
  * 保留中の通知をフラッシュし、リスナーを発火する。
  *
@@ -113,12 +121,7 @@ function flushNotifications(): void {
   for (const [table, entry] of snapshot) {
     const set = listeners.get(table)
     if (!set) continue
-    // hintless 変更があった場合は空配列 → 全サブスクライバーが再取得
-    const hints = entry.hasHintlessChange
-      ? entry.hints.some((hint) => hint.reason === 'notification-read')
-        ? [{ reason: 'notification-read' as const }]
-        : []
-      : entry.hints
+    const hints = resolveHints(entry)
     for (const fn of set) {
       try {
         fn(hints)

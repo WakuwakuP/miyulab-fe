@@ -3,7 +3,8 @@ export function compareNotificationIds(a: string, b: string): number | null {
   if (!/^\d+$/.test(a) || !/^\d+$/.test(b)) return null
   const left = BigInt(a)
   const right = BigInt(b)
-  return left < right ? -1 : left > right ? 1 : 0
+  if (left < right) return -1
+  return left > right ? 1 : 0
 }
 
 export function notificationReadState(
