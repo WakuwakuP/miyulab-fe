@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
   handleEnsureLocalAccount: vi.fn(),
   handleRemoveFromTimeline: vi.fn(),
   handleToggleReaction: vi.fn(),
+  handleUpdateNotificationReadState: vi.fn(),
   handleUpdateNotificationStatusAction: vi.fn(),
   handleUpdateStatus: vi.fn(),
   handleUpdateStatusAction: vi.fn(),
@@ -87,6 +88,9 @@ vi.mock('util/db/sqlite/worker/workerNotificationStore', () => ({
   handleBulkAddNotifications: mocks.handleBulkAddNotifications,
   handleUpdateNotificationStatusAction:
     mocks.handleUpdateNotificationStatusAction,
+}))
+vi.mock('util/db/sqlite/worker/handlers/notificationReadHandlers', () => ({
+  handleUpdateNotificationReadState: mocks.handleUpdateNotificationReadState,
 }))
 
 vi.mock('util/db/sqlite/worker/workerCleanup', () => ({
@@ -1002,4 +1006,31 @@ describe('main-thread command API', () => {
       handle.sendCommand({ type: 'not-supported' } as never),
     ).rejects.toThrow('Unknown command type: not-supported')
   })
+})
+
+it('fallback read-state writes publish the same account and reason hints as worker writes', async () => {
+  mocks.handleUpdateNotificationReadState.mockReturnValue({
+    changedTables: ['notifications', 'local_accounts'],
+  })
+  const handle = await createFallbackHandle()
+  const mutation = {
+    backendUrl: 'https://example.test',
+    boundary: '100',
+    localAccountId: 7,
+    remoteAccountId: 'self',
+    type: 'updateNotificationReadState' as const,
+  }
+  await handle.sendCommand(mutation)
+  expect(mocks.handleUpdateNotificationReadState).toHaveBeenCalledWith(
+    measuredDb,
+    mutation,
+  )
+  expect(notify).toHaveBeenCalledWith(
+    'notifications',
+    expect.objectContaining({
+      backendUrl: 'https://example.test',
+      changedTables: ['notifications', 'local_accounts'],
+      reason: 'notification-read',
+    }),
+  )
 })

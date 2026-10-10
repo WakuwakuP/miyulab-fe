@@ -61,6 +61,31 @@ export const Notification = ({
 }: {
   notification: NotificationAddAppIndex
   scrolling?: boolean
+}) => (
+  <div className="relative">
+    <span className="sr-only">
+      {notification.isRead === true
+        ? '既読'
+        : notification.isRead === false
+          ? '未読'
+          : '未確認'}
+    </span>
+    {notification.isRead !== true && (
+      <span
+        aria-hidden="true"
+        className={`pointer-events-none absolute top-2 right-2 z-10 h-[8px] w-[8px] rounded-full ${notification.isRead === false ? 'bg-blue-500' : 'border border-gray-400'}`}
+      />
+    )}
+    <NotificationContent notification={notification} scrolling={scrolling} />
+  </div>
+)
+
+const NotificationContent = ({
+  notification,
+  scrolling = false,
+}: {
+  notification: NotificationAddAppIndex
+  scrolling?: boolean
 }) => {
   const setDetail = useContext(SetDetailContext)
   const apps = useContext(AppsContext)

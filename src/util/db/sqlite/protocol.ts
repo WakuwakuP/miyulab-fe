@@ -189,6 +189,12 @@ export type BulkAddNotificationsRequest = {
 }
 
 /** Notification 内 Status アクション更新 */
+export type UpdateNotificationReadStateRequest =
+  import('util/notificationReadState').NotificationReadMutation & {
+    type: 'updateNotificationReadState'
+    id: number
+  }
+
 export type UpdateNotificationStatusActionRequest = {
   type: 'updateNotificationStatusAction'
   id: number
@@ -438,6 +444,7 @@ export type WorkerRequest =
   | RemoveFromTimelineRequest
   | AddNotificationRequest
   | BulkAddNotificationsRequest
+  | UpdateNotificationReadStateRequest
   | UpdateNotificationStatusActionRequest
   | EnforceMaxLengthRequest
   | SyncFollowsRequest
@@ -466,6 +473,7 @@ export type SuccessResponse = {
     backendUrl?: string
     tag?: string
     changedPostIds?: readonly number[]
+    reason?: 'notification-read'
   }
   durationMs?: number
   diagnostics?: DbWorkerRequestMetrics

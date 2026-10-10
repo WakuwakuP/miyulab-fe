@@ -148,6 +148,18 @@ export class MisskeyWebSocketAdapter
     if (this.channelType === 'homeTimeline') {
       // biome-ignore lint/correctness/useHookAtTopLevel: useChannel は React hook ではなく misskey-js の Stream メソッド
       this.mainChannel = this.stream.useChannel('main')
+      this.mainChannel.on(
+        'unreadNotification',
+        (notification: Misskey.entities.Notification) => {
+          this.emit('notification', {
+            ...mapNotification(notification, this.origin),
+            isRead: false,
+          })
+        },
+      )
+      this.mainChannel.on('readAllNotifications', () =>
+        this.emit('notification-read'),
+      )
 
       this.mainChannel.on(
         'notification',

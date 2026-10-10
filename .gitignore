@@ -8,6 +8,7 @@
 
 # testing
 /coverage
+/.codex-tmp/
 
 # next.js
 /.next/

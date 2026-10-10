@@ -26,6 +26,7 @@ export type StatusAddAppIndex = Entity.Status & {
 
 export type NotificationAddAppIndex = Entity.Notification & {
   appIndex: number
+  isRead?: boolean | null
 }
 
 export type AccountAddAppIndex = Entity.Account & {

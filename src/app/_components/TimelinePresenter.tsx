@@ -7,6 +7,7 @@ import { createContext, type ReactNode, useContext, useMemo } from 'react'
 import { CgSpinner } from 'react-icons/cg'
 import { Virtuoso } from 'react-virtuoso'
 import type { TimelineItem, TimelineViewModel } from 'types/timelineViewModel'
+import { itemKey } from 'util/hooks/timelineList/itemHelpers'
 import { useVirtuosoTimelineLayout } from 'util/hooks/useVirtuosoTimelineLayout'
 
 const TimelineFooterLoadingContext = createContext(false)
@@ -34,11 +35,13 @@ function TimelineVirtuosoFooter() {
  */
 export function TimelinePresenter({
   headerOffset,
+  headerActions,
   renderItem,
   viewModel,
 }: Readonly<{
   viewModel: TimelineViewModel
   headerOffset?: string
+  headerActions?: ReactNode
   /** 各アイテムの描画関数。isScrolling は Virtuoso のスクロール中フラグ。 */
   renderItem: (item: TimelineItem, isScrolling: boolean) => ReactNode
 }>) {
@@ -56,6 +59,7 @@ export function TimelinePresenter({
   const layout = useVirtuosoTimelineLayout({
     configId,
     dataLength: data.length,
+    itemKeys: useMemo(() => data.map(itemKey), [data]),
   })
 
   const virtuosoComponents = useMemo(
@@ -69,6 +73,7 @@ export function TimelinePresenter({
     <TimelineFooterLoadingContext.Provider value={isLoadingOlder}>
       <Panel
         className="relative"
+        headerActions={headerActions}
         headerOffset={headerOffset}
         name={displayName}
         onClickHeader={() => layout.scrollToTop()}
@@ -83,6 +88,7 @@ export function TimelinePresenter({
               atTopStateChange={layout.atTopStateChange}
               atTopThreshold={20}
               components={virtuosoComponents}
+              computeItemKey={(_, item) => itemKey(item)}
               data={data}
               endReached={hasMoreOlder ? loadOlder : undefined}
               firstItemIndex={layout.firstItemIndex}
@@ -96,6 +102,7 @@ export function TimelinePresenter({
               }
               onWheel={layout.onWheel}
               ref={layout.scrollerRef}
+              scrollerRef={layout.setScrollerElement}
               totalCount={data.length}
             />
           </>

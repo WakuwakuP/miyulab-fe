@@ -9,7 +9,14 @@
  * useTimelineList からのみ使用されることを想定。
  */
 
-import { useCallback, useContext, useMemo, useRef } from 'react'
+import {
+  useCallback,
+  useContext,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+} from 'react'
 
 import type {
   NotificationAddAppIndex,
@@ -55,6 +62,7 @@ import {
   useServerIds,
 } from 'util/hooks/useResolvedAccounts'
 import { AppsContext } from 'util/provider/AppsProvider'
+import { NotificationReadContext } from 'util/provider/NotificationReadProvider'
 import {
   normalizeBackendFilter,
   resolveBackendUrls,
@@ -117,6 +125,7 @@ export function useTimelineDataSource(
   options?: UseTimelineDataSourceOptions,
 ) {
   const apps = useContext(AppsContext)
+  const { sync: syncReadState } = useContext(NotificationReadContext)
 
   // バックエンド解決
   const normalizedFilter = useMemo(
@@ -163,6 +172,20 @@ export function useTimelineDataSource(
       serverIds,
     })
   }, [config, localAccountIds, serverIds, _refreshToken])
+
+  const syncReadOnRefresh = useEffectEvent(() => {
+    if (
+      config.type === 'notification' ||
+      (basePlan && planReferencesTableDeep(basePlan, 'notifications'))
+    ) {
+      apps
+        .filter((app) => targetBackendUrls.includes(app.backendUrl))
+        .forEach(syncReadState)
+    }
+  })
+  useEffect(() => {
+    if (_refreshToken > 0) syncReadOnRefresh()
+  }, [_refreshToken])
 
   // subscribe 対象テーブル
   const subscribeTables = useMemo((): TableName[] => {

@@ -27,6 +27,7 @@ import {
   isReadOnlySql,
   executeQueryPlan as runQueryPlan,
 } from '../queries/executionEngine'
+import { handleUpdateNotificationReadState } from './handlers/notificationReadHandlers'
 import { resolvePostIdInternal } from './handlers/statusHelpers'
 import {
   DEFAULT_MAX_NOTIFICATIONS,
@@ -254,10 +255,19 @@ function dispatchWorkerRequest(msg: WorkerRequest, db: WorkerDb): void {
     }
 
     // ---- Notification 専用ハンドラ ----
+    case 'updateNotificationReadState': {
+      const result = handleUpdateNotificationReadState(db, msg)
+      sendResponse(msg.id, { ok: true }, result.changedTables, undefined, {
+        backendUrl: msg.backendUrl,
+        reason: 'notification-read',
+      })
+      break
+    }
     case 'addNotification': {
       const r = handleAddNotification(db, msg.notificationJson, msg.backendUrl)
       sendResponse(msg.id, { ok: true }, r.changedTables, undefined, {
         backendUrl: msg.backendUrl,
+        reason: r.reason,
       })
       break
     }
@@ -270,6 +280,7 @@ function dispatchWorkerRequest(msg: WorkerRequest, db: WorkerDb): void {
       )
       sendResponse(msg.id, { ok: true }, r.changedTables, undefined, {
         backendUrl: msg.backendUrl,
+        reason: r.reason,
       })
       break
     }

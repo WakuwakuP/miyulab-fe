@@ -30,6 +30,7 @@ import type {
 import type { TimelineListEvent, TimelineListState } from './reducer'
 import {
   INTERACTION_RELATED_TABLES,
+  NOTIFICATION_READ_CHANGE,
   resolveStreamingFetchWindow,
 } from './streamingHelpers'
 
@@ -107,21 +108,38 @@ export function createStreamingController({
       cursor ? 'with cursor' : 'full',
     )
 
-    fetchPage({ changedTables, cursor, limit, sessionTag }).then((result) => {
-      if (disposed || gen !== generation) return
-      tlDebug(
-        '[TL] onMatched: fetch result',
-        result ? result.items.length : 'null',
-      )
-      if (result) {
-        recordDuration(result.durationMs)
-        dispatch({ items: result.items, type: 'STREAMING_FETCH_SUCCEEDED' })
-      }
-
-      pendingFetch = false
-      // 保留中の変更があればまとめてフェッチ
-      flushCoalesced()
+    const readRefresh = changedTables.has(NOTIFICATION_READ_CHANGE)
+    fetchPage({
+      changedTables: readRefresh ? undefined : changedTables,
+      cursor,
+      limit,
+      sessionTag,
     })
+      .then((result) => {
+        if (disposed || gen !== generation) return
+        tlDebug(
+          '[TL] onMatched: fetch result',
+          result ? result.items.length : 'null',
+        )
+        if (result) {
+          recordDuration(result.durationMs)
+          dispatch({
+            items: result.items,
+            type: readRefresh
+              ? 'NOTIFICATION_READ_REFRESH_SUCCEEDED'
+              : 'STREAMING_FETCH_SUCCEEDED',
+          })
+        }
+
+        pendingFetch = false
+        // 保留中の変更があればまとめてフェッチ
+        flushCoalesced()
+      })
+      .catch(() => {
+        if (disposed || gen !== generation) return
+        pendingFetch = false
+        flushCoalesced()
+      })
   }
 
   const doInteractionRefresh = (

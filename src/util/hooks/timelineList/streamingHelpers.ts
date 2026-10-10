@@ -12,6 +12,7 @@ import type { ChangeHint } from 'util/db/sqlite/connection'
 import { CURSOR_MARGIN_MS } from './itemHelpers'
 
 const INTERACTION_ONLY_TABLE = 'post_interactions'
+export const NOTIFICATION_READ_CHANGE = 'notification-read'
 
 export const INTERACTION_RELATED_TABLES: ReadonlySet<string> = new Set([
   INTERACTION_ONLY_TABLE,
@@ -28,6 +29,8 @@ export function aggregateChangedTables(
 ): ReadonlySet<string> {
   const result = new Set<string>()
   for (const hint of hints) {
+    if (hint.reason === 'notification-read')
+      result.add(NOTIFICATION_READ_CHANGE)
     if (hint.changedTables) {
       for (const table of hint.changedTables) {
         result.add(table)
@@ -80,7 +83,10 @@ export function resolveStreamingFetchWindow(
   },
   pageSize: number,
 ): { cursor?: PaginationCursor; limit: number } {
-  if (shouldBypassStreamingCursor(changedTables)) {
+  if (
+    shouldBypassStreamingCursor(changedTables) ||
+    changedTables.has(NOTIFICATION_READ_CHANGE)
+  ) {
     return {
       cursor: undefined,
       limit: Math.max(pageSize, state.sortedItems.length + pageSize),

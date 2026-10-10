@@ -21,7 +21,7 @@ export const SOURCE_TABLES: TableRegistry = {
       },
       is_read: {
         label: '既読',
-        nullable: false,
+        nullable: true,
         type: 'integer',
       },
       local_account_id: {

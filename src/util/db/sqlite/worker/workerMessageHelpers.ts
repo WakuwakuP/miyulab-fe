@@ -16,6 +16,7 @@ export function sendResponse(
     backendUrl?: string
     tag?: string
     changedPostIds?: readonly number[]
+    reason?: 'notification-read'
   },
 ): void {
   // 書き込みが伴う場合はバージョンをインクリメント
