@@ -564,3 +564,26 @@ describe('INTERACTION_UPDATES_SUCCEEDED', () => {
     expect(s2).toBe(s1)
   })
 })
+
+describe('NOTIFICATION_READ_REFRESH_SUCCEEDED', () => {
+  it('replaces a filtered result, removes stale rows, and rebuilds cursors', () => {
+    const loaded = dispatch(createInitialState(), {
+      items: [makeStatus('3', 300), makeStatus('2', 200)],
+      type: 'INITIAL_FETCH_SUCCEEDED',
+    })
+    const replaced = dispatch(loaded, {
+      items: [makeStatus('1', 100)],
+      type: 'NOTIFICATION_READ_REFRESH_SUCCEEDED',
+    })
+    expect(replaced.sortedItems.map((item) => item.id)).toEqual(['1'])
+    expect(replaced.oldestMs).toBe(100)
+    expect(replaced.newestMs).toBe(100)
+    expect(replaced.initialized).toBe(true)
+    const empty = dispatch(replaced, {
+      items: [],
+      type: 'NOTIFICATION_READ_REFRESH_SUCCEEDED',
+    })
+    expect(empty.itemMap.size).toBe(0)
+    expect(empty.sortedItems).toEqual([])
+  })
+})

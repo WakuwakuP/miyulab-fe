@@ -23,6 +23,7 @@ export async function getNotifications(
 ): Promise<Response<Array<Entity.Notification>>> {
   const notifications = await ctx.client.request('i/notifications', {
     limit: options?.limit ?? 20,
+    markAsRead: false,
     ...(options?.max_id ? { untilId: options.max_id } : {}),
     ...(options?.since_id ? { sinceId: options.since_id } : {}),
   })
@@ -36,6 +37,7 @@ export async function getNotification(
   // Misskey doesn't have a single notification endpoint; fetch recent and filter
   const notifications = await ctx.client.request('i/notifications', {
     limit: 100,
+    markAsRead: false,
   })
   const target = notifications.find((n) => n.id === id)
   if (target) {

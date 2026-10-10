@@ -101,6 +101,57 @@ beforeEach(() => {
 })
 
 describe('notification マイクロバッチ', () => {
+  it('does not lose unread metadata when a generic event is coalesced before persistence', async () => {
+    const unread = store.addNotification(
+      { ...notification('known-unread'), isRead: false } as Entity.Notification,
+      'https://a.test',
+    )
+    const generic = store.addNotification(
+      notification('known-unread'),
+      'https://a.test',
+    )
+    await store.flush()
+    await Promise.all([unread, generic])
+    expect(
+      native
+        .prepare(
+          "SELECT is_read FROM notifications WHERE local_id='known-unread'",
+        )
+        .get()?.is_read,
+    ).toBe(0)
+  })
+  it('queued read updates recheck authentication after buffered writes', async () => {
+    let release!: () => void
+    gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const pending = store.bulkAddNotifications(
+      Array.from({ length: 20 }, (_, i) => notification(`n${i}`)),
+      'https://a.test',
+    )
+    let current = true
+    const read = store.updateNotificationReadState(
+      {
+        backendUrl: 'https://a.test',
+        boundary: '20',
+        localAccountId: 1,
+        remoteAccountId: 'me-1',
+      },
+      () => {
+        if (!current) throw new Error('stale account')
+      },
+    )
+    const rejected = expect(read).rejects.toThrow('stale account')
+    await vi.waitFor(() => expect(sentCommands).toHaveLength(1))
+    current = false
+    release()
+    gate = null
+    await pending
+    await rejected
+    expect(sentCommands.map((command) => command.type)).toEqual([
+      'bulkAddNotifications',
+    ])
+  })
   it('同一 notification.id は最新値に合体され呼び出し元が共に解決する', async () => {
     const first = store.addNotification(notification('n1'), 'https://a.test')
     const second = store.addNotification(

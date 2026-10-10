@@ -40,6 +40,7 @@ export type ChangeHint = {
   /** この書き込みバッチで変更された全テーブル名 */
   changedTables?: readonly string[]
   changedPostIds?: readonly number[]
+  reason?: 'notification-read'
 }
 
 /** 変更リスナー */
@@ -113,7 +114,11 @@ function flushNotifications(): void {
     const set = listeners.get(table)
     if (!set) continue
     // hintless 変更があった場合は空配列 → 全サブスクライバーが再取得
-    const hints = entry.hasHintlessChange ? [] : entry.hints
+    const hints = entry.hasHintlessChange
+      ? entry.hints.some((hint) => hint.reason === 'notification-read')
+        ? [{ reason: 'notification-read' as const }]
+        : []
+      : entry.hints
     for (const fn of set) {
       try {
         fn(hints)

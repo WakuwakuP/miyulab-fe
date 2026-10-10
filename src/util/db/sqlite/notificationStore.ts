@@ -47,6 +47,7 @@ function parseEmojiReactions(json: string | null): Entity.Reaction[] {
 const MAX_QUERY_LIMIT = 2147483647
 
 export interface SqliteStoredNotification extends Entity.Notification {
+  isRead: boolean | null
   notification_id: number
   backendUrl: string
   created_at_ms: number
@@ -308,6 +309,7 @@ export function rowToStoredNotification(
     created_at: new Date(row[2] as number).toISOString(),
     created_at_ms: row[2] as number,
     id: (row[4] as string) ?? String(row[0]),
+    isRead: row[5] === null ? null : row[5] === 1,
     // SqliteStoredNotification extra fields
     notification_id: row[0] as number,
     ...(reaction ? { reaction } : {}),
@@ -520,6 +522,23 @@ export function createNotificationWriteStore(
     if (!existingBucket) pendingBuckets.set(backendUrl, bucket)
     return new Promise<void>((resolve, reject) => {
       const existing = bucket.items.get(notification.id)
+      const previousRead = (
+        existing?.notification as
+          | (Entity.Notification & { isRead?: boolean | null })
+          | undefined
+      )?.isRead
+      const incomingRead = (
+        notification as Entity.Notification & { isRead?: boolean | null }
+      ).isRead
+      if (
+        previousRead != null &&
+        (previousRead === true || incomingRead == null)
+      ) {
+        notification = {
+          ...notification,
+          isRead: previousRead,
+        } as Entity.Notification
+      }
       const waiters = existing?.waiters ?? []
       waiters.push({ reject, resolve })
       bucket.items.set(notification.id, { notification, waiters })
@@ -577,11 +596,27 @@ export function createNotificationWriteStore(
   return {
     addNotification,
     bulkAddNotifications,
+    flush: () => enqueueOperation(async () => {}),
+    updateNotificationReadState: (
+      mutation: import('util/notificationReadState').NotificationReadMutation,
+      assertCurrent: () => void,
+    ) =>
+      enqueueOperation((handle) => {
+        assertCurrent()
+        return handle.sendCommand({
+          ...mutation,
+          type: 'updateNotificationReadState',
+        })
+      }),
     updateNotificationStatusAction,
   }
 }
 
 const defaultNotificationWriteStore = createNotificationWriteStore(getSqliteDb)
+
+export const updateNotificationReadState =
+  defaultNotificationWriteStore.updateNotificationReadState
+export const flushNotifications = defaultNotificationWriteStore.flush
 
 export const addNotification = defaultNotificationWriteStore.addNotification
 export const bulkAddNotifications =

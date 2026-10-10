@@ -1,5 +1,6 @@
 'use client'
 
+import { MarkNotificationsReadButton } from 'app/_parts/MarkNotificationsReadButton'
 import { Notification } from 'app/_parts/Notification'
 import { Status } from 'app/_parts/Status'
 import { useMemo } from 'react'
@@ -45,6 +46,7 @@ export const MixedTimeline = ({
 
   return (
     <TimelinePresenter
+      headerActions={<MarkNotificationsReadButton />}
       headerOffset={headerOffset}
       renderItem={(item, scrolling) => {
         if ('type' in item) {

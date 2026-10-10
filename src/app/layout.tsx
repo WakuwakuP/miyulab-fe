@@ -9,6 +9,7 @@ import { AppsProvider } from 'util/provider/AppsProvider'
 import { DetailProvider } from 'util/provider/DetailProvider'
 import { HomeTimelineProvider } from 'util/provider/HomeTimelineProvider'
 import { MediaModalProvider } from 'util/provider/ModalProvider'
+import { NotificationReadProvider } from 'util/provider/NotificationReadProvider'
 import { PlayerProvider } from 'util/provider/PlayerProvider'
 import { PostAccountProvider } from 'util/provider/PostAccountProvider'
 import { ReplyToProvider } from 'util/provider/ReplyToProvider'
@@ -52,17 +53,19 @@ export default function RootLayout({
                           <MediaModalProvider>
                             <PlayerProvider>
                               <StartupCoordinator>
-                                <StatusStoreProvider>
-                                  <StreamingManagerProvider>
-                                    <HomeTimelineProvider>
-                                      <Toaster
-                                        position="bottom-left"
-                                        reverseOrder={false}
-                                      />
-                                      {children}
-                                    </HomeTimelineProvider>
-                                  </StreamingManagerProvider>
-                                </StatusStoreProvider>
+                                <NotificationReadProvider>
+                                  <StatusStoreProvider>
+                                    <StreamingManagerProvider>
+                                      <HomeTimelineProvider>
+                                        <Toaster
+                                          position="bottom-left"
+                                          reverseOrder={false}
+                                        />
+                                        {children}
+                                      </HomeTimelineProvider>
+                                    </StreamingManagerProvider>
+                                  </StatusStoreProvider>
+                                </NotificationReadProvider>
                               </StartupCoordinator>
                             </PlayerProvider>
                           </MediaModalProvider>

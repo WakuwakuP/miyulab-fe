@@ -320,7 +320,7 @@ describe('v2.0.0 マイグレーション', () => {
       migrations.push(...savedMigrations)
     })
 
-    it('v2.0.0 DB に対して v2.0.1 ~ v2.0.7 マイグレーションが適用される', () => {
+    it('v2.0.0 DB に対して v2.0.1 ~ v2.0.9 マイグレーションが適用される', () => {
       const v2Encoded = encodeSemVer({ major: 2, minor: 0, patch: 0 })
       const { db, handle } = createV2MigrationMockDb(v2Encoded)
       runMigrations(handle, mockDropAll, mockCreateFresh)
@@ -330,7 +330,7 @@ describe('v2.0.0 マイグレーション', () => {
         (call) =>
           typeof call[0] === 'string' && call[0].includes('CREATE TABLE'),
       )
-      expect(createTableCalls).toHaveLength(4)
+      expect(createTableCalls).toHaveLength(6)
       // v2.0.2 の up() による UPDATE が実行される
       const updateCalls = db.exec.mock.calls.filter(
         (call) =>

@@ -1,5 +1,6 @@
 'use client'
 
+import { MarkNotificationsReadButton } from 'app/_parts/MarkNotificationsReadButton'
 import { Notification } from 'app/_parts/Notification'
 import { useMemo } from 'react'
 import type { TimelineViewModel } from 'types/timelineViewModel'
@@ -49,6 +50,7 @@ export const NotificationTimeline = ({
 
   return (
     <TimelinePresenter
+      headerActions={<MarkNotificationsReadButton />}
       headerOffset={headerOffset}
       renderItem={(item, scrolling) => {
         if (!('type' in item)) {

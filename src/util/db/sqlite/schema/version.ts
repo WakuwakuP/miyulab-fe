@@ -47,7 +47,7 @@ export function compareSemVer(a: SemVer, b: SemVer): -1 | 0 | 1 {
   return 0
 }
 
-export const LATEST_VERSION: SemVer = { major: 2, minor: 0, patch: 8 }
+export const LATEST_VERSION: SemVer = { major: 2, minor: 0, patch: 9 }
 
 export function normalizeLegacyVersion(pragmaValue: number): SemVer {
   if (pragmaValue === 0) {

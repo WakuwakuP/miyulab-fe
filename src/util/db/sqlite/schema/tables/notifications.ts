@@ -12,7 +12,7 @@ export function createNotificationTables(db: DbExec): void {
       related_post_id      INTEGER,
       reaction_name        TEXT,
       reaction_url         TEXT,
-      is_read              INTEGER NOT NULL DEFAULT 0,
+      is_read              INTEGER DEFAULT NULL CHECK (is_read IN (0, 1) OR is_read IS NULL),
       UNIQUE(local_account_id, local_id),
       FOREIGN KEY (local_account_id)     REFERENCES local_accounts(id)   ON DELETE CASCADE,
       FOREIGN KEY (notification_type_id) REFERENCES notification_types(id),
