@@ -9,6 +9,7 @@ import {
   DbDiagnosticTransport,
 } from '../dbDiagnosticTransport'
 import {
+  type DbDiagnosticOutcome,
   type DbDiagnosticWindow,
   sanitizeDbDiagnosticWindow,
 } from '../dbDiagnosticTypes'
@@ -33,7 +34,11 @@ function fixture() {
   }
 }
 
-function sample(recorder: DbDiagnosticRecorder, id: number): void {
+function sample(
+  recorder: DbDiagnosticRecorder,
+  id: number,
+  outcome: DbDiagnosticOutcome = 'success',
+): void {
   recorder.recordEnqueue(
     id,
     {
@@ -45,7 +50,7 @@ function sample(recorder: DbDiagnosticRecorder, id: number): void {
     'other',
   )
   recorder.recordStart(id)
-  recorder.recordEnd(id, 'success', {
+  recorder.recordEnd(id, outcome, {
     resultRows: 1,
     sqlCalls: 2,
     sqlTimeMs: 1,
@@ -316,6 +321,25 @@ describe('DB診断の送信契約', () => {
     f = fixture()
   })
 
+  it.each(['success', 'cancelled', 'error', 'timeout'] as const)(
+    '%s の診断窓はエラー・タイムアウトの場合だけ送信すること',
+    async (outcome) => {
+      const submit = vi.fn(async (_session, windows) => ({
+        accepted: windows.length,
+        count: windows.length,
+        success: true as const,
+      }))
+      const transport = new DbDiagnosticTransport(f.recorder, submit, SESSION)
+      sample(f.recorder, 1, outcome)
+      f.at(10)
+      await transport.captureAndFlush()
+      expect(submit).toHaveBeenCalledTimes(
+        outcome === 'error' || outcome === 'timeout' ? 1 : 0,
+      )
+      expect(transport.getStatus().pendingWindows).toBe(0)
+    },
+  )
+
   it('保存が一度失敗した時、同じ診断窓を再送して確認後にだけ除去すること', async () => {
     const batches: DbDiagnosticWindow[][] = []
     const transport = new DbDiagnosticTransport(
@@ -328,7 +352,7 @@ describe('DB診断の送信契約', () => {
       },
       SESSION,
     )
-    sample(f.recorder, 1)
+    sample(f.recorder, 1, 'error')
     f.at(10)
     await transport.captureAndFlush()
 
@@ -355,11 +379,11 @@ describe('DB診断の送信契約', () => {
         }),
       SESSION,
     )
-    sample(f.recorder, 1)
+    sample(f.recorder, 1, 'error')
     f.at(10)
     const sending = transport.captureAndFlush()
     for (let id = 2; id <= 24; id++) {
-      sample(f.recorder, id)
+      sample(f.recorder, id, 'error')
       f.at(id * 10)
       await transport.captureAndFlush()
     }
@@ -383,7 +407,7 @@ describe('DB診断の送信契約', () => {
       () => new Promise(() => undefined),
       SESSION,
     )
-    sample(f.recorder, 1)
+    sample(f.recorder, 1, 'error')
     const sending = transport.captureAndFlush()
 
     await vi.advanceTimersByTimeAsync(30_001)

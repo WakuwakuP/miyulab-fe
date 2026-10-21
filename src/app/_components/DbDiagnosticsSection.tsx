@@ -186,6 +186,9 @@ export function DbDiagnosticsSection() {
   return (
     <div className="mt-3 text-sm text-gray-300">
       <p className="mb-1 font-semibold text-gray-400">DB 診断</p>
+      <p className="text-gray-400 text-xs">
+        保存対象はエラー・タイムアウトが発生した診断窓のみです。
+      </p>
       <div className="text-gray-400 text-xs">
         セッション: {status?.sessionId ?? '-'}
         {status && (
