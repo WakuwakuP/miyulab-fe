@@ -137,7 +137,7 @@ export function mountYouTubePlayer(
     get paused() {
       return !playing
     },
-    play: async () => setPlaying(true),
+    play: () => Promise.resolve().then(() => setPlaying(true)),
   }
 
   void loadYouTubeAPI()

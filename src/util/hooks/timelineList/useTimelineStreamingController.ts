@@ -238,12 +238,20 @@ export function createStreamingController({
     clearCoalesced()
     dispatch({ type: 'HINTLESS_INVALIDATED' })
     const gen = generation
-    fetchPage({ limit: PAGE_SIZE }).then((result) => {
-      if (disposed || gen !== generation) return
-      if (!result) return
-      recordDuration(result.durationMs)
-      dispatch({ items: result.items, type: 'HINTLESS_REFETCH_SUCCEEDED' })
-    })
+    fetchPage({ limit: PAGE_SIZE })
+      .then((result) => {
+        if (disposed || gen !== generation) return
+        if (!result) return
+        recordDuration(result.durationMs)
+        dispatch({ items: result.items, type: 'HINTLESS_REFETCH_SUCCEEDED' })
+      })
+      .catch((error: unknown) => {
+        if (disposed || gen !== generation) return
+        console.error(
+          'Failed to refetch timeline after hintless change:',
+          error,
+        )
+      })
   }
 
   const unsubscribe = subscribeToChanges(onMatched, onHintless)
