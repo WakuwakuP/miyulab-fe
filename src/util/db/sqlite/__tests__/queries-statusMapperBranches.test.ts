@@ -618,8 +618,8 @@ describe('toStoredStatus', () => {
       tags: [],
     } as unknown as Entity.Status
 
-    expect(toStoredStatus(status, 'https://example.com', []).edited_at_ms).toBe(
-      null,
-    )
+    expect(
+      toStoredStatus(status, 'https://example.com', []).edited_at_ms,
+    ).toBeNull()
   })
 })

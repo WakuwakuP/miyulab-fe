@@ -198,30 +198,49 @@ async function saveMarker(app: App, boundary: string): Promise<string> {
   return saved
 }
 
+type MarkerWriteResult = 'saved' | 'retry'
+
+async function tryWriteMastodonMarker(
+  app: App,
+  mutation: NotificationReadMutation,
+  boundary: string,
+  isCurrent: () => boolean,
+  allowRetry: boolean,
+): Promise<MarkerWriteResult> {
+  const existing = await fetchMarker(app)
+  assertCurrent(isCurrent)
+  if (existing && markerCovers(existing, boundary)) {
+    mutation.boundary = existing
+    return 'saved'
+  }
+  try {
+    mutation.boundary = await saveMarker(app, boundary)
+    return 'saved'
+  } catch (error) {
+    const retryable =
+      allowRetry &&
+      error instanceof NotificationApiError &&
+      error.status === 409
+    if (retryable) return 'retry'
+    return await rethrowAfterSync(app, isCurrent, error)
+  }
+}
+
 async function writeMastodonMarker(
   app: App,
   mutation: NotificationReadMutation,
   boundary: string,
   isCurrent: () => boolean,
 ): Promise<void> {
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const existing = await fetchMarker(app)
-    assertCurrent(isCurrent)
-    if (existing && markerCovers(existing, boundary)) {
-      mutation.boundary = existing
-      return
-    }
-    try {
-      mutation.boundary = await saveMarker(app, boundary)
-      return
-    } catch (error) {
-      const retryable =
-        error instanceof NotificationApiError &&
-        error.status === 409 &&
-        attempt === 0
-      if (!retryable) await rethrowAfterSync(app, isCurrent, error)
-    }
-  }
+  const first = await tryWriteMastodonMarker(
+    app,
+    mutation,
+    boundary,
+    isCurrent,
+    true,
+  )
+  if (first === 'saved') return
+  await tryWriteMastodonMarker(app, mutation, boundary, isCurrent, false)
 }
 
 async function writePleromaRead(
@@ -263,31 +282,39 @@ async function writeBoundaryRead(
   return true
 }
 
+async function confirmMisskeyReadOnce(
+  app: App,
+  isCurrent: () => boolean,
+  deadline: number,
+): Promise<void> {
+  assertCurrent(isCurrent)
+  const data = (await notificationApi(
+    app,
+    '/api/i',
+    undefined,
+    undefined,
+    Math.max(1, deadline - Date.now()),
+  ).catch((cause) => {
+    assertCurrent(isCurrent)
+    throw new Error('既読操作は受付済み・状態を確認できませんでした', {
+      cause,
+    })
+  })) as { hasUnreadNotification?: boolean }
+  if (data?.hasUnreadNotification === false) return
+  await new Promise((resolve) =>
+    setTimeout(resolve, Math.min(500, Math.max(0, deadline - Date.now()))),
+  )
+  if (Date.now() < deadline) {
+    return confirmMisskeyReadOnce(app, isCurrent, deadline)
+  }
+  throw new Error('既読操作は受付済み・状態を確認できませんでした')
+}
+
 async function confirmMisskeyRead(
   app: App,
   isCurrent: () => boolean,
 ): Promise<void> {
-  const deadline = Date.now() + 5000
-  do {
-    assertCurrent(isCurrent)
-    const data = (await notificationApi(
-      app,
-      '/api/i',
-      undefined,
-      undefined,
-      Math.max(1, deadline - Date.now()),
-    ).catch((cause) => {
-      assertCurrent(isCurrent)
-      throw new Error('既読操作は受付済み・状態を確認できませんでした', {
-        cause,
-      })
-    })) as { hasUnreadNotification?: boolean }
-    if (data?.hasUnreadNotification === false) return
-    await new Promise((resolve) =>
-      setTimeout(resolve, Math.min(500, Math.max(0, deadline - Date.now()))),
-    )
-  } while (Date.now() < deadline)
-  throw new Error('既読操作は受付済み・状態を確認できませんでした')
+  await confirmMisskeyReadOnce(app, isCurrent, Date.now() + 5000)
 }
 
 async function saveMutation(

@@ -60,7 +60,7 @@ export const Actions = ({
   }, [status.bookmarked])
 
   const handleReaction = useCallback(
-    (emoji: string) => {
+    async (emoji: string) => {
       if (apps.length <= 0) return
       if (status.appIndex == null) return
       const reactionApp = apps[status.appIndex]
@@ -71,22 +71,19 @@ export const Actions = ({
         return
       const reactionClient = GetClient(reactionApp)
       const statusId = status.reblog?.id ?? status.id
-      reactionClient
-        .createEmojiReaction(statusId, emoji)
-        .then(() => {
-          onReactionAdd?.(emoji)
-          setShowReactionPicker(false)
-          // DB にリアクションを保存
-          toggleReactionInDb(
-            reactionApp.backendUrl,
-            statusId,
-            true,
-            emoji,
-          ).catch((error) => console.error('Failed to save reaction:', error))
-        })
-        .catch((error) => {
-          console.error('Failed to add reaction:', error)
-        })
+      try {
+        await reactionClient.createEmojiReaction(statusId, emoji)
+      } catch (error) {
+        console.error('Failed to add reaction:', error)
+        return
+      }
+      onReactionAdd?.(emoji)
+      setShowReactionPicker(false)
+      try {
+        await toggleReactionInDb(reactionApp.backendUrl, statusId, true, emoji)
+      } catch (error) {
+        console.error('Failed to save reaction:', error)
+      }
     },
     [apps, status.appIndex, status.reblog?.id, status.id, onReactionAdd],
   )

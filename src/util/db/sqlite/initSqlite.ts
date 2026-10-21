@@ -329,8 +329,10 @@ async function initMainThreadFallback(
       return runFlatFetch(db as never, request)
     },
 
-    executeGraphPlan: async (plan, options) =>
-      runGraphPlan(db as never, plan, options, captureGraphCacheVersions),
+    executeGraphPlan: (plan, options) =>
+      Promise.resolve().then(() =>
+        runGraphPlan(db as never, plan, options, captureGraphCacheVersions),
+      ),
 
     executeQueryPlan: async (plan) => {
       const { executeQueryPlan: runPlan } = await import(

@@ -132,11 +132,10 @@ async function flushBuckets(
   handle: StatusWriteHandle,
   buckets: Map<string, UpsertBucket>,
 ): Promise<void> {
-  let next = takeNextBatch(buckets)
-  while (next) {
-    await sendBatch(handle, next.meta, next.batch)
-    next = takeNextBatch(buckets)
-  }
+  const next = takeNextBatch(buckets)
+  if (!next) return
+  await sendBatch(handle, next.meta, next.batch)
+  await flushBuckets(handle, buckets)
 }
 
 export function createStatusWriteStore(
@@ -184,13 +183,13 @@ export function createStatusWriteStore(
   }
 
   async function runLane(): Promise<void> {
-    while (lane.length > 0) {
-      const task = lane.shift() as WriteLaneTask
-      await runTask(task)
-      if (task.kind === 'flush') {
-        queuedBuckets.delete(task.buckets)
-      }
+    const task = lane.shift()
+    if (!task) return
+    await runTask(task)
+    if (task.kind === 'flush') {
+      queuedBuckets.delete(task.buckets)
     }
+    await runLane()
   }
 
   function ensureBucketsQueued(): void {

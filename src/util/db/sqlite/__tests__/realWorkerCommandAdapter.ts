@@ -66,8 +66,7 @@ export function createSendCommandAdapter(db: DbExec): {
   sendCommand: (command: SendCommandPayload) => Promise<unknown>
 } {
   const calls: SendCommandPayload[] = []
-  const sendCommand = async (command: SendCommandPayload): Promise<unknown> => {
-    calls.push(command)
+  const runCommand = (command: SendCommandPayload): unknown => {
     switch (command.type) {
       case 'upsertStatus':
         return handleUpsertStatus(
@@ -168,6 +167,10 @@ export function createSendCommandAdapter(db: DbExec): {
           }`,
         )
     }
+  }
+  const sendCommand = (command: SendCommandPayload): Promise<unknown> => {
+    calls.push(command)
+    return Promise.resolve().then(() => runCommand(command))
   }
   return { calls, handle: { sendCommand }, sendCommand }
 }

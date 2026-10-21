@@ -142,14 +142,14 @@ describe('executeGraphPlan — ノードキャッシュ (実 SQLite)', () => {
     const plan = planSourceToLookup(baseGetIds, baseLookup)
 
     const cold = runPlan(plan)
-    expect(execLog.length).toBe(3)
+    expect(execLog).toHaveLength(3)
     expect(cold.meta.nodeStats.src?.cacheHit).toBe(false)
     expect(cold.meta.nodeStats.lk?.cacheHit).toBe(false)
     expect(cold.nodeOutputIds.lk?.length).toBe(2)
 
     execLog.length = 0
     const warm = runPlan(plan)
-    expect(execLog.length).toBe(1)
+    expect(execLog).toHaveLength(1)
     expect(execLog[0]).toContain('FROM notifications')
     expect(warm.meta.nodeStats.src?.cacheHit).toBe(true)
     expect(warm.meta.nodeStats.lk?.cacheHit).toBe(true)
@@ -160,19 +160,19 @@ describe('executeGraphPlan — ノードキャッシュ (実 SQLite)', () => {
     const plan = planSourceToLookup(baseGetIds, baseLookup)
     runPlan(plan)
     runPlan(plan)
-    expect(execLog.length).toBe(4)
+    expect(execLog).toHaveLength(4)
 
     bumpGraphCacheVersion('posts')
     execLog.length = 0
     const afterBump = runPlan(plan)
-    expect(execLog.length).toBe(3)
+    expect(execLog).toHaveLength(3)
     expect(afterBump.meta.nodeStats.src?.cacheHit).toBe(false)
     expect(afterBump.meta.nodeStats.lk?.cacheHit).toBe(false)
 
     bumpGraphCacheVersion('servers')
     execLog.length = 0
     const unrelated = runPlan(plan)
-    expect(execLog.length).toBe(1)
+    expect(execLog).toHaveLength(1)
     expect(unrelated.meta.nodeStats.src?.cacheHit).toBe(true)
   })
 
@@ -221,12 +221,12 @@ describe('executeGraphPlan — ノードキャッシュ (実 SQLite)', () => {
     )
 
     const cold = runPlan(plan)
-    expect(execLog.length).toBe(1)
+    expect(execLog).toHaveLength(1)
     expect(cold.nodeOutputIds.lk).toEqual([])
 
     execLog.length = 0
     const warm = runPlan(plan)
-    expect(execLog.length).toBe(0)
+    expect(execLog).toHaveLength(0)
     expect(warm.meta.nodeStats.lk?.cacheHit).toBe(true)
     expect(warm.nodeOutputIds.lk).toEqual([])
   })
@@ -247,8 +247,8 @@ describe('executeGraphPlan — ノードキャッシュ (実 SQLite)', () => {
     runPlan(planA)
     runPlan(planB)
     expect(
-      execLog.filter((s) => s.includes('FROM notifications lt')).length,
-    ).toBe(0)
+      execLog.filter((s) => s.includes('FROM notifications lt')),
+    ).toHaveLength(0)
   })
 
   it('出力ノード付き: ウォーム実行では detail SQL のみ発行される', () => {
@@ -273,14 +273,14 @@ describe('executeGraphPlan — ノードキャッシュ (実 SQLite)', () => {
     }
 
     const cold = runPlan(plan)
-    expect(execLog.length).toBe(3)
-    expect(cold.displayOrder.length).toBe(2)
+    expect(execLog).toHaveLength(3)
+    expect(cold.displayOrder).toHaveLength(2)
 
     execLog.length = 0
     const warm = runPlan(plan)
-    expect(execLog.length).toBe(1)
+    expect(execLog).toHaveLength(1)
     expect(execLog[0]).toContain('FROM notifications')
-    expect(warm.displayOrder.length).toBe(2)
+    expect(warm.displayOrder).toHaveLength(2)
     expect(warm.meta.nodeStats.src?.cacheHit).toBe(true)
     expect(warm.meta.nodeStats.lk?.cacheHit).toBe(true)
   })

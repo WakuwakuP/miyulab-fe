@@ -111,7 +111,7 @@ describe('syncPostHashtags', () => {
       (c) =>
         c.sql.includes('INSERT INTO hashtags') && c.sql.includes('ON CONFLICT'),
     )
-    expect(upsertCalls.length).toBe(1)
+    expect(upsertCalls).toHaveLength(1)
 
     // 両方とも正規化された 'rust' で INSERT される
     expect(upsertCalls[0].opts?.bind?.[0]).toBe('rust')
