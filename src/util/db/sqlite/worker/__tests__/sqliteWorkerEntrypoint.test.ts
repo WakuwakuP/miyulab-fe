@@ -138,13 +138,17 @@ const db = { exec: vi.fn() }
 const measuredDbArg = expect.objectContaining({ exec: expect.any(Function) })
 const sqlite3 = { capi: {} }
 const postMessage = vi.fn()
+const workerMessageOrigin = 'https://app.example'
 
 function dispatch(data: Record<string, unknown>): void {
   const listener = globalThis.onmessage
   if (listener == null) {
     throw new Error('SQLite worker did not register an onmessage listener')
   }
-  ;(listener as (event: MessageEvent) => void)({ data } as MessageEvent)
+  ;(listener as (event: MessageEvent) => void)({
+    data,
+    origin: workerMessageOrigin,
+  } as MessageEvent)
 }
 
 function expectOkResponse(
@@ -168,7 +172,10 @@ function expectOkResponse(
 describe('SQLite worker entrypoint', () => {
   beforeEach(() => {
     vi.resetAllMocks()
-    vi.stubGlobal('self', { postMessage })
+    vi.stubGlobal('self', {
+      location: { origin: workerMessageOrigin },
+      postMessage,
+    })
 
     mocks.sendResponse.mockImplementation((id: number, result?: unknown) => {
       finishWorkerDiagnostics(id, result)
@@ -262,6 +269,19 @@ describe('SQLite worker entrypoint', () => {
   })
 
   describe('initialization and export messages', () => {
+    it('ignores messages whose origin does not match the worker', () => {
+      const listener = globalThis.onmessage
+      if (listener == null) {
+        throw new Error('SQLite worker did not register an onmessage listener')
+      }
+      ;(listener as (event: MessageEvent) => void)({
+        data: { origin: workerMessageOrigin, type: '__init' },
+        origin: 'https://evil.example',
+      } as MessageEvent)
+
+      expect(mocks.init).not.toHaveBeenCalled()
+    })
+
     it('initializes from the supplied origin and publishes persistence details', async () => {
       mocks.init.mockResolvedValue({
         persistence: 'opfs',

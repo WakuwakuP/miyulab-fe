@@ -45,10 +45,20 @@ describe('sanitizeWhereClause', () => {
     )
   })
 
-  it('禁止語を一部に含む通常の識別子は拒否しない', () => {
-    const input =
-      'p.updated_at IS NULL AND p.created_by IS NOT NULL AND p.delete_flag = 0 AND p.pragma_mode = 1'
-
+  it.each([
+    [
+      '禁止語を一部に含む通常の識別子は拒否しない',
+      'p.updated_at IS NULL AND p.created_by IS NOT NULL AND p.delete_flag = 0 AND p.pragma_mode = 1',
+    ],
+    [
+      'LIMIT/OFFSET を一部に含む識別子は変更しない',
+      'p.limitless = 1 AND p.offset_value = 2',
+    ],
+    [
+      'SELECT 互換の複雑な WHERE 句は内容を維持する',
+      "EXISTS (SELECT 1 FROM post_media pm WHERE pm.post_id = p.id) AND vt.name IN ('public', 'unlisted')",
+    ],
+  ])('%s', (_title, input) => {
     expect(sanitizeWhereClause(input)).toBe(input)
   })
 
@@ -60,17 +70,4 @@ describe('sanitizeWhereClause', () => {
       )
     },
   )
-
-  it('LIMIT/OFFSET を一部に含む識別子は変更しない', () => {
-    const input = 'p.limitless = 1 AND p.offset_value = 2'
-
-    expect(sanitizeWhereClause(input)).toBe(input)
-  })
-
-  it('SELECT 互換の複雑な WHERE 句は内容を維持する', () => {
-    const input =
-      "EXISTS (SELECT 1 FROM post_media pm WHERE pm.post_id = p.id) AND vt.name IN ('public', 'unlisted')"
-
-    expect(sanitizeWhereClause(input)).toBe(input)
-  })
 })

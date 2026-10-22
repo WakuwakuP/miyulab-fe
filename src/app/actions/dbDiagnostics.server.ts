@@ -7,6 +7,7 @@ import {
   DB_DIAGNOSTIC_MAX_BYTES,
   type DbDiagnosticWindow,
   dbDiagnosticMarker,
+  hasDbDiagnosticError,
   isDbDiagnosticSessionId,
   sanitizeDbDiagnosticWindow,
 } from 'util/db/dbDiagnosticTypes'
@@ -42,6 +43,9 @@ export async function createDbDiagnosticLogs(
   ) {
     return { error: 'Duplicate diagnostic sequence', success: false }
   }
+  const errorWindows = windows.filter(hasDbDiagnosticError)
+  if (!errorWindows.length)
+    return { accepted: windows.length, count: 0, success: true }
   const now = Date.now()
   if (now - lastSaveAt < 1_000) return { error: 'Rate limited', success: false }
   lastSaveAt = now
@@ -51,7 +55,7 @@ export async function createDbDiagnosticLogs(
   const marker = dbDiagnosticMarker(sessionId)
   try {
     const saved = await client.queryLog.createMany({
-      data: windows.map((window) => ({
+      data: errorWindows.map((window) => ({
         bind: JSON.stringify(window),
         durationMs: 0,
         explainPlan: null,

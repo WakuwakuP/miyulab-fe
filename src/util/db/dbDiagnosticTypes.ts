@@ -131,6 +131,10 @@ export type DbDiagnosticWindow = {
   transportFailures: number
 }
 
+export function hasDbDiagnosticError(window: DbDiagnosticWindow): boolean {
+  return window.operations.some((op) => op.failed > 0 || op.timedOut > 0)
+}
+
 export const DB_DIAGNOSTIC_DETAIL_FIELDS = [
   'cacheHits',
   'cacheMisses',

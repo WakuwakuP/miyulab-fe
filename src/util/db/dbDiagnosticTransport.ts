@@ -6,6 +6,7 @@ import {
   DB_DIAGNOSTIC_BATCH_SIZE,
   DB_DIAGNOSTIC_MAX_WINDOWS,
   type DbDiagnosticWindow,
+  hasDbDiagnosticError,
 } from './dbDiagnosticTypes'
 
 export type DbDiagnosticSaveResult =
@@ -61,7 +62,7 @@ export class DbDiagnosticTransport {
 
   async captureAndFlush(): Promise<void> {
     const window = this.recorder.capture()
-    if (window) {
+    if (window && hasDbDiagnosticError(window)) {
       if (this.windows.size >= DB_DIAGNOSTIC_MAX_WINDOWS) {
         const oldest = [...this.windows.keys()].find(
           (sequence) => !this.sending.has(sequence),

@@ -36,7 +36,7 @@ export function getNeonClient(): NeonZenStackClient | null {
   const databaseUrl = process.env.DATABASE_URL
   if (!databaseUrl) {
     console.warn(
-      '[QueryLog] DATABASE_URL is not set. Slow query logging to Neon is disabled.',
+      '[QueryLog] DATABASE_URL is not set. Logging to Neon is disabled.',
     )
     return null
   }
