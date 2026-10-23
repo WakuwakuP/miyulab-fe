@@ -2665,18 +2665,18 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@zenstackhq/cli@npm:^3.9.7":
-  version: 3.9.7
-  resolution: "@zenstackhq/cli@npm:3.9.7"
+"@zenstackhq/cli@npm:^3.9.8":
+  version: 3.9.8
+  resolution: "@zenstackhq/cli@npm:3.9.8"
   dependencies:
     "@hono/node-server": "npm:^1.13.8"
-    "@zenstackhq/common-helpers": "npm:3.9.7"
-    "@zenstackhq/language": "npm:3.9.7"
-    "@zenstackhq/orm": "npm:3.9.7"
-    "@zenstackhq/plugin-policy": "npm:3.9.7"
-    "@zenstackhq/schema": "npm:3.9.7"
-    "@zenstackhq/sdk": "npm:3.9.7"
-    "@zenstackhq/server": "npm:3.9.7"
+    "@zenstackhq/common-helpers": "npm:3.9.8"
+    "@zenstackhq/language": "npm:3.9.8"
+    "@zenstackhq/orm": "npm:3.9.8"
+    "@zenstackhq/plugin-policy": "npm:3.9.8"
+    "@zenstackhq/schema": "npm:3.9.8"
+    "@zenstackhq/sdk": "npm:3.9.8"
+    "@zenstackhq/server": "npm:3.9.8"
     chokidar: "npm:^5.0.0"
     colors: "npm:1.4.0"
     commander: "npm:^8.3.0"
@@ -2708,38 +2708,38 @@ __metadata:
   bin:
     zen: bin/cli
     zenstack: bin/cli
-  checksum: 10c0/a27186b7d0c72b3a6c7946390e4cf1e67256d912f68976ae8a7bfd16ed989f930e44f7fd88a039d307bb618daf04b9d717e681f0ec0ca87510bd9c52827c55ec
+  checksum: 10c0/746f184c627186f3578312ce7fa42684bbcddc8d4436516a8a3a0497886ce9cee1a71d7c310ac8132e6b8908501eb930d3ee71593c5e8d345c07af12f5b8dc86
   languageName: node
   linkType: hard
 
-"@zenstackhq/common-helpers@npm:3.9.7":
-  version: 3.9.7
-  resolution: "@zenstackhq/common-helpers@npm:3.9.7"
-  checksum: 10c0/635830c5b147b02b4fecba86c9b48b6c083029e32c590f983116d47c38b8685064949cddf07b807f96d09e22c6f7b9f660e632ff0d778ced54824d968720ec6e
+"@zenstackhq/common-helpers@npm:3.9.8":
+  version: 3.9.8
+  resolution: "@zenstackhq/common-helpers@npm:3.9.8"
+  checksum: 10c0/04ed5f1317085a390877c8fc142733f94229632c738d6de490c90d3834e1098f8a946b5fa930b93825637beb2c66d5e899338eaad61f09c9f3974f0851aeb7ad
   languageName: node
   linkType: hard
 
-"@zenstackhq/language@npm:3.9.7":
-  version: 3.9.7
-  resolution: "@zenstackhq/language@npm:3.9.7"
+"@zenstackhq/language@npm:3.9.8":
+  version: 3.9.8
+  resolution: "@zenstackhq/language@npm:3.9.8"
   dependencies:
-    "@zenstackhq/common-helpers": "npm:3.9.7"
+    "@zenstackhq/common-helpers": "npm:3.9.8"
     langium: "npm:4.2.4"
     pluralize: "npm:^8.0.0"
     ts-pattern: "npm:^5.7.1"
     vscode-languageserver: "npm:^9.0.1"
-  checksum: 10c0/bc18d7b8e1cde14fbf732b4e23a75ad23bf63798bbb808349d578908c3e916bad32a58f431ce12c316a662d10b889d96083be5fb5d831edc885e7b335e1e3c15
+  checksum: 10c0/7b6a4226441392d439de3de8f2f304d35c24fd04bbb09e935ce93651d9aad2f7e6b0c10c8bb6441e9b8cf71eb6d3bd66be0735ade46dbddfa92e06ebc6fedaac
   languageName: node
   linkType: hard
 
-"@zenstackhq/orm@npm:3.9.7, @zenstackhq/orm@npm:^3.9.7":
-  version: 3.9.7
-  resolution: "@zenstackhq/orm@npm:3.9.7"
+"@zenstackhq/orm@npm:3.9.8, @zenstackhq/orm@npm:^3.9.8":
+  version: 3.9.8
+  resolution: "@zenstackhq/orm@npm:3.9.8"
   dependencies:
     "@paralleldrive/cuid2": "npm:^2.2.2"
-    "@zenstackhq/common-helpers": "npm:3.9.7"
-    "@zenstackhq/schema": "npm:3.9.7"
-    "@zenstackhq/zod": "npm:3.9.7"
+    "@zenstackhq/common-helpers": "npm:3.9.8"
+    "@zenstackhq/schema": "npm:3.9.8"
+    "@zenstackhq/zod": "npm:3.9.8"
     cuid: "npm:^3.0.0"
     decimal.js: "npm:^10.4.3"
     json-stable-stringify: "npm:^1.3.0"
@@ -2766,51 +2766,51 @@ __metadata:
       optional: true
     sql.js:
       optional: true
-  checksum: 10c0/b6cc4fafab8fafc22b690e1089cc0b8a40940fcd968858576b400797825b6c950285f2c93f38c04f3f7d2d40672499f0e237d4515f35ef13af10373b59bbad7a
+  checksum: 10c0/62127f16952be54e9d32d6185ce1b6c32188cd8b06f608a4c72883bfd5f86f4bdb2187891276be8e7348ec5455849c4de15da5cc69ab70e0066cf54947c82345
   languageName: node
   linkType: hard
 
-"@zenstackhq/plugin-policy@npm:3.9.7":
-  version: 3.9.7
-  resolution: "@zenstackhq/plugin-policy@npm:3.9.7"
+"@zenstackhq/plugin-policy@npm:3.9.8":
+  version: 3.9.8
+  resolution: "@zenstackhq/plugin-policy@npm:3.9.8"
   dependencies:
-    "@zenstackhq/common-helpers": "npm:3.9.7"
-    "@zenstackhq/orm": "npm:3.9.7"
+    "@zenstackhq/common-helpers": "npm:3.9.8"
+    "@zenstackhq/orm": "npm:3.9.8"
     ts-pattern: "npm:^5.7.1"
   peerDependencies:
     kysely: ~0.29.0
-  checksum: 10c0/77a2d9eab080f587f0bb7d71de51bf83a4471bc85e3e5ae97894272af825a5e255eadd999561a2c8028f336fa59314d434da41c17717f6f112b5962cbb2d47d7
+  checksum: 10c0/70f031f22c3e7d88b1d4ff7eae854aa45a93807f2714e8533c81e68d47c04c555181496e60ed0bd568f54d69077765c228f14fdab2dbb6f2abf263da822b8cf1
   languageName: node
   linkType: hard
 
-"@zenstackhq/schema@npm:3.9.7, @zenstackhq/schema@npm:^3.9.7":
-  version: 3.9.7
-  resolution: "@zenstackhq/schema@npm:3.9.7"
+"@zenstackhq/schema@npm:3.9.8, @zenstackhq/schema@npm:^3.9.8":
+  version: 3.9.8
+  resolution: "@zenstackhq/schema@npm:3.9.8"
   dependencies:
     decimal.js: "npm:^10.4.3"
-  checksum: 10c0/885194377ae351018d4a2ed1bde0d945c45b9a076d42ba3b547bd0cdc0f95efe11a3c9dfdf71e094085da4a18de3db1b1113b8663fba22372970b14abd680861
+  checksum: 10c0/6973e0ffeddead78220913b1b91f49c7aef4bb5889bc39a20acfefeace913550329a2b9e6b3a3da30390d39232eab3718e894a091cbccf4d76caf9427c48695a
   languageName: node
   linkType: hard
 
-"@zenstackhq/sdk@npm:3.9.7":
-  version: 3.9.7
-  resolution: "@zenstackhq/sdk@npm:3.9.7"
+"@zenstackhq/sdk@npm:3.9.8":
+  version: 3.9.8
+  resolution: "@zenstackhq/sdk@npm:3.9.8"
   dependencies:
-    "@zenstackhq/common-helpers": "npm:3.9.7"
-    "@zenstackhq/language": "npm:3.9.7"
+    "@zenstackhq/common-helpers": "npm:3.9.8"
+    "@zenstackhq/language": "npm:3.9.8"
     langium: "npm:4.2.4"
     ts-pattern: "npm:^5.7.1"
     typescript: "npm:^6.0.3"
-  checksum: 10c0/10831aa06ff0fd71246098a99013b020a93e4636fd84cedb7a7b717a246317e582e626f49d051454ae1eba4e221e2e971e1396017d705388418b26151ab5300b
+  checksum: 10c0/dc1c41a764d6c61317906ea121cce06ed3f1970f84c771c8f90f46632415a4d31cb50ff468818c6929be2b604f23e7ba5b39b9202ed30947ad44efe894e7d2a1
   languageName: node
   linkType: hard
 
-"@zenstackhq/server@npm:3.9.7":
-  version: 3.9.7
-  resolution: "@zenstackhq/server@npm:3.9.7"
+"@zenstackhq/server@npm:3.9.8":
+  version: 3.9.8
+  resolution: "@zenstackhq/server@npm:3.9.8"
   dependencies:
-    "@zenstackhq/common-helpers": "npm:3.9.7"
-    "@zenstackhq/orm": "npm:3.9.7"
+    "@zenstackhq/common-helpers": "npm:3.9.8"
+    "@zenstackhq/orm": "npm:3.9.8"
     decimal.js: "npm:^10.4.3"
     openapi-types: "npm:^12.1.3"
     superjson: "npm:^2.2.3"
@@ -2848,19 +2848,19 @@ __metadata:
       optional: true
     nuxt:
       optional: true
-  checksum: 10c0/8cbb64bdfb3e6dea54cae4ee810c706340143f0c4e095b305e5151dbc0ef843ec53a3beb84815b537b09092ac823a33475cc9589bc84d6e359d6870a31948ede
+  checksum: 10c0/1b9db2bd7085fcc0088e755b4688ad5e8aec1765e982dfeb6158cfde2d2eb262f0347df1c88385e6698025fcf25db274349e3edea1bd790df89cdf1a2aefcb0a
   languageName: node
   linkType: hard
 
-"@zenstackhq/zod@npm:3.9.7":
-  version: 3.9.7
-  resolution: "@zenstackhq/zod@npm:3.9.7"
+"@zenstackhq/zod@npm:3.9.8":
+  version: 3.9.8
+  resolution: "@zenstackhq/zod@npm:3.9.8"
   dependencies:
-    "@zenstackhq/schema": "npm:3.9.7"
+    "@zenstackhq/schema": "npm:3.9.8"
     decimal.js: "npm:^10.4.3"
   peerDependencies:
     zod: ^4.0.0
-  checksum: 10c0/512f8d5038c6a1843688b47b505b1a28252e2e82c555fe6fb5ee9214fd38b9c29fc3c0913f4200befd2484d9406e0bba406c7c407557701638479aef0bc43d5c
+  checksum: 10c0/3ef40eafef51f41ae616d311c3a13d730f89899d144c79512f701a1a29f1af1ed21a3f72f31c6282c3bb424693d721585f02954966227f1b032bed727dc1ea9e
   languageName: node
   linkType: hard
 
@@ -5019,9 +5019,9 @@ __metadata:
     "@vercel/analytics": "npm:^2.0.1"
     "@vitest/coverage-v8": "npm:^5.0.5"
     "@xyflow/react": "npm:^12.12.0"
-    "@zenstackhq/cli": "npm:^3.9.7"
-    "@zenstackhq/orm": "npm:^3.9.7"
-    "@zenstackhq/schema": "npm:^3.9.7"
+    "@zenstackhq/cli": "npm:^3.9.8"
+    "@zenstackhq/orm": "npm:^3.9.8"
+    "@zenstackhq/schema": "npm:^3.9.8"
     babel-plugin-react-compiler: "npm:^1.0.0"
     browser-image-compression: "npm:^2.0.2"
     class-variance-authority: "npm:^0.7.1"
