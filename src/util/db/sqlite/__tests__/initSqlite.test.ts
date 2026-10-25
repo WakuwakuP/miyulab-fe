@@ -167,9 +167,12 @@ beforeEach(() => {
   mocks.fetch.mockResolvedValue({
     arrayBuffer: mocks.wasmArrayBuffer,
   })
-  mocks.databaseConstructor.mockImplementation(function Database() {
-    return rawDb
-  })
+  mocks.databaseConstructor.mockImplementation(
+    // biome-ignore lint/correctness/noComponentHookFactories: sqlite constructor mock, not a React component
+    function Database() {
+      return rawDb
+    },
+  )
   mocks.initSqlite.mockResolvedValue({
     oo1: {
       DB: mocks.databaseConstructor,
