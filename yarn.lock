@@ -3746,14 +3746,14 @@ __metadata:
   languageName: node
   linkType: hard
 
-"emoji-picker-react@npm:^5.0.0":
-  version: 5.0.0
-  resolution: "emoji-picker-react@npm:5.0.0"
+"emoji-picker-react@npm:^5.1.0":
+  version: 5.1.0
+  resolution: "emoji-picker-react@npm:5.1.0"
   dependencies:
     shipstyles: "npm:1.0.0"
   peerDependencies:
     react: ">=16.8"
-  checksum: 10c0/ad168ffb5a0721d4e514aa67c357f1839b8a72252c35c1c7b698d321ffd4cc994dbec417a37d6119cd49ebe4debed6645d0edc35182088652cbbed37ae5f1e48
+  checksum: 10c0/984d5557e26842a23ca99c967379e11071d8108adf0b596d7994279ef8583e06572f980d904e7993b2eab3611655474a91d068d2b8702ba628e319c2b15b3ee8
   languageName: node
   linkType: hard
 
@@ -4817,16 +4817,16 @@ __metadata:
   languageName: node
   linkType: hard
 
-"lucide-react@npm:^1.59.0":
-  version: 1.59.0
-  resolution: "lucide-react@npm:1.59.0"
+"lucide-react@npm:^1.60.0":
+  version: 1.60.0
+  resolution: "lucide-react@npm:1.60.0"
   peerDependencies:
     "@types/react": "*"
     react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
   peerDependenciesMeta:
     "@types/react":
       optional: true
-  checksum: 10c0/e02dbdda8a9689527988ffb8ed7f01675755146ee7abfebbbe46b843fbc477f23dc0a4524fe257d0daa3d8eb3289a46f8bdce4a1dcbbdeeab5d158bfa68842c4
+  checksum: 10c0/710404ff9d6f29829866e369533c80a0163797412bd0f0af8595956f99544198e4a26800c93f5b1d8203aeb25fc2df7fddf583f7851fe40d697676f14aef5d39
   languageName: node
   linkType: hard
 
@@ -5029,13 +5029,13 @@ __metadata:
     cmdk: "npm:^1.1.1"
     domelementtype: "npm:^3.0.0"
     embla-carousel-react: "npm:^8.6.0"
-    emoji-picker-react: "npm:^5.0.0"
+    emoji-picker-react: "npm:^5.1.0"
     globals: "npm:^17.13.0"
     html-react-parser: "npm:^6.1.8"
     husky: "npm:9.1.7"
     jquery: "npm:^4.0.0"
     lint-staged: "npm:^17.6.0"
-    lucide-react: "npm:^1.59.0"
+    lucide-react: "npm:^1.60.0"
     megalodon: "npm:^10.3.0"
     mfm-js: "npm:^0.27.0"
     misskey-js: "npm:^2026.10.0"
