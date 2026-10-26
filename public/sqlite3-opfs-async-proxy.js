@@ -52,8 +52,7 @@
 	versions (approximately) 104-107 are extinct) we should change our
 	usage of those methods to remove the "await".
 	*/
-	const urlParams = new URL(globalThis.location.href).searchParams;
-	const vfsName = urlParams.get("vfs");
+	const vfsName = new URL(globalThis.location.href).searchParams.get("vfs");
 	if (!vfsName) throw new Error("Expecting vfs=opfs|opfs-wl URL argument for this worker");
 	/**
 	We use this to allow us to differentiate debug output from
@@ -61,7 +60,7 @@
 	VFS or both the "opfs" and "opfs-wl" VFSes.
 	*/
 	const workerId = Math.random() * 1e7 | 0;
-	const isWebLocker = "opfs-wl" === urlParams.get("vfs");
+	const isWebLocker = "opfs-wl" === vfsName;
 	const wPost = (type, ...args) => postMessage({
 		type,
 		payload: args

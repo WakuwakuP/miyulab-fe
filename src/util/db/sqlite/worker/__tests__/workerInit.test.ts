@@ -30,9 +30,12 @@ vi.mock('util/db/sqlite/worker/workerState', () => ({
 import { init } from 'util/db/sqlite/worker/workerInit'
 
 function mockDbConstructor(db: object) {
-  return vi.fn(function MockDb() {
-    return db
-  })
+  return vi.fn(
+    // biome-ignore lint/correctness/noComponentHookFactories: sqlite constructor mock, not a React component
+    function MockDb() {
+      return db
+    },
+  )
 }
 
 function createDb() {
@@ -60,9 +63,12 @@ function createSqlite3({
     ? vi.fn().mockRejectedValue(sahError)
     : vi.fn().mockResolvedValue({ OpfsSAHPoolDb })
   const OpfsDb = opfsError
-    ? vi.fn(function OpfsDb() {
-        throw opfsError
-      })
+    ? vi.fn(
+        // biome-ignore lint/correctness/noComponentHookFactories: sqlite constructor mock, not a React component
+        function OpfsDb() {
+          throw opfsError
+        },
+      )
     : mockDbConstructor(opfsDb)
 
   return {

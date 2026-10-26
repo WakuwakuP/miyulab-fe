@@ -27,9 +27,12 @@ function mockDbHealth(healthy: boolean) {
 }
 
 function mockDbConstructor(db: object) {
-  return vi.fn(function MockDb() {
-    return db
-  })
+  return vi.fn(
+    // biome-ignore lint/correctness/noComponentHookFactories: sqlite constructor mock, not a React component
+    function MockDb() {
+      return db
+    },
+  )
 }
 
 function createSqlite3({
