@@ -85,17 +85,20 @@ export function initWorker(
     setInitTimer(
       setTimeout(() => {
         const initReject = getInitReject()
-        if (initReject) {
-          stopSnapshotRecording()
-          initReject(
-            new Error(
-              `Worker initialization timed out after ${INIT_TIMEOUT_MS}ms`,
-            ),
-          )
-          setInitReject(null)
-          setInitResolve(null)
-          setInitTimer(null)
-        }
+        if (!initReject) return
+        stopSnapshotRecording()
+        // onerror がタイムアウトより先に reject しないよう、終了前に初期化コールバックを外す。
+        setInitReject(null)
+        setInitResolve(null)
+        setInitTimer(null)
+        // 待ちを諦めたあとも Worker が OPFS の SAH を掴み続けないようにする。
+        getWorker()?.terminate()
+        setWorker(null)
+        initReject(
+          new Error(
+            `Worker initialization timed out after ${INIT_TIMEOUT_MS}ms`,
+          ),
+        )
       }, INIT_TIMEOUT_MS),
     )
 

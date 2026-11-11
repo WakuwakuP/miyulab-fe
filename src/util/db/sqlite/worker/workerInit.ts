@@ -21,16 +21,53 @@ function applyDatabasePragmas(db: any): void {
   db.exec('PRAGMA foreign_keys = ON;')
   db.exec('PRAGMA cache_size = -8000;') // 8MB（デフォルト2MB→8MB）
   db.exec('PRAGMA temp_store = MEMORY;') // 一時テーブルをメモリに配置
+  logDatabaseFootprint(db)
+}
+
+function readPragmaNumber(db: any, pragma: string): number | null {
+  try {
+    const rows = db.exec(`PRAGMA ${pragma};`, { returnValue: 'resultRows' })
+    const value = rows?.[0]?.[0]
+    return typeof value === 'number' ? value : null
+  } catch (error) {
+    console.debug(`SQLite Worker: could not read PRAGMA ${pragma}`, error)
+    return null
+  }
+}
+
+function logDatabaseFootprint(db: any): void {
+  const pageCount = readPragmaNumber(db, 'page_count')
+  const pageSize = readPragmaNumber(db, 'page_size')
+  const freelistCount = readPragmaNumber(db, 'freelist_count')
+  if (pageCount == null || pageSize == null) return
+
+  const bytes = pageCount * pageSize
+  const freeBytes = (freelistCount ?? 0) * pageSize
+  const mib = (value: number) => (value / (1024 * 1024)).toFixed(1)
+  console.info(
+    `SQLite Worker: database is ${mib(bytes)} MiB (${pageCount} pages, free ${mib(freeBytes)} MiB)`,
+  )
 }
 
 async function openPersistentDatabase(
   sqlite3: any,
 ): Promise<{ db: any; persistence: 'opfs' | 'memory' }> {
   try {
+    const poolStartedAt = performance.now()
     const poolVfs = await sqlite3.installOpfsSAHPoolVfs({
       directory: '/miyulab-fe',
       name: 'opfs-sahpool',
     })
+    const capacity =
+      typeof poolVfs.getCapacity === 'function' ? poolVfs.getCapacity() : null
+    const fileCount =
+      typeof poolVfs.getFileCount === 'function' ? poolVfs.getFileCount() : null
+    console.info(
+      `SQLite Worker: OPFS SAH Pool acquired in ${Math.round(performance.now() - poolStartedAt)}ms` +
+        (capacity == null
+          ? ''
+          : ` (capacity=${capacity}, files=${fileCount ?? 'unknown'})`),
+    )
     const db = new poolVfs.OpfsSAHPoolDb('/miyulab-fe.sqlite3')
     console.info('SQLite Worker: using OPFS SAH Pool persistence')
     return { db, persistence: 'opfs' }

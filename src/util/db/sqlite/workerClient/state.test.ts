@@ -64,7 +64,7 @@ describe('workerClient state', () => {
 
   it('タイムアウト定数を操作種別ごとに公開する', () => {
     expect(TIMEOUT_MS).toBe(30_000)
-    expect(INIT_TIMEOUT_MS).toBe(15_000)
+    expect(INIT_TIMEOUT_MS).toBe(120_000)
     expect(TIMEOUT_BY_TYPE).toEqual({
       bulkUpsertStatuses: 60_000,
       enforceMaxLength: 90_000,
