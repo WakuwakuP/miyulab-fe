@@ -41,6 +41,7 @@ import { handleExportDatabase } from './workerExportHandler'
 import { handleFetchTimeline } from './workerFetchTimelineHandler'
 import { init } from './workerInit'
 import { sendError, sendResponse } from './workerMessageHelpers'
+import { isAcceptedWorkerMessageOrigin } from './workerMessageOrigin'
 import {
   handleAddNotification,
   handleBulkAddNotifications,
@@ -426,7 +427,9 @@ function diagnosticCacheNodeIds(msg: WorkerRequest): string[] {
 globalThis.onmessage = (
   event: MessageEvent<WorkerRequest | { type: '__init'; origin: string }>,
 ) => {
-  if (event.origin !== self.location.origin) return
+  if (!isAcceptedWorkerMessageOrigin(event.origin, self.location.origin)) {
+    return
+  }
   const msg = event.data
 
   if (msg.type === '__init') {

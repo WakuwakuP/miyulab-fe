@@ -253,7 +253,39 @@ describe('translateExistsCondition', () => {
     const result = translateExistsCondition(node, dep, 'p')
     expect(result.sql).toContain('post_hashtags _via0')
     expect(result.sql).toContain('INNER JOIN hashtags')
+    expect(result.sql).toContain('hashtags.name = ?')
+    expect(result.sql).not.toContain('post_hashtags.name')
     expect(result.binds).toEqual(['test'])
+  })
+
+  it('post_hashtags 上の EXISTS でも hashtags.name を JOIN して参照する', () => {
+    const node: ExistsFilter = {
+      innerFilters: [
+        {
+          column: 'name',
+          kind: 'table-filter',
+          op: 'IN',
+          table: 'hashtags',
+          value: ['gochisou_photo'],
+        },
+      ],
+      kind: 'exists-filter',
+      mode: 'exists',
+      table: 'post_hashtags',
+    }
+    const dep: TableDependency = {
+      cardinality: '1:N',
+      joinPath: { column: 'post_id', sourceColumn: 'id' },
+      strategy: 'exists',
+      table: 'post_hashtags',
+    }
+    const result = translateExistsCondition(node, dep, 'p')
+    expect(result.sql).toContain(
+      'INNER JOIN hashtags ON hashtags.id = post_hashtags.hashtag_id',
+    )
+    expect(result.sql).toContain('hashtags.name IN (?)')
+    expect(result.sql).not.toContain('post_hashtags.name')
+    expect(result.binds).toEqual(['gochisou_photo'])
   })
 })
 

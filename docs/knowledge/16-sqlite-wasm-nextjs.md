@@ -440,7 +440,7 @@ export type DbHandle = {
 Worker が無応答の場合のハングを防ぐため、初期化タイムアウトを設定する。
 
 ```typescript
-const INIT_TIMEOUT_MS = 120_000
+const INIT_TIMEOUT_MS = 15_000
 
 initTimer = setTimeout(() => {
   if (initReject) {
@@ -451,7 +451,7 @@ initTimer = setTimeout(() => {
 }, INIT_TIMEOUT_MS)
 ```
 
-タイムアウト発生時は Worker を終了して OPFS のロックを外し、フォールバックモード（メインスレッド + インメモリ）に移行する。肥大した OPFS では SAH の取得と DB open だけで 15 秒を超えることがあるため、上限は 120 秒にしている。
+タイムアウト発生時は Worker を終了して OPFS のロックを外し、フォールバックモード（メインスレッド + インメモリ）に移行する。上限は 15 秒。無応答の Worker を検知するためのガードで、初期化メッセージが届いている通常の OPFS open はこの時間内に終わる。
 
 ---
 
