@@ -516,6 +516,9 @@ describe('workerClient publicApi RPC', () => {
 
     await vi.advanceTimersByTimeAsync(1)
     await rejection
+    const worker = FakeBrowserWorker.instances[0]
+    expect(worker.terminate).toHaveBeenCalledOnce()
+    expect(getWorker()).toBeNull()
     expect(getInitReject()).toBeNull()
     expect(getInitResolve()).toBeNull()
     expect(getInitTimer()).toBeNull()

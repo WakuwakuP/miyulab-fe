@@ -13,7 +13,12 @@ import type { PendingRequest, QueuedRequest } from './types'
 // ================================================================
 
 export const TIMEOUT_MS = 30_000
-export const INIT_TIMEOUT_MS = 15_000
+/**
+ * Worker が init を返すまでの上限。
+ * 肥大した OPFS では SAH の createSyncAccessHandle と DB open だけで
+ * 15 秒を超える。ここで切ると永続 DB を捨ててインメモリへ落ちる。
+ */
+export const INIT_TIMEOUT_MS = 120_000
 
 /**
  * 操作種別ごとのタイムアウト (ms)。

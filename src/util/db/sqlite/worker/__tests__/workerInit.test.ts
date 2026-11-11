@@ -96,6 +96,9 @@ function expectPragmas(db: ReturnType<typeof createDb>) {
     'PRAGMA foreign_keys = ON;',
     'PRAGMA cache_size = -8000;',
     'PRAGMA temp_store = MEMORY;',
+    'PRAGMA page_count;',
+    'PRAGMA page_size;',
+    'PRAGMA freelist_count;',
   ])
 }
 
@@ -125,6 +128,17 @@ describe('workerInit', () => {
 
   it('loads WASM and opens an OPFS SAH Pool database', async () => {
     const setup = createSqlite3()
+    setup.sahDb.exec.mockImplementation((sql: string) => {
+      if (sql === 'PRAGMA page_count;') return [[4096]]
+      if (sql === 'PRAGMA page_size;') return [[4096]]
+      if (sql === 'PRAGMA freelist_count;') return [[1024]]
+      return undefined
+    })
+    setup.installOpfsSAHPoolVfs.mockResolvedValue({
+      getCapacity: () => 6,
+      getFileCount: () => 2,
+      OpfsSAHPoolDb: setup.OpfsSAHPoolDb,
+    })
     const sqliteInitializer = vi.fn().mockResolvedValue(setup.sqlite3)
     mocks.loadSqliteWasmInitializer.mockResolvedValue(sqliteInitializer)
 
@@ -142,6 +156,12 @@ describe('workerInit', () => {
       name: 'opfs-sahpool',
     })
     expect(setup.OpfsSAHPoolDb).toHaveBeenCalledWith('/miyulab-fe.sqlite3')
+    expect(console.info).toHaveBeenCalledWith(
+      expect.stringContaining('capacity=6, files=2'),
+    )
+    expect(console.info).toHaveBeenCalledWith(
+      'SQLite Worker: database is 16.0 MiB (4096 pages, free 4.0 MiB)',
+    )
     expectPragmas(setup.sahDb)
     expect(mocks.ensureSchema).toHaveBeenCalledWith({ db: setup.sahDb })
     expect(mocks.isDatabaseHealthy).toHaveBeenCalledWith(setup.sahDb)
