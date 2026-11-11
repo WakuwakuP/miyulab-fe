@@ -135,7 +135,7 @@ export function translateExistsCondition(
     node.kind === 'exists-filter'
       ? appendInnerFilters(dep, node.innerFilters)
       : { binds: [], conditions: [], joinsSql: '' }
-  const joinPart = `${finalJoin ? ` ${finalJoin}` : ''}${inner.joinsSql}`
+  const joinPart = (finalJoin ? ` ${finalJoin}` : '') + inner.joinsSql
   const allBinds: BindValue[] = [...inner.binds]
   const innerWhere =
     inner.conditions.length > 0 ? ` AND ${inner.conditions.join(' AND ')}` : ''
@@ -217,7 +217,7 @@ export function translateNotExistsCondition(
 
   const extraWhere =
     conditions.length > 0 ? ` AND ${conditions.join(' AND ')}` : ''
-  const joinPart = `${finalJoin ? ` ${finalJoin}` : ''}${extraJoinsSql}`
+  const joinPart = (finalJoin ? ` ${finalJoin}` : '') + extraJoinsSql
 
   return {
     binds: allBinds,
