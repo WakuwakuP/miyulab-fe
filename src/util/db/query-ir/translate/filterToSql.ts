@@ -58,6 +58,59 @@ export function formatCondition(
 
 // --------------- Strategy-specific translators ---------------
 
+/**
+ * exists の対象テーブルと inner filter のテーブルが違うとき、
+ * レジストリの via を辿って内側テーブルを JOIN する。
+ * タグ条件は post_hashtags 上の EXISTS に hashtags.name を載せる。
+ */
+function findInnerTableJoin(
+  depTable: string,
+  innerTable: string,
+): string | null {
+  const entry = TABLE_REGISTRY[innerTable]
+  if (!entry) return null
+  for (const joinPath of Object.values(entry.joinPaths)) {
+    const via = joinPath.via?.find((step) => step.table === depTable)
+    if (!via) continue
+    return `INNER JOIN ${innerTable} ON ${innerTable}.${joinPath.column} = ${depTable}.${via.toColumn}`
+  }
+  return null
+}
+
+function appendInnerFilters(
+  dep: TableDependency,
+  innerFilters: TableFilter[] | undefined,
+): { binds: BindValue[]; conditions: string[]; joinsSql: string } {
+  const conditions: string[] = []
+  const binds: BindValue[] = []
+  const joins: string[] = []
+  const seenJoins = new Set<string>()
+
+  for (const inner of innerFilters ?? []) {
+    const table = inner.table === dep.table ? dep.table : inner.table
+    if (table !== dep.table) {
+      const join = findInnerTableJoin(dep.table, table)
+      if (join && !seenJoins.has(join)) {
+        seenJoins.add(join)
+        joins.push(join)
+      }
+    }
+    const formatted = formatCondition(
+      `${table}.${inner.column}`,
+      inner.op,
+      inner.value,
+    )
+    conditions.push(formatted.sql)
+    binds.push(...formatted.binds)
+  }
+
+  return {
+    binds,
+    conditions,
+    joinsSql: joins.length > 0 ? ` ${joins.join(' ')}` : '',
+  }
+}
+
 /** Translate a table-filter on the source table itself (strategy = 'direct') */
 export function translateDirectCondition(
   node: TableFilter,
@@ -78,22 +131,16 @@ export function translateExistsCondition(
     dep,
     sourceAlias,
   )
-  const joinPart = finalJoin ? ` ${finalJoin}` : ''
-  const allBinds: BindValue[] = []
+  const inner =
+    node.kind === 'exists-filter'
+      ? appendInnerFilters(dep, node.innerFilters)
+      : { binds: [], conditions: [], joinsSql: '' }
+  const joinPart = `${finalJoin ? ` ${finalJoin}` : ''}${inner.joinsSql}`
+  const allBinds: BindValue[] = [...inner.binds]
+  const innerWhere =
+    inner.conditions.length > 0 ? ` AND ${inner.conditions.join(' AND ')}` : ''
 
   if (node.kind === 'exists-filter') {
-    const innerConditions: string[] = []
-    if (node.innerFilters) {
-      for (const inner of node.innerFilters) {
-        const colExpr = `${dep.table}.${inner.column}`
-        const { sql, binds } = formatCondition(colExpr, inner.op, inner.value)
-        innerConditions.push(sql)
-        allBinds.push(...binds)
-      }
-    }
-    const innerWhere =
-      innerConditions.length > 0 ? ` AND ${innerConditions.join(' AND ')}` : ''
-
     switch (node.mode) {
       case 'exists':
         return {
@@ -152,17 +199,15 @@ export function translateNotExistsCondition(
     dep,
     sourceAlias,
   )
-  const joinPart = finalJoin ? ` ${finalJoin}` : ''
   const allBinds: BindValue[] = []
   const conditions: string[] = []
+  let extraJoinsSql = ''
 
-  if (node.kind === 'exists-filter' && node.innerFilters) {
-    for (const inner of node.innerFilters) {
-      const colExpr = `${dep.table}.${inner.column}`
-      const { sql, binds } = formatCondition(colExpr, inner.op, inner.value)
-      conditions.push(sql)
-      allBinds.push(...binds)
-    }
+  if (node.kind === 'exists-filter') {
+    const inner = appendInnerFilters(dep, node.innerFilters)
+    conditions.push(...inner.conditions)
+    allBinds.push(...inner.binds)
+    extraJoinsSql = inner.joinsSql
   } else if (node.kind === 'table-filter') {
     const colExpr = `${dep.table}.${node.column}`
     const { sql, binds } = formatCondition(colExpr, node.op, node.value)
@@ -172,6 +217,7 @@ export function translateNotExistsCondition(
 
   const extraWhere =
     conditions.length > 0 ? ` AND ${conditions.join(' AND ')}` : ''
+  const joinPart = `${finalJoin ? ` ${finalJoin}` : ''}${extraJoinsSql}`
 
   return {
     binds: allBinds,

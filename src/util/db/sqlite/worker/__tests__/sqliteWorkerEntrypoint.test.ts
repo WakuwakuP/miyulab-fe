@@ -282,6 +282,21 @@ describe('SQLite worker entrypoint', () => {
       expect(mocks.init).not.toHaveBeenCalled()
     })
 
+    it('Chromium が付ける空の origin でも初期化を開始する', async () => {
+      const listener = globalThis.onmessage
+      if (listener == null) {
+        throw new Error('SQLite worker did not register an onmessage listener')
+      }
+      ;(listener as (event: MessageEvent) => void)({
+        data: { origin: workerMessageOrigin, type: '__init' },
+        origin: '',
+      } as MessageEvent)
+
+      await vi.waitFor(() => {
+        expect(mocks.init).toHaveBeenCalledWith(workerMessageOrigin)
+      })
+    })
+
     it('initializes from the supplied origin and publishes persistence details', async () => {
       mocks.init.mockResolvedValue({
         persistence: 'opfs',
