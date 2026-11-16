@@ -98,6 +98,15 @@ export function CloudBackupSection() {
     const token = app.tokenData?.access_token
     if (token == null) return false
     if (authorizedToken.current === token) return true
+    const status = await getSettingsBackupStatus()
+    if (!status.success) {
+      showError(status.error)
+      return false
+    }
+    if (status.session != null) {
+      authorizedToken.current = token
+      return true
+    }
     const result = await authorizeSettingsBackup(
       app.backend,
       app.backendUrl,

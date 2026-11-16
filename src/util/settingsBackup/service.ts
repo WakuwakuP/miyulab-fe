@@ -193,7 +193,14 @@ export async function listSettingsBackups(
   const session = readSession(deps)
   if (session == null) return authorizationFailed()
   try {
-    await deps.store.trim(session, SETTINGS_BACKUP_KEEP)
+    try {
+      await deps.store.trim(session, SETTINGS_BACKUP_KEEP)
+    } catch (error) {
+      console.error(
+        '[SettingsBackup] trim failed',
+        error instanceof Error ? error.name : 'unknown',
+      )
+    }
     const backups = await deps.store.list(session)
     return { backups, success: true }
   } catch (error) {
