@@ -47,3 +47,7 @@ plans/*
 !plans/.gitkeep
 
 .env
+
+# Storybook
+/storybook-static/
+/storybook.log

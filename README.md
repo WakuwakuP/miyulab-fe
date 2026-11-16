@@ -46,6 +46,27 @@ yarn copy:sqlite-wasm
 
 ビルド、チェック、テストは `npx` ではなく Yarn 経由で実行してください。
 
+## StorybookでUIを確認する
+
+```bash
+yarn storybook
+```
+
+`http://localhost:6006` で起動します。アカウントの接続や `DATABASE_URL` は不要です。
+
+別の端末からLAN経由で確認する場合は `yarn storybook --host 0.0.0.0` で起動し、`http://<開発マシンのIP>:6006` にアクセスしてください。
+
+- `App/Status/*`: 投稿全体とFav／Reblogなどの通知・操作状態。
+- `App/Panels/*`: 投稿フォーム、ユーザー詳細・投稿スレッド、一般設定、タイムライン管理、アカウント、DB統計など。
+- `App/Settings/TimelineEditor/*`: 現行のFlow Editor、ミュート・ブロック管理。
+- `UI/*`: 本番で利用中の共通部品8種類。未使用の旧フィルター／NodeEditor関連は収録対象から外し、実装も整理しています。
+
+ツールバーでテーマや画面幅を切り替えられます。アプリ固有のパネルは本番と同じ固定のダーク配色です。Controlsでpropsを変更でき、API操作はActionsで確認できます。
+
+Storyは `src/stories/`、架空データは `src/stories/support/fixtures.ts` にあります。本番コンポーネントにメモリ内のContextを渡し、Storybook専用のサービスmockでAPI通信・SQLite・サーバー処理を隔離しています。投稿やFavを操作しても実サーバーには送信しません。クラウド保存・復元と実アカウントのログインは対象外です。
+
+静的ファイルは `yarn build-storybook` で `storybook-static/`（Git管理対象外）に生成できます。Story追加時の対象選定・mockの仕組みは [共通UIガイド](docs/knowledge/13-ui-stories.md) と [アプリ画面ガイド](docs/knowledge/14-app-stories.md) を参照してください。
+
 ## 環境変数
 
 環境変数は `src/util/environment.ts` で定義されています。未設定でもローカル起動できます。

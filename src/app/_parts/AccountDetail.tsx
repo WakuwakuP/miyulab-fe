@@ -279,7 +279,7 @@ export const AccountDetail = ({ account }: { account: AccountAddAppIndex }) => {
                         .then(() => {
                           setRelationship({
                             ...relationship,
-                            following: true,
+                            following: false,
                           })
                         })
                         .catch((error) => {
