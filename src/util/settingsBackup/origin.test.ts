@@ -15,6 +15,7 @@ describe('normalizeSettingsBackupOrigin', () => {
   })
 
   it('http、ユーザー情報、パス、クエリを拒否する', () => {
+    expect(normalizeSettingsBackupOrigin('not a url')).toBeNull()
     expect(normalizeSettingsBackupOrigin('http://social.example')).toBeNull()
     expect(
       normalizeSettingsBackupOrigin('https://user:pass@social.example'),
