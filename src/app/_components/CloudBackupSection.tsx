@@ -41,6 +41,7 @@ export function CloudBackupSection() {
   const apps = useContext(AppsContext)
   const targetApp = firstAccount(apps)
   const restoreDialogRef = useRef<HTMLDialogElement>(null)
+  const authorizedToken = useRef<string | null>(null)
   const [backups, setBackups] = useState<SettingsBackupSummary[]>([])
   const [available, setAvailable] = useState(true)
   const [loading, setLoading] = useState(true)
@@ -94,6 +95,7 @@ export function CloudBackupSection() {
   const ensureSession = async (app: App): Promise<boolean> => {
     const token = app.tokenData?.access_token
     if (token == null) return false
+    if (authorizedToken.current === token) return true
     const result = await authorizeSettingsBackup(
       app.backend,
       app.backendUrl,
@@ -103,6 +105,7 @@ export function CloudBackupSection() {
       showError(result.error)
       return false
     }
+    authorizedToken.current = token
     return true
   }
 
@@ -150,7 +153,6 @@ export function CloudBackupSection() {
   }
 
   const restore = async (backupItem: SettingsBackupSummary) => {
-    setRestoreOpen(false)
     if (targetApp == null) return
     setBusy(true)
     setError(null)
@@ -161,6 +163,7 @@ export function CloudBackupSection() {
         showError(result.error)
         return
       }
+      setRestoreOpen(false)
       const applied = applySettingsBackup(result.envelope, {
         notifyOtherTabs: notifySettingsBackupRestored,
         reload: () => location.reload(),
