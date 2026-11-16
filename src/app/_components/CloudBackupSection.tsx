@@ -100,15 +100,30 @@ export function CloudBackupSection() {
   }, [loadList])
 
   useEffect(() => {
-    if (session == null) return
-    const matches = accounts.flatMap((app, index) =>
-      normalizeSettingsBackupOrigin(app.backendUrl) === session.backendUrl
-        ? [index]
-        : [],
-    )
+    if (session == null) setPinnedIndex(null)
+    if (accounts.length === 0) {
+      setSelectedIndex(0)
+      return
+    }
+    const matches =
+      session == null
+        ? []
+        : accounts.flatMap((app, index) =>
+            normalizeSettingsBackupOrigin(app.backendUrl) === session.backendUrl
+              ? [index]
+              : [],
+          )
     if (matches.length === 1 && matches[0] != null) {
       setSelectedIndex(matches[0])
+      setPinnedIndex(matches[0])
+      return
     }
+    setSelectedIndex((current) =>
+      current >= accounts.length ? accounts.length - 1 : current,
+    )
+    setPinnedIndex((current) =>
+      current != null && current >= accounts.length ? null : current,
+    )
   }, [accounts, session])
 
   const selected = accounts[selectedIndex] ?? null

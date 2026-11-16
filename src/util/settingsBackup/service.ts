@@ -34,7 +34,6 @@ import {
 
 export type SettingsBackupLimits = {
   lastAuthorizeAt: number
-  lastCreateAt: Map<string, number>
 }
 
 export type SettingsBackupCookieJar = {
@@ -62,7 +61,7 @@ export type SettingsBackupDeps = {
 }
 
 export function createSettingsBackupLimits(): SettingsBackupLimits {
-  return { lastAuthorizeAt: 0, lastCreateAt: new Map() }
+  return { lastAuthorizeAt: 0 }
 }
 
 function failure(error: SettingsBackupFailure['error']): SettingsBackupFailure {
@@ -89,10 +88,6 @@ function readSession(deps: SettingsBackupDeps): SettingsBackupSession | null {
     key,
     deps.now(),
   )
-}
-
-function ownerKey(session: SettingsBackupSession): string {
-  return `${session.backendUrl}\n${session.accountId}`
 }
 
 export async function authorizeSettingsBackup(
@@ -213,11 +208,13 @@ export async function createSettingsBackup(
     if (latest?.payloadSha256 === contentHash)
       return { deduped: true, id: latest.id, success: true }
     const now = deps.now()
-    const key = ownerKey(session)
-    const previous = deps.limits.lastCreateAt.get(key) ?? 0
-    if (now - previous < SETTINGS_CREATE_INTERVAL_MS)
+    const latestCreatedAt =
+      latest == null ? Number.NaN : Date.parse(latest.createdAt)
+    if (
+      Number.isFinite(latestCreatedAt) &&
+      now - latestCreatedAt < SETTINGS_CREATE_INTERVAL_MS
+    )
       return failure(SETTINGS_BACKUP_ERRORS.rateLimited)
-    deps.limits.lastCreateAt.set(key, now)
     const stored = stableStringify(validated.envelope)
     const created = await deps.store.insert(session, {
       formatVersion: validated.envelope.formatVersion,

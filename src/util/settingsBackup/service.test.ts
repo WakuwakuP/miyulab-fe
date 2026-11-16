@@ -1,4 +1,15 @@
 import { describe, expect, it, vi } from 'vitest'
+
+vi.mock('util/attachmentProxy', async () => {
+  const actual = await vi.importActual<typeof import('util/attachmentProxy')>(
+    'util/attachmentProxy',
+  )
+  return {
+    isPrivateHostWithDns: async (hostname: string) =>
+      actual.isPrivateHost(hostname),
+  }
+})
+
 import { SETTINGS_BACKUP_COOKIE, SETTINGS_BACKUP_TTL_MS } from './constants'
 import { stableStringify } from './envelope'
 import { sha256Hex } from './hash'
@@ -34,7 +45,9 @@ type StoredRow = SettingsBackupInsert & {
   ownerBackendUrl: string
 }
 
-function memoryStore(): SettingsBackupStore & { rows: StoredRow[] } {
+function memoryStore(
+  clock: () => number = () => NOW,
+): SettingsBackupStore & { rows: StoredRow[] } {
   const rows: StoredRow[] = []
   let sequence = 0
   const owned = (backendUrl: string, accountId: string) =>
@@ -59,7 +72,11 @@ function memoryStore(): SettingsBackupStore & { rows: StoredRow[] } {
       const latest = mine.at(-1)
       return latest == null
         ? null
-        : { id: latest.id, payloadSha256: latest.payloadSha256 }
+        : {
+            createdAt: new Date(latest.createdAt).toISOString(),
+            id: latest.id,
+            payloadSha256: latest.payloadSha256,
+          }
     },
     async getPayload(owner, id) {
       return (
@@ -72,7 +89,7 @@ function memoryStore(): SettingsBackupStore & { rows: StoredRow[] } {
       const id = `00000000-0000-4000-8000-${String(sequence).padStart(12, '0')}`
       rows.push({
         ...row,
-        createdAt: sequence,
+        createdAt: clock(),
         id,
         ownerAccountId: owner.accountId,
         ownerBackendUrl: owner.backendUrl,
@@ -199,8 +216,8 @@ describe('settings backup service', () => {
 
   it('同じ内容は行を増やさず、21件目で最古が消え、他の所有者は読めない', async () => {
     const jar = cookieJar()
-    const store = memoryStore()
     let now = NOW
+    const store = memoryStore(() => now)
     const context: SettingsBackupDeps = {
       cookies: jar,
       databaseUrl: DB_URL,
@@ -298,6 +315,59 @@ describe('settings backup service', () => {
     expect(store.rows.some((row) => row.id === foreignId)).toBe(true)
     const otherList = await listSettingsBackups(other)
     expect(otherList).toEqual({ backups: [], success: true })
+  })
+
+  it('保存間隔は成功した行の時刻で決まり、失敗した保存では止まらない', async () => {
+    const jar = cookieJar()
+    const now = NOW
+    const store = memoryStore(() => now)
+    const context: SettingsBackupDeps = {
+      cookies: jar,
+      databaseUrl: DB_URL,
+      fetch: vi.fn(),
+      limits: createSettingsBackupLimits(),
+      now: () => now,
+      store,
+    }
+    const key = deriveSettingsBackupAuthKey(DB_URL)
+    if (key == null) throw new Error('missing key')
+    const { createSettingsBackupSessionValue } = await import('./session')
+    jar.set(
+      SETTINGS_BACKUP_COOKIE,
+      createSettingsBackupSessionValue(
+        {
+          accountId: 'remote-id',
+          acct: 'alice',
+          backendUrl: 'https://social.example',
+        },
+        NOW + SETTINGS_BACKUP_TTL_MS,
+        key,
+      ),
+      {
+        httpOnly: true,
+        maxAge: 28_800,
+        path: '/',
+        sameSite: 'strict',
+        secure: true,
+      },
+    )
+
+    const insert = store.insert.bind(store)
+    store.insert = async () => {
+      throw new Error('db')
+    }
+    await expect(
+      createSettingsBackup(envelope('home'), context),
+    ).resolves.toEqual({
+      error: 'Cloud backup is unavailable',
+      success: false,
+    })
+    store.insert = insert
+    const saved = await createSettingsBackup(envelope('home'), context)
+    expect(saved).toMatchObject({ deduped: false, success: true })
+    const limited = await createSettingsBackup(envelope('other'), context)
+    expect(limited).toEqual({ error: 'Rate limited', success: false })
+    expect(store.rows).toHaveLength(1)
   })
 
   it('DATABASE_URL が無いときは使えない', async () => {

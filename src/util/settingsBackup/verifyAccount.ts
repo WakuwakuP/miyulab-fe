@@ -1,4 +1,5 @@
 import type { Backend } from 'types/types'
+import { isPrivateHostWithDns } from 'util/attachmentProxy'
 
 import { isSettingsBackupAccountId, isSettingsBackupAcct } from './origin'
 
@@ -65,6 +66,8 @@ export async function verifySettingsBackupAccount(
   fetchImpl: SettingsBackupVerifyFetch,
 ): Promise<VerifiedSettingsAccount | null> {
   try {
+    const hostname = new URL(origin).hostname
+    if (await isPrivateHostWithDns(hostname)) return null
     if (backend === 'misskey') {
       const response = await fetchImpl(`${origin}/api/i`, {
         body: JSON.stringify({ i: accessToken }),

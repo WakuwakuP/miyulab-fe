@@ -16,9 +16,11 @@ export type SettingsBackupInsert = {
 
 export type SettingsBackupStore = {
   delete(owner: SettingsBackupSession, id: string): Promise<boolean>
-  findLatest(
-    owner: SettingsBackupSession,
-  ): Promise<{ id: string; payloadSha256: string } | null>
+  findLatest(owner: SettingsBackupSession): Promise<{
+    createdAt: string
+    id: string
+    payloadSha256: string
+  } | null>
   getPayload(owner: SettingsBackupSession, id: string): Promise<string | null>
   insert(
     owner: SettingsBackupSession,

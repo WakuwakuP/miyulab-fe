@@ -37,11 +37,15 @@ export function createNeonSettingsBackupStore(
     async findLatest(owner) {
       const row = await client.settingsBackup.findFirst({
         orderBy: { createdAt: 'desc' },
-        select: { id: true, payloadSha256: true },
+        select: { createdAt: true, id: true, payloadSha256: true },
         where: ownerWhere(owner),
       })
       if (row?.payloadSha256 == null) return null
-      return { id: row.id, payloadSha256: row.payloadSha256 }
+      return {
+        createdAt: asIso(row.createdAt),
+        id: row.id,
+        payloadSha256: row.payloadSha256,
+      }
     },
     async getPayload(owner, id) {
       const row = await client.settingsBackup.findFirst({

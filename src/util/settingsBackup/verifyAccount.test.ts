@@ -1,4 +1,15 @@
 import { describe, expect, it, vi } from 'vitest'
+
+vi.mock('util/attachmentProxy', async () => {
+  const actual = await vi.importActual<typeof import('util/attachmentProxy')>(
+    'util/attachmentProxy',
+  )
+  return {
+    isPrivateHostWithDns: async (hostname: string) =>
+      actual.isPrivateHost(hostname),
+  }
+})
+
 import {
   type SettingsBackupVerifyFetch,
   verifySettingsBackupAccount,
@@ -44,6 +55,27 @@ describe('verifySettingsBackupAccount', () => {
         redirect: 'error',
       }),
     )
+  })
+
+  it('私有アドレスへは問い合わせない', async () => {
+    const fetchImpl = vi.fn<SettingsBackupVerifyFetch>()
+    await expect(
+      verifySettingsBackupAccount(
+        'mastodon',
+        'https://127.0.0.1',
+        TOKEN,
+        fetchImpl,
+      ),
+    ).resolves.toBeNull()
+    await expect(
+      verifySettingsBackupAccount(
+        'mastodon',
+        'https://169.254.169.254',
+        TOKEN,
+        fetchImpl,
+      ),
+    ).resolves.toBeNull()
+    expect(fetchImpl).not.toHaveBeenCalled()
   })
 
   it('失敗した応答や例外では null を返し、トークンをエラーに含めない', async () => {
