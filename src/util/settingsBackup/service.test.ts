@@ -169,6 +169,7 @@ function deps(options?: {
   const store = memoryStore()
   const now = options?.now ?? NOW
   const value: SettingsBackupDeps = {
+    callerKey: 'test',
     cookies: jar,
     databaseUrl: DB_URL,
     fetch:
@@ -219,6 +220,7 @@ describe('settings backup service', () => {
     let now = NOW
     const store = memoryStore(() => now)
     const context: SettingsBackupDeps = {
+      callerKey: 'test',
       cookies: jar,
       databaseUrl: DB_URL,
       fetch: vi.fn(),
@@ -322,6 +324,7 @@ describe('settings backup service', () => {
     const now = NOW
     const store = memoryStore(() => now)
     const context: SettingsBackupDeps = {
+      callerKey: 'test',
       cookies: jar,
       databaseUrl: DB_URL,
       fetch: vi.fn(),
@@ -368,6 +371,40 @@ describe('settings backup service', () => {
     const limited = await createSettingsBackup(envelope('other'), context)
     expect(limited).toEqual({ error: 'Rate limited', success: false })
     expect(store.rows).toHaveLength(1)
+  })
+
+  it('認可の間隔は呼び出し元ごとに失敗も含めて1秒', async () => {
+    const failing = deps({
+      fetchImpl: vi.fn<SettingsBackupVerifyFetch>(async () => {
+        throw new Error('down')
+      }),
+    })
+    await expect(
+      authorizeSettingsBackup(
+        'mastodon',
+        'https://social.example',
+        TOKEN,
+        failing.deps,
+      ),
+    ).resolves.toEqual({ error: 'Authorization failed', success: false })
+    failing.deps.fetch = vi.fn<SettingsBackupVerifyFetch>(async () => ({
+      json: async () => ({ acct: 'alice', id: 'remote-id' }),
+      ok: true,
+    }))
+    const retried = await authorizeSettingsBackup(
+      'mastodon',
+      'https://social.example',
+      TOKEN,
+      failing.deps,
+    )
+    expect(retried).toEqual({ error: 'Rate limited', success: false })
+    const other = await authorizeSettingsBackup(
+      'mastodon',
+      'https://social.example',
+      TOKEN,
+      { ...failing.deps, callerKey: 'other' },
+    )
+    expect(other).toMatchObject({ success: true })
   })
 
   it('DATABASE_URL が無いときは使えない', async () => {

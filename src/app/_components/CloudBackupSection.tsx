@@ -3,12 +3,11 @@
 import {
   authorizeSettingsBackup,
   createSettingsBackup,
-  deleteSettingsBackup,
   getSettingsBackup,
   getSettingsBackupStatus,
   listSettingsBackups,
 } from 'app/actions/settingsBackup.server'
-import { useCallback, useContext, useEffect, useMemo, useState } from 'react'
+import { useContext, useEffect, useRef, useState } from 'react'
 import type { App } from 'types/types'
 import { AppsContext } from 'util/provider/AppsProvider'
 import { applySettingsBackup } from 'util/settingsBackup/applyBackup'
@@ -18,65 +17,60 @@ import {
   type SettingsBackupError,
 } from 'util/settingsBackup/constants'
 import { buildSettingsEnvelope } from 'util/settingsBackup/envelope'
-import { normalizeSettingsBackupOrigin } from 'util/settingsBackup/origin'
-import type { SettingsBackupSession } from 'util/settingsBackup/session'
 import type { SettingsBackupSummary } from 'util/settingsBackup/store'
 
-function accountOptionKey(app: App): string {
-  const token = app.tokenData?.access_token ?? ''
-  let hash = 0
-  for (let index = 0; index < token.length; index += 1) {
-    hash = (hash * 31 + token.charCodeAt(index)) | 0
-  }
-  return `${app.backend}:${app.backendUrl}:${hash}`
+function firstAccount(apps: App[]): App | null {
+  const app = apps[0]
+  const token = app?.tokenData?.access_token
+  if (app == null || typeof token !== 'string' || token.length === 0)
+    return null
+  return app
 }
 
-function signedInApps(apps: App[]): App[] {
-  return apps.filter((app) => {
-    const token = app.tokenData?.access_token
-    return typeof token === 'string' && token.length > 0
-  })
-}
-
-function restoreMessage(backup: SettingsBackupSummary): string {
-  const saved = new Date(backup.createdAt).toLocaleString()
-  return [
-    'Restore this cloud backup?',
-    `Saved: ${saved}`,
-    `Timelines: ${backup.timelineCount}`,
-    '',
-    'Only sections included in the backup replace current settings. Access tokens are not included, and your logins stay as they are. Columns for servers you are not logged into on this browser remain in the layout and start working after you sign in.',
-    '',
-    "This backup is stored in plaintext in miyulab's database. Other open miyulab tabs will reload. This cannot be undone.",
-  ].join('\n')
+function newestFirst(
+  backups: SettingsBackupSummary[],
+): SettingsBackupSummary[] {
+  return [...backups].sort(
+    (left, right) =>
+      Date.parse(right.createdAt) - Date.parse(left.createdAt) ||
+      right.id.localeCompare(left.id),
+  )
 }
 
 export function CloudBackupSection() {
   const apps = useContext(AppsContext)
-  const accounts = useMemo(() => signedInApps(apps), [apps])
-  const [selectedIndex, setSelectedIndex] = useState(0)
-  const [pinnedIndex, setPinnedIndex] = useState<number | null>(null)
-  const [session, setSession] = useState<SettingsBackupSession | null>(null)
+  const targetApp = firstAccount(apps)
+  const restoreDialogRef = useRef<HTMLDialogElement>(null)
   const [backups, setBackups] = useState<SettingsBackupSummary[]>([])
   const [available, setAvailable] = useState(true)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<SettingsBackupError | null>(null)
+  const [restoreOpen, setRestoreOpen] = useState(false)
 
-  const loadList = useCallback(async () => {
-    const listed = await listSettingsBackups()
-    if (!listed.success) {
-      setError(listed.error)
-      setBackups([])
-      return
-    }
-    setBackups(listed.backups)
+  const showError = (next: SettingsBackupError) => {
+    setError(next)
+  }
+
+  useEffect(() => {
+    const dialog = restoreDialogRef.current
+    if (dialog == null) return
+    const onClose = () => setRestoreOpen(false)
+    dialog.addEventListener('close', onClose)
+    return () => dialog.removeEventListener('close', onClose)
   }, [])
+
+  useEffect(() => {
+    const dialog = restoreDialogRef.current
+    if (dialog == null) return
+    if (restoreOpen && !dialog.open) dialog.showModal()
+    if (!restoreOpen && dialog.open) dialog.close()
+  }, [restoreOpen])
 
   useEffect(() => {
     let cancelled = false
     getSettingsBackupStatus()
-      .then(async (status) => {
+      .then((status) => {
         if (cancelled) return
         if (!status.success) {
           setAvailable(false)
@@ -84,9 +78,7 @@ export function CloudBackupSection() {
           setLoading(false)
           return
         }
-        setSession(status.session)
-        if (status.session != null) await loadList()
-        if (!cancelled) setLoading(false)
+        setLoading(false)
       })
       .catch(() => {
         if (cancelled) return
@@ -97,80 +89,29 @@ export function CloudBackupSection() {
     return () => {
       cancelled = true
     }
-  }, [loadList])
+  }, [])
 
-  useEffect(() => {
-    if (session == null) setPinnedIndex(null)
-    if (accounts.length === 0) {
-      setSelectedIndex(0)
-      return
-    }
-    const matches =
-      session == null
-        ? []
-        : accounts.flatMap((app, index) =>
-            normalizeSettingsBackupOrigin(app.backendUrl) === session.backendUrl
-              ? [index]
-              : [],
-          )
-    if (matches.length === 1 && matches[0] != null) {
-      setSelectedIndex(matches[0])
-      setPinnedIndex(matches[0])
-      return
-    }
-    setSelectedIndex((current) =>
-      current >= accounts.length ? accounts.length - 1 : current,
+  const ensureSession = async (app: App): Promise<boolean> => {
+    const token = app.tokenData?.access_token
+    if (token == null) return false
+    const result = await authorizeSettingsBackup(
+      app.backend,
+      app.backendUrl,
+      token,
     )
-    setPinnedIndex((current) =>
-      current != null && current >= accounts.length ? null : current,
-    )
-  }, [accounts, session])
-
-  const selected = accounts[selectedIndex] ?? null
-  const selectedOrigin =
-    selected == null ? null : normalizeSettingsBackupOrigin(selected.backendUrl)
-  const canSave =
-    session != null &&
-    pinnedIndex === selectedIndex &&
-    selectedOrigin != null &&
-    session.backendUrl === selectedOrigin
-
-  const showError = (next: SettingsBackupError) => {
-    setError(next)
+    if (!result.success) {
+      showError(result.error)
+      return false
+    }
+    return true
   }
 
-  const authorize = async () => {
-    if (selected?.tokenData?.access_token == null) return
+  const backup = async () => {
+    if (targetApp == null) return
     setBusy(true)
     setError(null)
     try {
-      const result = await authorizeSettingsBackup(
-        selected.backend,
-        selected.backendUrl,
-        selected.tokenData.access_token,
-      )
-      if (!result.success) {
-        showError(result.error)
-        return
-      }
-      setSession({
-        accountId: result.accountId,
-        acct: result.acct,
-        backendUrl: result.backendUrl,
-      })
-      setPinnedIndex(selectedIndex)
-      await loadList()
-    } catch {
-      showError(SETTINGS_BACKUP_ERRORS.unavailable)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  const save = async () => {
-    setBusy(true)
-    setError(null)
-    try {
+      if (!(await ensureSession(targetApp))) return
       const built = buildSettingsEnvelope(
         (key) => localStorage.getItem(key),
         new Date().toISOString(),
@@ -180,11 +121,7 @@ export function CloudBackupSection() {
         return
       }
       const result = await createSettingsBackup(built.envelope)
-      if (!result.success) {
-        showError(result.error)
-        return
-      }
-      await loadList()
+      if (!result.success) showError(result.error)
     } catch {
       showError(SETTINGS_BACKUP_ERRORS.unavailable)
     } finally {
@@ -192,12 +129,34 @@ export function CloudBackupSection() {
     }
   }
 
-  const restore = async (backup: SettingsBackupSummary) => {
-    if (!confirm(restoreMessage(backup))) return
+  const openRestore = async () => {
+    if (targetApp == null) return
     setBusy(true)
     setError(null)
     try {
-      const result = await getSettingsBackup(backup.id)
+      if (!(await ensureSession(targetApp))) return
+      const listed = await listSettingsBackups()
+      if (!listed.success) {
+        showError(listed.error)
+        return
+      }
+      setBackups(newestFirst(listed.backups))
+      setRestoreOpen(true)
+    } catch {
+      showError(SETTINGS_BACKUP_ERRORS.unavailable)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const restore = async (backupItem: SettingsBackupSummary) => {
+    setRestoreOpen(false)
+    if (targetApp == null) return
+    setBusy(true)
+    setError(null)
+    try {
+      if (!(await ensureSession(targetApp))) return
+      const result = await getSettingsBackup(backupItem.id)
       if (!result.success) {
         showError(result.error)
         return
@@ -215,126 +174,94 @@ export function CloudBackupSection() {
     }
   }
 
-  const remove = async (backup: SettingsBackupSummary) => {
-    if (!confirm('Delete this cloud backup? This cannot be undone.')) return
-    setBusy(true)
-    setError(null)
-    try {
-      const result = await deleteSettingsBackup(backup.id)
-      if (!result.success) {
-        showError(result.error)
-        return
-      }
-      await loadList()
-    } catch {
-      showError(SETTINGS_BACKUP_ERRORS.unavailable)
-    } finally {
-      setBusy(false)
-    }
-  }
+  const orderedBackups = newestFirst(backups)
+  const buttonsDisabled = busy || loading || !available || targetApp == null
 
   return (
     <div className="mb-4 border-b border-gray-600 pb-4">
-      <p className="mb-2 text-lg font-semibold text-gray-400">Cloud backup</p>
-      <p className="mb-2 text-xs text-gray-400">
-        Saves timeline layout and display settings for the authorized account.
-        Access tokens are not included. The operator of this server can read the
-        saved JSON.
-      </p>
-      {loading ? (
-        <p className="text-sm text-gray-400">Loading cloud backup…</p>
-      ) : null}
+      <style>{`
+        .settings-backup-dialog:modal { overscroll-behavior: contain; }
+        .settings-backup-dialog::backdrop {
+          overflow: hidden;
+          overscroll-behavior: contain;
+          background: rgb(0 0 0 / 0.6);
+        }
+      `}</style>
+      <div className="flex flex-wrap gap-2">
+        <button
+          className="rounded bg-slate-600 px-2 py-1 text-xs hover:bg-slate-500 disabled:opacity-50"
+          disabled={buttonsDisabled}
+          onClick={() => void backup()}
+          type="button"
+        >
+          Backup
+        </button>
+        <button
+          className="rounded bg-slate-600 px-2 py-1 text-xs hover:bg-slate-500 disabled:opacity-50"
+          disabled={buttonsDisabled}
+          onClick={() => void openRestore()}
+          type="button"
+        >
+          Restore
+        </button>
+      </div>
       {!loading && !available ? (
-        <p className="text-sm text-gray-400">Cloud backup is unavailable.</p>
+        <p className="mt-2 text-sm text-gray-400">
+          Cloud backup is unavailable.
+        </p>
       ) : null}
-      {!loading && available ? (
-        <div className="space-y-2">
-          {accounts.length === 0 ? (
-            <p className="text-sm text-gray-400">
-              Sign in to an account before saving a cloud backup.
-            </p>
-          ) : (
-            <label className="flex items-center gap-2 text-sm">
-              Account
-              <select
-                className="min-w-0 flex-1 bg-gray-800"
-                onChange={(event) =>
-                  setSelectedIndex(Number(event.target.value))
-                }
-                value={selectedIndex}
-              >
-                {accounts.map((app, index) => (
-                  <option key={accountOptionKey(app)} value={index}>
-                    {app.backend} · {app.backendUrl}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          {session != null ? (
-            <p className="text-sm text-gray-300">
-              Authorized as {session.acct} · {session.backendUrl}
-            </p>
-          ) : null}
-          <div className="flex flex-wrap gap-2">
-            {accounts.length > 0 ? (
-              <button
-                className="rounded bg-gray-700 px-2 py-1 text-sm hover:bg-gray-600 disabled:opacity-50"
-                disabled={busy || selected == null}
-                onClick={() => void authorize()}
-                type="button"
-              >
-                Authorize this account
-              </button>
-            ) : null}
-            <button
-              className="rounded bg-gray-700 px-2 py-1 text-sm hover:bg-gray-600 disabled:opacity-50"
-              disabled={busy || !canSave}
-              onClick={() => void save()}
-              type="button"
-            >
-              Save current settings
-            </button>
-          </div>
-          {session != null && backups.length === 0 ? (
-            <p className="text-sm text-gray-400">No cloud backups yet.</p>
-          ) : null}
-          {backups.length > 0 ? (
-            <ul className="space-y-2">
-              {backups.map((backup) => (
-                <li
-                  className="flex flex-wrap items-center gap-2 text-sm"
-                  key={backup.id}
-                >
-                  <span>
-                    {new Date(backup.createdAt).toLocaleString()} ·{' '}
-                    {backup.timelineCount} timelines
-                  </span>
-                  <button
-                    className="rounded bg-gray-700 px-2 py-1 hover:bg-gray-600 disabled:opacity-50"
-                    disabled={busy}
-                    onClick={() => void restore(backup)}
-                    type="button"
-                  >
-                    Restore
-                  </button>
-                  <button
-                    className="rounded bg-red-900 px-2 py-1 hover:bg-red-800 disabled:opacity-50"
-                    disabled={busy}
-                    onClick={() => void remove(backup)}
-                    type="button"
-                  >
-                    Delete
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </div>
+      {!loading && available && targetApp == null ? (
+        <p className="mt-2 text-sm text-gray-400">
+          Sign in to the first account before using cloud backup.
+        </p>
       ) : null}
       {error != null ? (
         <p className="mt-2 text-sm text-red-300">{error}</p>
       ) : null}
+      <dialog
+        aria-labelledby="settings-backup-restore-title"
+        className="settings-backup-dialog m-auto w-[min(24rem,calc(100vw-2rem))] rounded-md border border-gray-600 bg-gray-900 p-4 text-gray-100"
+        closedby="any"
+        ref={restoreDialogRef}
+      >
+        <h2
+          className="mb-3 text-base font-semibold"
+          id="settings-backup-restore-title"
+        >
+          Restore
+        </h2>
+        {orderedBackups.length === 0 ? (
+          <p className="text-sm text-gray-400">No cloud backups yet.</p>
+        ) : (
+          <ul className="max-h-80 space-y-1 overflow-y-auto overscroll-contain">
+            {orderedBackups.map((item) => (
+              <li key={item.id}>
+                <button
+                  className="w-full rounded px-2 py-2 text-left text-sm hover:bg-gray-800 disabled:opacity-50"
+                  disabled={busy || targetApp == null}
+                  onClick={() => void restore(item)}
+                  type="button"
+                >
+                  {new Date(item.createdAt).toLocaleString()}
+                  <span className="mt-0.5 block text-xs text-gray-400">
+                    {item.timelineCount} timelines
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <form className="mt-3" method="dialog">
+          <button
+            autofocus
+            className="rounded bg-slate-600 px-2 py-1 text-xs hover:bg-slate-500"
+            type="submit"
+            value="cancel"
+          >
+            Close
+          </button>
+        </form>
+      </dialog>
     </div>
   )
 }

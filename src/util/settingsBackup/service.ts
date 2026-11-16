@@ -33,7 +33,7 @@ import {
 } from './verifyAccount'
 
 export type SettingsBackupLimits = {
-  lastAuthorizeAt: number
+  lastAuthorizeAt: Map<string, number>
 }
 
 export type SettingsBackupCookieJar = {
@@ -52,6 +52,7 @@ export type SettingsBackupCookieJar = {
 }
 
 export type SettingsBackupDeps = {
+  callerKey: string
   cookies: SettingsBackupCookieJar
   databaseUrl: string | undefined
   fetch: SettingsBackupVerifyFetch
@@ -60,8 +61,30 @@ export type SettingsBackupDeps = {
   store: SettingsBackupStore | null
 }
 
+const MAX_AUTHORIZE_CALLERS = 1_000
+
 export function createSettingsBackupLimits(): SettingsBackupLimits {
-  return { lastAuthorizeAt: 0 }
+  return { lastAuthorizeAt: new Map() }
+}
+
+function authorizeCallerKey(callerKey: string): string {
+  const trimmed = callerKey.trim().slice(0, 200)
+  return trimmed.length > 0 ? trimmed : 'local'
+}
+
+function reserveAuthorize(deps: SettingsBackupDeps, now: number): boolean {
+  const key = authorizeCallerKey(deps.callerKey)
+  const previous = deps.limits.lastAuthorizeAt.get(key) ?? 0
+  if (now - previous < SETTINGS_AUTHORIZE_INTERVAL_MS) return false
+  if (
+    !deps.limits.lastAuthorizeAt.has(key) &&
+    deps.limits.lastAuthorizeAt.size >= MAX_AUTHORIZE_CALLERS
+  ) {
+    const oldest = deps.limits.lastAuthorizeAt.keys().next().value
+    if (oldest != null) deps.limits.lastAuthorizeAt.delete(oldest)
+  }
+  deps.limits.lastAuthorizeAt.set(key, now)
+  return true
 }
 
 function failure(error: SettingsBackupFailure['error']): SettingsBackupFailure {
@@ -112,9 +135,8 @@ export async function authorizeSettingsBackup(
   )
     return authorizationFailed()
   const now = deps.now()
-  if (now - deps.limits.lastAuthorizeAt < SETTINGS_AUTHORIZE_INTERVAL_MS)
+  if (!reserveAuthorize(deps, now))
     return failure(SETTINGS_BACKUP_ERRORS.rateLimited)
-  deps.limits.lastAuthorizeAt = now
   const verified = await verifySettingsBackupAccount(
     backend,
     origin,
@@ -171,6 +193,7 @@ export async function listSettingsBackups(
   const session = readSession(deps)
   if (session == null) return authorizationFailed()
   try {
+    await deps.store.trim(session, SETTINGS_BACKUP_KEEP)
     const backups = await deps.store.list(session)
     return { backups, success: true }
   } catch (error) {

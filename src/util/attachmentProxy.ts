@@ -26,6 +26,15 @@ function isPrivateIpv4(hostname: string): boolean {
   return false
 }
 
+function ipv4FromMappedHextets(mapped: string): string | null {
+  const parts = mapped.split(':')
+  if (parts.length !== 2) return null
+  if (!parts.every((part) => /^[0-9a-f]{1,4}$/i.test(part))) return null
+  const high = Number.parseInt(parts[0] ?? '', 16)
+  const low = Number.parseInt(parts[1] ?? '', 16)
+  return `${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`
+}
+
 function isPrivateIpv6(hostname: string): boolean {
   const host = stripIpv6Brackets(hostname.toLowerCase()).split('%')[0]
 
@@ -33,12 +42,9 @@ function isPrivateIpv6(hostname: string): boolean {
 
   const ipv4Mapped = /^::ffff:(.+)$/i.exec(host)
   if (ipv4Mapped) {
-    const mapped = ipv4Mapped[1]
-    if (mapped.includes('.')) {
-      if (isPrivateIpv4(mapped)) return true
-    } else if (mapped.replaceAll(':', '').toLowerCase() === '7f001') {
-      return true
-    }
+    const mapped = ipv4Mapped[1] ?? ''
+    const ipv4 = mapped.includes('.') ? mapped : ipv4FromMappedHextets(mapped)
+    if (ipv4 != null && isPrivateIpv4(ipv4)) return true
   }
 
   const firstHextet = host.split(':')[0]
