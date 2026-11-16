@@ -10,7 +10,10 @@ import {
 } from 'react'
 
 import type { TimelineConfigV2 } from 'types/types'
-import { isV2Settings } from 'util/migration/migrateTimeline'
+import {
+  cleanupNonAdvancedCustomQuery,
+  isV2Settings,
+} from 'util/migration/migrateTimeline'
 
 type TimelineProviderState = {
   timelines: TimelineConfigV2[]
@@ -55,30 +58,6 @@ const initialTimelineSettings: TimelineProviderState = {
     },
   ],
   version: 2,
-}
-
-/**
- * 非 Advanced Query モードのタイムラインから customQuery を除去する。
- *
- * customQuery が設定されていると useTimelineData が useCustomQueryTimeline に
- * ルーティングし、LEFT JOIN ベースの重いクエリが実行される。
- * 通常モードでは個別の設定プロパティ（backendFilter, onlyMedia 等）が正であり、
- * 型別の最適化された取得経路を使用すべきため、
- * customQuery は Advanced Query モード時のみ保持する。
- */
-function cleanupNonAdvancedCustomQuery(
-  settings: TimelineProviderState,
-): TimelineProviderState {
-  let changed = false
-  const timelines = settings.timelines.map((tl) => {
-    if (!tl.advancedQuery && tl.customQuery != null) {
-      changed = true
-      const { customQuery: _, ...rest } = tl
-      return rest
-    }
-    return tl
-  })
-  return changed ? { ...settings, timelines } : settings
 }
 
 export const TimelineContext = createContext<TimelineProviderState>(

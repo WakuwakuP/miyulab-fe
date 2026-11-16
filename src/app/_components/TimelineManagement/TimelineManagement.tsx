@@ -10,6 +10,7 @@ import {
   useSensors,
 } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import { CloudBackupSection } from 'app/_components/CloudBackupSection'
 import { FlowQueryEditorModal } from 'app/_components/FlowEditor'
 import { useCallback, useContext, useMemo, useState } from 'react'
 import { RiDragMove2Line, RiFolderAddLine } from 'react-icons/ri'
@@ -481,6 +482,7 @@ export const TimelineManagement = () => {
   return (
     <div className="p-2 pt-4 h-full overflow-y-auto">
       <h3 className="mb-4 text-lg font-semibold">Timeline Management</h3>
+      <CloudBackupSection />
       <div className="space-y-4">
         {/* カラム順にタイムライン & フォルダを表示 */}
         <div>

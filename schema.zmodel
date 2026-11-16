@@ -1,7 +1,7 @@
 /**
- * ZenStack v3 Schema — クエリログ分析用
+ * ZenStack v3 Schema
  *
- * Neon (PostgreSQL) に接続し、クライアント側で検出されたスロークエリを蓄積する。
+ * Neon (PostgreSQL) に接続する。クエリログと、設定のクラウドバックアップを保存する。
  */
 
 datasource db {
@@ -22,4 +22,22 @@ model QueryLog {
     createdAt   DateTime @default(now())
 
     @@map("query_logs")
+}
+
+/**
+ * 利用者が手動で保存した設定スナップショット。
+ * 所有者は確認済み Fediverse アカウントの origin と account id。
+ */
+model SettingsBackup {
+    id              String   @id @default(uuid())
+    ownerBackendUrl String
+    ownerAccountId  String
+    formatVersion   Int
+    payload         String
+    payloadSha256   String
+    timelineCount   Int
+    createdAt       DateTime @default(now())
+
+    @@index([ownerBackendUrl, ownerAccountId, createdAt])
+    @@map("settings_backups")
 }
