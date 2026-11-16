@@ -27,6 +27,21 @@ function firstAccount(apps: App[]): App | null {
   return app
 }
 
+function StatusMessage({ message }: { message: string }) {
+  return (
+    <p
+      aria-live="polite"
+      className={
+        message.length > 0
+          ? 'mt-2 text-sm text-red-300'
+          : 'm-0 h-px overflow-hidden text-sm'
+      }
+    >
+      {message}
+    </p>
+  )
+}
+
 function newestFirst(
   backups: SettingsBackupSummary[],
 ): SettingsBackupSummary[] {
@@ -232,9 +247,7 @@ export function CloudBackupSection() {
           Sign in to the first account before using cloud backup.
         </p>
       ) : null}
-      {error != null ? (
-        <p className="mt-2 text-sm text-red-300">{error}</p>
-      ) : null}
+      <StatusMessage message={restoreOpen || error == null ? '' : error} />
       <dialog
         aria-labelledby="settings-backup-restore-title"
         className="settings-backup-dialog m-auto w-[min(24rem,calc(100vw-2rem))] rounded-md border border-gray-600 bg-gray-900 p-4 text-gray-100"
@@ -268,6 +281,7 @@ export function CloudBackupSection() {
             ))}
           </ul>
         )}
+        <StatusMessage message={restoreOpen && error != null ? error : ''} />
         <form className="mt-3" method="dialog">
           <button
             className="rounded bg-slate-600 px-2 py-1 text-xs hover:bg-slate-500"
