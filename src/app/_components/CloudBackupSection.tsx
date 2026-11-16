@@ -253,7 +253,6 @@ export function CloudBackupSection() {
         )}
         <form className="mt-3" method="dialog">
           <button
-            autofocus
             className="rounded bg-slate-600 px-2 py-1 text-xs hover:bg-slate-500"
             type="submit"
             value="cancel"
