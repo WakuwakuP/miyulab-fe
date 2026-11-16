@@ -23,8 +23,10 @@ import {
 import {
   createSettingsBackupSessionValue,
   deriveSettingsBackupAuthKey,
+  hashSettingsBackupAccessToken,
   readSettingsBackupSessionValue,
   type SettingsBackupSession,
+  settingsBackupSessionMatchesAccessToken,
 } from './session'
 import type { SettingsBackupStore, SettingsBackupSummary } from './store'
 import {
@@ -155,6 +157,7 @@ export async function authorizeSettingsBackup(
     SETTINGS_BACKUP_COOKIE,
     createSettingsBackupSessionValue(
       session,
+      hashSettingsBackupAccessToken(accessToken),
       now + SETTINGS_BACKUP_TTL_MS,
       key,
     ),
@@ -169,15 +172,29 @@ export async function authorizeSettingsBackup(
   return { ...session, success: true }
 }
 
-export function getSettingsBackupStatus(deps: SettingsBackupDeps):
+export function getSettingsBackupStatus(
+  deps: SettingsBackupDeps,
+  accessToken?: unknown,
+):
   | SettingsBackupFailure
   | {
+      matchesToken: boolean
       session: SettingsBackupSession | null
       success: true
     } {
-  if (deriveSettingsBackupAuthKey(deps.databaseUrl) == null)
-    return unavailable()
-  return { session: readSession(deps), success: true }
+  const key = deriveSettingsBackupAuthKey(deps.databaseUrl)
+  if (key == null) return unavailable()
+  const session = readSession(deps)
+  const matchesToken =
+    session != null &&
+    typeof accessToken === 'string' &&
+    settingsBackupSessionMatchesAccessToken(
+      deps.cookies.get(SETTINGS_BACKUP_COOKIE)?.value,
+      accessToken,
+      key,
+      deps.now(),
+    )
+  return { matchesToken, session, success: true }
 }
 
 export async function listSettingsBackups(

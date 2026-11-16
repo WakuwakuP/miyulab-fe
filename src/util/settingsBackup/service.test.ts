@@ -19,12 +19,15 @@ import {
   createSettingsBackupLimits,
   deleteSettingsBackup,
   getSettingsBackup,
+  getSettingsBackupStatus,
   listSettingsBackups,
   type SettingsBackupCookieJar,
   type SettingsBackupDeps,
 } from './service'
 import {
+  createSettingsBackupSessionValue,
   deriveSettingsBackupAuthKey,
+  hashSettingsBackupAccessToken,
   readSettingsBackupSessionValue,
 } from './session'
 import type {
@@ -205,6 +208,16 @@ describe('settings backup service', () => {
       success: true,
     })
     expect(jar.value).not.toContain(TOKEN)
+    expect(await getSettingsBackupStatus(context, TOKEN)).toMatchObject({
+      matchesToken: true,
+      success: true,
+    })
+    expect(await getSettingsBackupStatus(context, 'other-token')).toMatchObject(
+      {
+        matchesToken: false,
+        success: true,
+      },
+    )
     const key = deriveSettingsBackupAuthKey(DB_URL)
     expect(key).not.toBeNull()
     if (key == null) return
@@ -230,7 +243,6 @@ describe('settings backup service', () => {
     }
     const key = deriveSettingsBackupAuthKey(DB_URL)
     if (key == null) throw new Error('missing key')
-    const { createSettingsBackupSessionValue } = await import('./session')
     jar.set(
       SETTINGS_BACKUP_COOKIE,
       createSettingsBackupSessionValue(
@@ -239,6 +251,7 @@ describe('settings backup service', () => {
           acct: 'alice',
           backendUrl: 'https://social.example',
         },
+        hashSettingsBackupAccessToken(TOKEN),
         NOW + SETTINGS_BACKUP_TTL_MS,
         key,
       ),
@@ -293,6 +306,7 @@ describe('settings backup service', () => {
           acct: 'bob',
           backendUrl: 'https://social.example',
         },
+        hashSettingsBackupAccessToken('other-token'),
         now + SETTINGS_BACKUP_TTL_MS,
         key,
       ),
@@ -334,7 +348,6 @@ describe('settings backup service', () => {
     }
     const key = deriveSettingsBackupAuthKey(DB_URL)
     if (key == null) throw new Error('missing key')
-    const { createSettingsBackupSessionValue } = await import('./session')
     jar.set(
       SETTINGS_BACKUP_COOKIE,
       createSettingsBackupSessionValue(
@@ -343,6 +356,7 @@ describe('settings backup service', () => {
           acct: 'alice',
           backendUrl: 'https://social.example',
         },
+        hashSettingsBackupAccessToken(TOKEN),
         NOW + SETTINGS_BACKUP_TTL_MS,
         key,
       ),

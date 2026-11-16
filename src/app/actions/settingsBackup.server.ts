@@ -61,8 +61,8 @@ export async function authorizeSettingsBackup(
   return authorizeWithDeps(backend, backendUrl, accessToken, await buildDeps())
 }
 
-export async function getSettingsBackupStatus() {
-  return statusWithDeps(await buildDeps())
+export async function getSettingsBackupStatus(accessToken?: unknown) {
+  return statusWithDeps(await buildDeps(), accessToken)
 }
 
 export async function listSettingsBackups() {

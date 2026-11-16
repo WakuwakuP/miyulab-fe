@@ -41,7 +41,7 @@ export function CloudBackupSection() {
   const apps = useContext(AppsContext)
   const targetApp = firstAccount(apps)
   const restoreDialogRef = useRef<HTMLDialogElement>(null)
-  const authorizedToken = useRef<string | null>(null)
+  const inFlight = useRef(false)
   const [backups, setBackups] = useState<SettingsBackupSummary[]>([])
   const [available, setAvailable] = useState(true)
   const [loading, setLoading] = useState(true)
@@ -50,9 +50,20 @@ export function CloudBackupSection() {
   const [restoreOpen, setRestoreOpen] = useState(false)
 
   const showError = (next: SettingsBackupError) => {
-    if (next === SETTINGS_BACKUP_ERRORS.authorizationFailed)
-      authorizedToken.current = null
     setError(next)
+  }
+
+  const start = (): boolean => {
+    if (inFlight.current) return false
+    inFlight.current = true
+    setBusy(true)
+    setError(null)
+    return true
+  }
+
+  const finish = () => {
+    inFlight.current = false
+    setBusy(false)
   }
 
   useEffect(() => {
@@ -96,17 +107,13 @@ export function CloudBackupSection() {
 
   const ensureSession = async (app: App): Promise<boolean> => {
     const token = app.tokenData?.access_token
-    if (token == null) return false
-    if (authorizedToken.current === token) return true
-    const status = await getSettingsBackupStatus()
+    if (typeof token !== 'string' || token.length === 0) return false
+    const status = await getSettingsBackupStatus(token)
     if (!status.success) {
       showError(status.error)
       return false
     }
-    if (status.session != null) {
-      authorizedToken.current = token
-      return true
-    }
+    if (status.matchesToken) return true
     const result = await authorizeSettingsBackup(
       app.backend,
       app.backendUrl,
@@ -116,14 +123,11 @@ export function CloudBackupSection() {
       showError(result.error)
       return false
     }
-    authorizedToken.current = token
     return true
   }
 
   const backup = async () => {
-    if (targetApp == null) return
-    setBusy(true)
-    setError(null)
+    if (targetApp == null || !start()) return
     try {
       if (!(await ensureSession(targetApp))) return
       const built = buildSettingsEnvelope(
@@ -139,14 +143,12 @@ export function CloudBackupSection() {
     } catch {
       showError(SETTINGS_BACKUP_ERRORS.unavailable)
     } finally {
-      setBusy(false)
+      finish()
     }
   }
 
   const openRestore = async () => {
-    if (targetApp == null) return
-    setBusy(true)
-    setError(null)
+    if (targetApp == null || !start()) return
     try {
       if (!(await ensureSession(targetApp))) return
       const listed = await listSettingsBackups()
@@ -159,14 +161,12 @@ export function CloudBackupSection() {
     } catch {
       showError(SETTINGS_BACKUP_ERRORS.unavailable)
     } finally {
-      setBusy(false)
+      finish()
     }
   }
 
   const restore = async (backupItem: SettingsBackupSummary) => {
-    if (targetApp == null) return
-    setBusy(true)
-    setError(null)
+    if (targetApp == null || !start()) return
     try {
       if (!(await ensureSession(targetApp))) return
       const result = await getSettingsBackup(backupItem.id)
@@ -187,7 +187,7 @@ export function CloudBackupSection() {
     } catch {
       showError(SETTINGS_BACKUP_ERRORS.unavailable)
     } finally {
-      setBusy(false)
+      finish()
     }
   }
 
