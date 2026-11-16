@@ -189,6 +189,7 @@ export function CloudBackupSection() {
         showError(result.error)
         return
       }
+      if (restoreDialogRef.current?.open !== true) return
       const applied = applySettingsBackup(result.envelope, {
         notifyOtherTabs: notifySettingsBackupRestored,
         reload: () => location.reload(),
