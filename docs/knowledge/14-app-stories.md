@@ -8,7 +8,7 @@
 - `App/Status/Notification`: お気に入り、Reblog、メンション、フォロー、フォローリクエスト、絵文字リアクション、既読。
 - `App/Panels/Detail`: DetailPanel内のユーザープロフィール（投稿・メディアタブ、フォロー状態）と投稿スレッド。
 - `App/Panels/Compose`: MainPanelの新規投稿、返信、入力済み、CW付き投稿。
-- `App/Panels/Settings`: 一般設定、タイムライン管理、アカウント、DB統計、クラウドバックアップ、DB診断。
+- `App/Panels/Settings`: Getting Startedメニュー、一般設定、タイムライン管理、アカウント、DB統計、クラウドバックアップ、DB診断。
 - `App/Settings/TimelineEditor`: 本番のFlowQueryEditorModal（ホーム、通知、画像付きハッシュタグ）、ミュートアカウント、ブロックインスタンス。
 
 ## データと副作用

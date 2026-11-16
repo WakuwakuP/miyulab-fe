@@ -3,19 +3,25 @@ import { AccountsPanel } from 'app/_components/AccountsPanel'
 import { CloudBackupSection } from 'app/_components/CloudBackupSection'
 import { DatabaseStatsPanel } from 'app/_components/DatabaseStatsPanel'
 import { DbDiagnosticsSection } from 'app/_components/DbDiagnosticsSection'
+import { GettingStarted as GettingStartedPanel } from 'app/_components/GettingStarted'
 import { SettingPanel } from 'app/_components/SettingPanel'
 import { TimelineManagement } from 'app/_components/TimelineManagement'
 import { Panel } from 'app/_parts/Panel'
 import { expect, waitFor } from 'storybook/test'
+import { navigatePanel } from 'util/panelNavigation'
 import { AppColumn } from '../support/StoryEnvironment'
 
 const meta = {
   decorators: [
-    (Story) => (
+    (Story, context) => (
       <AppColumn>
-        <Panel className="overflow-y-auto" name="Settings">
+        {context.parameters.standalonePanel ? (
           <Story />
-        </Panel>
+        ) : (
+          <Panel className="overflow-y-auto" name="Settings">
+            <Story />
+          </Panel>
+        )}
       </AppColumn>
     ),
   ],
@@ -25,6 +31,16 @@ const meta = {
 } satisfies Meta
 export default meta
 type Story = StoryObj<typeof meta>
+export const GettingStarted: Story = {
+  beforeEach: () => {
+    const originalUrl = window.location.href
+    // The real menu navigates with history.pushState; restore the canvas URL
+    // when leaving this story so settings routes cannot leak into other stories.
+    return () => navigatePanel(originalUrl)
+  },
+  parameters: { standalonePanel: true },
+  render: () => <GettingStartedPanel />,
+}
 export const General: Story = { render: () => <SettingPanel /> }
 export const Timelines: Story = { render: () => <TimelineManagement /> }
 export const Accounts: Story = { render: () => <AccountsPanel /> }

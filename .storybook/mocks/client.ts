@@ -34,6 +34,21 @@ export const client = {
             : [status, mediaStatus, boostedStatus],
       ),
   ),
+  getBookmarks: fn(async () => response([{ ...status, bookmarked: true }])),
+  getConversationTimeline: fn(async (options?: { max_id?: string }) =>
+    response(
+      options?.max_id
+        ? []
+        : [
+            {
+              accounts: [otherAccount],
+              id: 'conversation-1',
+              last_status: { ...status, visibility: 'direct' as const },
+              unread: true,
+            },
+          ],
+    ),
+  ),
   getRelationship: fn(async () => response(relationship)),
   getStatus: fn(async () => response(status)),
   getStatusContext: fn(async () =>
