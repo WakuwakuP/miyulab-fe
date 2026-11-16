@@ -21,6 +21,7 @@ import { StreamingManagerProvider } from 'util/provider/StreamingManagerProvider
 import { SuspenseProvider } from 'util/provider/SuspenseProvider'
 import { TimelineProvider } from 'util/provider/TimelineProvider'
 
+import { SettingsBackupReloadListener } from './_components/SettingsBackupReloadListener'
 import { QueryLogBridge } from './_parts/QueryLogBridge'
 
 import './globals.css'
@@ -40,6 +41,7 @@ export default function RootLayout({
   return (
     <html lang="ja">
       <body className={inter.className}>
+        <SettingsBackupReloadListener />
         <SuspenseProvider>
           <AppsProvider>
             <QueryLogBridge />
