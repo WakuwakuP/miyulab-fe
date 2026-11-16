@@ -78,6 +78,27 @@ describe('verifySettingsBackupAccount', () => {
     expect(fetchImpl).not.toHaveBeenCalled()
   })
 
+  it('IPv4-mapped IPv6 の私有アドレスへは問い合わせない', async () => {
+    const fetchImpl = vi.fn<SettingsBackupVerifyFetch>()
+    await expect(
+      verifySettingsBackupAccount(
+        'mastodon',
+        'https://[::ffff:10.0.0.1]',
+        TOKEN,
+        fetchImpl,
+      ),
+    ).resolves.toBeNull()
+    await expect(
+      verifySettingsBackupAccount(
+        'mastodon',
+        'https://[::ffff:169.254.169.254]',
+        TOKEN,
+        fetchImpl,
+      ),
+    ).resolves.toBeNull()
+    expect(fetchImpl).not.toHaveBeenCalled()
+  })
+
   it('失敗した応答や例外では null を返し、トークンをエラーに含めない', async () => {
     const fetchImpl = vi.fn<SettingsBackupVerifyFetch>(async () => {
       throw new Error(`network ${TOKEN}`)

@@ -1,6 +1,6 @@
 'use server'
 
-import { cookies } from 'next/headers'
+import { cookies, headers } from 'next/headers'
 import { getNeonClient } from 'util/db/neon/client'
 import { createNeonSettingsBackupStore } from 'util/settingsBackup/neonStore'
 import {
@@ -17,6 +17,19 @@ import {
 
 const limits = createSettingsBackupLimits()
 
+async function callerKey(): Promise<string> {
+  const headerList = await headers()
+  const realIp = headerList.get('x-real-ip')?.trim()
+  if (realIp) return realIp
+  const hops =
+    headerList
+      .get('x-forwarded-for')
+      ?.split(',')
+      .map((hop) => hop.trim())
+      .filter((hop) => hop.length > 0) ?? []
+  return hops.at(-1) ?? 'local'
+}
+
 async function buildDeps(): Promise<SettingsBackupDeps> {
   const jar = await cookies()
   const cookiesAdapter: SettingsBackupCookieJar = {
@@ -30,6 +43,7 @@ async function buildDeps(): Promise<SettingsBackupDeps> {
   }
   const client = getNeonClient()
   return {
+    callerKey: await callerKey(),
     cookies: cookiesAdapter,
     databaseUrl: process.env.DATABASE_URL,
     fetch,
@@ -47,8 +61,8 @@ export async function authorizeSettingsBackup(
   return authorizeWithDeps(backend, backendUrl, accessToken, await buildDeps())
 }
 
-export async function getSettingsBackupStatus() {
-  return statusWithDeps(await buildDeps())
+export async function getSettingsBackupStatus(accessToken?: unknown) {
+  return statusWithDeps(await buildDeps(), accessToken)
 }
 
 export async function listSettingsBackups() {

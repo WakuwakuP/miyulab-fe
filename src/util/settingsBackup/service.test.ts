@@ -19,12 +19,15 @@ import {
   createSettingsBackupLimits,
   deleteSettingsBackup,
   getSettingsBackup,
+  getSettingsBackupStatus,
   listSettingsBackups,
   type SettingsBackupCookieJar,
   type SettingsBackupDeps,
 } from './service'
 import {
+  createSettingsBackupSessionValue,
   deriveSettingsBackupAuthKey,
+  hashSettingsBackupAccessToken,
   readSettingsBackupSessionValue,
 } from './session'
 import type {
@@ -169,6 +172,7 @@ function deps(options?: {
   const store = memoryStore()
   const now = options?.now ?? NOW
   const value: SettingsBackupDeps = {
+    callerKey: 'test',
     cookies: jar,
     databaseUrl: DB_URL,
     fetch:
@@ -204,6 +208,16 @@ describe('settings backup service', () => {
       success: true,
     })
     expect(jar.value).not.toContain(TOKEN)
+    expect(await getSettingsBackupStatus(context, TOKEN)).toMatchObject({
+      matchesToken: true,
+      success: true,
+    })
+    expect(await getSettingsBackupStatus(context, 'other-token')).toMatchObject(
+      {
+        matchesToken: false,
+        success: true,
+      },
+    )
     const key = deriveSettingsBackupAuthKey(DB_URL)
     expect(key).not.toBeNull()
     if (key == null) return
@@ -219,6 +233,7 @@ describe('settings backup service', () => {
     let now = NOW
     const store = memoryStore(() => now)
     const context: SettingsBackupDeps = {
+      callerKey: 'test',
       cookies: jar,
       databaseUrl: DB_URL,
       fetch: vi.fn(),
@@ -228,7 +243,6 @@ describe('settings backup service', () => {
     }
     const key = deriveSettingsBackupAuthKey(DB_URL)
     if (key == null) throw new Error('missing key')
-    const { createSettingsBackupSessionValue } = await import('./session')
     jar.set(
       SETTINGS_BACKUP_COOKIE,
       createSettingsBackupSessionValue(
@@ -237,6 +251,7 @@ describe('settings backup service', () => {
           acct: 'alice',
           backendUrl: 'https://social.example',
         },
+        hashSettingsBackupAccessToken(TOKEN),
         NOW + SETTINGS_BACKUP_TTL_MS,
         key,
       ),
@@ -291,6 +306,7 @@ describe('settings backup service', () => {
           acct: 'bob',
           backendUrl: 'https://social.example',
         },
+        hashSettingsBackupAccessToken('other-token'),
         now + SETTINGS_BACKUP_TTL_MS,
         key,
       ),
@@ -322,6 +338,7 @@ describe('settings backup service', () => {
     const now = NOW
     const store = memoryStore(() => now)
     const context: SettingsBackupDeps = {
+      callerKey: 'test',
       cookies: jar,
       databaseUrl: DB_URL,
       fetch: vi.fn(),
@@ -331,7 +348,6 @@ describe('settings backup service', () => {
     }
     const key = deriveSettingsBackupAuthKey(DB_URL)
     if (key == null) throw new Error('missing key')
-    const { createSettingsBackupSessionValue } = await import('./session')
     jar.set(
       SETTINGS_BACKUP_COOKIE,
       createSettingsBackupSessionValue(
@@ -340,6 +356,7 @@ describe('settings backup service', () => {
           acct: 'alice',
           backendUrl: 'https://social.example',
         },
+        hashSettingsBackupAccessToken(TOKEN),
         NOW + SETTINGS_BACKUP_TTL_MS,
         key,
       ),
@@ -368,6 +385,40 @@ describe('settings backup service', () => {
     const limited = await createSettingsBackup(envelope('other'), context)
     expect(limited).toEqual({ error: 'Rate limited', success: false })
     expect(store.rows).toHaveLength(1)
+  })
+
+  it('認可の間隔は呼び出し元ごとに失敗も含めて1秒', async () => {
+    const failing = deps({
+      fetchImpl: vi.fn<SettingsBackupVerifyFetch>(async () => {
+        throw new Error('down')
+      }),
+    })
+    await expect(
+      authorizeSettingsBackup(
+        'mastodon',
+        'https://social.example',
+        TOKEN,
+        failing.deps,
+      ),
+    ).resolves.toEqual({ error: 'Authorization failed', success: false })
+    failing.deps.fetch = vi.fn<SettingsBackupVerifyFetch>(async () => ({
+      json: async () => ({ acct: 'alice', id: 'remote-id' }),
+      ok: true,
+    }))
+    const retried = await authorizeSettingsBackup(
+      'mastodon',
+      'https://social.example',
+      TOKEN,
+      failing.deps,
+    )
+    expect(retried).toEqual({ error: 'Rate limited', success: false })
+    const other = await authorizeSettingsBackup(
+      'mastodon',
+      'https://social.example',
+      TOKEN,
+      { ...failing.deps, callerKey: 'other' },
+    )
+    expect(other).toMatchObject({ success: true })
   })
 
   it('DATABASE_URL が無いときは使えない', async () => {

@@ -352,6 +352,83 @@ function validateTags(value: unknown): string[] | null {
   return value
 }
 
+const CACHE_STORAGE_KEYS = new Set<SettingsBackupStorageKey>([
+  'hashtagHistory',
+  'users',
+  'tags',
+])
+
+function boundedHashtags(value: unknown): HashtagHistoryBackup[] | null {
+  if (!Array.isArray(value)) return null
+  const next: HashtagHistoryBackup[] = []
+  for (const item of value) {
+    if (next.length >= 500) break
+    if (!isRecord(item)) continue
+    if (!isShortString(item.tag, 200) || typeof item.isPinned !== 'boolean')
+      continue
+    if (
+      typeof item.lastAccessed !== 'number' ||
+      !Number.isFinite(item.lastAccessed)
+    )
+      continue
+    next.push({
+      ...item,
+      isPinned: item.isPinned,
+      lastAccessed: item.lastAccessed,
+      tag: item.tag,
+    })
+  }
+  if (next.length === 0 && value.length > 0) return null
+  return next
+}
+
+function boundedUsers(value: unknown): UserBackup[] | null {
+  if (!Array.isArray(value)) return null
+  const next: UserBackup[] = []
+  for (const item of value) {
+    if (next.length >= 2_000) break
+    if (!isRecord(item)) continue
+    const row: UserBackup = {}
+    let usable = true
+    for (const [key, field] of Object.entries(item)) {
+      if (!isShortString(field, 4_000)) {
+        usable = false
+        break
+      }
+      row[key] = field
+    }
+    if (!usable) continue
+    for (const key of ['id', 'acct', 'avatar', 'display_name'] as const) {
+      if (!isShortString(row[key], 4_000)) {
+        usable = false
+        break
+      }
+    }
+    if (usable) next.push(row)
+  }
+  if (next.length === 0 && value.length > 0) return null
+  return next
+}
+
+function boundedTags(value: unknown): string[] | null {
+  if (!Array.isArray(value)) return null
+  const next = value
+    .filter((item): item is string => isShortString(item, 200))
+    .slice(0, 2_000)
+  if (next.length === 0 && value.length > 0) return null
+  return next
+}
+
+function boundCacheValue(
+  key: SettingsBackupStorageKey,
+  value: unknown,
+): unknown | null {
+  if (key === 'hashtagHistory') return boundedHashtags(value)
+  if (key === 'users') return boundedUsers(value)
+  if (key === 'tags') return boundedTags(value)
+  return value
+}
+
 function invalid(): SettingsBackupFailure & { ok: false } {
   return { error: SETTINGS_BACKUP_ERRORS.invalid, ok: false, success: false }
 }
@@ -444,8 +521,17 @@ export function buildSettingsEnvelope(
   const payload: Record<string, unknown> = {}
   for (const key of SETTINGS_BACKUP_STORAGE_KEYS) {
     const stored = readStoredJson(getItem, key)
-    if (stored == null) return invalid()
-    if (!stored.missing) payload[key] = stored.value
+    if (stored == null) {
+      if (CACHE_STORAGE_KEYS.has(key)) continue
+      return invalid()
+    }
+    if (stored.missing) continue
+    if (CACHE_STORAGE_KEYS.has(key)) {
+      const bounded = boundCacheValue(key, stored.value)
+      if (bounded != null) payload[key] = bounded
+      continue
+    }
+    payload[key] = stored.value
   }
   return validateSettingsEnvelope({
     exportedAt,

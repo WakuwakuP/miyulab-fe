@@ -1,5 +1,6 @@
 import type { getNeonClient } from 'util/db/neon/client'
 
+import { SETTINGS_BACKUP_KEEP } from './constants'
 import type { SettingsBackupSession } from './session'
 import type {
   SettingsBackupInsert,
@@ -77,7 +78,7 @@ export function createNeonSettingsBackupStore(
           id: true,
           timelineCount: true,
         },
-        take: 20,
+        take: SETTINGS_BACKUP_KEEP,
         where: ownerWhere(owner),
       })
       return rows.map(

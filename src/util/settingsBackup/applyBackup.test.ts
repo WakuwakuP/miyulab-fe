@@ -8,6 +8,9 @@ function storageFrom(initial: Record<string, string>) {
   const values = new Map(Object.entries(initial))
   return {
     getItem: (key: string) => values.get(key) ?? null,
+    removeItem: (key: string) => {
+      values.delete(key)
+    },
     setItem: (key: string, value: string) => {
       values.set(key, value)
     },
@@ -77,5 +80,38 @@ describe('applySettingsBackup', () => {
     })
     expect(storage.values.get('timelineSettings')).toContain('"version":2')
     expect(reloads).toEqual([])
+  })
+
+  it('書き込みの途中で失敗したら元の値に戻す', () => {
+    const storage = storageFrom({
+      setting: JSON.stringify({ showSensitive: true }),
+      timelineSettings: JSON.stringify({ timelines: [], version: 2 }),
+    })
+    const write = storage.setItem.bind(storage)
+    let writes = 0
+    storage.setItem = (key, value) => {
+      writes += 1
+      if (writes > 1 && key === 'setting') throw new Error('quota')
+      write(key, value)
+    }
+    const built = buildSettingsEnvelope(storage.getItem, EXPORTED_AT)
+    expect(built.ok).toBe(true)
+    if (!built.ok) return
+    const applied = applySettingsBackup(built.envelope, {
+      notifyOtherTabs: () => {
+        throw new Error('should not notify')
+      },
+      reload: () => {
+        throw new Error('should not reload')
+      },
+      storage,
+    })
+    expect(applied).toEqual({
+      error: 'Invalid backup',
+      ok: false,
+      success: false,
+    })
+    expect(storage.values.get('timelineSettings')).toContain('"version":2')
+    expect(storage.values.get('setting')).toContain('showSensitive')
   })
 })

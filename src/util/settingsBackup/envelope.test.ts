@@ -142,6 +142,33 @@ describe('buildSettingsEnvelope', () => {
     })
   })
 
+  it('上限を超えたキャッシュは切り詰め、壊れたキャッシュは省く', () => {
+    const users = Array.from({ length: 2_001 }, (_, index) => ({
+      acct: `user-${index}`,
+      avatar: 'https://cdn.example/a.png',
+      display_name: 'User',
+      id: String(index),
+    }))
+    const result = buildSettingsEnvelope((key) => {
+      if (key === 'timelineSettings') {
+        return JSON.stringify({
+          timelines: [timeline('home')],
+          version: 2,
+        })
+      }
+      if (key === 'users') return JSON.stringify(users)
+      if (key === 'hashtagHistory') return JSON.stringify([{ tag: 1 }])
+      if (key === 'tags') return '{not-json'
+      return null
+    }, EXPORTED_AT)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.envelope.payload.users).toHaveLength(2_000)
+    expect(result.envelope.payload.timelineSettings?.timelines).toHaveLength(1)
+    expect(result.envelope.payload).not.toHaveProperty('hashtagHistory')
+    expect(result.envelope.payload).not.toHaveProperty('tags')
+  })
+
   it('壊れた JSON では失敗する', () => {
     const result = buildSettingsEnvelope((key) => {
       return key === 'timelineSettings' ? '{not-json' : null

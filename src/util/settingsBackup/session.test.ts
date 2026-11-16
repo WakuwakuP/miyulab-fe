@@ -3,16 +3,20 @@ import { SETTINGS_BACKUP_TTL_MS } from './constants'
 import {
   createSettingsBackupSessionValue,
   deriveSettingsBackupAuthKey,
+  hashSettingsBackupAccessToken,
   readSettingsBackupSessionValue,
+  settingsBackupSessionMatchesAccessToken,
 } from './session'
 
 const DB_URL = 'postgres://user:pass@host/db'
 const NOW = 1_700_000_000_000
+const TOKEN = 'owner-token-123_ABC~/='
 const session = {
   accountId: 'account-1',
   acct: 'alice@social.example',
   backendUrl: 'https://social.example',
 }
+const tokenHash = hashSettingsBackupAccessToken(TOKEN)
 
 describe('settings backup session', () => {
   it('署名したセッションを同じ鍵で読める', () => {
@@ -21,10 +25,18 @@ describe('settings backup session', () => {
     if (key == null) return
     const value = createSettingsBackupSessionValue(
       session,
+      tokenHash,
       NOW + SETTINGS_BACKUP_TTL_MS,
       key,
     )
     expect(readSettingsBackupSessionValue(value, key, NOW)).toEqual(session)
+    expect(value).not.toContain(TOKEN)
+    expect(
+      settingsBackupSessionMatchesAccessToken(value, TOKEN, key, NOW),
+    ).toBe(true)
+    expect(
+      settingsBackupSessionMatchesAccessToken(value, 'other-token', key, NOW),
+    ).toBe(false)
   })
 
   it('account id を差し替えると読めない', () => {
@@ -32,6 +44,7 @@ describe('settings backup session', () => {
     if (key == null) return
     const value = createSettingsBackupSessionValue(
       session,
+      tokenHash,
       NOW + SETTINGS_BACKUP_TTL_MS,
       key,
     )
@@ -46,6 +59,7 @@ describe('settings backup session', () => {
     if (key == null || other == null) return
     const value = createSettingsBackupSessionValue(
       session,
+      tokenHash,
       NOW + SETTINGS_BACKUP_TTL_MS,
       key,
     )
@@ -55,7 +69,12 @@ describe('settings backup session', () => {
   it('期限切れは読めない', () => {
     const key = deriveSettingsBackupAuthKey(DB_URL)
     if (key == null) return
-    const value = createSettingsBackupSessionValue(session, NOW + 1_000, key)
+    const value = createSettingsBackupSessionValue(
+      session,
+      tokenHash,
+      NOW + 1_000,
+      key,
+    )
     expect(readSettingsBackupSessionValue(value, key, NOW + 1_000)).toBeNull()
   })
 
