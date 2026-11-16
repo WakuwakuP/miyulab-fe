@@ -50,6 +50,8 @@ export function CloudBackupSection() {
   const [restoreOpen, setRestoreOpen] = useState(false)
 
   const showError = (next: SettingsBackupError) => {
+    if (next === SETTINGS_BACKUP_ERRORS.authorizationFailed)
+      authorizedToken.current = null
     setError(next)
   }
 
@@ -163,13 +165,16 @@ export function CloudBackupSection() {
         showError(result.error)
         return
       }
-      setRestoreOpen(false)
       const applied = applySettingsBackup(result.envelope, {
         notifyOtherTabs: notifySettingsBackupRestored,
         reload: () => location.reload(),
         storage: localStorage,
       })
-      if (!applied.ok) showError(applied.error)
+      if (!applied.ok) {
+        showError(applied.error)
+        return
+      }
+      setRestoreOpen(false)
     } catch {
       showError(SETTINGS_BACKUP_ERRORS.unavailable)
     } finally {
