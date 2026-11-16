@@ -22,6 +22,31 @@ export type ApplySettingsBackupDeps = {
   storage: SettingsBackupStorage
 }
 
+function writePayloadKeys(
+  storage: SettingsBackupStorage,
+  keys: SettingsBackupStorageKey[],
+  payload: SettingsBackupEnvelope['payload'],
+): void {
+  for (const key of keys) storage.setItem(key, JSON.stringify(payload[key]))
+}
+
+function restoreSnapshot(
+  storage: SettingsBackupStorage,
+  keys: SettingsBackupStorageKey[],
+  previous: Map<SettingsBackupStorageKey, string | null>,
+): void {
+  for (const key of keys) {
+    if (!previous.has(key)) continue
+    const prior = previous.get(key) ?? null
+    try {
+      if (prior == null) storage.removeItem(key)
+      else storage.setItem(key, prior)
+    } catch {
+      // 戻し書きも失敗したキーは、それ以上触らない。
+    }
+  }
+}
+
 export function applySettingsBackup(
   input: unknown,
   deps: ApplySettingsBackupDeps,
@@ -33,21 +58,9 @@ export function applySettingsBackup(
   const keys = SETTINGS_BACKUP_STORAGE_KEYS.filter((key) => key in payload)
   try {
     for (const key of keys) previous.set(key, deps.storage.getItem(key))
-    for (const key of keys) {
-      const value = payload[key]
-      deps.storage.setItem(key, JSON.stringify(value))
-    }
+    writePayloadKeys(deps.storage, keys, payload)
   } catch {
-    for (const key of keys) {
-      if (!previous.has(key)) continue
-      const prior = previous.get(key) ?? null
-      try {
-        if (prior == null) deps.storage.removeItem(key)
-        else deps.storage.setItem(key, prior)
-      } catch {
-        // 戻し書きも失敗したキーは、それ以上触らない。
-      }
-    }
+    restoreSnapshot(deps.storage, keys, previous)
     return {
       error: SETTINGS_BACKUP_ERRORS.invalid,
       ok: false,

@@ -19,7 +19,8 @@ const SECRET_KEYS = new Set([
 ])
 const FORBIDDEN_PAYLOAD_KEYS = new Set(['apps', 'processingAppData'])
 const MAX_DEPTH = 32
-const TOO_DEEP = Symbol('too-deep')
+
+type StripResult = { tooDeep: true } | { tooDeep: false; value: unknown }
 
 const TIMELINE_TYPES = new Set([
   'home',
@@ -92,37 +93,43 @@ export function stableStringify(value: unknown): string {
   if (Array.isArray(value))
     return `[${value.map((item) => stableStringify(item)).join(',')}]`
   const record = value as Record<string, unknown>
-  const keys = Object.keys(record).sort()
+  const keys = Object.keys(record).sort((left, right) =>
+    left.localeCompare(right),
+  )
   return `{${keys
     .map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`)
     .join(',')}}`
 }
 
-function stripSecrets(
-  value: unknown,
+function stripArray(items: unknown[], depth: number): StripResult {
+  const next: unknown[] = []
+  for (const item of items) {
+    const stripped = stripSecrets(item, depth + 1)
+    if (stripped.tooDeep) return stripped
+    next.push(stripped.value)
+  }
+  return { tooDeep: false, value: next }
+}
+
+function stripRecord(
+  record: Record<string, unknown>,
   depth: number,
-): unknown | typeof TOO_DEEP {
-  if (depth > MAX_DEPTH) return TOO_DEEP
-  if (Array.isArray(value)) {
-    const next: unknown[] = []
-    for (const item of value) {
-      const stripped = stripSecrets(item, depth + 1)
-      if (stripped === TOO_DEEP) return TOO_DEEP
-      next.push(stripped)
-    }
-    return next
+): StripResult {
+  const next: Record<string, unknown> = {}
+  for (const [key, child] of Object.entries(record)) {
+    if (SECRET_KEYS.has(key)) continue
+    const stripped = stripSecrets(child, depth + 1)
+    if (stripped.tooDeep) return stripped
+    next[key] = stripped.value
   }
-  if (isRecord(value)) {
-    const next: Record<string, unknown> = {}
-    for (const [key, child] of Object.entries(value)) {
-      if (SECRET_KEYS.has(key)) continue
-      const stripped = stripSecrets(child, depth + 1)
-      if (stripped === TOO_DEEP) return TOO_DEEP
-      next[key] = stripped
-    }
-    return next
-  }
-  return value
+  return { tooDeep: false, value: next }
+}
+
+function stripSecrets(value: unknown, depth: number): StripResult {
+  if (depth > MAX_DEPTH) return { tooDeep: true }
+  if (Array.isArray(value)) return stripArray(value, depth)
+  if (isRecord(value)) return stripRecord(value, depth)
+  return { tooDeep: false, value }
 }
 
 function isIntegerInRange(value: unknown, min: number, max: number): boolean {
@@ -191,32 +198,52 @@ function isQueryPlan(value: unknown): boolean {
   return stableStringify(value).length <= 500_000
 }
 
-function isTimelineItem(value: unknown): value is TimelineConfigV2 {
-  if (!isRecord(value)) return false
-  if (!isShortString(value.id, 200) || value.id.length === 0) return false
-  if (typeof value.type !== 'string' || !TIMELINE_TYPES.has(value.type))
-    return false
-  if (typeof value.order !== 'number' || !Number.isFinite(value.order))
-    return false
-  if (typeof value.visible !== 'boolean') return false
-  if (value.label != null && !isShortString(value.label, 500)) return false
-  if (value.tabGroup != null && !isShortString(value.tabGroup, 500))
-    return false
-  if (value.customQuery != null && !isShortString(value.customQuery, 100_000))
-    return false
+function optionalShortString(value: unknown, max: number): boolean {
+  return value == null || isShortString(value, max)
+}
+
+function isTimelineIdentity(value: Record<string, unknown>): boolean {
+  return (
+    isShortString(value.id, 200) &&
+    value.id.length > 0 &&
+    typeof value.type === 'string' &&
+    TIMELINE_TYPES.has(value.type) &&
+    typeof value.order === 'number' &&
+    Number.isFinite(value.order) &&
+    typeof value.visible === 'boolean'
+  )
+}
+
+function hasBooleanTimelineFields(value: Record<string, unknown>): boolean {
+  for (const field of BOOLEAN_TIMELINE_FIELDS) {
+    if (value[field] != null && typeof value[field] !== 'boolean') return false
+  }
+  return true
+}
+
+function isTimelineOptionalFields(value: Record<string, unknown>): boolean {
+  if (!optionalShortString(value.label, 500)) return false
+  if (!optionalShortString(value.tabGroup, 500)) return false
+  if (!optionalShortString(value.customQuery, 100_000)) return false
   if (
     value.minMediaCount != null &&
     !isIntegerInRange(value.minMediaCount, 0, 100)
   )
     return false
-  for (const field of BOOLEAN_TIMELINE_FIELDS) {
-    if (value[field] != null && typeof value[field] !== 'boolean') return false
-  }
+  return hasBooleanTimelineFields(value)
+}
+
+function isTimelineFilters(value: Record<string, unknown>): boolean {
   if (value.backendFilter != null && !isBackendFilter(value.backendFilter))
     return false
   if (value.tagConfig != null && !isTagConfig(value.tagConfig)) return false
   if (value.accountFilter != null && !isAccountFilter(value.accountFilter))
     return false
+  if (value.queryPlan != null && !isQueryPlan(value.queryPlan)) return false
+  return true
+}
+
+function isTimelineEnumFields(value: Record<string, unknown>): boolean {
   if (
     value.visibilityFilter != null &&
     !isEnumList(value.visibilityFilter, VISIBILITIES, 8)
@@ -237,8 +264,17 @@ function isTimelineItem(value: unknown): value is TimelineConfigV2 {
     !isEnumList(value.timelineTypes, STATUS_TIMELINE_TYPES, 8)
   )
     return false
-  if (value.queryPlan != null && !isQueryPlan(value.queryPlan)) return false
   return true
+}
+
+function isTimelineItem(value: unknown): value is TimelineConfigV2 {
+  if (!isRecord(value)) return false
+  return (
+    isTimelineIdentity(value) &&
+    isTimelineOptionalFields(value) &&
+    isTimelineFilters(value) &&
+    isTimelineEnumFields(value)
+  )
 }
 
 function validateTimelineSettings(value: unknown): TimelineSettingsV2 | null {
@@ -382,29 +418,26 @@ function boundedHashtags(value: unknown): HashtagHistoryBackup[] | null {
   return next
 }
 
+function boundedUser(item: unknown): UserBackup | null {
+  if (!isRecord(item)) return null
+  const row: UserBackup = {}
+  for (const [key, field] of Object.entries(item)) {
+    if (!isShortString(field, 4_000)) return null
+    row[key] = field
+  }
+  for (const key of ['id', 'acct', 'avatar', 'display_name'] as const) {
+    if (!isShortString(row[key], 4_000)) return null
+  }
+  return row
+}
+
 function boundedUsers(value: unknown): UserBackup[] | null {
   if (!Array.isArray(value)) return null
   const next: UserBackup[] = []
   for (const item of value) {
     if (next.length >= 2_000) break
-    if (!isRecord(item)) continue
-    const row: UserBackup = {}
-    let usable = true
-    for (const [key, field] of Object.entries(item)) {
-      if (!isShortString(field, 4_000)) {
-        usable = false
-        break
-      }
-      row[key] = field
-    }
-    if (!usable) continue
-    for (const key of ['id', 'acct', 'avatar', 'display_name'] as const) {
-      if (!isShortString(row[key], 4_000)) {
-        usable = false
-        break
-      }
-    }
-    if (usable) next.push(row)
+    const row = boundedUser(item)
+    if (row != null) next.push(row)
   }
   if (next.length === 0 && value.length > 0) return null
   return next
@@ -422,15 +455,62 @@ function boundedTags(value: unknown): string[] | null {
 function boundCacheValue(
   key: SettingsBackupStorageKey,
   value: unknown,
-): unknown | null {
+): HashtagHistoryBackup[] | UserBackup[] | string[] | null {
   if (key === 'hashtagHistory') return boundedHashtags(value)
   if (key === 'users') return boundedUsers(value)
   if (key === 'tags') return boundedTags(value)
-  return value
+  return null
 }
 
 function invalid(): SettingsBackupFailure & { ok: false } {
   return { error: SETTINGS_BACKUP_ERRORS.invalid, ok: false, success: false }
+}
+
+function isExportedAt(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(value)
+  )
+}
+
+function copyOptional<T>(
+  raw: Record<string, unknown>,
+  key: string,
+  validate: (value: unknown) => T | null,
+  assign: (value: T) => void,
+): boolean {
+  if (!(key in raw)) return true
+  const parsed = validate(raw[key])
+  if (parsed == null) return false
+  assign(parsed)
+  return true
+}
+
+function readEnvelopePayload(
+  raw: Record<string, unknown>,
+): SettingsBackupEnvelope['payload'] | null {
+  for (const key of FORBIDDEN_PAYLOAD_KEYS) delete raw[key]
+  const payload: SettingsBackupEnvelope['payload'] = {}
+  const copied =
+    copyOptional(raw, 'timelineSettings', validateTimelineSettings, (value) => {
+      payload.timelineSettings = value
+    }) &&
+    copyOptional(raw, 'setting', validateSetting, (value) => {
+      payload.setting = value
+    }) &&
+    copyOptional(raw, 'playerSetting', validatePlayerSetting, (value) => {
+      payload.playerSetting = value
+    }) &&
+    copyOptional(raw, 'hashtagHistory', validateHashtags, (value) => {
+      payload.hashtagHistory = value
+    }) &&
+    copyOptional(raw, 'users', validateUsers, (value) => {
+      payload.users = value
+    }) &&
+    copyOptional(raw, 'tags', validateTags, (value) => {
+      payload.tags = value
+    })
+  return copied ? payload : null
 }
 
 export function validateSettingsEnvelope(
@@ -438,60 +518,22 @@ export function validateSettingsEnvelope(
 ): SettingsBackupReadResult {
   let cloned: unknown
   try {
-    cloned = JSON.parse(JSON.stringify(input))
+    cloned = structuredClone(input)
   } catch {
     return invalid()
   }
   const stripped = stripSecrets(cloned, 0)
-  if (stripped === TOO_DEEP || !isRecord(stripped)) return invalid()
-  if (stripped.format !== SETTINGS_BACKUP_FORMAT) return invalid()
-  if (stripped.formatVersion !== SETTINGS_BACKUP_VERSION) return invalid()
-  if (
-    typeof stripped.exportedAt !== 'string' ||
-    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(
-      stripped.exportedAt,
-    )
-  )
-    return invalid()
-  if (!isRecord(stripped.payload)) return invalid()
-  for (const key of FORBIDDEN_PAYLOAD_KEYS) delete stripped.payload[key]
-
-  const payload: SettingsBackupEnvelope['payload'] = {}
-  if ('timelineSettings' in stripped.payload) {
-    const timelines = validateTimelineSettings(
-      stripped.payload.timelineSettings,
-    )
-    if (timelines == null) return invalid()
-    payload.timelineSettings = timelines
-  }
-  if ('setting' in stripped.payload) {
-    const setting = validateSetting(stripped.payload.setting)
-    if (setting == null) return invalid()
-    payload.setting = setting
-  }
-  if ('playerSetting' in stripped.payload) {
-    const player = validatePlayerSetting(stripped.payload.playerSetting)
-    if (player == null) return invalid()
-    payload.playerSetting = player
-  }
-  if ('hashtagHistory' in stripped.payload) {
-    const history = validateHashtags(stripped.payload.hashtagHistory)
-    if (history == null) return invalid()
-    payload.hashtagHistory = history
-  }
-  if ('users' in stripped.payload) {
-    const users = validateUsers(stripped.payload.users)
-    if (users == null) return invalid()
-    payload.users = users
-  }
-  if ('tags' in stripped.payload) {
-    const tags = validateTags(stripped.payload.tags)
-    if (tags == null) return invalid()
-    payload.tags = tags
-  }
-
+  if (stripped.tooDeep) return invalid()
+  if (!isRecord(stripped.value)) return invalid()
+  const record = stripped.value
+  if (record.format !== SETTINGS_BACKUP_FORMAT) return invalid()
+  if (record.formatVersion !== SETTINGS_BACKUP_VERSION) return invalid()
+  if (!isExportedAt(record.exportedAt)) return invalid()
+  if (!isRecord(record.payload)) return invalid()
+  const payload = readEnvelopePayload(record.payload)
+  if (payload == null) return invalid()
   const envelope: SettingsBackupEnvelope = {
-    exportedAt: stripped.exportedAt,
+    exportedAt: record.exportedAt,
     format: SETTINGS_BACKUP_FORMAT,
     formatVersion: SETTINGS_BACKUP_VERSION,
     payload,

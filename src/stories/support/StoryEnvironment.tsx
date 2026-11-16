@@ -1,10 +1,4 @@
-import {
-  type ComponentProps,
-  type ContextType,
-  type ReactNode,
-  useContext,
-  useState,
-} from 'react'
+import { type ContextType, type ReactNode, useContext, useState } from 'react'
 import type { App } from 'types/types'
 import { AppsContext, UpdateAppsContext } from 'util/provider/AppsProvider'
 import {
@@ -37,24 +31,26 @@ import {
   timelines,
 } from './fixtures'
 
+type StoryEnvironmentProps = Readonly<{
+  children: ReactNode
+  initialApps?: App[]
+  initialDetail?: SetDetailParams
+  initialReply?: ContextType<typeof ReplyToContext>
+}>
+
 export function StoryEnvironment({
   children,
   initialDetail = { content: null, type: null },
   initialReply,
   initialApps = fixtureApps,
-}: {
-  children: ReactNode
-  initialDetail?: SetDetailParams
-  initialReply?: ContextType<typeof ReplyToContext>
-  initialApps?: App[]
-}) {
+}: StoryEnvironmentProps) {
   const defaults = useContext(SettingContext)
   const [setting, setSetting] = useState(defaults)
   const [apps, setApps] = useState(initialApps)
   const [detail, setDetail] = useState(initialDetail)
   const [reply, setReply] = useState(initialReply)
   const [selected, setSelected] = useState(0)
-  const [timelineState, setTimelines] = useState<
+  const [timelineState, setTimelineState] = useState<
     ContextType<typeof TimelineContext>
   >({ timelines, version: 2 })
   return (
@@ -63,7 +59,7 @@ export function StoryEnvironment({
         <SettingContext value={setting}>
           <SetSettingContext value={setSetting}>
             <TimelineContext value={timelineState}>
-              <SetTimelineContext value={setTimelines}>
+              <SetTimelineContext value={setTimelineState}>
                 <DetailContext value={detail}>
                   <SetDetailContext value={setDetail}>
                     <PostAccountContext
@@ -96,10 +92,7 @@ export function StoryEnvironment({
     </AppsContext>
   )
 }
-export function AppColumn({
-  children,
-  ...props
-}: ComponentProps<typeof StoryEnvironment>) {
+export function AppColumn({ children, ...props }: StoryEnvironmentProps) {
   return (
     <StoryEnvironment {...props}>
       <div className="min-h-screen w-full max-w-[420px] bg-gray-900 text-gray-100">

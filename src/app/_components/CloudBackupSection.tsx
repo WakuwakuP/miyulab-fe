@@ -27,7 +27,7 @@ function firstAccount(apps: App[]): App | null {
   return app
 }
 
-function StatusMessage({ message }: { message: string }) {
+function StatusMessage({ message }: Readonly<{ message: string }>) {
   return (
     <p
       aria-live="polite"
@@ -84,6 +84,7 @@ export function CloudBackupSection() {
   useEffect(() => {
     const dialog = restoreDialogRef.current
     if (dialog == null) return
+    dialog.setAttribute('closedby', 'any')
     const onClose = () => setRestoreOpen(false)
     dialog.addEventListener('close', onClose)
     return () => dialog.removeEventListener('close', onClose)
@@ -252,7 +253,6 @@ export function CloudBackupSection() {
       <dialog
         aria-labelledby="settings-backup-restore-title"
         className="settings-backup-dialog m-auto w-[min(24rem,calc(100vw-2rem))] rounded-md border border-gray-600 bg-gray-900 p-4 text-gray-100"
-        closedby="any"
         ref={restoreDialogRef}
       >
         <h2
