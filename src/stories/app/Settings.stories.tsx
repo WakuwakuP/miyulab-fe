@@ -6,6 +6,7 @@ import { DbDiagnosticsSection } from 'app/_components/DbDiagnosticsSection'
 import { SettingPanel } from 'app/_components/SettingPanel'
 import { TimelineManagement } from 'app/_components/TimelineManagement'
 import { Panel } from 'app/_parts/Panel'
+import { expect, waitFor } from 'storybook/test'
 import { AppColumn } from '../support/StoryEnvironment'
 
 const meta = {
@@ -41,4 +42,27 @@ export const Diagnostics: Story = {
       <DbDiagnosticsSection />
     </div>
   ),
+}
+
+// Keep the real dialog and list UI; restoring fixture data remains disabled.
+export const CloudRestore: Story = {
+  ...CloudBackup,
+  play: async ({ canvas, userEvent }) => {
+    const restore = canvas.getByRole('button', { name: 'Restore' })
+    await waitFor(() => expect(restore).toBeEnabled())
+    await userEvent.click(restore)
+    await expect(
+      await canvas.findByRole('dialog', { name: 'Restore' }),
+    ).toBeVisible()
+  },
+}
+export const CloudRestoreEmpty: Story = {
+  ...CloudRestore,
+  beforeEach: async () => {
+    const { listSettingsBackups } = await import(
+      '../../../.storybook/mocks/serverActions'
+    )
+    listSettingsBackups.mockResolvedValue({ backups: [], success: true })
+    return () => listSettingsBackups.mockReset()
+  },
 }
