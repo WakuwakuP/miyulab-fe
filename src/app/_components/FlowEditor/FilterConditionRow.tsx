@@ -16,7 +16,6 @@ import {
 } from 'util/db/query-ir/completion'
 import type { FilterCondition, FilterOp } from 'util/db/query-ir/nodes'
 import { searchColumnValuesDirect } from 'util/db/sqlite/stores/statusReadStore'
-import { ValueInput } from '../NodeEditor/ValueInput'
 import {
   ALL_OPS,
   type FlatColumnOption,
@@ -26,6 +25,7 @@ import {
 } from './flowNodePanelTypes'
 import type { FlowNode } from './types'
 import { getNodeLabelV2 } from './types'
+import { ValueInput } from './ValueInput'
 
 type FilterConditionRowProps = Readonly<{
   filter: FilterCondition
