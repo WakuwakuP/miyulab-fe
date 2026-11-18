@@ -87,6 +87,7 @@ export function useTimelineScrollbackController({
     const s = stateRef.current
     if (s.isScrollbackRunning || !s.hasMoreOlder) return
     dispatch({ type: 'SCROLLBACK_STARTED' })
+    let exhausted = false
 
     try {
       // DB からカーソル以前のアイテムを取得
@@ -143,68 +144,63 @@ export function useTimelineScrollbackController({
         targetBackendUrls,
         includeNotifications,
       )
-      if (allExhausted && (!retry || retry.items.length === 0)) {
-        dispatch({ hasMoreOlder: false, type: 'SCROLLBACK_COMPLETED' })
-        return
-      }
+      exhausted = allExhausted && (!retry || retry.items.length === 0)
     } finally {
       // scrollback 完了
-      if (stateRef.current.isScrollbackRunning) {
-        const flushState = stateRef.current
-        const deferredChangedTables = flushState.deferredChangedTables
-        dispatch({
-          hasMoreOlder: flushState.hasMoreOlder,
-          type: 'SCROLLBACK_COMPLETED',
-        })
+      const flushState = stateRef.current
+      const deferredChangedTables = flushState.deferredChangedTables
+      dispatch({
+        hasMoreOlder: !exhausted && flushState.hasMoreOlder,
+        type: 'SCROLLBACK_COMPLETED',
+      })
 
-        if (deferredChangedTables) {
-          const { cursor, limit } = resolveStreamingFetchWindow(
-            deferredChangedTables,
-            flushState,
-            PAGE_SIZE,
-          )
-          const ids = flushState.deferredPostIds
-          const flush = async () => {
-            if (
-              ids &&
-              [...deferredChangedTables].every((table) =>
-                INTERACTION_RELATED_TABLES.has(table),
-              )
-            ) {
-              const updates = await fetchInteractionUpdates(
-                ids,
-                flushState.sortedItems,
-              )
-              if (updates) {
-                recordDuration(updates.durationMs)
-                dispatch({
-                  items: updates.items,
-                  type: 'INTERACTION_UPDATES_SUCCEEDED',
-                })
-                return
-              }
+      if (deferredChangedTables) {
+        const { cursor, limit } = resolveStreamingFetchWindow(
+          deferredChangedTables,
+          flushState,
+          PAGE_SIZE,
+        )
+        const ids = flushState.deferredPostIds
+        const flush = async () => {
+          if (
+            ids &&
+            [...deferredChangedTables].every((table) =>
+              INTERACTION_RELATED_TABLES.has(table),
+            )
+          ) {
+            const updates = await fetchInteractionUpdates(
+              ids,
+              flushState.sortedItems,
+            )
+            if (updates) {
+              recordDuration(updates.durationMs)
+              dispatch({
+                items: updates.items,
+                type: 'INTERACTION_UPDATES_SUCCEEDED',
+              })
+              return
             }
-            const result = await fetchPage({
-              changedTables: deferredChangedTables.has(NOTIFICATION_READ_CHANGE)
-                ? undefined
-                : deferredChangedTables,
-              cursor,
-              limit,
-            })
-
-            if (!result) return
-            recordDuration(result.durationMs)
-            dispatch({
-              items: result.items,
-              type: deferredChangedTables.has(NOTIFICATION_READ_CHANGE)
-                ? 'NOTIFICATION_READ_REFRESH_SUCCEEDED'
-                : 'DEFERRED_STREAMING_FLUSH_SUCCEEDED',
-            })
           }
-          flush().catch(() => {
-            console.warn('Deferred timeline refresh failed')
+          const result = await fetchPage({
+            changedTables: deferredChangedTables.has(NOTIFICATION_READ_CHANGE)
+              ? undefined
+              : deferredChangedTables,
+            cursor,
+            limit,
+          })
+
+          if (!result) return
+          recordDuration(result.durationMs)
+          dispatch({
+            items: result.items,
+            type: deferredChangedTables.has(NOTIFICATION_READ_CHANGE)
+              ? 'NOTIFICATION_READ_REFRESH_SUCCEEDED'
+              : 'DEFERRED_STREAMING_FLUSH_SUCCEEDED',
           })
         }
+        flush().catch(() => {
+          console.warn('Deferred timeline refresh failed')
+        })
       }
     }
   }, [

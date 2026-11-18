@@ -175,6 +175,7 @@ export function timelineListReducer(
           state.deferredChangedTables,
           event.changedTables,
         ),
+        // Selective refresh requires complete ID coverage across all pending hints.
         deferredPostIds:
           event.changedPostIds &&
           (!state.deferredChangedTables || state.deferredPostIds)
