@@ -15,8 +15,8 @@ import {
 } from 'react-icons/ri'
 import type { StatusAddAppIndex } from 'types/types'
 import { REACTION_BACKENDS } from 'util/constants'
-import { toggleReactionInDb } from 'util/db/sqlite/statusStore'
 import { GetClient } from 'util/GetClient'
+import { changeEmojiReaction } from 'util/hooks/timelineList/confirmedReactions'
 import { AppsContext } from 'util/provider/AppsProvider'
 import { SetActionsContext } from 'util/provider/HomeTimelineProvider'
 import { SetReplyToContext } from 'util/provider/ReplyToProvider'
@@ -71,26 +71,19 @@ export const Actions = ({
         !REACTION_BACKENDS.includes(reactionApp.backend)
       )
         return
-      const reactionClient = GetClient(reactionApp)
       const statusId = status.reblog?.id ?? status.id
       if (pendingReaction.current) return
       pendingReaction.current = true
       setPendingAction(true)
       setShowReactionPicker(false)
       try {
-        const { data } = await reactionClient.createEmojiReaction(
+        await changeEmojiReaction(
+          reactionApp,
           statusId,
           emoji,
-        )
-        await toggleReactionInDb(
-          reactionApp.backendUrl,
-          statusId,
           true,
-          emoji,
-        ).catch((error) =>
-          console.error('Failed to cache the confirmed emoji reaction:', error),
+          onReactionsChange,
         )
-        onReactionsChange?.(data.emoji_reactions ?? [])
       } catch (error) {
         console.error('Failed to update emoji reaction:', error)
       } finally {

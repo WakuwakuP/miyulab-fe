@@ -5,8 +5,7 @@ import type { Entity } from 'megalodon'
 import { useContext, useMemo, useState } from 'react'
 import type { StatusAddAppIndex } from 'types/types'
 import { REACTION_BACKENDS } from 'util/constants'
-import { toggleReactionInDb } from 'util/db/sqlite/statusStore'
-import { GetClient } from 'util/GetClient'
+import { changeEmojiReaction } from 'util/hooks/timelineList/confirmedReactions'
 import { AppsContext } from 'util/provider/AppsProvider'
 import {
   EmojiCatalogContext,
@@ -51,22 +50,16 @@ export const EmojiReactions = ({
 
   const handleReactionClick = async (reaction: Entity.Reaction) => {
     if (!canReact || statusApp == null || pending) return
-    const client = GetClient(statusApp)
     const statusId = status.reblog?.id ?? status.id
     setPending(true)
     try {
-      const { data } = reaction.me
-        ? await client.deleteEmojiReaction(statusId, reaction.name)
-        : await client.createEmojiReaction(statusId, reaction.name)
-      await toggleReactionInDb(
-        statusApp.backendUrl,
+      await changeEmojiReaction(
+        statusApp,
         statusId,
-        !reaction.me,
         reaction.name,
-      ).catch((error) =>
-        console.error('Failed to cache the confirmed emoji reaction:', error),
+        !reaction.me,
+        onReactionsChange,
       )
-      onReactionsChange(data.emoji_reactions ?? [])
     } catch (error) {
       console.error('Failed to update emoji reaction:', error)
     } finally {

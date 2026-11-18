@@ -17,7 +17,6 @@ import {
   useMemo,
   useRef,
 } from 'react'
-
 import type {
   NotificationAddAppIndex,
   StatusAddAppIndex,
@@ -68,6 +67,7 @@ import {
   resolveBackendUrls,
 } from 'util/timelineConfigValidator'
 import { useConfigRefresh } from 'util/timelineRefresh'
+import { trackReactionRead } from './timelineList/confirmedReactions'
 
 // --------------- 型定義 ---------------
 
@@ -250,6 +250,7 @@ export function useTimelineDataSource(
           : patchPlanForFetch(basePlan, limit, fetchOptions?.cursor)
 
       const version = ++fetchVersionRef.current
+      const reactionRead = trackReactionRead()
 
       try {
         const handle = await getSqliteDb()
@@ -275,11 +276,13 @@ export function useTimelineDataSource(
 
         return {
           durationMs: result.meta.totalDurationMs,
-          items,
+          items: reactionRead.apply(items),
         }
       } catch (e) {
         console.error('[useTimelineDataSource] fetch error:', e)
         return null
+      } finally {
+        reactionRead.finish()
       }
     },
     [basePlan, targetBackendUrls, apps],
@@ -315,6 +318,7 @@ export function useTimelineDataSource(
         })),
       ]
       const version = ++fetchVersionRef.current
+      const reactionRead = trackReactionRead()
 
       try {
         const handle = await getSqliteDb()
@@ -330,10 +334,15 @@ export function useTimelineDataSource(
           apps,
           targetBackendUrls,
         )
-        return { durationMs: result.meta.totalDurationMs, items }
+        return {
+          durationMs: result.meta.totalDurationMs,
+          items: reactionRead.apply(items),
+        }
       } catch (e) {
         console.error('[useTimelineDataSource] interaction refresh error:', e)
         return null
+      } finally {
+        reactionRead.finish()
       }
     },
     [
