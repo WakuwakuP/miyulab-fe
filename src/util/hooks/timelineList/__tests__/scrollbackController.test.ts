@@ -1,5 +1,8 @@
 import type { TimelineConfigV2 } from 'types/types'
-import type { FetchPageResult } from 'util/hooks/useTimelineDataSource'
+import type {
+  FetchPageResult,
+  TimelineItem,
+} from 'util/hooks/useTimelineDataSource'
 import { expect, it, vi } from 'vitest'
 import { createInitialState } from '../reducer'
 import { useTimelineScrollbackController } from '../useTimelineScrollbackController'
@@ -32,7 +35,10 @@ it('discards pending scrollback after a timeline reset', async () => {
   exhaustedResourcesRef.current = new Map()
   stateRef.current = createInitialState()
   dispatch.mockClear()
-  page.resolve({ durationMs: 0, items: [] })
+  page.resolve({
+    durationMs: 0,
+    items: [{ appIndex: 0, id: 'old-post' } as TimelineItem],
+  })
   await pending
   expect(dispatch).not.toHaveBeenCalled()
 })
