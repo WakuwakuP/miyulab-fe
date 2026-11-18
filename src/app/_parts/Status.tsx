@@ -72,13 +72,14 @@ export const Status = ({
     (updates: LocalInteraction['updates']) => {
       if (backendUrl)
         publishLocalInteraction({
+          appIndex: status.appIndex,
           backendUrl,
           statusId: interactionStatusId,
           updates,
         })
       onStatusChange?.(updates)
     },
-    [backendUrl, interactionStatusId, onStatusChange],
+    [backendUrl, interactionStatusId, onStatusChange, status.appIndex],
   )
 
   const onReactionsChange = useCallback(

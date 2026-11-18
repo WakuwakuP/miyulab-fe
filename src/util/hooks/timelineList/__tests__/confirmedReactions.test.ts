@@ -20,8 +20,10 @@ vi.mock('util/db/sqlite/statusStore', () => ({ toggleReactionInDb: save }))
 
 it('publishes before persistence and protects stale reads across a failed write and retry', async () => {
   const app = { backendUrl: 'a' } as App
+  const apps = [app, { ...app }]
   const rows = [
-    { backendUrl: 'a', emoji_reactions: [], id: '1' },
+    { appIndex: 0, backendUrl: 'a', emoji_reactions: [], id: '1' },
+    { appIndex: 1, backendUrl: 'a', emoji_reactions: [], id: '1' },
   ] as unknown as TimelineItem[]
   const reactions = [{ count: 1, me: true, name: '⭐' }]
   const publish = vi.fn()
@@ -32,13 +34,13 @@ it('publishes before persistence and protects stale reads across a failed write 
     started.resolve()
     return saving.promise
   })
-  const read = trackReactionRead()
+  const read = trackReactionRead(apps)
   const request = changeEmojiReaction(app, '1', '⭐', true, publish)
   await started.promise
   expect(publish).toHaveBeenCalledWith(reactions)
   const nextReactions = [{ count: 1, me: true, name: '🎉' }]
   create.mockResolvedValueOnce({ data: { emoji_reactions: nextReactions } })
-  const laterRead = trackReactionRead()
+  const laterRead = trackReactionRead(apps)
   const queued = changeEmojiReaction(app, '1', '🎉', true, publish)
   expect(create).toHaveBeenCalledTimes(1)
   saving.reject(new Error('write failed'))
@@ -50,9 +52,10 @@ it('publishes before persistence and protects stale reads across a failed write 
     expect(snapshot.apply(rows)[0]).toMatchObject({
       emoji_reactions: nextReactions,
     })
+    expect(snapshot.apply(rows)[1]).toBe(rows[1])
     snapshot.finish()
   }
-  const afterSave = trackReactionRead()
+  const afterSave = trackReactionRead(apps)
   expect(afterSave.apply(rows)).toBe(rows)
   afterSave.finish()
 })

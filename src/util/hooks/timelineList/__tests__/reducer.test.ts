@@ -589,10 +589,21 @@ describe('NOTIFICATION_READ_REFRESH_SUCCEEDED', () => {
 })
 
 it('再表示に使う投稿・ブースト・通知のデータに同じアカウントの操作を反映する', () => {
-  const post = { ...makeStatus('1', 100), backendUrl: 'a', favourited: false }
-  const boost = { ...makeStatus('2', 200), backendUrl: 'a', reblog: post }
-  const other = { ...post, backendUrl: 'b', post_id: 3 }
+  const post = {
+    ...makeStatus('1', 100),
+    appIndex: 0,
+    backendUrl: 'a',
+    favourited: false,
+  }
+  const boost = {
+    ...makeStatus('2', 200),
+    appIndex: 0,
+    backendUrl: 'a',
+    reblog: post,
+  }
+  const other = { ...post, appIndex: 1, post_id: 3 }
   const notification = {
+    appIndex: 0,
     backendUrl: 'a',
     id: '4',
     notification_id: 4,
@@ -610,6 +621,7 @@ it('再表示に使う投稿・ブースト・通知のデータに同じアカ�
       favourited,
     }
     state = dispatch(state, {
+      appIndex: 0,
       backendUrl: 'a',
       statusId: '1',
       type: 'LOCAL_INTERACTION',

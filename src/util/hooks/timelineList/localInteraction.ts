@@ -1,6 +1,7 @@
 import type { Entity } from 'megalodon'
 
 export type LocalInteraction = {
+  appIndex: number
   backendUrl: string
   statusId: string
   updates: Partial<

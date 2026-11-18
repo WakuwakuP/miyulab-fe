@@ -113,7 +113,11 @@ export function timelineListReducer(
     case 'LOCAL_INTERACTION': {
       const items: TimelineItem[] = []
       for (const item of state.sortedItems) {
-        if (!('backendUrl' in item) || item.backendUrl !== event.backendUrl)
+        if (
+          item.appIndex !== event.appIndex ||
+          !('backendUrl' in item) ||
+          item.backendUrl !== event.backendUrl
+        )
           continue
         if ('type' in item) {
           if (!item.status) continue

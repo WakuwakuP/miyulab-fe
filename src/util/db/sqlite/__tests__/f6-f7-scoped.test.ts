@@ -559,6 +559,12 @@ describe('スコープ付きバッチ (実 DB, 2 アカウント)', () => {
         'UPDATE post_interactions SET confirmed_reactions_json = ? WHERE post_id = ? AND local_account_id = ?',
       )
       .run('{', postId, laA)
+    native
+      .prepare(
+        'UPDATE post_stats SET emoji_reactions_json = ? WHERE post_id = ?',
+      )
+      .run(JSON.stringify([first]), postId)
+    expect(read(BACKEND_A)).toEqual([first])
     upsert(
       status('shared', { emoji_reactions: [first, second] }),
       BACKEND_A,

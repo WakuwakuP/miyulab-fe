@@ -9,14 +9,20 @@ const pendingWrites = new Map<string, ReactionChange>()
 const requestTails = new Map<string, Promise<Entity.Reaction[]>>()
 const activeReads = new Set<Map<string, ReactionChange>>()
 
-function key(backendUrl: string, statusId: string) {
-  return JSON.stringify([backendUrl, statusId])
+const loginIds = new WeakMap<App, number>()
+let nextLoginId = 0
+
+function key(app: App, statusId: string) {
+  let loginId = loginIds.get(app)
+  if (loginId === undefined) {
+    loginId = ++nextLoginId
+    loginIds.set(app, loginId)
+  }
+  return JSON.stringify([loginId, statusId])
 }
 
 // A read already queued when an action succeeds can return the previous snapshot.
-export function trackReactionRead(
-  apps: readonly Pick<App, 'backendUrl'>[] = [],
-) {
+export function trackReactionRead(apps: readonly App[]) {
   const changes = new Map(pendingWrites)
   activeReads.add(changes)
   return {
@@ -24,15 +30,16 @@ export function trackReactionRead(
       if (!changes.size) return items
       return items.map((item) => {
         const status = 'type' in item ? item.status : item
-        const backendUrl =
+        const app = apps[item.appIndex]
+        if (
+          !status ||
+          !app ||
           ('backendUrl' in item &&
-            typeof item.backendUrl === 'string' &&
-            item.backendUrl) ||
-          apps[item.appIndex]?.backendUrl
-        if (!status || !backendUrl) return item
-        const change = changes.get(
-          key(backendUrl, status.reblog?.id ?? status.id),
+            item.backendUrl &&
+            item.backendUrl !== app.backendUrl)
         )
+          return item
+        const change = changes.get(key(app, status.reblog?.id ?? status.id))
         if (!change) return item
         const emoji_reactions = change.reactions
         const updated = {
@@ -77,7 +84,7 @@ export async function changeEmojiReaction(
   onChange?: (reactions: Entity.Reaction[]) => void,
   displayed: Entity.Reaction[] = [],
 ) {
-  const id = key(app.backendUrl, statusId)
+  const id = key(app, statusId)
   const previous = requestTails.get(id)
   const turn = Promise.withResolvers<Entity.Reaction[]>()
   requestTails.set(id, turn.promise)
