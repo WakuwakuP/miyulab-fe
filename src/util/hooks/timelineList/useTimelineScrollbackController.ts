@@ -86,6 +86,8 @@ export function useTimelineScrollbackController({
   return useCallback(async () => {
     const s = stateRef.current
     if (s.isScrollbackRunning || !s.hasMoreOlder) return
+    const resources = exhaustedResourcesRef.current
+    const isCurrentTimeline = () => resources === exhaustedResourcesRef.current
     dispatch({ type: 'SCROLLBACK_STARTED' })
     const loadedItems: TimelineItem[] = []
     let exhausted = false
@@ -103,6 +105,7 @@ export function useTimelineScrollbackController({
         limit: PAGE_SIZE,
       })
 
+      if (!isCurrentTimeline()) return
       if (result && result.items.length > 0) {
         loadedItems.push(...result.items)
         recordDuration(result.durationMs)
@@ -115,9 +118,11 @@ export function useTimelineScrollbackController({
         config,
         apps,
         targetBackendUrls,
-        exhaustedResourcesRef.current,
+        resources,
         includeNotifications,
       )
+
+      if (!isCurrentTimeline()) return
 
       // 更新されたカーソルで再取得
       const retry = await fetchPage({
@@ -129,6 +134,7 @@ export function useTimelineScrollbackController({
         limit: PAGE_SIZE,
       })
 
+      if (!isCurrentTimeline()) return
       if (retry && retry.items.length > 0) {
         loadedItems.push(...retry.items)
         dispatch({ items: retry.items, type: 'SCROLLBACK_DB_SUCCEEDED' })
@@ -137,67 +143,70 @@ export function useTimelineScrollbackController({
       // API が全バックエンドで枯渇 かつ DB にも追加データなし → 終端
       const allExhausted = isScrollbackExhausted(
         config,
-        exhaustedResourcesRef.current,
+        resources,
         targetBackendUrls,
         includeNotifications,
       )
       exhausted = allExhausted && (!retry || retry.items.length === 0)
     } finally {
       // scrollback 完了
-      const flushState = stateRef.current
-      const deferredChangedTables = flushState.deferredChangedTables
-      dispatch({
-        hasMoreOlder: !exhausted && flushState.hasMoreOlder,
-        type: 'SCROLLBACK_COMPLETED',
-      })
+      if (isCurrentTimeline()) {
+        const flushState = stateRef.current
+        const deferredChangedTables = flushState.deferredChangedTables
+        dispatch({
+          hasMoreOlder: !exhausted && flushState.hasMoreOlder,
+          type: 'SCROLLBACK_COMPLETED',
+        })
 
-      if (deferredChangedTables) {
-        const { cursor, limit } = resolveStreamingFetchWindow(
-          deferredChangedTables,
-          flushState,
-          PAGE_SIZE,
-        )
-        const ids = flushState.deferredPostIds
-        const flush = async () => {
-          if (
-            ids &&
-            [...deferredChangedTables].every((table) =>
-              INTERACTION_RELATED_TABLES.has(table),
-            )
-          ) {
-            const updates = await fetchInteractionUpdates(ids, [
-              ...flushState.sortedItems,
-              ...loadedItems,
-            ])
-            if (updates) {
-              recordDuration(updates.durationMs)
-              dispatch({
-                items: updates.items,
-                type: 'INTERACTION_UPDATES_SUCCEEDED',
-              })
-              return
+        if (deferredChangedTables) {
+          const { cursor, limit } = resolveStreamingFetchWindow(
+            deferredChangedTables,
+            flushState,
+            PAGE_SIZE,
+          )
+          const ids = flushState.deferredPostIds
+          const flush = async () => {
+            if (
+              ids &&
+              [...deferredChangedTables].every((table) =>
+                INTERACTION_RELATED_TABLES.has(table),
+              )
+            ) {
+              const updates = await fetchInteractionUpdates(ids, [
+                ...flushState.sortedItems,
+                ...loadedItems,
+              ])
+              if (!isCurrentTimeline()) return
+              if (updates) {
+                recordDuration(updates.durationMs)
+                dispatch({
+                  items: updates.items,
+                  type: 'INTERACTION_UPDATES_SUCCEEDED',
+                })
+                return
+              }
             }
-          }
-          const result = await fetchPage({
-            changedTables: deferredChangedTables.has(NOTIFICATION_READ_CHANGE)
-              ? undefined
-              : deferredChangedTables,
-            cursor,
-            limit,
-          })
+            const result = await fetchPage({
+              changedTables: deferredChangedTables.has(NOTIFICATION_READ_CHANGE)
+                ? undefined
+                : deferredChangedTables,
+              cursor,
+              limit,
+            })
 
-          if (!result) return
-          recordDuration(result.durationMs)
-          dispatch({
-            items: result.items,
-            type: deferredChangedTables.has(NOTIFICATION_READ_CHANGE)
-              ? 'NOTIFICATION_READ_REFRESH_SUCCEEDED'
-              : 'DEFERRED_STREAMING_FLUSH_SUCCEEDED',
+            if (!isCurrentTimeline() || !result) return
+            recordDuration(result.durationMs)
+            dispatch({
+              items: result.items,
+              type: deferredChangedTables.has(NOTIFICATION_READ_CHANGE)
+                ? 'NOTIFICATION_READ_REFRESH_SUCCEEDED'
+                : 'DEFERRED_STREAMING_FLUSH_SUCCEEDED',
+            })
+          }
+          flush().catch(() => {
+            console.warn('Deferred timeline refresh failed')
           })
         }
-        flush().catch(() => {
-          console.warn('Deferred timeline refresh failed')
-        })
       }
     }
   }, [
