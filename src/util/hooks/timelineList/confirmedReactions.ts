@@ -64,8 +64,17 @@ export async function changeEmojiReaction(
     const { data } = add
       ? await client.createEmojiReaction(statusId, emoji)
       : await client.deleteEmojiReaction(statusId, emoji)
-    if (data.emoji_reactions) {
-      const change = { reactions: data.emoji_reactions }
+    const reactions =
+      data.emoji_reactions ??
+      (await client
+        .getEmojiReactions(statusId)
+        .then((response) => response.data)
+        .catch((error) => {
+          console.error('Failed to read confirmed emoji reactions:', error)
+          return undefined
+        }))
+    if (reactions) {
+      const change = { reactions }
       pendingWrites.set(id, change)
       for (const read of activeReads) read.set(id, change)
       onChange?.(change.reactions)

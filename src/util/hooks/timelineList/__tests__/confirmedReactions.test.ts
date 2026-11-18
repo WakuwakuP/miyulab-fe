@@ -3,9 +3,18 @@ import type { App } from 'types/types'
 import { expect, it, vi } from 'vitest'
 import { changeEmojiReaction, trackReactionRead } from '../confirmedReactions'
 
-const { create, save } = vi.hoisted(() => ({ create: vi.fn(), save: vi.fn() }))
+const { create, remove, readReactions, save } = vi.hoisted(() => ({
+  create: vi.fn(),
+  readReactions: vi.fn(),
+  remove: vi.fn(),
+  save: vi.fn(),
+}))
 vi.mock('util/GetClient', () => ({
-  GetClient: () => ({ createEmojiReaction: create }),
+  GetClient: () => ({
+    createEmojiReaction: create,
+    deleteEmojiReaction: remove,
+    getEmojiReactions: readReactions,
+  }),
 }))
 vi.mock('util/db/sqlite/statusStore', () => ({ toggleReactionInDb: save }))
 
@@ -46,4 +55,26 @@ it('publishes before persistence and protects stale reads across a failed write 
   const afterSave = trackReactionRead()
   expect(afterSave.apply(rows)).toBe(rows)
   afterSave.finish()
+})
+
+it('publishes a fetched empty list after deletion while another post is busy', async () => {
+  const app = { backendUrl: 'a' } as App
+  const saving = Promise.withResolvers<void>()
+  const started = Promise.withResolvers<void>()
+  save.mockImplementationOnce(() => {
+    started.resolve()
+    return saving.promise
+  })
+  create.mockResolvedValueOnce({ data: { emoji_reactions: [] } })
+  const first = changeEmojiReaction(app, 'busy', '⭐', true)
+  await started.promise
+  const publish = vi.fn()
+  remove.mockResolvedValueOnce({ data: {} })
+  readReactions.mockResolvedValueOnce({ data: [] })
+  await changeEmojiReaction(app, 'other', '⭐', false, publish)
+  expect(remove).toHaveBeenCalledWith('other', '⭐')
+  expect(readReactions).toHaveBeenCalledWith('other')
+  expect(publish).toHaveBeenCalledWith([])
+  saving.resolve()
+  await first
 })

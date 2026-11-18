@@ -22,7 +22,7 @@ export const EmojiReactions = ({
   reactions: Entity.Reaction[]
   onReactionsChange: (reactions: Entity.Reaction[]) => void
 }) => {
-  const [pending, setPending] = useState(false)
+  const [pending, setPending] = useState(new Set<string>())
   const apps = useContext(AppsContext)
   const emojiCatalog = useContext(EmojiCatalogContext)
   const emojiFallback = useContext(EmojiContext)
@@ -49,9 +49,9 @@ export const EmojiReactions = ({
     statusApp != null && REACTION_BACKENDS.includes(statusApp.backend)
 
   const handleReactionClick = async (reaction: Entity.Reaction) => {
-    if (!canReact || statusApp == null || pending) return
+    if (!canReact || statusApp == null) return
     const statusId = status.reblog?.id ?? status.id
-    setPending(true)
+    setPending((names) => new Set(names).add(reaction.name))
     try {
       await changeEmojiReaction(
         statusApp,
@@ -63,7 +63,11 @@ export const EmojiReactions = ({
     } catch (error) {
       console.error('Failed to update emoji reaction:', error)
     } finally {
-      setPending(false)
+      setPending((names) => {
+        const next = new Set(names)
+        next.delete(reaction.name)
+        return next
+      })
     }
   }
 
@@ -78,7 +82,7 @@ export const EmojiReactions = ({
               : 'border-gray-600 hover:bg-gray-700',
             canReact ? 'cursor-pointer' : 'cursor-default',
           ].join(' ')}
-          disabled={!canReact || pending}
+          disabled={!canReact || pending.has(reaction.name)}
           key={reaction.name}
           onClick={() => handleReactionClick(reaction)}
           type="button"

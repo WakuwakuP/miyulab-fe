@@ -46,7 +46,6 @@ export const Actions = ({
   const [bookmarked, setBookmarked] = useState(status.bookmarked)
   const [showReactionPicker, setShowReactionPicker] = useState(false)
   const [triggerRect, setTriggerRect] = useState<DOMRect | null>(null)
-  const pendingReaction = useRef(false)
   const reactionBtnRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
@@ -72,9 +71,6 @@ export const Actions = ({
       )
         return
       const statusId = status.reblog?.id ?? status.id
-      if (pendingReaction.current) return
-      pendingReaction.current = true
-      setPendingAction(true)
       setShowReactionPicker(false)
       try {
         await changeEmojiReaction(
@@ -86,9 +82,6 @@ export const Actions = ({
         )
       } catch (error) {
         console.error('Failed to update emoji reaction:', error)
-      } finally {
-        pendingReaction.current = false
-        setPendingAction(false)
       }
     },
     [apps, status.appIndex, status.reblog?.id, status.id, onReactionsChange],
