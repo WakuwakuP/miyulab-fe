@@ -39,6 +39,7 @@ export const Actions = ({
 
   const setting = useContext(SettingContext)
 
+  const [pendingAction, setPendingAction] = useState(false)
   const [reblogged, setReblogged] = useState(status.reblogged)
 
   const [favourited, setFavourited] = useState(status.favourited)
@@ -115,6 +116,23 @@ export const Actions = ({
 
   const client = GetClient(apps[status.appIndex])
 
+  const statusId = status.reblog?.id ?? status.id
+  const applyAction = async (
+    request: () => Promise<unknown>,
+    update: () => void,
+  ) => {
+    if (pendingAction) return
+    setPendingAction(true)
+    try {
+      await request()
+      update()
+    } catch (error) {
+      console.error('Failed to update status action:', error)
+    } finally {
+      setPendingAction(false)
+    }
+  }
+
   const statusApp = apps[status.appIndex]
   const canReact =
     statusApp != null && REACTION_BACKENDS.includes(statusApp.backend)
@@ -147,56 +165,39 @@ export const Actions = ({
       </button>
       <button
         className={isPrivate ? 'cursor-not-allowed opacity-50' : ''}
-        disabled={isPrivate}
-        onClick={() => {
-          if (isPrivate) return
-
-          if (reblogged ?? false) {
-            client.unreblogStatus(status.reblog?.id ?? status.id)
-            setActions.setReblogged(
-              status.appIndex,
-              status.reblog?.id ?? status.id,
-              false,
-            )
-            setReblogged(false)
-            onStatusChange?.({ reblogged: false })
-          } else {
-            client.reblogStatus(status.reblog?.id ?? status.id)
-            setActions.setReblogged(
-              status.appIndex,
-              status.reblog?.id ?? status.id,
-              true,
-            )
-            setReblogged(true)
-            onStatusChange?.({ reblogged: true })
-          }
-        }}
+        disabled={isPrivate || pendingAction}
+        onClick={() =>
+          applyAction(
+            () =>
+              reblogged
+                ? client.unreblogStatus(statusId)
+                : client.reblogStatus(statusId),
+            () => {
+              setActions.setReblogged(status.appIndex, statusId, !reblogged)
+              setReblogged(!reblogged)
+              onStatusChange?.({ reblogged: !reblogged })
+            },
+          )
+        }
         type="button"
       >
         {reblogIcon}
       </button>
       <button
-        onClick={() => {
-          if (favourited ?? false) {
-            client.unfavouriteStatus(status.reblog?.id ?? status.id)
-            setActions.setFavourited(
-              status.appIndex,
-              status.reblog?.id ?? status.id,
-              false,
-            )
-            setFavourited(false)
-            onStatusChange?.({ favourited: false })
-          } else {
-            client.favouriteStatus(status.reblog?.id ?? status.id)
-            setActions.setFavourited(
-              status.appIndex,
-              status.reblog?.id ?? status.id,
-              true,
-            )
-            setFavourited(true)
-            onStatusChange?.({ favourited: true })
-          }
-        }}
+        disabled={pendingAction}
+        onClick={() =>
+          applyAction(
+            () =>
+              favourited
+                ? client.unfavouriteStatus(statusId)
+                : client.favouriteStatus(statusId),
+            () => {
+              setActions.setFavourited(status.appIndex, statusId, !favourited)
+              setFavourited(!favourited)
+              onStatusChange?.({ favourited: !favourited })
+            },
+          )
+        }
         type="button"
       >
         {(favourited ?? false) ? (
@@ -222,27 +223,20 @@ export const Actions = ({
         </>
       )}
       <button
-        onClick={() => {
-          if (bookmarked ?? false) {
-            client.unbookmarkStatus(status.reblog?.id ?? status.id)
-            setActions.setBookmarked(
-              status.appIndex,
-              status.reblog?.id ?? status.id,
-              false,
-            )
-            setBookmarked(false)
-            onStatusChange?.({ bookmarked: false })
-          } else {
-            client.bookmarkStatus(status.reblog?.id ?? status.id)
-            setActions.setBookmarked(
-              status.appIndex,
-              status.reblog?.id ?? status.id,
-              true,
-            )
-            setBookmarked(true)
-            onStatusChange?.({ bookmarked: true })
-          }
-        }}
+        disabled={pendingAction}
+        onClick={() =>
+          applyAction(
+            () =>
+              bookmarked
+                ? client.unbookmarkStatus(statusId)
+                : client.bookmarkStatus(statusId),
+            () => {
+              setActions.setBookmarked(status.appIndex, statusId, !bookmarked)
+              setBookmarked(!bookmarked)
+              onStatusChange?.({ bookmarked: !bookmarked })
+            },
+          )
+        }
         type="button"
       >
         {bookmarked ? (
