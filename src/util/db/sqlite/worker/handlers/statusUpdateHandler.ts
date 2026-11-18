@@ -47,6 +47,10 @@ function resolveUpdateTargetPostId(
   status: Entity.Status,
   localAccountId: number | null,
 ): number | null {
+  const mappedId =
+    localAccountId === null
+      ? undefined
+      : resolvePostIdInternal(db, localAccountId, status.id)
   const normalizedUri = status.uri?.trim() || ''
   if (normalizedUri) {
     const existingRows = db.exec(
@@ -54,14 +58,12 @@ function resolveUpdateTargetPostId(
       { bind: [normalizedUri], returnValue: 'resultRows' },
     ) as number[][]
     if (existingRows.length > 0) {
-      return existingRows[0][0]
+      const uriId = existingRows[0][0]
+      return mappedId == null || mappedId === uriId ? uriId : null
     }
   }
 
-  if (localAccountId !== null) {
-    return resolvePostIdInternal(db, localAccountId, status.id) ?? null
-  }
-  return null
+  return mappedId ?? null
 }
 
 function resolveExistingPostIdForUpdate(

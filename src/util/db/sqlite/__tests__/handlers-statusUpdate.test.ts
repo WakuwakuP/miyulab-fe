@@ -418,6 +418,19 @@ describe('handleUpdateStatus', () => {
     expect(callArgs[2]).toBe(1) // serverId
   })
 
+  it('URI とログイン別の投稿 ID が別の行を指す編集を破棄する', () => {
+    vi.mocked(statusHelpersModule.resolvePostIdInternal).mockReturnValue(99)
+    const { db, calls } = createDbWithExistingPost()
+    const result = handleUpdateStatus(
+      db,
+      JSON.stringify(createMockStatus()),
+      'https://example.com',
+      'login-b',
+    )
+    expect(result.changedTables).toEqual([])
+    expect(calls.some((call) => call.sql === 'BEGIN;')).toBe(false)
+  })
+
   it('投稿が見つからない場合は空の changedTables を返す', () => {
     // 全ての SELECT が空を返す
     const { db } = createMockDb()
