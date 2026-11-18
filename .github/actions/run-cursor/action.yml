@@ -76,6 +76,7 @@ runs:
 
         case "$CURSOR_PROMPT_FILE" in
           .github/cursor/prompts/weekly-package-upgrade.md|\
+          .github/cursor/prompts/sonarqube-verification-fix.md|\
           .github/cursor/prompts/sonarqube-issue-fix.md) ;;
           *)
             echo "::error::prompt is not allowlisted for Cursor CI workflows"
@@ -302,6 +303,10 @@ runs:
 
         raw_result="$RUNNER_TEMP/cursor-result-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.json"
         prompt="$(<"$workspace_root/$CURSOR_PROMPT_FILE")"
+
+        if [[ "$CURSOR_PROMPT_FILE" == ".github/cursor/prompts/sonarqube-verification-fix.md" ]]; then
+          prompt+=$'\n\nVerification output:\n'"$(tail -c 32768 "$RUNNER_TEMP/sonarqube-verification.log")"
+        fi
 
         args=(
           --print
