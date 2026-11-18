@@ -82,7 +82,14 @@ export const Actions = ({
           statusId,
           emoji,
         )
-        await toggleReactionInDb(reactionApp.backendUrl, statusId, true, emoji)
+        await toggleReactionInDb(
+          reactionApp.backendUrl,
+          statusId,
+          true,
+          emoji,
+        ).catch((error) =>
+          console.error('Failed to cache the confirmed emoji reaction:', error),
+        )
         onReactionsChange?.(data.emoji_reactions ?? [])
       } catch (error) {
         console.error('Failed to update emoji reaction:', error)

@@ -63,6 +63,8 @@ export const EmojiReactions = ({
         statusId,
         !reaction.me,
         reaction.name,
+      ).catch((error) =>
+        console.error('Failed to cache the confirmed emoji reaction:', error),
       )
       onReactionsChange(data.emoji_reactions ?? [])
     } catch (error) {
