@@ -61,8 +61,16 @@ export function useVirtuosoTimelineLayout({
 
   if (dataLength !== prevLengthRef.current) {
     const diff = dataLength - prevLengthRef.current
-    if (diff > 0 && !enableScrollToTop) {
-      bottomExpansionRef.current += diff
+    if (diff > 0) {
+      const oldHead = previousKeys.current?.[0]
+      const headIndex =
+        oldHead === undefined ? -1 : (itemKeys?.indexOf(oldHead) ?? -1)
+      if (headIndex >= 0) {
+        // Only rows inserted before the previous head shift its virtual index.
+        bottomExpansionRef.current += diff - headIndex
+      } else if (!enableScrollToTop) {
+        bottomExpansionRef.current += diff
+      }
     }
     prevLengthRef.current = dataLength
   }
@@ -135,8 +143,9 @@ export function useVirtuosoTimelineLayout({
     })
   }, [])
 
-  // 先頭追従: enableScrollToTop && データ変更時に自動スクロール
-  // biome-ignore lint/correctness/useExhaustiveDependencies: dataLength 変化時に先頭へスクロール
+  const headKey = itemKeys?.[0]
+  // 新着で先頭が変わったときだけ追従する
+  // biome-ignore lint/correctness/useExhaustiveDependencies: headKey 変更時に先頭へスクロール
   useEffect(() => {
     if (enableScrollToTop) {
       timer.current = setTimeout(() => {
@@ -146,7 +155,7 @@ export function useVirtuosoTimelineLayout({
     return () => {
       if (timer.current != null) clearTimeout(timer.current)
     }
-  }, [enableScrollToTop, dataLength, scrollToTop])
+  }, [enableScrollToTop, headKey, scrollToTop])
 
   // ---- Footer コンポーネントファクトリ ----
 

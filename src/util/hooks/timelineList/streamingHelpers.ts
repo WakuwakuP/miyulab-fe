@@ -89,7 +89,9 @@ export function resolveStreamingFetchWindow(
   ) {
     return {
       cursor: undefined,
-      limit: Math.max(pageSize, state.sortedItems.length + pageSize),
+      limit: changedTables.has(NOTIFICATION_READ_CHANGE)
+        ? state.sortedItems.length + pageSize
+        : Math.max(pageSize, state.sortedItems.length),
     }
   }
 
