@@ -212,6 +212,19 @@ runs:
           "$GITHUB_ACTION_PATH/config/$CURSOR_MODE.json" \
           > "$CURSOR_AGENT_HOME/.cursor/cli-config.json"
 
+    - name: Disable shell for SonarQube edits
+      if: ${{ inputs.prompt-file == '.github/cursor/prompts/sonarqube-issue-fix.md' || inputs.prompt-file == '.github/cursor/prompts/sonarqube-verification-fix.md' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        config="$CURSOR_AGENT_HOME/.cursor/cli-config.json"
+        updated="$(mktemp "$config.XXXXXX")"
+        jq '
+          .permissions.allow |= map(select(startswith("Shell(") | not)) |
+          .permissions.deny += ["Shell(*)"]
+        ' "$config" > "$updated"
+        mv --no-target-directory "$updated" "$config"
+
     - name: Configure SonarQube MCP
       if: ${{ inputs.prompt-file == '.github/cursor/prompts/sonarqube-issue-fix.md' }}
       shell: bash
@@ -238,9 +251,7 @@ runs:
           }' > "$CURSOR_AGENT_HOME/.cursor/mcp.json"
         mcp_config="$(mktemp "$CURSOR_AGENT_HOME/.cursor/cli-config.XXXXXX")"
         jq '
-          .permissions.allow |= map(select(startswith("Shell(") | not)) |
-          .permissions.allow += ["Mcp(sonarqube:*)"] |
-          .permissions.deny += ["Shell(*)"]
+          .permissions.allow += ["Mcp(sonarqube:*)"]
         ' \
           "$CURSOR_AGENT_HOME/.cursor/cli-config.json" > "$mcp_config"
         mv --no-target-directory \
