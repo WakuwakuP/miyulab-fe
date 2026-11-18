@@ -576,6 +576,32 @@ describe('スコープ付きバッチ (実 DB, 2 アカウント)', () => {
     expect(read(BACKEND_A)).toEqual([first])
   })
 
+  it('resolves two logins at one URL by verified remote ID and keeps global ownership private', () => {
+    const { postId, laA } = seedSharedPost()
+    handleEnsureLocalAccount(
+      db,
+      BACKEND_A,
+      JSON.stringify(account('second-login', 'second@a.test')),
+    )
+    expect(resolveLocalAccountId(db, BACKEND_A, 'me-a')).toBe(laA)
+    const second = resolveLocalAccountId(db, BACKEND_A, 'second-login')
+    expect(second).not.toBeNull()
+    expect(second).not.toBe(laA)
+    native
+      .prepare(
+        'UPDATE post_stats SET emoji_reactions_json = ? WHERE post_id = ?',
+      )
+      .run(JSON.stringify([{ count: 1, me: true, name: '⭐' }]), postId)
+    const result = executeFlatFetch(db, {
+      backendUrls: [BACKEND_A],
+      displayOrder: [{ id: postId, table: 'posts' }],
+      notificationIds: [],
+      postIds: [postId],
+    })
+    expect(result.posts.get(postId)?.localRemoteAccountId).toBe('me-a')
+    expect(result.posts.get(postId)?.emoji_reactions?.[0]?.me).toBe(false)
+  })
+
   it('backendUrls=[a] → A の投票/お気に入りのみ参照し B に漏れない', () => {
     const { postId } = seedSharedPost()
     const result = executeFlatFetch(db, {

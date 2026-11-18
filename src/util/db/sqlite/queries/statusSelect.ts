@@ -49,7 +49,7 @@ const INTERACTIONS_JSON_EXPR = `json_object(
       'is_bookmarked', pi2.is_bookmarked,
       'is_muted', pi2.is_muted,
       'is_pinned', pi2.is_pinned,
-      'my_reaction_name', pi2.my_reaction_name,
+      'my_reaction_name', CASE WHEN json_valid(pi2.confirmed_reactions_json) THEN NULL ELSE pi2.my_reaction_name END,
       'my_reaction_url', pi2.my_reaction_url
     )`
 
@@ -317,7 +317,7 @@ export function buildScopedEngagementsSql(
       'is_bookmarked', pi.is_bookmarked,
       'is_muted', pi.is_muted,
       'is_pinned', pi.is_pinned,
-      'my_reaction_name', pi.my_reaction_name,
+      'my_reaction_name', CASE WHEN json_valid(pi.confirmed_reactions_json) THEN NULL ELSE pi.my_reaction_name END,
       'my_reaction_url', pi.my_reaction_url
     ) AS interactions_json
   FROM post_interactions pi

@@ -83,6 +83,7 @@ export async function changeEmojiReaction(
   add: boolean,
   onChange?: (reactions: Entity.Reaction[]) => void,
   displayed: Entity.Reaction[] = [],
+  remoteAccountId?: string | null,
 ) {
   const id = key(app, statusId)
   const previous = requestTails.get(id)
@@ -92,6 +93,10 @@ export async function changeEmojiReaction(
   try {
     latest = (await previous) ?? latest
     const client = GetClient(app)
+    const loginId =
+      remoteAccountId === null
+        ? (await client.verifyAccountCredentials()).data.id
+        : remoteAccountId
     const { data } = add
       ? await client.createEmojiReaction(statusId, emoji)
       : await client.deleteEmojiReaction(statusId, emoji)
@@ -117,7 +122,14 @@ export async function changeEmojiReaction(
     for (const read of activeReads) read.set(id, change)
     onChange?.(latest)
     try {
-      await toggleReactionInDb(app.backendUrl, statusId, add, emoji, latest)
+      await toggleReactionInDb(
+        app.backendUrl,
+        statusId,
+        add,
+        emoji,
+        latest,
+        loginId,
+      )
     } catch (error) {
       // Keep in-flight reads consistent while allowing later sync to recover.
       setTimeout(() => {

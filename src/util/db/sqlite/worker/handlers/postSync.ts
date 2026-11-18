@@ -309,12 +309,23 @@ export function syncPostStats(
       me: owned.delete(normalized(reaction.name)),
     }))
     const next = JSON.stringify([...merged, ...owned.values()])
-    if (next === cached) return
+    const mine = [...merged, ...owned.values()].find((r) => r.me)
     db.exec(
-      'UPDATE post_interactions SET confirmed_reactions_json = ? WHERE post_id = ? AND local_account_id = ?',
-      { bind: [next, postId, localAccountId] },
+      'UPDATE post_interactions SET confirmed_reactions_json = ?, my_reaction_name = ?, my_reaction_url = ? WHERE post_id = ? AND local_account_id = ? AND (confirmed_reactions_json IS NOT ? OR my_reaction_name IS NOT ? OR my_reaction_url IS NOT ?)',
+      {
+        bind: [
+          next,
+          mine?.name ?? null,
+          mine?.url ?? null,
+          postId,
+          localAccountId,
+          next,
+          mine?.name ?? null,
+          mine?.url ?? null,
+        ],
+      },
     )
-    collector?.add('post_interactions')
+    if (lastChangeCount(db) > 0) collector?.add('post_interactions')
   }
 }
 

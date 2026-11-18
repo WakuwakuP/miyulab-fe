@@ -35,8 +35,12 @@ function withLocalAccountId<T>(
   db: any,
   backendUrl: string,
   handler: (localAccountId: number) => T,
+  remoteAccountId?: string,
 ): T | typeof EMPTY_CHANGED_TABLES {
-  const localAccountId = resolveLocalAccountId(db, backendUrl)
+  const localAccountId =
+    remoteAccountId === undefined
+      ? resolveLocalAccountId(db, backendUrl)
+      : resolveLocalAccountId(db, backendUrl, remoteAccountId)
   if (localAccountId == null) {
     return EMPTY_CHANGED_TABLES
   }
@@ -562,6 +566,7 @@ async function initMainThreadFallback(
                 command.emoji,
                 command.confirmedReactions,
               ),
+            command.remoteAccountId,
           )
           break
 

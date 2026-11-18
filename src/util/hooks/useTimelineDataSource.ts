@@ -62,6 +62,7 @@ import {
 } from 'util/hooks/useResolvedAccounts'
 import { AppsContext } from 'util/provider/AppsProvider'
 import { NotificationReadContext } from 'util/provider/NotificationReadProvider'
+import { PostAccountContext } from 'util/provider/PostAccountProvider'
 import {
   normalizeBackendFilter,
   resolveBackendUrls,
@@ -125,6 +126,16 @@ export function useTimelineDataSource(
   options?: UseTimelineDataSourceOptions,
 ) {
   const apps = useContext(AppsContext)
+  const verified = useContext(PostAccountContext)
+  const timelineApps = useMemo(
+    () =>
+      apps.map((app, i) => ({
+        backendUrl: app.backendUrl,
+        localRemoteAccountId: verified.find(({ index }) => index === i)?.account
+          .id,
+      })),
+    [apps, verified],
+  )
   const { sync: syncReadState } = useContext(NotificationReadContext)
 
   // バックエンド解決
@@ -264,7 +275,7 @@ export function useTimelineDataSource(
 
         const items = buildTimelineItemsFromGraphResult(
           result,
-          apps,
+          timelineApps,
           targetBackendUrls,
         )
 
@@ -285,7 +296,7 @@ export function useTimelineDataSource(
         reactionRead.finish()
       }
     },
-    [basePlan, targetBackendUrls, apps],
+    [basePlan, targetBackendUrls, apps, timelineApps],
   )
 
   const fetchInteractionUpdates = useCallback(
@@ -331,7 +342,7 @@ export function useTimelineDataSource(
         if (fetchVersionRef.current !== version) return null
         const items = buildTimelineItemsFromFlatResult(
           result,
-          apps,
+          timelineApps,
           targetBackendUrls,
         )
         return {
@@ -352,6 +363,7 @@ export function useTimelineDataSource(
       config.queryPlan,
       targetBackendUrls,
       config.advancedQuery,
+      timelineApps,
     ],
   )
 

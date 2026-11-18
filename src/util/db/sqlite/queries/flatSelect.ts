@@ -162,7 +162,7 @@ export const NOTIFICATION_FLAT_SELECT = `
   COALESCE(ap.header_url, '') AS actor_header,
   COALESCE(ap.is_locked, 0) AS actor_locked,
   COALESCE(ap.is_bot, 0) AS actor_bot,
-  COALESCE(ap.actor_uri, '') AS actor_url`
+  COALESCE(ap.actor_uri, '') AS actor_url, la.remote_account_id`
 
 // ================================================================
 // Notification コア JOIN（3 JOIN、関連投稿なし）

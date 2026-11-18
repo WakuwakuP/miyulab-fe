@@ -49,6 +49,7 @@ const MAX_QUERY_LIMIT = 2147483647
 export interface SqliteStoredNotification extends Entity.Notification {
   isRead: boolean | null
   notification_id: number
+  localRemoteAccountId?: string
   backendUrl: string
   created_at_ms: number
 }
@@ -311,6 +312,7 @@ export function rowToStoredNotification(
     id: (row[4] as string) ?? String(row[0]),
     isRead: row[5] === null ? null : row[5] === 1,
     // SqliteStoredNotification extra fields
+    localRemoteAccountId: row[42] as string | undefined,
     notification_id: row[0] as number,
     ...(reaction ? { reaction } : {}),
     status,

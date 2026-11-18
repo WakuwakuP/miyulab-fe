@@ -290,6 +290,7 @@ export type ToggleReactionRequest = {
   backendUrl: string
   statusId: string
   value: boolean
+  remoteAccountId?: string
   confirmedReactions?: Entity.Reaction[]
   emoji: string // ':blobcat:' or '👍'
 }

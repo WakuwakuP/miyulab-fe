@@ -19,6 +19,7 @@ import { GetClient } from 'util/GetClient'
 import { changeEmojiReaction } from 'util/hooks/timelineList/confirmedReactions'
 import { AppsContext } from 'util/provider/AppsProvider'
 import { SetActionsContext } from 'util/provider/HomeTimelineProvider'
+import { PostAccountContext } from 'util/provider/PostAccountProvider'
 import { SetReplyToContext } from 'util/provider/ReplyToProvider'
 import { SettingContext } from 'util/provider/SettingProvider'
 
@@ -32,6 +33,16 @@ export const Actions = ({
   onStatusChange?: (updates: Partial<Entity.Status>) => void
 }) => {
   const apps = useContext(AppsContext)
+  const accounts = useContext(PostAccountContext)
+  const remoteAccountId =
+    accounts.find(({ index }) => index === status.appIndex)?.account.id ??
+    (apps.some(
+      (app, i) =>
+        i !== status.appIndex &&
+        app.backendUrl === apps[status.appIndex]?.backendUrl,
+    )
+      ? null
+      : undefined)
 
   const setActions = useContext(SetActionsContext)
 
@@ -80,12 +91,13 @@ export const Actions = ({
           true,
           onReactionsChange,
           status.reblog?.emoji_reactions ?? status.emoji_reactions ?? [],
+          remoteAccountId,
         )
       } catch (error) {
         console.error('Failed to update emoji reaction:', error)
       }
     },
-    [apps, status, onReactionsChange],
+    [apps, status, onReactionsChange, remoteAccountId],
   )
 
   const openPicker = useCallback(() => {

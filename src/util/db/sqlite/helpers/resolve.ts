@@ -22,7 +22,18 @@ export function resolvePostId(
 export function resolveLocalAccountId(
   db: DbExecCompat,
   backendUrl: string,
+  remoteAccountId?: string,
 ): number | null {
+  if (remoteAccountId !== undefined) {
+    const rows = db.exec(
+      'SELECT id FROM local_accounts WHERE backend_url = ? AND remote_account_id = ?;',
+      {
+        bind: [backendUrl, remoteAccountId],
+        returnValue: 'resultRows',
+      },
+    ) as number[][]
+    return rows[0]?.[0] ?? null
+  }
   const cached = localAccountIdCache.get(backendUrl)
   if (cached !== undefined) return cached
 

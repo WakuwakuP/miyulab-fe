@@ -338,7 +338,11 @@ function dispatchWorkerRequest(msg: WorkerRequest, db: WorkerDb): void {
 
     // ---- Reaction ----
     case 'toggleReaction': {
-      const localAccountId = resolveLocalAccountId(db, msg.backendUrl)
+      const localAccountId = resolveLocalAccountId(
+        db,
+        msg.backendUrl,
+        msg.remoteAccountId,
+      )
       if (localAccountId == null) {
         sendResponse(msg.id, { ok: true }, [])
         break

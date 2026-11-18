@@ -77,7 +77,7 @@ export const NOTIFICATION_SELECT = `
   (SELECT pv.voted FROM poll_votes pv INNER JOIN polls pl2 ON pv.poll_id = pl2.id WHERE pl2.post_id = rp.id AND pv.local_account_id = n.local_account_id LIMIT 1) AS rp_voted,
   (SELECT pv.own_votes_json FROM poll_votes pv INNER JOIN polls pl2 ON pv.poll_id = pl2.id WHERE pl2.post_id = rp.id AND pv.local_account_id = n.local_account_id LIMIT 1) AS rp_own_votes_json,
   n.reaction_name,
-  n.reaction_url`
+  n.reaction_url, la.remote_account_id`
 
 /**
  * Notification ベース JOIN 句
