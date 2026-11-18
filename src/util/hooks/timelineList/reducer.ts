@@ -41,6 +41,7 @@ export type TimelineListState = {
   hasMoreOlder: boolean
 
   /** scrollback 中に保留されたストリーミング通知の changedTables */
+  deferredPostIds?: ReadonlySet<number>
   deferredChangedTables: ReadonlySet<string> | null
 
   /** API フォールバックで枯渇したリソース (バックエンドURL → リソース種別) */
@@ -71,7 +72,11 @@ export type TimelineListEvent =
   | { items: TimelineItem[]; type: 'STREAMING_FETCH_SUCCEEDED' }
   | { items: TimelineItem[]; type: 'NOTIFICATION_READ_REFRESH_SUCCEEDED' }
   | { items: TimelineItem[]; type: 'INTERACTION_UPDATES_SUCCEEDED' }
-  | { changedTables: ReadonlySet<string>; type: 'STREAMING_DEFERRED' }
+  | {
+      changedPostIds?: ReadonlySet<number>
+      changedTables: ReadonlySet<string>
+      type: 'STREAMING_DEFERRED'
+    }
   | { items: TimelineItem[]; type: 'DEFERRED_STREAMING_FLUSH_SUCCEEDED' }
   | { type: 'SCROLLBACK_STARTED' }
   | { items: TimelineItem[]; type: 'SCROLLBACK_DB_SUCCEEDED' }
@@ -170,6 +175,14 @@ export function timelineListReducer(
           state.deferredChangedTables,
           event.changedTables,
         ),
+        deferredPostIds:
+          event.changedPostIds &&
+          (!state.deferredChangedTables || state.deferredPostIds)
+            ? new Set([
+                ...(state.deferredPostIds ?? []),
+                ...event.changedPostIds,
+              ])
+            : undefined,
       }
 
     case 'DEFERRED_STREAMING_FLUSH_SUCCEEDED':
@@ -185,6 +198,7 @@ export function timelineListReducer(
       return {
         ...state,
         deferredChangedTables: null,
+        deferredPostIds: undefined,
         hasMoreOlder: event.hasMoreOlder,
         isScrollbackRunning: false,
       }

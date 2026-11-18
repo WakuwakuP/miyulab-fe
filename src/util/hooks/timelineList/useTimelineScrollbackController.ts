@@ -20,6 +20,7 @@ import { TIMELINE_QUERY_LIMIT } from 'util/environment'
 import type {
   FetchPageOptions,
   FetchPageResult,
+  TimelineItem,
 } from 'util/hooks/useTimelineDataSource'
 import {
   allExhaustedFor,
@@ -29,6 +30,7 @@ import {
 
 import type { TimelineListEvent, TimelineListState } from './reducer'
 import {
+  INTERACTION_RELATED_TABLES,
   NOTIFICATION_READ_CHANGE,
   resolveStreamingFetchWindow,
 } from './streamingHelpers'
@@ -40,6 +42,10 @@ type UseTimelineScrollbackControllerArgs = {
   config: TimelineConfigV2
   dispatch: Dispatch<TimelineListEvent>
   exhaustedResourcesRef: RefObject<ExhaustedResources>
+  fetchInteractionUpdates: (
+    ids: ReadonlySet<number>,
+    items: readonly TimelineItem[],
+  ) => Promise<FetchPageResult | null>
   fetchPage: (options?: FetchPageOptions) => Promise<FetchPageResult | null>
   includeNotifications: boolean
   recordDuration: (ms: number) => void
@@ -70,6 +76,7 @@ export function useTimelineScrollbackController({
   config,
   dispatch,
   exhaustedResourcesRef,
+  fetchInteractionUpdates,
   fetchPage,
   includeNotifications,
   recordDuration,
@@ -156,30 +163,52 @@ export function useTimelineScrollbackController({
             flushState,
             PAGE_SIZE,
           )
-          fetchPage({
-            changedTables: deferredChangedTables.has(NOTIFICATION_READ_CHANGE)
-              ? undefined
-              : deferredChangedTables,
-            cursor,
-            limit,
+          const ids = flushState.deferredPostIds
+          const flush = async () => {
+            if (
+              ids &&
+              [...deferredChangedTables].every((table) =>
+                INTERACTION_RELATED_TABLES.has(table),
+              )
+            ) {
+              const updates = await fetchInteractionUpdates(
+                ids,
+                flushState.sortedItems,
+              )
+              if (updates) {
+                recordDuration(updates.durationMs)
+                dispatch({
+                  items: updates.items,
+                  type: 'INTERACTION_UPDATES_SUCCEEDED',
+                })
+                return
+              }
+            }
+            const result = await fetchPage({
+              changedTables: deferredChangedTables.has(NOTIFICATION_READ_CHANGE)
+                ? undefined
+                : deferredChangedTables,
+              cursor,
+              limit,
+            })
+
+            if (!result) return
+            recordDuration(result.durationMs)
+            dispatch({
+              items: result.items,
+              type: deferredChangedTables.has(NOTIFICATION_READ_CHANGE)
+                ? 'NOTIFICATION_READ_REFRESH_SUCCEEDED'
+                : 'DEFERRED_STREAMING_FLUSH_SUCCEEDED',
+            })
+          }
+          flush().catch(() => {
+            console.warn('Deferred timeline refresh failed')
           })
-            .then((result) => {
-              if (!result) return
-              recordDuration(result.durationMs)
-              dispatch({
-                items: result.items,
-                type: deferredChangedTables.has(NOTIFICATION_READ_CHANGE)
-                  ? 'NOTIFICATION_READ_REFRESH_SUCCEEDED'
-                  : 'DEFERRED_STREAMING_FLUSH_SUCCEEDED',
-              })
-            })
-            .catch(() => {
-              console.warn('Deferred timeline refresh failed')
-            })
         }
       }
     }
   }, [
+    fetchInteractionUpdates,
     fetchPage,
     recordDuration,
     config,

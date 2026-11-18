@@ -153,6 +153,7 @@ export function useTimelineList(
     config,
     dispatch,
     exhaustedResourcesRef,
+    fetchInteractionUpdates,
     fetchPage,
     includeNotifications,
     recordDuration,

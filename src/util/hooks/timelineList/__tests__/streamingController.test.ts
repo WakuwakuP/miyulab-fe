@@ -299,6 +299,7 @@ describe('createStreamingController', () => {
 
     await vi.waitFor(() => {
       expect(h.events).toContainEqual({
+        changedPostIds: new Set([7]),
         changedTables: new Set(['post_interactions']),
         type: 'STREAMING_DEFERRED',
       })
