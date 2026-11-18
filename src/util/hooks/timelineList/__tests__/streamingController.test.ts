@@ -121,7 +121,7 @@ describe('shouldBypassStreamingCursor', () => {
 // --------------- resolveStreamingFetchWindow ---------------
 
 describe('resolveStreamingFetchWindow', () => {
-  it('post_interactions 単独変更では cursor なしで表示件数より広い window を取得する', () => {
+  it('post_interactions 単独変更では cursor なしで表示件数を維持し過去ページを追加しない', () => {
     const result = resolveStreamingFetchWindow(
       new Set(['post_interactions']),
       {
@@ -134,7 +134,7 @@ describe('resolveStreamingFetchWindow', () => {
 
     expect(result).toEqual({
       cursor: undefined,
-      limit: 120,
+      limit: 80,
     })
   })
 
