@@ -76,6 +76,7 @@ runs:
 
         case "$CURSOR_PROMPT_FILE" in
           .github/cursor/prompts/weekly-package-upgrade.md|\
+          .github/cursor/prompts/sonarqube-verification-fix.md|\
           .github/cursor/prompts/sonarqube-issue-fix.md) ;;
           *)
             echo "::error::prompt is not allowlisted for Cursor CI workflows"
@@ -211,6 +212,19 @@ runs:
           "$GITHUB_ACTION_PATH/config/$CURSOR_MODE.json" \
           > "$CURSOR_AGENT_HOME/.cursor/cli-config.json"
 
+    - name: Disable shell for SonarQube edits
+      if: ${{ inputs.prompt-file == '.github/cursor/prompts/sonarqube-issue-fix.md' || inputs.prompt-file == '.github/cursor/prompts/sonarqube-verification-fix.md' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        config="$CURSOR_AGENT_HOME/.cursor/cli-config.json"
+        updated="$(mktemp "$config.XXXXXX")"
+        jq '
+          .permissions.allow |= map(select(startswith("Shell(") | not)) |
+          .permissions.deny += ["Shell(*)"]
+        ' "$config" > "$updated"
+        mv --no-target-directory "$updated" "$config"
+
     - name: Configure SonarQube MCP
       if: ${{ inputs.prompt-file == '.github/cursor/prompts/sonarqube-issue-fix.md' }}
       shell: bash
@@ -237,9 +251,7 @@ runs:
           }' > "$CURSOR_AGENT_HOME/.cursor/mcp.json"
         mcp_config="$(mktemp "$CURSOR_AGENT_HOME/.cursor/cli-config.XXXXXX")"
         jq '
-          .permissions.allow |= map(select(startswith("Shell(") | not)) |
-          .permissions.allow += ["Mcp(sonarqube:*)"] |
-          .permissions.deny += ["Shell(*)"]
+          .permissions.allow += ["Mcp(sonarqube:*)"]
         ' \
           "$CURSOR_AGENT_HOME/.cursor/cli-config.json" > "$mcp_config"
         mv --no-target-directory \
@@ -302,6 +314,10 @@ runs:
 
         raw_result="$RUNNER_TEMP/cursor-result-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.json"
         prompt="$(<"$workspace_root/$CURSOR_PROMPT_FILE")"
+
+        if [[ "$CURSOR_PROMPT_FILE" == ".github/cursor/prompts/sonarqube-verification-fix.md" ]]; then
+          prompt+=$'\n\nVerification output:\n'"$(tail -c 32768 "$RUNNER_TEMP/sonarqube-verification.log")"
+        fi
 
         args=(
           --print
