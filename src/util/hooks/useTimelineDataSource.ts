@@ -64,7 +64,7 @@ import { AppsContext } from 'util/provider/AppsProvider'
 import { NotificationReadContext } from 'util/provider/NotificationReadProvider'
 import {
   AccountVerificationReadyContext,
-  PostAccountContext,
+  TimelineAccountIdsContext,
 } from 'util/provider/PostAccountProvider'
 import {
   normalizeBackendFilter,
@@ -130,15 +130,14 @@ export function useTimelineDataSource(
 ) {
   const apps = useContext(AppsContext)
   const verificationReady = useContext(AccountVerificationReadyContext)
-  const verified = useContext(PostAccountContext)
+  const timelineIds = useContext(TimelineAccountIdsContext)
   const timelineApps = useMemo(
     () =>
       apps.map((app, i) => ({
         backendUrl: app.backendUrl,
-        localRemoteAccountId: verified.find(({ index }) => index === i)?.account
-          .id,
+        localRemoteAccountId: timelineIds[i],
       })),
-    [apps, verified],
+    [apps, timelineIds],
   )
   const { sync: syncReadState } = useContext(NotificationReadContext)
 
