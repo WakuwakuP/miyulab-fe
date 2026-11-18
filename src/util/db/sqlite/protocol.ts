@@ -149,7 +149,7 @@ export type UpdateStatusActionRequest = {
 /** Status 全体の更新（編集された投稿用） */
 export type UpdateStatusRequest = {
   type: 'updateStatus'
-  remoteAccountId?: string
+  remoteAccountId?: string | null
   id: number
   statusJson: string
   backendUrl: string

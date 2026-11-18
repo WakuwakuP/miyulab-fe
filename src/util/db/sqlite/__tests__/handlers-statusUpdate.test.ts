@@ -597,7 +597,7 @@ describe('handleUpdateStatus', () => {
     )
   })
 
-  it('指定ログインを解決できないときはURIが一致しても投稿を更新しない', () => {
+  it('指定ログインが不明でも配信元で照合できた投稿の本文を更新する', () => {
     vi.mocked(helpersModule.resolveLocalAccountId).mockReturnValue(null)
     const { db } = createDbWithExistingPost()
 
@@ -614,7 +614,8 @@ describe('handleUpdateStatus', () => {
       'login-b',
       true,
     )
-    expect(result.changedTables).toEqual([])
+    expect(result.changedTables).toContain('posts')
+    expect(postSyncModule.syncPostStats).not.toHaveBeenCalled()
     expect(helpersModule.updateInteraction).not.toHaveBeenCalled()
   })
 

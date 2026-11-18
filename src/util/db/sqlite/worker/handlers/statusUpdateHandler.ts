@@ -250,8 +250,8 @@ function applyStatusUpdate(
 
   upsertMentionsInternal(db, postId, status.mentions, collector)
   syncPostMedia(db, postId, status.media_attachments, collector)
-  syncPostStats(db, postId, status, collector, now, localAccountId)
   if (localAccountId !== null) {
+    syncPostStats(db, postId, status, collector, now, localAccountId)
     syncStatusInteractions(db, postId, localAccountId, status, collector, now)
   }
 
@@ -282,19 +282,32 @@ export function handleUpdateStatus(
   db: DbExec,
   statusJson: string,
   backendUrl: string,
-  remoteAccountId?: string,
+  remoteAccountId?: string | null,
 ): HandlerResult {
   const status = JSON.parse(statusJson) as Entity.Status
   const now = Date.now()
 
-  const localAccountId = resolveLocalAccountId(
-    db,
-    backendUrl,
-    remoteAccountId,
-    true,
-  )
-  if (localAccountId === null) return { changedTables: [] }
-  const postId = resolveExistingPostIdForUpdate(db, status, localAccountId)
+  const localAccountId =
+    remoteAccountId === null
+      ? null
+      : resolveLocalAccountId(db, backendUrl, remoteAccountId, true)
+  // Without a verified login, require both the source server's local post ID
+  // and the ActivityPub URI before applying shared content.
+  const postId =
+    localAccountId === null
+      ? ((
+          db.exec(
+            `SELECT p.id FROM posts p JOIN post_backend_ids pb ON pb.post_id = p.id
+         JOIN servers s ON s.id = pb.server_id
+         WHERE s.host = ? AND pb.local_id = ? AND p.object_uri = ? AND p.object_uri != ''
+         LIMIT 1`,
+            {
+              bind: [new URL(backendUrl).host, status.id, status.uri ?? ''],
+              returnValue: 'resultRows',
+            },
+          ) as number[][]
+        )[0]?.[0] ?? null)
+      : resolveExistingPostIdForUpdate(db, status, localAccountId)
   if (postId === null) return { changedTables: [] }
 
   const collector: WrittenTableCollector = new Set()

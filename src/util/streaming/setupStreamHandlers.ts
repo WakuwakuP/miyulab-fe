@@ -75,8 +75,9 @@ export function setupStreamHandlers(
       })
     }
     try {
-      const account = options?.app ? await verifyLogin(options.app) : undefined
-      await updateStatus(status, backendUrl, account?.id)
+      const account =
+        options?.app && (await verifyLogin(options.app).catch(() => undefined))
+      await updateStatus(status, backendUrl, account?.id ?? null)
     } catch (error) {
       console.error('updateStatus failed:', error)
     }
