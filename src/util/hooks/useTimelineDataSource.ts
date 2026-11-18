@@ -154,7 +154,11 @@ export function useTimelineDataSource(
   const awaitingLogin =
     !verificationReady &&
     targetBackendUrls.some(
-      (url) => apps.filter((app) => app.backendUrl === url).length > 1,
+      (url) =>
+        apps.filter((app) => app.backendUrl === url).length > 1 &&
+        !timelineApps.some(
+          (app) => app.backendUrl === url && app.localRemoteAccountId,
+        ),
     )
 
   // アカウント解決

@@ -94,9 +94,23 @@ export const PostAccountProvider = ({
 
     ;(async () => {
       try {
-        const results = await Promise.allSettled(
+        const shared = apps.map((app, i) =>
+          apps.some(
+            (other, j) => j !== i && other.backendUrl === app.backendUrl,
+          ),
+        )
+        const verification = Promise.allSettled(
           apps.map((app, index) => verifyAppAccount(app, index)),
         )
+        if (cancelled) return
+        const cachedIds = await Promise.all(
+          apps.map((app, i) =>
+            shared[i] ? timelineAccountId(app) : undefined,
+          ),
+        )
+        if (cancelled) return
+        setTimelineIds(cachedIds)
+        const results = await verification
         if (cancelled) return
         const fulfilled = results
           .filter(
@@ -111,11 +125,9 @@ export const PostAccountProvider = ({
               result.status === 'fulfilled'
                 ? result.value.account.id
                 : undefined
-            return apps.some(
-              (other, j) => j !== i && other.backendUrl === app.backendUrl,
-            )
+            return shared[i] && id
               ? timelineAccountId(app, id)
-              : id
+              : (id ?? cachedIds[i])
           }),
         )
         if (cancelled) return
