@@ -352,11 +352,13 @@ export function createStatusWriteStore(
   function updateStatus(
     status: Entity.Status,
     backendUrl: string,
+    remoteAccountId?: string,
   ): Promise<void> {
     return enqueueOperation(async (handle) => {
       await handle.sendCommand({
         backendUrl,
         statusJson: JSON.stringify(status),
+        ...(remoteAccountId === undefined ? {} : { remoteAccountId }),
         type: 'updateStatus',
       })
     })

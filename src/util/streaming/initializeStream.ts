@@ -13,7 +13,7 @@ export type InitializeStreamDeps = {
     key: string,
     type: StreamType,
     backendUrl: string,
-    options?: { tag?: string; backend?: Backend },
+    options?: { tag?: string; backend?: Backend; app?: App },
   ) => void
 }
 
@@ -72,7 +72,7 @@ export async function initializeStream(
     })
 
     // イベントハンドラ登録
-    deps.setupStreamHandlers(stream, key, type, backendUrl, options)
+    deps.setupStreamHandlers(stream, key, type, backendUrl, { ...options, app })
   } catch (error) {
     console.warn(`Failed to create stream ${key}:`, (error as Error).message)
     // エラー発生時もレジストリを更新（リトライ可能な状態にする）

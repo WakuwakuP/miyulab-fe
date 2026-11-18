@@ -45,7 +45,7 @@ const STALE_INTERACTION_FALSE_PROTECTION_MS = 60_000
 function resolveUpdateTargetPostId(
   db: DbExec,
   status: Entity.Status,
-  backendUrl: string,
+  localAccountId: number | null,
 ): number | null {
   const normalizedUri = status.uri?.trim() || ''
   if (normalizedUri) {
@@ -58,14 +58,19 @@ function resolveUpdateTargetPostId(
     }
   }
 
-  const localAccountIdForLookup = resolveLocalAccountId(
-    db,
-    backendUrl,
-    undefined,
-    true,
-  )
-  if (localAccountIdForLookup !== null) {
-    return resolvePostIdInternal(db, localAccountIdForLookup, status.id) ?? null
+  const url = status.url?.trim()
+  if (url) {
+    const rows = db.exec(
+      'SELECT id FROM posts WHERE canonical_url = ? LIMIT 2;',
+      {
+        bind: [url],
+        returnValue: 'resultRows',
+      },
+    ) as number[][]
+    if (rows.length === 1) return rows[0][0]
+  }
+  if (localAccountId !== null) {
+    return resolvePostIdInternal(db, localAccountId, status.id) ?? null
   }
   return null
 }
@@ -73,9 +78,9 @@ function resolveUpdateTargetPostId(
 function resolveExistingPostIdForUpdate(
   db: DbExec,
   status: Entity.Status,
-  backendUrl: string,
+  localAccountId: number | null,
 ): number | null {
-  const postId = resolveUpdateTargetPostId(db, status, backendUrl)
+  const postId = resolveUpdateTargetPostId(db, status, localAccountId)
   if (postId === null) return null
 
   const existing = db.exec('SELECT id FROM posts WHERE id = ?;', {
@@ -157,6 +162,7 @@ function applyStatusUpdate(
   postId: number,
   status: Entity.Status,
   backendUrl: string,
+  localAccountId: number | null,
   now: number,
   collector: WrittenTableCollector,
 ): void {
@@ -255,7 +261,6 @@ function applyStatusUpdate(
 
   upsertMentionsInternal(db, postId, status.mentions, collector)
   syncPostMedia(db, postId, status.media_attachments, collector)
-  const localAccountId = resolveLocalAccountId(db, backendUrl, undefined, true)
   syncPostStats(db, postId, status, collector, now, localAccountId)
   if (localAccountId !== null) {
     syncStatusInteractions(db, postId, localAccountId, status, collector, now)
@@ -288,18 +293,33 @@ export function handleUpdateStatus(
   db: DbExec,
   statusJson: string,
   backendUrl: string,
+  remoteAccountId?: string,
 ): HandlerResult {
   const status = JSON.parse(statusJson) as Entity.Status
   const now = Date.now()
 
-  const postId = resolveExistingPostIdForUpdate(db, status, backendUrl)
+  const localAccountId = resolveLocalAccountId(
+    db,
+    backendUrl,
+    remoteAccountId,
+    true,
+  )
+  const postId = resolveExistingPostIdForUpdate(db, status, localAccountId)
   if (postId === null) return { changedTables: [] }
 
   const collector: WrittenTableCollector = new Set()
 
   db.exec('BEGIN;')
   try {
-    applyStatusUpdate(db, postId, status, backendUrl, now, collector)
+    applyStatusUpdate(
+      db,
+      postId,
+      status,
+      backendUrl,
+      localAccountId,
+      now,
+      collector,
+    )
     db.exec('COMMIT;')
   } catch (e) {
     db.exec('ROLLBACK;')

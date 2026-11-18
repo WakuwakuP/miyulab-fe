@@ -212,7 +212,12 @@ function dispatchWorkerRequest(msg: WorkerRequest, db: WorkerDb): void {
     }
 
     case 'updateStatus': {
-      const r = handleUpdateStatus(db, msg.statusJson, msg.backendUrl)
+      const r = handleUpdateStatus(
+        db,
+        msg.statusJson,
+        msg.backendUrl,
+        msg.remoteAccountId,
+      )
       sendResponse(msg.id, { ok: true }, r.changedTables, undefined, {
         backendUrl: msg.backendUrl,
       })

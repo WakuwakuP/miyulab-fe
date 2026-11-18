@@ -35,6 +35,7 @@ import {
 import { GetClient } from 'util/GetClient'
 import { getRetryDelay, MAX_RETRY_COUNT } from 'util/streaming/constants'
 import { restartStream, stopStream } from 'util/streaming/stopStream'
+import { verifyLogin } from 'util/verifiedLogin'
 import { AppsContext } from './AppsProvider'
 import { NotificationReadContext } from './NotificationReadProvider'
 import { SetTagsContext, SetUsersContext } from './ResourceProvider'
@@ -264,7 +265,8 @@ async function handleStreamStatusUpdate(
   status: Entity.Status,
 ): Promise<void> {
   captureHomeStreamEventIfEnabled(app, backendUrl, 'status_update', status)
-  await updateStatus(status, backendUrl)
+  const account = await verifyLogin(app).catch(() => undefined)
+  await updateStatus(status, backendUrl, account?.id)
 }
 
 async function handleStreamNotification(

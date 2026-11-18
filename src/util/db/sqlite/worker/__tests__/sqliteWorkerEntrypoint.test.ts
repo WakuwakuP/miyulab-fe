@@ -518,6 +518,7 @@ describe('SQLite worker entrypoint', () => {
       dispatch({
         backendUrl: 'https://social.example',
         id: 14,
+        remoteAccountId: 'login-b',
         statusJson: '{"id":"edited"}',
         type: 'updateStatus',
       })
@@ -526,6 +527,7 @@ describe('SQLite worker entrypoint', () => {
         measuredDbArg,
         '{"id":"edited"}',
         'https://social.example',
+        'login-b',
       )
       expectOkResponse(14, ['posts'], {
         backendUrl: 'https://social.example',

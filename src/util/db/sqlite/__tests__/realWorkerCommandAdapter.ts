@@ -101,7 +101,12 @@ export function createSendCommandAdapter(db: DbExec): {
         )
       }
       case 'updateStatus':
-        return handleUpdateStatus(db, command.statusJson, command.backendUrl)
+        return handleUpdateStatus(
+          db,
+          command.statusJson,
+          command.backendUrl,
+          command.remoteAccountId,
+        )
       case 'handleDeleteEvent': {
         const localAccountId = resolveLocalAccountId(db, command.backendUrl)
         if (localAccountId == null) return EMPTY_CHANGED_TABLES

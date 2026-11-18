@@ -470,6 +470,7 @@ async function initMainThreadFallback(
             db,
             command.statusJson,
             command.backendUrl,
+            command.remoteAccountId,
           )
           break
         case 'handleDeleteEvent':
