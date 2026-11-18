@@ -11,8 +11,8 @@ import {
   useState,
 } from 'react'
 import type { App } from 'types/types'
-import { GetClient } from 'util/GetClient'
 import { AppsContext } from 'util/provider/AppsProvider'
+import { verifyLogin } from 'util/verifiedLogin'
 
 export type VerifiedAccount = {
   account: Entity.Account
@@ -20,11 +20,10 @@ export type VerifiedAccount = {
 }
 
 function verifyAppAccount(app: App, index: number): Promise<VerifiedAccount> {
-  const client = GetClient(app)
-  return client
-    .verifyAccountCredentials()
-    .then((res) => ({ account: res.data, index }))
+  return verifyLogin(app).then((account) => ({ account, index }))
 }
+
+export const AccountVerificationReadyContext = createContext(false)
 
 export const PostAccountContext = createContext<VerifiedAccount[]>([])
 
@@ -49,14 +48,14 @@ export const PostAccountProvider = ({
 }: Readonly<{ children: ReactNode }>) => {
   const apps = useContext(AppsContext)
   const [selectedAppIndex, setSelectedAppIndex] = useState(0)
-  const [accounts, setAccounts] = useState<VerifiedAccount[]>([])
+  const [accounts, setAccounts] = useState<VerifiedAccount[] | null>(null)
   const [prevApps, setPrevApps] = useState(apps)
 
   // Synchronously clear stale accounts when apps changes (before children render)
   // This prevents stale account indices from referencing out-of-bounds apps
   if (apps !== prevApps) {
     setPrevApps(apps)
-    setAccounts([])
+    setAccounts(null)
   }
 
   useEffect(() => {
@@ -92,12 +91,14 @@ export const PostAccountProvider = ({
   }, [apps])
 
   return (
-    <PostAccountContext.Provider value={accounts}>
-      <SelectedAppIndexContext.Provider value={selectedAppIndex}>
-        <SetSelectedAppIndexContext.Provider value={setSelectedAppIndex}>
-          {children}
-        </SetSelectedAppIndexContext.Provider>
-      </SelectedAppIndexContext.Provider>
-    </PostAccountContext.Provider>
+    <AccountVerificationReadyContext.Provider value={accounts !== null}>
+      <PostAccountContext.Provider value={accounts ?? []}>
+        <SelectedAppIndexContext.Provider value={selectedAppIndex}>
+          <SetSelectedAppIndexContext.Provider value={setSelectedAppIndex}>
+            {children}
+          </SetSelectedAppIndexContext.Provider>
+        </SelectedAppIndexContext.Provider>
+      </PostAccountContext.Provider>
+    </AccountVerificationReadyContext.Provider>
   )
 }

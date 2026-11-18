@@ -36,11 +36,17 @@ function withLocalAccountId<T>(
   backendUrl: string,
   handler: (localAccountId: number) => T,
   remoteAccountId?: string,
+  requireUniqueLogin = false,
 ): T | typeof EMPTY_CHANGED_TABLES {
   const localAccountId =
-    remoteAccountId === undefined
+    !requireUniqueLogin && remoteAccountId === undefined
       ? resolveLocalAccountId(db, backendUrl)
-      : resolveLocalAccountId(db, backendUrl, remoteAccountId)
+      : resolveLocalAccountId(
+          db,
+          backendUrl,
+          remoteAccountId,
+          requireUniqueLogin,
+        )
   if (localAccountId == null) {
     return EMPTY_CHANGED_TABLES
   }
@@ -456,6 +462,7 @@ async function initMainThreadFallback(
                 command.value,
               ),
             command.remoteAccountId,
+            true,
           )
           break
         case 'updateStatus':
@@ -568,6 +575,7 @@ async function initMainThreadFallback(
                 command.confirmedReactions,
               ),
             command.remoteAccountId,
+            true,
           )
           break
 

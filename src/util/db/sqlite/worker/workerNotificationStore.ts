@@ -567,7 +567,7 @@ export function handleUpdateNotificationStatusAction(
   const postId = resolvePostId(db, backendUrl, statusId)
   if (postId === undefined) return { changedTables: [] }
 
-  const localAccountId = resolveLocalAccountId(db, backendUrl)
+  const localAccountId = resolveLocalAccountId(db, backendUrl, undefined, true)
   if (localAccountId === null) return { changedTables: [] }
 
   const normalizedAction = ACTION_NAME_MAP[action]

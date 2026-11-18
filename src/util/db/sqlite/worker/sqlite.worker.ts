@@ -191,6 +191,7 @@ function dispatchWorkerRequest(msg: WorkerRequest, db: WorkerDb): void {
         db,
         msg.backendUrl,
         msg.remoteAccountId,
+        true,
       )
       if (localAccountId == null) {
         sendResponse(msg.id, { ok: true }, [])
@@ -346,6 +347,7 @@ function dispatchWorkerRequest(msg: WorkerRequest, db: WorkerDb): void {
         db,
         msg.backendUrl,
         msg.remoteAccountId,
+        true,
       )
       if (localAccountId == null) {
         sendResponse(msg.id, { ok: true }, [])

@@ -1058,6 +1058,8 @@ describe('handleUpdateNotificationStatusAction', () => {
     expect(resolveLocalAccountId).toHaveBeenCalledWith(
       db,
       'https://example.com',
+      undefined,
+      true,
     )
     expect(updateInteraction).toHaveBeenCalledWith(
       db,

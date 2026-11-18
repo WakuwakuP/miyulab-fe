@@ -7,7 +7,6 @@ import type { StatusAddAppIndex } from 'types/types'
 import { REACTION_BACKENDS } from 'util/constants'
 import { changeEmojiReaction } from 'util/hooks/timelineList/confirmedReactions'
 import { AppsContext } from 'util/provider/AppsProvider'
-import { PostAccountContext } from 'util/provider/PostAccountProvider'
 import {
   EmojiCatalogContext,
   EmojiContext,
@@ -25,10 +24,6 @@ export const EmojiReactions = ({
 }) => {
   const [pending, setPending] = useState(new Set<string>())
   const apps = useContext(AppsContext)
-  const accounts = useContext(PostAccountContext)
-  const remoteAccountId = accounts.find(
-    ({ index }) => index === status.appIndex,
-  )?.account.id
   const emojiCatalog = useContext(EmojiCatalogContext)
   const emojiFallback = useContext(EmojiContext)
 
@@ -65,7 +60,6 @@ export const EmojiReactions = ({
         !reaction.me,
         onReactionsChange,
         reactions,
-        remoteAccountId,
       )
     } catch (error) {
       console.error('Failed to update emoji reaction:', error)

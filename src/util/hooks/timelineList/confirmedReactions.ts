@@ -3,6 +3,7 @@ import type { TimelineItem } from 'types/timelineViewModel'
 import type { App } from 'types/types'
 import { toggleReactionInDb } from 'util/db/sqlite/statusStore'
 import { GetClient } from 'util/GetClient'
+import { verifyLogin } from 'util/verifiedLogin'
 
 type ReactionChange = { reactions: Entity.Reaction[] }
 const pendingWrites = new Map<string, ReactionChange>()
@@ -83,7 +84,6 @@ export async function changeEmojiReaction(
   add: boolean,
   onChange?: (reactions: Entity.Reaction[]) => void,
   displayed: Entity.Reaction[] = [],
-  remoteAccountId?: string | null,
 ) {
   const id = key(app, statusId)
   const previous = requestTails.get(id)
@@ -93,8 +93,7 @@ export async function changeEmojiReaction(
   try {
     latest = (await previous) ?? latest
     const client = GetClient(app)
-    const loginId =
-      remoteAccountId ?? (await client.verifyAccountCredentials()).data.id
+    const loginId = (await verifyLogin(app)).id
     const { data } = add
       ? await client.createEmojiReaction(statusId, emoji)
       : await client.deleteEmojiReaction(statusId, emoji)

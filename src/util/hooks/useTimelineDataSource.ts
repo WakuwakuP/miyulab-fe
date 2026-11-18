@@ -62,7 +62,10 @@ import {
 } from 'util/hooks/useResolvedAccounts'
 import { AppsContext } from 'util/provider/AppsProvider'
 import { NotificationReadContext } from 'util/provider/NotificationReadProvider'
-import { PostAccountContext } from 'util/provider/PostAccountProvider'
+import {
+  AccountVerificationReadyContext,
+  PostAccountContext,
+} from 'util/provider/PostAccountProvider'
 import {
   normalizeBackendFilter,
   resolveBackendUrls,
@@ -126,6 +129,7 @@ export function useTimelineDataSource(
   options?: UseTimelineDataSourceOptions,
 ) {
   const apps = useContext(AppsContext)
+  const verificationReady = useContext(AccountVerificationReadyContext)
   const verified = useContext(PostAccountContext)
   const timelineApps = useMemo(
     () =>
@@ -147,6 +151,12 @@ export function useTimelineDataSource(
     () => resolveBackendUrls(normalizedFilter, apps),
     [normalizedFilter, apps],
   )
+
+  const awaitingLogin =
+    !verificationReady &&
+    targetBackendUrls.some(
+      (url) => apps.filter((app) => app.backendUrl === url).length > 1,
+    )
 
   // アカウント解決
   const localAccountIds = useLocalAccountIds(targetBackendUrls)
@@ -239,7 +249,7 @@ export function useTimelineDataSource(
     async (
       fetchOptions?: FetchPageOptions,
     ): Promise<FetchPageResult | null> => {
-      if (disabledRef.current) return null
+      if (disabledRef.current || awaitingLogin) return null
       if (!basePlan || targetBackendUrls.length === 0) {
         // plan が生成できない場合でも初回コールバックを発火
         if (!hasFiredFirstFetchRef.current && onFirstFetchRef.current) {
@@ -296,7 +306,7 @@ export function useTimelineDataSource(
         reactionRead.finish()
       }
     },
-    [basePlan, targetBackendUrls, apps, timelineApps],
+    [basePlan, targetBackendUrls, apps, timelineApps, awaitingLogin],
   )
 
   const fetchInteractionUpdates = useCallback(
@@ -304,7 +314,7 @@ export function useTimelineDataSource(
       changedPostIds: ReadonlySet<number>,
       visibleItems: readonly TimelineItem[],
     ): Promise<FetchPageResult | null> => {
-      if (disabledRef.current) return null
+      if (disabledRef.current || awaitingLogin) return null
       if (config.customQuery) return null
       if (config.advancedQuery) return null
       if (config.queryPlan != null) return null
@@ -364,6 +374,7 @@ export function useTimelineDataSource(
       targetBackendUrls,
       config.advancedQuery,
       timelineApps,
+      awaitingLogin,
     ],
   )
 
