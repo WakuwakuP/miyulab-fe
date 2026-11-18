@@ -5,21 +5,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { App } from 'types/types'
 import { GetClient } from 'util/GetClient'
 
-export function updateAccountStatus(
-  status: Entity.Status,
-  statusId: string,
-  updates: Partial<Entity.Status>,
-) {
-  if (status.id !== statusId && status.reblog?.id !== statusId) return status
-  return {
-    ...status,
-    ...updates,
-    reblog:
-      status.reblog?.id === statusId
-        ? { ...status.reblog, ...updates }
-        : status.reblog,
-  }
-}
+import { updateAccountStatus } from './updateAccountStatus'
+
+export { updateAccountStatus } from './updateAccountStatus'
 
 export function mergeAccountStatusPage(
   statuses: Entity.Status[],

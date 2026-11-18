@@ -20,6 +20,7 @@ import {
   useTimelineScrollbackController,
   useTimelineStreamingController,
 } from 'util/hooks/timelineList'
+import { subscribeLocalInteraction } from 'util/hooks/timelineList/localInteraction'
 import { useHydrateMissingNotificationStatus } from 'util/hooks/useHydrateMissingNotificationStatus'
 import { useQueryDuration } from 'util/hooks/useQueryDuration'
 import {
@@ -64,6 +65,14 @@ export function useTimelineList(
     timelineListReducer,
     undefined,
     createInitialState,
+  )
+
+  useEffect(
+    () =>
+      subscribeLocalInteraction((change) => {
+        dispatch({ ...change, type: 'LOCAL_INTERACTION' })
+      }),
+    [],
   )
 
   const stateRef = useRef(state)

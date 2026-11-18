@@ -9,13 +9,14 @@
  */
 
 import type { TimelineItem } from 'util/hooks/useTimelineDataSource'
-
+import { updateAccountStatus } from '../updateAccountStatus'
 import {
   itemKey,
   itemNumericId,
   itemTimestamp,
   sortItemsDesc,
 } from './itemHelpers'
+import type { LocalInteraction } from './localInteraction'
 
 // --------------- 状態 ---------------
 
@@ -64,6 +65,7 @@ export function createInitialState(): TimelineListState {
 // --------------- イベント ---------------
 
 export type TimelineListEvent =
+  | ({ type: 'LOCAL_INTERACTION' } & LocalInteraction)
   | { items: TimelineItem[]; type: 'INITIAL_FETCH_SUCCEEDED' }
   | { type: 'INITIAL_FETCH_EMPTY' }
   | { items: TimelineItem[]; type: 'STREAMING_FETCH_SUCCEEDED' }
@@ -107,6 +109,34 @@ export function timelineListReducer(
         },
         event.items,
       )
+
+    case 'LOCAL_INTERACTION': {
+      const items: TimelineItem[] = []
+      for (const item of state.sortedItems) {
+        if (!('backendUrl' in item) || item.backendUrl !== event.backendUrl)
+          continue
+        if ('type' in item) {
+          if (!item.status) continue
+          const status = updateAccountStatus(
+            item.status,
+            event.statusId,
+            event.updates,
+          )
+          if (status !== item.status) items.push({ ...item, status })
+        } else {
+          const status = updateAccountStatus(
+            item,
+            event.statusId,
+            event.updates,
+          )
+          if (status !== item) items.push(status)
+        }
+      }
+      return timelineListReducer(state, {
+        items,
+        type: 'INTERACTION_UPDATES_SUCCEEDED',
+      })
+    }
 
     case 'INTERACTION_UPDATES_SUCCEEDED': {
       if (event.items.length === 0) return state

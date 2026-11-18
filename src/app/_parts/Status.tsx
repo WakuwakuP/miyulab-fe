@@ -30,6 +30,10 @@ import { RiRepeatFill, RiVideoLine } from 'react-icons/ri'
 import type { PollAddAppIndex, StatusAddAppIndex } from 'types/types'
 import { replaceEmojis } from 'util/emojiReplacer'
 import { formatDisplayNameHtml } from 'util/formatDisplayName'
+import {
+  type LocalInteraction,
+  publishLocalInteraction,
+} from 'util/hooks/timelineList/localInteraction'
 import { canPlay } from 'util/PlayerUtils'
 import { AppsContext } from 'util/provider/AppsProvider'
 import { SetDetailContext } from 'util/provider/DetailProvider'
@@ -71,14 +75,29 @@ export const Status = ({
     setLocalReactions(reactions)
   }, [status.emoji_reactions, status.reblog?.emoji_reactions])
 
+  const backendUrl = apps[status.appIndex]?.backendUrl
+  const interactionStatusId = status.reblog?.id ?? status.id
+  const onInteractionChange = useCallback(
+    (updates: LocalInteraction['updates']) => {
+      if (backendUrl)
+        publishLocalInteraction({
+          backendUrl,
+          statusId: interactionStatusId,
+          updates,
+        })
+      onStatusChange?.(updates)
+    },
+    [backendUrl, interactionStatusId, onStatusChange],
+  )
+
   const updateReactions = useCallback(
     (update: (prev: Entity.Reaction[]) => Entity.Reaction[]) => {
       const reactions = update(reactionsRef.current)
       reactionsRef.current = reactions
       setLocalReactions(reactions)
-      onStatusChange?.({ emoji_reactions: reactions })
+      onInteractionChange({ emoji_reactions: reactions })
     },
-    [onStatusChange],
+    [onInteractionChange],
   )
 
   // status が属するサーバの絵文字一覧を取得（カタログ優先、フォールバックで旧 EmojiContext）
@@ -466,7 +485,7 @@ export const Status = ({
       />
       <Actions
         onReactionAdd={handleReactionAdd}
-        onStatusChange={onStatusChange}
+        onStatusChange={onInteractionChange}
         status={status}
       />
     </div>
