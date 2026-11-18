@@ -6,7 +6,7 @@ import { GetClient } from 'util/GetClient'
 
 type ReactionChange = { reactions: Entity.Reaction[] }
 const pendingWrites = new Map<string, ReactionChange>()
-const activeRequests = new Set<string>()
+const requestTails = new Map<string, Promise<void>>()
 const activeReads = new Set<Map<string, ReactionChange>>()
 
 function key(backendUrl: string, statusId: string) {
@@ -55,9 +55,11 @@ export async function changeEmojiReaction(
   onChange?: (reactions: Entity.Reaction[]) => void,
 ) {
   const id = key(app.backendUrl, statusId)
-  if (activeRequests.has(id)) return
-  activeRequests.add(id)
+  const previous = requestTails.get(id)
+  const turn = Promise.withResolvers<void>()
+  requestTails.set(id, turn.promise)
   try {
+    await previous
     const client = GetClient(app)
     const { data } = add
       ? await client.createEmojiReaction(statusId, emoji)
@@ -74,6 +76,7 @@ export async function changeEmojiReaction(
     await toggleReactionInDb(app.backendUrl, statusId, add, emoji)
     pendingWrites.delete(id)
   } finally {
-    activeRequests.delete(id)
+    turn.resolve()
+    if (requestTails.get(id) === turn.promise) requestTails.delete(id)
   }
 }

@@ -27,15 +27,19 @@ it('publishes before persistence and protects stale reads across a failed write 
   const request = changeEmojiReaction(app, '1', '⭐', true, publish)
   await started.promise
   expect(publish).toHaveBeenCalledWith(reactions)
-  await changeEmojiReaction(app, '1', '⭐', true, publish)
+  const nextReactions = [{ count: 1, me: true, name: '🎉' }]
+  create.mockResolvedValueOnce({ data: { emoji_reactions: nextReactions } })
+  const laterRead = trackReactionRead()
+  const queued = changeEmojiReaction(app, '1', '🎉', true, publish)
   expect(create).toHaveBeenCalledTimes(1)
   saving.reject(new Error('write failed'))
   await expect(request).rejects.toThrow('write failed')
-  const laterRead = trackReactionRead()
-  await changeEmojiReaction(app, '1', '⭐', true, publish)
+  await queued
+  expect(create).toHaveBeenLastCalledWith('1', '🎉')
+  expect(publish).toHaveBeenLastCalledWith(nextReactions)
   for (const snapshot of [read, laterRead]) {
     expect(snapshot.apply(rows)[0]).toMatchObject({
-      emoji_reactions: reactions,
+      emoji_reactions: nextReactions,
     })
     snapshot.finish()
   }
