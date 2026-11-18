@@ -552,6 +552,20 @@ describe('スコープ付きバッチ (実 DB, 2 アカウント)', () => {
     )
     expect(read(BACKEND_A)).toEqual([{ ...first, count: 3 }, second])
 
+    upsert(status('shared', { emoji_reactions: [] }), BACKEND_A, 'home')
+    expect(read(BACKEND_A)).toEqual([{ ...first, count: 3 }, second])
+    native
+      .prepare(
+        'UPDATE post_interactions SET confirmed_reactions_json = ? WHERE post_id = ? AND local_account_id = ?',
+      )
+      .run('{', postId, laA)
+    upsert(
+      status('shared', { emoji_reactions: [first, second] }),
+      BACKEND_A,
+      'home',
+    )
+    expect(read(BACKEND_A)).toEqual([first, second])
+
     handleToggleReaction(db, laA, 'shared', false, second.name, [first])
     expect(read(BACKEND_A)).toEqual([first])
   })

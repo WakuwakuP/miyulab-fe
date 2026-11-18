@@ -279,14 +279,27 @@ export function syncPostStats(
     },
   )
   if (lastChangeCount(db) > 0) collector?.add('post_stats')
-  if (localAccountId != null && status.emoji_reactions) {
+  if (localAccountId != null && status.emoji_reactions?.length) {
     const rows = db.exec(
       'SELECT confirmed_reactions_json FROM post_interactions WHERE post_id = ? AND local_account_id = ? AND confirmed_reactions_json IS NOT NULL',
       { bind: [postId, localAccountId], returnValue: 'resultRows' },
     ) as [string][] | undefined
     const cached = rows?.[0]?.[0]
     if (typeof cached !== 'string') return
-    const confirmed = JSON.parse(cached) as Entity.Reaction[]
+    let confirmed: Entity.Reaction[] = status.emoji_reactions
+    try {
+      const parsed: unknown = JSON.parse(cached)
+      if (
+        Array.isArray(parsed) &&
+        parsed.every(
+          (r) => typeof r?.name === 'string' && typeof r.me === 'boolean',
+        )
+      ) {
+        confirmed = parsed
+      }
+    } catch {
+      // An unreadable snapshot can be rebuilt from this backend's response.
+    }
     const normalized = (name: string) => name.replace(/^:(.+):$/, '$1')
     const owned = new Map(
       confirmed.filter((r) => r.me).map((r) => [normalized(r.name), r]),
