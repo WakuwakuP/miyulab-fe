@@ -180,6 +180,75 @@ export function handleUpdateStatusAction(
   }
 }
 
+function applyConfirmedReactions(
+  db: DbExec,
+  localAccountId: number,
+  relatedPostIds: number[],
+  confirmedReactions: Entity.Reaction[],
+): void {
+  const json = JSON.stringify(confirmedReactions)
+  const mine = confirmedReactions.find((reaction) => reaction.me)
+  const now = Date.now()
+  for (const relatedId of relatedPostIds) {
+    db.exec(
+      `INSERT INTO post_interactions (post_id, local_account_id, confirmed_reactions_json, my_reaction_name, my_reaction_url, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(post_id, local_account_id) DO UPDATE SET
+          confirmed_reactions_json = excluded.confirmed_reactions_json,
+          my_reaction_name = excluded.my_reaction_name, my_reaction_url = excluded.my_reaction_url,
+          updated_at = excluded.updated_at`,
+      {
+        bind: [
+          relatedId,
+          localAccountId,
+          json,
+          mine?.name.replace(/^:(.+):$/, '$1') ?? null,
+          mine?.url ?? null,
+          now,
+        ],
+      },
+    )
+  }
+}
+
+function applyEmojiReactionToggle(
+  db: DbExec,
+  localAccountId: number,
+  relatedPostIds: number[],
+  value: boolean,
+  emoji: string,
+): void {
+  // value=false の場合はリアクションをクリア
+  if (!value) {
+    for (const relatedPostId of relatedPostIds) {
+      toggleReaction(db, relatedPostId, localAccountId, null, null)
+    }
+    return
+  }
+
+  const isCustom = emoji.startsWith(':') && emoji.endsWith(':')
+
+  if (isCustom) {
+    // カスタム絵文字: shortcode から custom_emojis を検索して url を解決
+    const shortcode = emoji.slice(1, -1)
+    const rows = db.exec(
+      'SELECT id, url FROM custom_emojis WHERE server_id = (SELECT server_id FROM local_accounts WHERE id = ?) AND shortcode = ?;',
+      { bind: [localAccountId, shortcode], returnValue: 'resultRows' },
+    ) as (number | string)[][]
+
+    const url = rows.length > 0 ? (rows[0][1] as string) : null
+    for (const relatedPostId of relatedPostIds) {
+      toggleReaction(db, relatedPostId, localAccountId, shortcode, url)
+    }
+    return
+  }
+
+  // Unicode 絵文字
+  for (const relatedPostId of relatedPostIds) {
+    toggleReaction(db, relatedPostId, localAccountId, emoji, null)
+  }
+}
+
 export function handleToggleReaction(
   db: DbExec,
   localAccountId: number,
@@ -197,60 +266,15 @@ export function handleToggleReaction(
   }
 
   if (confirmedReactions !== undefined) {
-    const json = JSON.stringify(confirmedReactions)
-    const mine = confirmedReactions.find((reaction) => reaction.me)
-    const now = Date.now()
-    for (const relatedId of relatedPostIds) {
-      db.exec(
-        `INSERT INTO post_interactions (post_id, local_account_id, confirmed_reactions_json, my_reaction_name, my_reaction_url, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-        ON CONFLICT(post_id, local_account_id) DO UPDATE SET
-          confirmed_reactions_json = excluded.confirmed_reactions_json,
-          my_reaction_name = excluded.my_reaction_name, my_reaction_url = excluded.my_reaction_url,
-          updated_at = excluded.updated_at`,
-        {
-          bind: [
-            relatedId,
-            localAccountId,
-            json,
-            mine?.name.replace(/^:(.+):$/, '$1') ?? null,
-            mine?.url ?? null,
-            now,
-          ],
-        },
-      )
-    }
+    applyConfirmedReactions(
+      db,
+      localAccountId,
+      relatedPostIds,
+      confirmedReactions,
+    )
     return result
   }
 
-  // value=false の場合はリアクションをクリア
-  if (!value) {
-    for (const relatedPostId of relatedPostIds) {
-      toggleReaction(db, relatedPostId, localAccountId, null, null)
-    }
-    return result
-  }
-
-  const isCustom = emoji.startsWith(':') && emoji.endsWith(':')
-
-  if (isCustom) {
-    // カスタム絵文字: shortcode から custom_emojis を検索して url を解決
-    const shortcode = emoji.slice(1, -1)
-    const rows = db.exec(
-      'SELECT id, url FROM custom_emojis WHERE server_id = (SELECT server_id FROM local_accounts WHERE id = ?) AND shortcode = ?;',
-      { bind: [localAccountId, shortcode], returnValue: 'resultRows' },
-    ) as (number | string)[][]
-
-    const url = rows.length > 0 ? (rows[0][1] as string) : null
-    for (const relatedPostId of relatedPostIds) {
-      toggleReaction(db, relatedPostId, localAccountId, shortcode, url)
-    }
-  } else {
-    // Unicode 絵文字
-    for (const relatedPostId of relatedPostIds) {
-      toggleReaction(db, relatedPostId, localAccountId, emoji, null)
-    }
-  }
-
+  applyEmojiReactionToggle(db, localAccountId, relatedPostIds, value, emoji)
   return result
 }
