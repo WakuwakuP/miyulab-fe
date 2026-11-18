@@ -250,7 +250,7 @@ export function useTimelineDataSource(
           : patchPlanForFetch(basePlan, limit, fetchOptions?.cursor)
 
       const version = ++fetchVersionRef.current
-      const reactionRead = trackReactionRead()
+      const reactionRead = trackReactionRead(apps)
 
       try {
         const handle = await getSqliteDb()
@@ -318,7 +318,7 @@ export function useTimelineDataSource(
         })),
       ]
       const version = ++fetchVersionRef.current
-      const reactionRead = trackReactionRead()
+      const reactionRead = trackReactionRead(apps)
 
       try {
         const handle = await getSqliteDb()

@@ -59,6 +59,7 @@ export const EmojiReactions = ({
         reaction.name,
         !reaction.me,
         onReactionsChange,
+        reactions,
       )
     } catch (error) {
       console.error('Failed to update emoji reaction:', error)

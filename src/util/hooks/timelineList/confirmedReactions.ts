@@ -6,7 +6,7 @@ import { GetClient } from 'util/GetClient'
 
 type ReactionChange = { reactions: Entity.Reaction[] }
 const pendingWrites = new Map<string, ReactionChange>()
-const requestTails = new Map<string, Promise<void>>()
+const requestTails = new Map<string, Promise<Entity.Reaction[]>>()
 const activeReads = new Set<Map<string, ReactionChange>>()
 
 function key(backendUrl: string, statusId: string) {
@@ -14,7 +14,9 @@ function key(backendUrl: string, statusId: string) {
 }
 
 // A read already queued when an action succeeds can return the previous snapshot.
-export function trackReactionRead() {
+export function trackReactionRead(
+  apps: readonly Pick<App, 'backendUrl'>[] = [],
+) {
   const changes = new Map(pendingWrites)
   activeReads.add(changes)
   return {
@@ -22,14 +24,14 @@ export function trackReactionRead() {
       if (!changes.size) return items
       return items.map((item) => {
         const status = 'type' in item ? item.status : item
-        if (
-          !status ||
-          !('backendUrl' in item) ||
-          typeof item.backendUrl !== 'string'
-        )
-          return item
+        const backendUrl =
+          ('backendUrl' in item &&
+            typeof item.backendUrl === 'string' &&
+            item.backendUrl) ||
+          apps[item.appIndex]?.backendUrl
+        if (!status || !backendUrl) return item
         const change = changes.get(
-          key(item.backendUrl, status.reblog?.id ?? status.id),
+          key(backendUrl, status.reblog?.id ?? status.id),
         )
         if (!change) return item
         const emoji_reactions = change.reactions
@@ -47,19 +49,41 @@ export function trackReactionRead() {
   }
 }
 
+function applyConfirmedChange(
+  previous: Entity.Reaction[],
+  emoji: string,
+  add: boolean,
+  single: boolean,
+) {
+  const name = (value: string) => value.replace(/^:(.+):$/, '$1')
+  const result: Entity.Reaction[] = []
+  let found = false
+  for (const reaction of previous) {
+    const matches = name(reaction.name) === name(emoji)
+    found ||= matches
+    const me = matches ? add : reaction.me && !(add && single)
+    const count = reaction.count + Number(me) - Number(reaction.me)
+    if (count > 0) result.push({ ...reaction, count, me })
+  }
+  if (add && !found) result.push({ count: 1, me: true, name: emoji })
+  return result
+}
+
 export async function changeEmojiReaction(
   app: App,
   statusId: string,
   emoji: string,
   add: boolean,
   onChange?: (reactions: Entity.Reaction[]) => void,
+  displayed: Entity.Reaction[] = [],
 ) {
   const id = key(app.backendUrl, statusId)
   const previous = requestTails.get(id)
-  const turn = Promise.withResolvers<void>()
+  const turn = Promise.withResolvers<Entity.Reaction[]>()
   requestTails.set(id, turn.promise)
+  let latest = pendingWrites.get(id)?.reactions ?? displayed
   try {
-    await previous
+    latest = (await previous) ?? latest
     const client = GetClient(app)
     const { data } = add
       ? await client.createEmojiReaction(statusId, emoji)
@@ -73,19 +97,22 @@ export async function changeEmojiReaction(
           console.error('Failed to read confirmed emoji reactions:', error)
           return undefined
         }))
-    if (reactions) {
-      const change = { reactions }
-      pendingWrites.set(id, change)
-      for (const read of activeReads) read.set(id, change)
-      onChange?.(change.reactions)
-    } else {
-      pendingWrites.delete(id)
-      for (const read of activeReads) read.delete(id)
-    }
+    latest =
+      reactions ??
+      applyConfirmedChange(
+        latest,
+        emoji,
+        add,
+        app.backend === 'misskey' || app.backend === 'firefish',
+      )
+    const change = { reactions: latest }
+    pendingWrites.set(id, change)
+    for (const read of activeReads) read.set(id, change)
+    onChange?.(latest)
     await toggleReactionInDb(app.backendUrl, statusId, add, emoji)
     pendingWrites.delete(id)
   } finally {
-    turn.resolve()
+    turn.resolve(latest)
     if (requestTails.get(id) === turn.promise) requestTails.delete(id)
   }
 }

@@ -79,12 +79,13 @@ export const Actions = ({
           emoji,
           true,
           onReactionsChange,
+          status.reblog?.emoji_reactions ?? status.emoji_reactions ?? [],
         )
       } catch (error) {
         console.error('Failed to update emoji reaction:', error)
       }
     },
-    [apps, status.appIndex, status.reblog?.id, status.id, onReactionsChange],
+    [apps, status, onReactionsChange],
   )
 
   const openPicker = useCallback(() => {
