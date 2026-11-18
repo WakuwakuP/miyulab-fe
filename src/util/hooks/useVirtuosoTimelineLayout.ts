@@ -11,6 +11,72 @@ import {
 import type { VirtuosoHandle } from 'react-virtuoso'
 import { CENTER_INDEX } from 'util/environment'
 
+/** Grow bottomExpansion when items are appended without shifting the virtual head. */
+function bottomExpansionDelta(
+  diff: number,
+  previousKeys: readonly string[] | undefined,
+  itemKeys: readonly string[] | undefined,
+  enableScrollToTop: boolean,
+): number {
+  if (diff <= 0) return 0
+  const oldHead = previousKeys?.[0]
+  if (oldHead === undefined) {
+    return enableScrollToTop ? 0 : diff
+  }
+  const headIndex = itemKeys?.indexOf(oldHead) ?? -1
+  // Only rows inserted before the previous head shift its virtual index.
+  if (headIndex >= 0) return diff - headIndex
+  return enableScrollToTop ? 0 : diff
+}
+
+function syncBottomExpansion(
+  dataLength: number,
+  prevLengthRef: { current: number },
+  bottomExpansionRef: { current: number },
+  previousKeys: readonly string[] | undefined,
+  itemKeys: readonly string[] | undefined,
+  enableScrollToTop: boolean,
+): void {
+  if (dataLength === prevLengthRef.current) return
+  const diff = dataLength - prevLengthRef.current
+  bottomExpansionRef.current += bottomExpansionDelta(
+    diff,
+    previousKeys,
+    itemKeys,
+    enableScrollToTop,
+  )
+  prevLengthRef.current = dataLength
+}
+
+function syncAnchorCorrection(args: {
+  itemKeys: readonly string[] | undefined
+  previousKeys: readonly string[] | undefined
+  enableScrollToTop: boolean
+  visibleIndex: number
+  previousFirstIndex: number
+  baseIndex: number
+}): { correction: number; visibleIndex: number } | null {
+  const { itemKeys, previousKeys, enableScrollToTop } = args
+  if (!itemKeys || !previousKeys || itemKeys === previousKeys) return null
+  if (enableScrollToTop) return null
+  const nextKeys = new Set(itemKeys)
+  if (!previousKeys.some((key) => !nextKeys.has(key))) return null
+  const anchor = retainedTimelineAnchor(
+    previousKeys,
+    itemKeys,
+    args.visibleIndex,
+  )
+  if (!anchor) return { correction: 0, visibleIndex: args.visibleIndex }
+  return {
+    correction:
+      args.previousFirstIndex +
+      anchor.oldIndex -
+      anchor.newIndex -
+      args.baseIndex,
+    visibleIndex: anchor.newIndex,
+  }
+}
+
 /**
  * useVirtuosoTimelineLayout — Virtuoso 固有のスクロール管理を共通化するフック
  *
@@ -59,43 +125,27 @@ export function useVirtuosoTimelineLayout({
     previousKeys.current = undefined
   }, [configId])
 
-  if (dataLength !== prevLengthRef.current) {
-    const diff = dataLength - prevLengthRef.current
-    if (diff > 0) {
-      const oldHead = previousKeys.current?.[0]
-      const headIndex =
-        oldHead === undefined ? -1 : (itemKeys?.indexOf(oldHead) ?? -1)
-      if (headIndex >= 0) {
-        // Only rows inserted before the previous head shift its virtual index.
-        bottomExpansionRef.current += diff - headIndex
-      } else if (!enableScrollToTop) {
-        bottomExpansionRef.current += diff
-      }
-    }
-    prevLengthRef.current = dataLength
-  }
+  syncBottomExpansion(
+    dataLength,
+    prevLengthRef,
+    bottomExpansionRef,
+    previousKeys.current,
+    itemKeys,
+    enableScrollToTop,
+  )
 
   const baseIndex = CENTER_INDEX - dataLength + bottomExpansionRef.current
-  if (itemKeys && previousKeys.current && itemKeys !== previousKeys.current) {
-    const nextKeys = new Set(itemKeys)
-    if (
-      !enableScrollToTop &&
-      previousKeys.current.some((key) => !nextKeys.has(key))
-    ) {
-      const anchor = retainedTimelineAnchor(
-        previousKeys.current,
-        itemKeys,
-        visibleIndex.current,
-      )
-      if (anchor) {
-        anchorCorrection.current =
-          previousFirstIndex.current +
-          anchor.oldIndex -
-          anchor.newIndex -
-          baseIndex
-        visibleIndex.current = anchor.newIndex
-      } else anchorCorrection.current = 0
-    }
+  const syncedAnchor = syncAnchorCorrection({
+    baseIndex,
+    enableScrollToTop,
+    itemKeys,
+    previousFirstIndex: previousFirstIndex.current,
+    previousKeys: previousKeys.current,
+    visibleIndex: visibleIndex.current,
+  })
+  if (syncedAnchor) {
+    anchorCorrection.current = syncedAnchor.correction
+    visibleIndex.current = syncedAnchor.visibleIndex
   }
   previousKeys.current = itemKeys
   const firstItemIndex = baseIndex + anchorCorrection.current
