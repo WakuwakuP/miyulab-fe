@@ -266,7 +266,7 @@ async function handleStreamStatusUpdate(
 ): Promise<void> {
   captureHomeStreamEventIfEnabled(app, backendUrl, 'status_update', status)
   const account = await verifyLogin(app).catch(() => undefined)
-  await updateStatus(status, backendUrl, account?.id)
+  if (account) await updateStatus(status, backendUrl, account.id)
 }
 
 async function handleStreamNotification(

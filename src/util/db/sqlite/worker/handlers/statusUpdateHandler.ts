@@ -58,17 +58,6 @@ function resolveUpdateTargetPostId(
     }
   }
 
-  const url = status.url?.trim()
-  if (url) {
-    const rows = db.exec(
-      'SELECT id FROM posts WHERE canonical_url = ? LIMIT 2;',
-      {
-        bind: [url],
-        returnValue: 'resultRows',
-      },
-    ) as number[][]
-    if (rows.length === 1) return rows[0][0]
-  }
   if (localAccountId !== null) {
     return resolvePostIdInternal(db, localAccountId, status.id) ?? null
   }
