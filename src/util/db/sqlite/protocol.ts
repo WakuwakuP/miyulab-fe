@@ -1,3 +1,4 @@
+import type { Entity } from 'megalodon'
 /**
  * RPC プロトコル型定義 — SQLite OPFS Worker
  *
@@ -289,7 +290,7 @@ export type ToggleReactionRequest = {
   backendUrl: string
   statusId: string
   value: boolean
-  confirmedReactionsJson?: string
+  confirmedReactions?: Entity.Reaction[]
   emoji: string // ':blobcat:' or '👍'
 }
 

@@ -349,7 +349,7 @@ function dispatchWorkerRequest(msg: WorkerRequest, db: WorkerDb): void {
         msg.statusId,
         msg.value,
         msg.emoji,
-        msg.confirmedReactionsJson,
+        msg.confirmedReactions,
       )
       sendResponse(msg.id, { ok: true }, r.changedTables, undefined, {
         backendUrl: msg.backendUrl,

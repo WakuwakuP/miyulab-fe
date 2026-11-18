@@ -186,7 +186,7 @@ export function handleToggleReaction(
   localId: string,
   value: boolean,
   emoji: string,
-  confirmedReactionsJson?: string,
+  confirmedReactions?: Entity.Reaction[],
 ): HandlerResult {
   const postId = resolvePostIdInternal(db, localAccountId, localId)
   if (postId === undefined) return { changedTables: [] }
@@ -196,10 +196,9 @@ export function handleToggleReaction(
     changedTables: ['post_interactions'],
   }
 
-  if (confirmedReactionsJson !== undefined) {
-    const mine = (JSON.parse(confirmedReactionsJson) as Entity.Reaction[]).find(
-      (reaction) => reaction.me,
-    )
+  if (confirmedReactions !== undefined) {
+    const json = JSON.stringify(confirmedReactions)
+    const mine = confirmedReactions.find((reaction) => reaction.me)
     const now = Date.now()
     for (const relatedId of relatedPostIds) {
       db.exec(
@@ -213,7 +212,7 @@ export function handleToggleReaction(
           bind: [
             relatedId,
             localAccountId,
-            confirmedReactionsJson,
+            json,
             mine?.name.replace(/^:(.+):$/, '$1') ?? null,
             mine?.url ?? null,
             now,

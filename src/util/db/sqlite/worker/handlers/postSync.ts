@@ -280,23 +280,28 @@ export function syncPostStats(
   )
   if (lastChangeCount(db) > 0) collector?.add('post_stats')
   if (localAccountId != null && status.emoji_reactions) {
-    const mine = status.emoji_reactions.find((reaction) => reaction.me)
-    db.exec(
-      `UPDATE post_interactions SET confirmed_reactions_json = ?, my_reaction_name = ?, my_reaction_url = ?
-      WHERE post_id = ? AND local_account_id = ? AND confirmed_reactions_json IS NOT NULL
-        AND confirmed_reactions_json IS NOT ?`,
-      {
-        bind: [
-          emojiReactionsJson,
-          mine?.name ?? null,
-          mine?.url ?? null,
-          postId,
-          localAccountId,
-          emojiReactionsJson,
-        ],
-      },
+    const rows = db.exec(
+      'SELECT confirmed_reactions_json FROM post_interactions WHERE post_id = ? AND local_account_id = ? AND confirmed_reactions_json IS NOT NULL',
+      { bind: [postId, localAccountId], returnValue: 'resultRows' },
+    ) as [string][] | undefined
+    const cached = rows?.[0]?.[0]
+    if (typeof cached !== 'string') return
+    const confirmed = JSON.parse(cached) as Entity.Reaction[]
+    const normalized = (name: string) => name.replace(/^:(.+):$/, '$1')
+    const owned = new Map(
+      confirmed.filter((r) => r.me).map((r) => [normalized(r.name), r]),
     )
-    if (lastChangeCount(db) > 0) collector?.add('post_interactions')
+    const merged = status.emoji_reactions.map((reaction) => ({
+      ...reaction,
+      me: owned.delete(normalized(reaction.name)),
+    }))
+    const next = JSON.stringify([...merged, ...owned.values()])
+    if (next === cached) return
+    db.exec(
+      'UPDATE post_interactions SET confirmed_reactions_json = ? WHERE post_id = ? AND local_account_id = ?',
+      { bind: [next, postId, localAccountId] },
+    )
+    collector?.add('post_interactions')
   }
 }
 

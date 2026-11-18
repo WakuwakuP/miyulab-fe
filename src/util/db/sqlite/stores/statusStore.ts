@@ -390,7 +390,7 @@ export function createStatusWriteStore(
     return enqueueOperation(async (handle) => {
       await handle.sendCommand({
         backendUrl,
-        confirmedReactionsJson: JSON.stringify(reactions),
+        confirmedReactions: reactions,
         emoji,
         statusId,
         type: 'toggleReaction',

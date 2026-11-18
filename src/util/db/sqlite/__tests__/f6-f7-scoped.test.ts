@@ -539,32 +539,20 @@ describe('スコープ付きバッチ (実 DB, 2 アカウント)', () => {
         notificationIds: [],
         postIds: [postId],
       }).posts.get(postId)?.emoji_reactions
-    handleToggleReaction(
-      db,
-      laA,
-      'shared',
-      true,
-      first.name,
-      JSON.stringify([first]),
-    )
-    handleToggleReaction(
-      db,
-      laA,
-      'shared',
-      true,
-      second.name,
-      JSON.stringify([first, second]),
-    )
+    handleToggleReaction(db, laA, 'shared', true, first.name, [first])
+    handleToggleReaction(db, laA, 'shared', true, second.name, [first, second])
     expect(read(BACKEND_A)).toEqual([first, second])
     expect(read(BACKEND_B)).toEqual([])
-    handleToggleReaction(
-      db,
-      laA,
-      'shared',
-      false,
-      second.name,
-      JSON.stringify([first]),
+    upsert(
+      status('shared', {
+        emoji_reactions: [{ ...first, count: 3, me: false }],
+      }),
+      BACKEND_A,
+      'home',
     )
+    expect(read(BACKEND_A)).toEqual([{ ...first, count: 3 }, second])
+
+    handleToggleReaction(db, laA, 'shared', false, second.name, [first])
     expect(read(BACKEND_A)).toEqual([first])
   })
 

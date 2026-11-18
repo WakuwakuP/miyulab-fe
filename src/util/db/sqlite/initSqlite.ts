@@ -560,7 +560,7 @@ async function initMainThreadFallback(
                 command.statusId,
                 command.value,
                 command.emoji,
-                command.confirmedReactionsJson,
+                command.confirmedReactions,
               ),
           )
           break
