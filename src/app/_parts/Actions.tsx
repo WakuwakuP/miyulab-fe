@@ -24,11 +24,11 @@ import { SettingContext } from 'util/provider/SettingProvider'
 
 export const Actions = ({
   status,
-  onReactionAdd,
+  onReactionsChange,
   onStatusChange,
 }: {
   status: StatusAddAppIndex
-  onReactionAdd?: (emoji: string) => void
+  onReactionsChange?: (reactions: Entity.Reaction[]) => void
   onStatusChange?: (updates: Partial<Entity.Status>) => void
 }) => {
   const apps = useContext(AppsContext)
@@ -78,9 +78,12 @@ export const Actions = ({
       setPendingAction(true)
       setShowReactionPicker(false)
       try {
-        await reactionClient.createEmojiReaction(statusId, emoji)
+        const { data } = await reactionClient.createEmojiReaction(
+          statusId,
+          emoji,
+        )
         await toggleReactionInDb(reactionApp.backendUrl, statusId, true, emoji)
-        onReactionAdd?.(emoji)
+        onReactionsChange?.(data.emoji_reactions ?? [])
       } catch (error) {
         console.error('Failed to update emoji reaction:', error)
       } finally {
@@ -88,7 +91,7 @@ export const Actions = ({
         setPendingAction(false)
       }
     },
-    [apps, status.appIndex, status.reblog?.id, status.id, onReactionAdd],
+    [apps, status.appIndex, status.reblog?.id, status.id, onReactionsChange],
   )
 
   const openPicker = useCallback(() => {

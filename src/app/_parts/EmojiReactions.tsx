@@ -17,11 +17,11 @@ import { toSecureResourceUrl } from 'util/secureResourceUrl'
 export const EmojiReactions = ({
   status,
   reactions,
-  onToggle,
+  onReactionsChange,
 }: {
   status: StatusAddAppIndex
   reactions: Entity.Reaction[]
-  onToggle: (reactionName: string, currentlyMine: boolean) => void
+  onReactionsChange: (reactions: Entity.Reaction[]) => void
 }) => {
   const [pending, setPending] = useState(false)
   const apps = useContext(AppsContext)
@@ -55,15 +55,16 @@ export const EmojiReactions = ({
     const statusId = status.reblog?.id ?? status.id
     setPending(true)
     try {
-      if (reaction.me) await client.deleteEmojiReaction(statusId, reaction.name)
-      else await client.createEmojiReaction(statusId, reaction.name)
+      const { data } = reaction.me
+        ? await client.deleteEmojiReaction(statusId, reaction.name)
+        : await client.createEmojiReaction(statusId, reaction.name)
       await toggleReactionInDb(
         statusApp.backendUrl,
         statusId,
         !reaction.me,
         reaction.name,
       )
-      onToggle(reaction.name, reaction.me)
+      onReactionsChange(data.emoji_reactions ?? [])
     } catch (error) {
       console.error('Failed to update emoji reaction:', error)
     } finally {

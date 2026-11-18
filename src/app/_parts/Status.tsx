@@ -23,7 +23,6 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from 'react'
 import { RiRepeatFill, RiVideoLine } from 'react-icons/ri'
@@ -38,10 +37,6 @@ import { canPlay } from 'util/PlayerUtils'
 import { AppsContext } from 'util/provider/AppsProvider'
 import { SetDetailContext } from 'util/provider/DetailProvider'
 import { SetPlayerContext } from 'util/provider/PlayerProvider'
-import {
-  EmojiCatalogContext,
-  EmojiContext,
-} from 'util/provider/ResourceProvider'
 import { toSecureResourceUrl } from 'util/secureResourceUrl'
 
 export const Status = ({
@@ -60,18 +55,14 @@ export const Status = ({
   const setDetail = useContext(SetDetailContext)
   const setPlayer = useContext(SetPlayerContext)
   const apps = useContext(AppsContext)
-  const emojiCatalog = useContext(EmojiCatalogContext)
-  const emojiFallback = useContext(EmojiContext)
 
   const [localReactions, setLocalReactions] = useState<Entity.Reaction[]>(
     (status.reblog?.emoji_reactions ?? status.emoji_reactions) || [],
   )
-  const reactionsRef = useRef(localReactions)
 
   useEffect(() => {
     const reactions =
       (status.reblog?.emoji_reactions ?? status.emoji_reactions) || []
-    reactionsRef.current = reactions
     setLocalReactions(reactions)
   }, [status.emoji_reactions, status.reblog?.emoji_reactions])
 
@@ -90,76 +81,12 @@ export const Status = ({
     [backendUrl, interactionStatusId, onStatusChange],
   )
 
-  const updateReactions = useCallback(
-    (update: (prev: Entity.Reaction[]) => Entity.Reaction[]) => {
-      const reactions = update(reactionsRef.current)
-      reactionsRef.current = reactions
+  const onReactionsChange = useCallback(
+    (reactions: Entity.Reaction[]) => {
       setLocalReactions(reactions)
       onInteractionChange({ emoji_reactions: reactions })
     },
     [onInteractionChange],
-  )
-
-  // status が属するサーバの絵文字一覧を取得（カタログ優先、フォールバックで旧 EmojiContext）
-  const serverEmojis = useMemo(() => {
-    const backendUrl = apps[status.appIndex]?.backendUrl
-    if (backendUrl) {
-      const catalog = emojiCatalog.get(backendUrl)
-      if (catalog && catalog.length > 0) return catalog
-    }
-    return emojiFallback
-  }, [status.appIndex, apps, emojiCatalog, emojiFallback])
-
-  const handleReactionAdd = useCallback(
-    (emoji: string) => {
-      updateReactions((prev) => {
-        const isCustom = emoji.startsWith(':') && emoji.endsWith(':')
-        const name = isCustom ? emoji.slice(1, -1) : emoji
-
-        const existing = prev.find((r) => r.name === emoji || r.name === name)
-        if (existing) {
-          if (existing.me) return prev
-          return prev.map((r) =>
-            r === existing ? { ...r, count: r.count + 1, me: true } : r,
-          )
-        }
-
-        let url: string | undefined
-        let static_url: string | undefined
-        if (isCustom) {
-          const found = serverEmojis.find((e) => e.shortcode === name)
-          if (found) {
-            url = found.url
-            static_url = found.static_url
-          }
-        }
-
-        return [...prev, { count: 1, me: true, name: emoji, static_url, url }]
-      })
-    },
-    [serverEmojis, updateReactions],
-  )
-
-  const handleReactionToggle = useCallback(
-    (reactionName: string, currentlyMine: boolean) => {
-      updateReactions((prev) => {
-        if (currentlyMine) {
-          return prev
-            .map((r) =>
-              r.name === reactionName && r.me
-                ? { ...r, count: Math.max(0, r.count - 1), me: false }
-                : r,
-            )
-            .filter((r) => r.count > 0)
-        }
-        return prev.map((r) =>
-          r.name === reactionName && !r.me
-            ? { ...r, count: r.count + 1, me: true }
-            : r,
-        )
-      })
-    },
-    [updateReactions],
   )
 
   const displayName = useMemo(
@@ -481,12 +408,12 @@ export const Status = ({
         sensitive={status.reblog?.sensitive ?? status.sensitive}
       />
       <EmojiReactions
-        onToggle={handleReactionToggle}
+        onReactionsChange={onReactionsChange}
         reactions={localReactions}
         status={status}
       />
       <Actions
-        onReactionAdd={handleReactionAdd}
+        onReactionsChange={onReactionsChange}
         onStatusChange={onInteractionChange}
         status={status}
       />
