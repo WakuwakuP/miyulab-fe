@@ -58,7 +58,12 @@ function resolveUpdateTargetPostId(
     }
   }
 
-  const localAccountIdForLookup = resolveLocalAccountId(db, backendUrl)
+  const localAccountIdForLookup = resolveLocalAccountId(
+    db,
+    backendUrl,
+    undefined,
+    true,
+  )
   if (localAccountIdForLookup !== null) {
     return resolvePostIdInternal(db, localAccountIdForLookup, status.id) ?? null
   }
@@ -250,7 +255,7 @@ function applyStatusUpdate(
 
   upsertMentionsInternal(db, postId, status.mentions, collector)
   syncPostMedia(db, postId, status.media_attachments, collector)
-  const localAccountId = resolveLocalAccountId(db, backendUrl)
+  const localAccountId = resolveLocalAccountId(db, backendUrl, undefined, true)
   syncPostStats(db, postId, status, collector, now, localAccountId)
   if (localAccountId !== null) {
     syncStatusInteractions(db, postId, localAccountId, status, collector, now)

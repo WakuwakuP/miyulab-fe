@@ -51,24 +51,19 @@ function buildPostMapFromGraphResult(
       typeof buildBatchMapsFromResults
     >[0],
   )
-  const fallbackAppIndex =
-    targetBackendUrls.length > 0
-      ? resolveAppIndex(targetBackendUrls[0], apps)
-      : -1
   const postMap = new Map<number, StatusAddAppIndex>()
   for (const row of result.posts.detailRows) {
     const status = assembleStatusFromBatch(row, maps)
-    let appIndex = resolveAppIndex(
-      status.backendUrl,
+    const backendUrl = status.backendUrl || targetBackendUrls[0]
+    if (!backendUrl) continue
+    const appIndex = resolveAppIndex(
+      backendUrl,
       apps,
       status.localRemoteAccountId,
     )
-    if (appIndex < 0 && status.backendUrl === '' && fallbackAppIndex >= 0) {
-      appIndex = fallbackAppIndex
-      status.backendUrl = targetBackendUrls[0]
-    }
     if (appIndex < 0) continue
-    postMap.set(status.post_id, { ...status, appIndex })
+    const item = { ...status, appIndex, backendUrl }
+    postMap.set(status.post_id, item)
   }
   return postMap
 }
@@ -136,22 +131,17 @@ export function buildTimelineItemsFromFlatResult(
   targetBackendUrls: string[],
 ): TimelineItemFromGraph[] {
   const postMap = new Map<number, StatusAddAppIndex>()
-  const fallbackAppIndex =
-    targetBackendUrls.length > 0
-      ? resolveAppIndex(targetBackendUrls[0], apps)
-      : -1
   for (const [id, status] of result.posts) {
-    let appIndex = resolveAppIndex(
-      status.backendUrl,
+    const backendUrl = status.backendUrl || targetBackendUrls[0]
+    if (!backendUrl) continue
+    const appIndex = resolveAppIndex(
+      backendUrl,
       apps,
       status.localRemoteAccountId,
     )
-    if (appIndex < 0 && status.backendUrl === '' && fallbackAppIndex >= 0) {
-      appIndex = fallbackAppIndex
-      status.backendUrl = targetBackendUrls[0]
-    }
     if (appIndex < 0) continue
-    postMap.set(id, { ...status, appIndex })
+    const item = { ...status, appIndex, backendUrl }
+    postMap.set(id, item)
   }
   const notifMap = new Map<number, NotificationAddAppIndex>()
   for (const [id, notif] of result.notifications) {
