@@ -116,11 +116,11 @@ export const Status = ({
         const isCustom = emoji.startsWith(':') && emoji.endsWith(':')
         const name = isCustom ? emoji.slice(1, -1) : emoji
 
-        const existing = prev.find((r) => r.name === name)
+        const existing = prev.find((r) => r.name === emoji || r.name === name)
         if (existing) {
           if (existing.me) return prev
           return prev.map((r) =>
-            r.name === name ? { ...r, count: r.count + 1, me: true } : r,
+            r === existing ? { ...r, count: r.count + 1, me: true } : r,
           )
         }
 
@@ -134,7 +134,7 @@ export const Status = ({
           }
         }
 
-        return [...prev, { count: 1, me: true, name, static_url, url }]
+        return [...prev, { count: 1, me: true, name: emoji, static_url, url }]
       })
     },
     [serverEmojis, updateReactions],
@@ -146,14 +146,16 @@ export const Status = ({
         if (currentlyMine) {
           return prev
             .map((r) =>
-              r.name === reactionName
+              r.name === reactionName && r.me
                 ? { ...r, count: Math.max(0, r.count - 1), me: false }
                 : r,
             )
             .filter((r) => r.count > 0)
         }
         return prev.map((r) =>
-          r.name === reactionName ? { ...r, count: r.count + 1, me: true } : r,
+          r.name === reactionName && !r.me
+            ? { ...r, count: r.count + 1, me: true }
+            : r,
         )
       })
     },

@@ -46,6 +46,7 @@ export const Actions = ({
   const [bookmarked, setBookmarked] = useState(status.bookmarked)
   const [showReactionPicker, setShowReactionPicker] = useState(false)
   const [triggerRect, setTriggerRect] = useState<DOMRect | null>(null)
+  const pendingReaction = useRef(false)
   const reactionBtnRef = useRef<HTMLButtonElement>(null)
 
   useEffect(() => {
@@ -72,18 +73,19 @@ export const Actions = ({
         return
       const reactionClient = GetClient(reactionApp)
       const statusId = status.reblog?.id ?? status.id
-      try {
-        await reactionClient.createEmojiReaction(statusId, emoji)
-      } catch (error) {
-        console.error('Failed to add reaction:', error)
-        return
-      }
-      onReactionAdd?.(emoji)
+      if (pendingReaction.current) return
+      pendingReaction.current = true
+      setPendingAction(true)
       setShowReactionPicker(false)
       try {
+        await reactionClient.createEmojiReaction(statusId, emoji)
         await toggleReactionInDb(reactionApp.backendUrl, statusId, true, emoji)
+        onReactionAdd?.(emoji)
       } catch (error) {
-        console.error('Failed to save reaction:', error)
+        console.error('Failed to update emoji reaction:', error)
+      } finally {
+        pendingReaction.current = false
+        setPendingAction(false)
       }
     },
     [apps, status.appIndex, status.reblog?.id, status.id, onReactionAdd],
@@ -208,7 +210,12 @@ export const Actions = ({
       </button>
       {canReact && (
         <>
-          <button onClick={openPicker} ref={reactionBtnRef} type="button">
+          <button
+            disabled={pendingAction}
+            onClick={openPicker}
+            ref={reactionBtnRef}
+            type="button"
+          >
             <RiEmotionLine size={24} />
           </button>
           {showReactionPicker && triggerRect && (

@@ -57,13 +57,13 @@ export const EmojiReactions = ({
     try {
       if (reaction.me) await client.deleteEmojiReaction(statusId, reaction.name)
       else await client.createEmojiReaction(statusId, reaction.name)
-      onToggle(reaction.name, reaction.me)
       await toggleReactionInDb(
         statusApp.backendUrl,
         statusId,
         !reaction.me,
         reaction.name,
       )
+      onToggle(reaction.name, reaction.me)
     } catch (error) {
       console.error('Failed to update emoji reaction:', error)
     } finally {
