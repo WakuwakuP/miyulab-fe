@@ -293,6 +293,7 @@ export function handleUpdateStatus(
     remoteAccountId,
     true,
   )
+  if (localAccountId === null) return { changedTables: [] }
   const postId = resolveExistingPostIdForUpdate(db, status, localAccountId)
   if (postId === null) return { changedTables: [] }
 

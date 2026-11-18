@@ -597,16 +597,24 @@ describe('handleUpdateStatus', () => {
     )
   })
 
-  it('ローカルアカウントがなければインタラクションを同期しない', () => {
+  it('指定ログインを解決できないときはURIが一致しても投稿を更新しない', () => {
     vi.mocked(helpersModule.resolveLocalAccountId).mockReturnValue(null)
     const { db } = createDbWithExistingPost()
 
-    handleUpdateStatus(
+    const result = handleUpdateStatus(
       db,
       JSON.stringify(createMockStatus()),
       'https://example.com',
+      'login-b',
     )
 
+    expect(helpersModule.resolveLocalAccountId).toHaveBeenCalledWith(
+      db,
+      'https://example.com',
+      'login-b',
+      true,
+    )
+    expect(result.changedTables).toEqual([])
     expect(helpersModule.updateInteraction).not.toHaveBeenCalled()
   })
 
