@@ -161,6 +161,17 @@ export function useTimelineDataSource(
         ),
     )
 
+  const sharedLoginBindings = JSON.stringify(
+    timelineApps.flatMap((app, index) =>
+      targetBackendUrls.includes(app.backendUrl) &&
+      apps.some(
+        (other, i) => i !== index && other.backendUrl === app.backendUrl,
+      )
+        ? [[index, app.backendUrl, app.localRemoteAccountId]]
+        : [],
+    ),
+  )
+
   // アカウント解決
   const localAccountIds = useLocalAccountIds(targetBackendUrls)
   const serverIds = useServerIds(targetBackendUrls)
@@ -424,6 +435,7 @@ export function useTimelineDataSource(
     apps,
     fetchInteractionUpdates,
     fetchPage,
+    sharedLoginBindings,
     subscribeToChanges,
     targetBackendUrls,
   }
