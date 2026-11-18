@@ -1,0 +1,79 @@
+name: Fix and verify SonarQube issues
+description: Run Cursor, check its edits, and retry once with the failing check output.
+inputs:
+  model:
+    description: Cursor model override
+    required: false
+  cursor-api-key:
+    description: Cursor API key
+    required: true
+  sonar-token:
+    description: SonarQube API token
+    required: true
+outputs:
+  has_changes:
+    description: Whether the verified edits need a pull request
+    value: ${{ steps.changes.outputs.has_changes }}
+runs:
+  using: composite
+  steps:
+    - name: Fix SonarQube issues with Cursor
+      id: fix
+      uses: ./.github/actions/run-cursor
+      with:
+        prompt-file: .github/cursor/prompts/sonarqube-issue-fix.md
+        mode: maintenance
+        output-file: .cursor-output/sonarqube-issue-fix.txt
+        model: ${{ inputs.model }}
+      env:
+        CURSOR_API_KEY: ${{ inputs.cursor-api-key }}
+        SONAR_TOKEN: ${{ inputs.sonar-token }}
+
+    - name: Validate Cursor changes
+      id: changes
+      env:
+        SONAR_TOKEN: ${{ inputs.sonar-token }}
+      shell: bash
+      run: bash "$GITHUB_ACTION_PATH/validate-changes.sh"
+
+    - name: Verify SonarQube fixes
+      id: verify
+      if: ${{ steps.changes.outputs.has_changes == 'true' }}
+      continue-on-error: true
+      shell: bash
+      run: bash "$GITHUB_ACTION_PATH/verify.sh"
+
+    - name: Recheck protected files after verification
+      if: ${{ steps.changes.outputs.has_changes == 'true' }}
+      shell: bash
+      run: bash "$GITHUB_ACTION_PATH/check-protected.sh"
+
+    - name: Repair failed verification with Cursor
+      if: ${{ steps.verify.outcome == 'failure' }}
+      uses: ./.github/actions/run-cursor
+      with:
+        prompt-file: .github/cursor/prompts/sonarqube-verification-fix.md
+        mode: maintenance
+        output-file: .cursor-output/sonarqube-verification-fix.txt
+        model: ${{ inputs.model }}
+      env:
+        CURSOR_API_KEY: ${{ inputs.cursor-api-key }}
+
+    - name: Validate repaired changes
+      id: repaired
+      if: ${{ steps.verify.outcome == 'failure' }}
+      env:
+        SONAR_TOKEN: ${{ inputs.sonar-token }}
+        REPAIR_REQUIRED: "true"
+      shell: bash
+      run: bash "$GITHUB_ACTION_PATH/validate-changes.sh"
+
+    - name: Verify repaired fixes
+      if: ${{ steps.repaired.outputs.has_changes == 'true' }}
+      shell: bash
+      run: bash "$GITHUB_ACTION_PATH/verify.sh"
+
+    - name: Recheck protected files after retry
+      if: ${{ steps.repaired.outputs.has_changes == 'true' }}
+      shell: bash
+      run: bash "$GITHUB_ACTION_PATH/check-protected.sh"
