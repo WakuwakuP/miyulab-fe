@@ -90,6 +90,7 @@ export function createSendCommandAdapter(db: DbExec): {
           db,
           command.backendUrl,
           command.remoteAccountId,
+          true,
         )
         if (localAccountId == null) return EMPTY_CHANGED_TABLES
         return handleUpdateStatusAction(
@@ -157,6 +158,7 @@ export function createSendCommandAdapter(db: DbExec): {
           db,
           command.backendUrl,
           command.remoteAccountId,
+          true,
         )
         if (localAccountId == null) return EMPTY_CHANGED_TABLES
         return handleToggleReaction(
