@@ -87,6 +87,7 @@ export function useTimelineScrollbackController({
     const s = stateRef.current
     if (s.isScrollbackRunning || !s.hasMoreOlder) return
     dispatch({ type: 'SCROLLBACK_STARTED' })
+    const loadedItems: TimelineItem[] = []
     let exhausted = false
 
     try {
@@ -102,16 +103,11 @@ export function useTimelineScrollbackController({
         limit: PAGE_SIZE,
       })
 
-      if (result && result.items.length >= PAGE_SIZE) {
-        recordDuration(result.durationMs)
-        dispatch({ items: result.items, type: 'SCROLLBACK_DB_SUCCEEDED' })
-        return
-      }
-
-      // DB のデータが不足 → まず DB 分を追加してカーソルを更新
       if (result && result.items.length > 0) {
+        loadedItems.push(...result.items)
         recordDuration(result.durationMs)
         dispatch({ items: result.items, type: 'SCROLLBACK_DB_SUCCEEDED' })
+        if (result.items.length >= PAGE_SIZE) return
       }
 
       // API フォールバック
@@ -134,6 +130,7 @@ export function useTimelineScrollbackController({
       })
 
       if (retry && retry.items.length > 0) {
+        loadedItems.push(...retry.items)
         dispatch({ items: retry.items, type: 'SCROLLBACK_DB_SUCCEEDED' })
       }
 
@@ -168,10 +165,10 @@ export function useTimelineScrollbackController({
               INTERACTION_RELATED_TABLES.has(table),
             )
           ) {
-            const updates = await fetchInteractionUpdates(
-              ids,
-              flushState.sortedItems,
-            )
+            const updates = await fetchInteractionUpdates(ids, [
+              ...flushState.sortedItems,
+              ...loadedItems,
+            ])
             if (updates) {
               recordDuration(updates.durationMs)
               dispatch({
