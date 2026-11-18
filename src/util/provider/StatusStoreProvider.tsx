@@ -422,16 +422,28 @@ async function updateStatusInteractionField(
   statusId: string,
   field: StatusInteractionField,
   value: boolean,
+  remoteAccountId?: string,
 ): Promise<void> {
-  await updateStatusAction(backendUrl, statusId, field, value)
-  await updateNotificationStatusAction(backendUrl, statusId, field, value)
+  await updateStatusAction(backendUrl, statusId, field, value, remoteAccountId)
+  // Both handlers update the same post_interactions rows. The verified write covers notification statuses too.
+  if (remoteAccountId === undefined)
+    await updateNotificationStatusAction(backendUrl, statusId, field, value)
 }
 
 function createStatusInteractionUpdater(field: StatusInteractionField) {
-  return (backendUrl: string, statusId: string, value: boolean): void => {
-    void updateStatusInteractionField(backendUrl, statusId, field, value).catch(
-      (error) => console.error(`Failed to update ${field}:`, error),
-    )
+  return (
+    backendUrl: string,
+    statusId: string,
+    value: boolean,
+    remoteAccountId?: string,
+  ): void => {
+    void updateStatusInteractionField(
+      backendUrl,
+      statusId,
+      field,
+      value,
+      remoteAccountId,
+    ).catch((error) => console.error(`Failed to update ${field}:`, error))
   }
 }
 
@@ -442,11 +454,26 @@ const setBookmarkedAction = createStatusInteractionUpdater('bookmarked')
 // ストア操作の型定義
 type StatusStoreActions = {
   /** お気に入り状態を更新 */
-  setFavourited: (backendUrl: string, statusId: string, value: boolean) => void
+  setFavourited: (
+    backendUrl: string,
+    statusId: string,
+    value: boolean,
+    remoteAccountId?: string,
+  ) => void
   /** リブログ状態を更新 */
-  setReblogged: (backendUrl: string, statusId: string, value: boolean) => void
+  setReblogged: (
+    backendUrl: string,
+    statusId: string,
+    value: boolean,
+    remoteAccountId?: string,
+  ) => void
   /** ブックマーク状態を更新 */
-  setBookmarked: (backendUrl: string, statusId: string, value: boolean) => void
+  setBookmarked: (
+    backendUrl: string,
+    statusId: string,
+    value: boolean,
+    remoteAccountId?: string,
+  ) => void
 }
 
 // Context定義

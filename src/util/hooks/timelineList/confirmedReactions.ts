@@ -94,9 +94,7 @@ export async function changeEmojiReaction(
     latest = (await previous) ?? latest
     const client = GetClient(app)
     const loginId =
-      remoteAccountId === null
-        ? (await client.verifyAccountCredentials()).data.id
-        : remoteAccountId
+      remoteAccountId ?? (await client.verifyAccountCredentials()).data.id
     const { data } = add
       ? await client.createEmojiReaction(statusId, emoji)
       : await client.deleteEmojiReaction(statusId, emoji)

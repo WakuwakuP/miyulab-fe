@@ -138,6 +138,7 @@ export type BulkUpsertStatusesRequest = {
 /** Status のアクション状態更新 */
 export type UpdateStatusActionRequest = {
   type: 'updateStatusAction'
+  remoteAccountId?: string
   id: number
   backendUrl: string
   statusId: string

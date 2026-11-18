@@ -14,6 +14,7 @@ vi.mock('util/GetClient', () => ({
     createEmojiReaction: create,
     deleteEmojiReaction: remove,
     getEmojiReactions: readReactions,
+    verifyAccountCredentials: async () => ({ data: { id: 'me' } }),
   }),
 }))
 vi.mock('util/db/sqlite/statusStore', () => ({ toggleReactionInDb: save }))

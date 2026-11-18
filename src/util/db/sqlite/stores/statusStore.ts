@@ -332,11 +332,13 @@ export function createStatusWriteStore(
     statusId: string,
     action: 'reblogged' | 'favourited' | 'bookmarked',
     value: boolean,
+    remoteAccountId?: string,
   ): Promise<void> {
     return enqueueOperation(async (handle) => {
       await handle.sendCommand({
         action,
         backendUrl,
+        remoteAccountId,
         statusId,
         type: 'updateStatusAction',
         value,

@@ -86,7 +86,11 @@ export function createSendCommandAdapter(db: DbExec): {
           command.skipProfileUpdate,
         )
       case 'updateStatusAction': {
-        const localAccountId = resolveLocalAccountId(db, command.backendUrl)
+        const localAccountId = resolveLocalAccountId(
+          db,
+          command.backendUrl,
+          command.remoteAccountId,
+        )
         if (localAccountId == null) return EMPTY_CHANGED_TABLES
         return handleUpdateStatusAction(
           db,

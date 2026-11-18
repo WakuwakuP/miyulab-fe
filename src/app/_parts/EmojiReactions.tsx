@@ -26,15 +26,9 @@ export const EmojiReactions = ({
   const [pending, setPending] = useState(new Set<string>())
   const apps = useContext(AppsContext)
   const accounts = useContext(PostAccountContext)
-  const remoteAccountId =
-    accounts.find(({ index }) => index === status.appIndex)?.account.id ??
-    (apps.some(
-      (app, i) =>
-        i !== status.appIndex &&
-        app.backendUrl === apps[status.appIndex]?.backendUrl,
-    )
-      ? null
-      : undefined)
+  const remoteAccountId = accounts.find(
+    ({ index }) => index === status.appIndex,
+  )?.account.id
   const emojiCatalog = useContext(EmojiCatalogContext)
   const emojiFallback = useContext(EmojiContext)
 

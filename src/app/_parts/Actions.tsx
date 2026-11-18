@@ -34,15 +34,9 @@ export const Actions = ({
 }) => {
   const apps = useContext(AppsContext)
   const accounts = useContext(PostAccountContext)
-  const remoteAccountId =
-    accounts.find(({ index }) => index === status.appIndex)?.account.id ??
-    (apps.some(
-      (app, i) =>
-        i !== status.appIndex &&
-        app.backendUrl === apps[status.appIndex]?.backendUrl,
-    )
-      ? null
-      : undefined)
+  const remoteAccountId = accounts.find(
+    ({ index }) => index === status.appIndex,
+  )?.account.id
 
   const setActions = useContext(SetActionsContext)
 
@@ -130,13 +124,15 @@ export const Actions = ({
   const statusId = status.reblog?.id ?? status.id
   const applyAction = async (
     request: () => Promise<unknown>,
-    update: () => void,
+    update: (loginId: string) => void,
   ) => {
     if (pendingAction) return
     setPendingAction(true)
     try {
+      const loginId =
+        remoteAccountId ?? (await client.verifyAccountCredentials()).data.id
       await request()
-      update()
+      update(loginId)
     } catch (error) {
       console.error('Failed to update status action:', error)
     } finally {
@@ -183,8 +179,13 @@ export const Actions = ({
               reblogged
                 ? client.unreblogStatus(statusId)
                 : client.reblogStatus(statusId),
-            () => {
-              setActions.setReblogged(status.appIndex, statusId, !reblogged)
+            (loginId) => {
+              setActions.setReblogged(
+                status.appIndex,
+                statusId,
+                !reblogged,
+                loginId,
+              )
               setReblogged(!reblogged)
               onStatusChange?.({ reblogged: !reblogged })
             },
@@ -202,8 +203,13 @@ export const Actions = ({
               favourited
                 ? client.unfavouriteStatus(statusId)
                 : client.favouriteStatus(statusId),
-            () => {
-              setActions.setFavourited(status.appIndex, statusId, !favourited)
+            (loginId) => {
+              setActions.setFavourited(
+                status.appIndex,
+                statusId,
+                !favourited,
+                loginId,
+              )
               setFavourited(!favourited)
               onStatusChange?.({ favourited: !favourited })
             },
@@ -246,8 +252,13 @@ export const Actions = ({
               bookmarked
                 ? client.unbookmarkStatus(statusId)
                 : client.bookmarkStatus(statusId),
-            () => {
-              setActions.setBookmarked(status.appIndex, statusId, !bookmarked)
+            (loginId) => {
+              setActions.setBookmarked(
+                status.appIndex,
+                statusId,
+                !bookmarked,
+                loginId,
+              )
               setBookmarked(!bookmarked)
               onStatusChange?.({ bookmarked: !bookmarked })
             },

@@ -455,6 +455,7 @@ async function initMainThreadFallback(
                 command.action,
                 command.value,
               ),
+            command.remoteAccountId,
           )
           break
         case 'updateStatus':

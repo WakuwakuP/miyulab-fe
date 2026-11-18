@@ -18,7 +18,10 @@ import {
 import { handleUpsertStatus } from 'util/db/sqlite/worker/handlers/statusHandlers'
 import type { DbExec } from 'util/db/sqlite/worker/handlers/types'
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
-import { createRealWorkerDb } from './realWorkerCommandAdapter'
+import {
+  createRealWorkerDb,
+  createSendCommandAdapter,
+} from './realWorkerCommandAdapter'
 
 const BACKEND_A = 'https://a.test'
 const BACKEND_B = 'https://b.test'
@@ -576,7 +579,7 @@ describe('スコープ付きバッチ (実 DB, 2 アカウント)', () => {
     expect(read(BACKEND_A)).toEqual([first])
   })
 
-  it('resolves two logins at one URL by verified remote ID and keeps global ownership private', () => {
+  it('resolves two logins at one URL by verified remote ID and keeps global ownership private', async () => {
     const { postId, laA } = seedSharedPost()
     handleEnsureLocalAccount(
       db,
@@ -587,6 +590,28 @@ describe('スコープ付きバッチ (実 DB, 2 アカウント)', () => {
     const second = resolveLocalAccountId(db, BACKEND_A, 'second-login')
     expect(second).not.toBeNull()
     expect(second).not.toBe(laA)
+    if (second == null) throw new Error('Missing second account')
+    native
+      .prepare(
+        'INSERT INTO post_backend_ids(post_id, local_account_id, local_id, server_id) SELECT post_id, ?, local_id, server_id FROM post_backend_ids WHERE post_id = ? AND local_account_id = ?',
+      )
+      .run(second, postId, laA)
+    await createSendCommandAdapter(db).sendCommand({
+      action: 'favourited',
+      backendUrl: BACKEND_A,
+      remoteAccountId: 'second-login',
+      statusId: 'shared',
+      type: 'updateStatusAction',
+      value: false,
+    })
+    expect(
+      native
+        .prepare(
+          'SELECT is_favourited FROM post_interactions WHERE post_id = ? AND local_account_id = ?',
+        )
+        .get(postId, second),
+    ).toMatchObject({ is_favourited: 0 })
+
     native
       .prepare(
         'UPDATE post_stats SET emoji_reactions_json = ? WHERE post_id = ?',
@@ -599,6 +624,7 @@ describe('スコープ付きバッチ (実 DB, 2 アカウント)', () => {
       postIds: [postId],
     })
     expect(result.posts.get(postId)?.localRemoteAccountId).toBe('me-a')
+    expect(result.posts.get(postId)?.favourited).toBe(true)
     expect(result.posts.get(postId)?.emoji_reactions?.[0]?.me).toBe(false)
   })
 
