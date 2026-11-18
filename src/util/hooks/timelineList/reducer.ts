@@ -9,13 +9,14 @@
  */
 
 import type { TimelineItem } from 'util/hooks/useTimelineDataSource'
-
+import { updateAccountStatus } from '../updateAccountStatus'
 import {
   itemKey,
   itemNumericId,
   itemTimestamp,
   sortItemsDesc,
 } from './itemHelpers'
+import type { LocalInteraction } from './localInteraction'
 
 // --------------- 状態 ---------------
 
@@ -40,6 +41,7 @@ export type TimelineListState = {
   hasMoreOlder: boolean
 
   /** scrollback 中に保留されたストリーミング通知の changedTables */
+  deferredPostIds?: ReadonlySet<number>
   deferredChangedTables: ReadonlySet<string> | null
 
   /** API フォールバックで枯渇したリソース (バックエンドURL → リソース種別) */
@@ -64,12 +66,17 @@ export function createInitialState(): TimelineListState {
 // --------------- イベント ---------------
 
 export type TimelineListEvent =
+  | ({ type: 'LOCAL_INTERACTION' } & LocalInteraction)
   | { items: TimelineItem[]; type: 'INITIAL_FETCH_SUCCEEDED' }
   | { type: 'INITIAL_FETCH_EMPTY' }
   | { items: TimelineItem[]; type: 'STREAMING_FETCH_SUCCEEDED' }
   | { items: TimelineItem[]; type: 'NOTIFICATION_READ_REFRESH_SUCCEEDED' }
   | { items: TimelineItem[]; type: 'INTERACTION_UPDATES_SUCCEEDED' }
-  | { changedTables: ReadonlySet<string>; type: 'STREAMING_DEFERRED' }
+  | {
+      changedPostIds?: ReadonlySet<number>
+      changedTables: ReadonlySet<string>
+      type: 'STREAMING_DEFERRED'
+    }
   | { items: TimelineItem[]; type: 'DEFERRED_STREAMING_FLUSH_SUCCEEDED' }
   | { type: 'SCROLLBACK_STARTED' }
   | { items: TimelineItem[]; type: 'SCROLLBACK_DB_SUCCEEDED' }
@@ -108,6 +115,38 @@ export function timelineListReducer(
         event.items,
       )
 
+    case 'LOCAL_INTERACTION': {
+      const items: TimelineItem[] = []
+      for (const item of state.sortedItems) {
+        if (
+          item.appIndex !== event.appIndex ||
+          !('backendUrl' in item) ||
+          item.backendUrl !== event.backendUrl
+        )
+          continue
+        if ('type' in item) {
+          if (!item.status) continue
+          const status = updateAccountStatus(
+            item.status,
+            event.statusId,
+            event.updates,
+          )
+          if (status !== item.status) items.push({ ...item, status })
+        } else {
+          const status = updateAccountStatus(
+            item,
+            event.statusId,
+            event.updates,
+          )
+          if (status !== item) items.push(status)
+        }
+      }
+      return timelineListReducer(state, {
+        items,
+        type: 'INTERACTION_UPDATES_SUCCEEDED',
+      })
+    }
+
     case 'INTERACTION_UPDATES_SUCCEEDED': {
       if (event.items.length === 0) return state
       const nextMap = new Map(state.itemMap)
@@ -136,6 +175,15 @@ export function timelineListReducer(
           state.deferredChangedTables,
           event.changedTables,
         ),
+        // Selective refresh requires complete ID coverage across all pending hints.
+        deferredPostIds:
+          event.changedPostIds &&
+          (!state.deferredChangedTables || state.deferredPostIds)
+            ? new Set([
+                ...(state.deferredPostIds ?? []),
+                ...event.changedPostIds,
+              ])
+            : undefined,
       }
 
     case 'DEFERRED_STREAMING_FLUSH_SUCCEEDED':
@@ -151,6 +199,7 @@ export function timelineListReducer(
       return {
         ...state,
         deferredChangedTables: null,
+        deferredPostIds: undefined,
         hasMoreOlder: event.hasMoreOlder,
         isScrollbackRunning: false,
       }

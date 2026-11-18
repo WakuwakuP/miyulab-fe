@@ -1,5 +1,5 @@
 import type { Entity, WebSocketInterface } from 'megalodon'
-import type { Backend } from 'types/types'
+import type { App, Backend } from 'types/types'
 import { dbDiagnosticRecorder } from 'util/db/dbDiagnostics'
 import type { TimelineType as DbTimelineType } from 'util/db/sqlite/statusStore'
 import {
@@ -12,6 +12,7 @@ import {
   isRawDataCaptureEnabled,
 } from 'util/debug/rawDataCapture'
 import type { StreamEntry } from 'util/streaming/streamRegistry'
+import { verifyLogin } from 'util/verifiedLogin'
 import type { StreamType } from './streamKey'
 
 export type StreamHandlerCallbacks = {
@@ -28,7 +29,7 @@ export function setupStreamHandlers(
   key: string,
   type: StreamType,
   backendUrl: string,
-  options: { tag?: string; backend?: Backend } | undefined,
+  options: { tag?: string; backend?: Backend; app?: App } | undefined,
   callbacks: StreamHandlerCallbacks,
   registryRef: { current: Map<string, StreamEntry> },
 ): void {
@@ -74,7 +75,9 @@ export function setupStreamHandlers(
       })
     }
     try {
-      await updateStatus(status, backendUrl)
+      const account =
+        options?.app && (await verifyLogin(options.app).catch(() => undefined))
+      await updateStatus(status, backendUrl, account?.id ?? null)
     } catch (error) {
       console.error('updateStatus failed:', error)
     }

@@ -233,6 +233,7 @@ export function syncPostStats(
   status: Entity.Status,
   collector?: WrittenTableCollector,
   now?: number,
+  localAccountId?: number | null,
 ): void {
   // emoji_reactions を JSON 文字列に変換（account_ids のみ保持、accounts は省略）
   const emojiReactionsJson =
@@ -278,6 +279,54 @@ export function syncPostStats(
     },
   )
   if (lastChangeCount(db) > 0) collector?.add('post_stats')
+  if (localAccountId != null && status.emoji_reactions?.length) {
+    const rows = db.exec(
+      'SELECT confirmed_reactions_json FROM post_interactions WHERE post_id = ? AND local_account_id = ? AND confirmed_reactions_json IS NOT NULL',
+      { bind: [postId, localAccountId], returnValue: 'resultRows' },
+    ) as [string][] | undefined
+    const cached = rows?.[0]?.[0]
+    if (typeof cached !== 'string') return
+    let confirmed: Entity.Reaction[] = status.emoji_reactions
+    try {
+      const parsed: unknown = JSON.parse(cached)
+      if (
+        Array.isArray(parsed) &&
+        parsed.every(
+          (r) => typeof r?.name === 'string' && typeof r.me === 'boolean',
+        )
+      ) {
+        confirmed = parsed
+      }
+    } catch {
+      // An unreadable snapshot can be rebuilt from this backend's response.
+    }
+    const normalized = (name: string) => name.replace(/^:(.+):$/, '$1')
+    const owned = new Map(
+      confirmed.filter((r) => r.me).map((r) => [normalized(r.name), r]),
+    )
+    const merged = status.emoji_reactions.map((reaction) => ({
+      ...reaction,
+      me: owned.delete(normalized(reaction.name)),
+    }))
+    const next = JSON.stringify([...merged, ...owned.values()])
+    const mine = [...merged, ...owned.values()].find((r) => r.me)
+    db.exec(
+      'UPDATE post_interactions SET confirmed_reactions_json = ?, my_reaction_name = ?, my_reaction_url = ? WHERE post_id = ? AND local_account_id = ? AND (confirmed_reactions_json IS NOT ? OR my_reaction_name IS NOT ? OR my_reaction_url IS NOT ?)',
+      {
+        bind: [
+          next,
+          mine?.name ?? null,
+          mine?.url ?? null,
+          postId,
+          localAccountId,
+          next,
+          mine?.name ?? null,
+          mine?.url ?? null,
+        ],
+      },
+    )
+    if (lastChangeCount(db) > 0) collector?.add('post_interactions')
+  }
 }
 
 // ================================================================
@@ -483,10 +532,11 @@ function syncReblogOriginalRelatedData(
   accountDomain: string,
   collector?: WrittenTableCollector,
   now?: number,
+  localAccountId?: number | null,
 ): void {
   upsertMentionsInternal(db, postId, originalStatus.mentions, collector)
   syncPostMedia(db, postId, originalStatus.media_attachments, collector)
-  syncPostStats(db, postId, originalStatus, collector, now)
+  syncPostStats(db, postId, originalStatus, collector, now, localAccountId)
 
   const resolvedStatusEmojis =
     originalStatus.emojis?.length > 0
@@ -662,6 +712,7 @@ export function ensureReblogOriginalPost(
     accountDomain,
     collector,
     now,
+    localAccountId,
   )
   syncReblogOriginalInteractions(
     db,

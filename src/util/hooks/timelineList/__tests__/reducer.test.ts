@@ -1,6 +1,6 @@
 import type { TimelineItem } from 'util/hooks/useTimelineDataSource'
 import { describe, expect, it } from 'vitest'
-import { itemTimestamp } from '../itemHelpers'
+import { itemKey, itemTimestamp } from '../itemHelpers'
 import {
   createInitialState,
   type TimelineListEvent,
@@ -586,4 +586,56 @@ describe('NOTIFICATION_READ_REFRESH_SUCCEEDED', () => {
     expect(empty.itemMap.size).toBe(0)
     expect(empty.sortedItems).toEqual([])
   })
+})
+
+it('再表示に使う投稿・ブースト・通知のデータに同じアカウントの操作を反映する', () => {
+  const post = {
+    ...makeStatus('1', 100),
+    appIndex: 0,
+    backendUrl: 'a',
+    favourited: false,
+  }
+  const boost = {
+    ...makeStatus('2', 200),
+    appIndex: 0,
+    backendUrl: 'a',
+    reblog: post,
+  }
+  const other = { ...post, appIndex: 1, post_id: 3 }
+  const notification = {
+    appIndex: 0,
+    backendUrl: 'a',
+    id: '4',
+    notification_id: 4,
+    status: post,
+    type: 'mention',
+  }
+  const initial = dispatch(createInitialState(), {
+    items: [post, boost, other, notification] as TimelineItem[],
+    type: 'INITIAL_FETCH_SUCCEEDED',
+  })
+  let state = initial
+  for (const favourited of [true, false]) {
+    const updates = {
+      emoji_reactions: favourited ? [{ count: 1, me: true, name: '⭐' }] : [],
+      favourited,
+    }
+    state = dispatch(state, {
+      appIndex: 0,
+      backendUrl: 'a',
+      statusId: '1',
+      type: 'LOCAL_INTERACTION',
+      updates,
+    })
+    expect(state.itemMap.get('p:1')).toMatchObject(updates)
+    expect(state.itemMap.get('p:2')).toMatchObject({
+      favourited,
+      reblog: updates,
+    })
+    expect(state.itemMap.get('n:4')).toMatchObject({ status: updates })
+    expect(state.itemMap.get('p:3')).toBe(other)
+    expect(state.sortedItems).toEqual(
+      initial.sortedItems.map((row) => state.itemMap.get(itemKey(row))),
+    )
+  }
 })

@@ -25,16 +25,23 @@ export const NotificationsContext = createContext<NotificationAddAppIndex[]>([])
 
 // SetActionsContextは既存のまま維持（互換性）
 type SetActions = {
-  setReblogged: (appIndex: number, statusId: string, reblogged: boolean) => void
+  setReblogged: (
+    appIndex: number,
+    statusId: string,
+    reblogged: boolean,
+    remoteAccountId?: string,
+  ) => void
   setFavourited: (
     appIndex: number,
     statusId: string,
     favourited: boolean,
+    remoteAccountId?: string,
   ) => void
   setBookmarked: (
     appIndex: number,
     statusId: string,
     bookmarked: boolean,
+    remoteAccountId?: string,
   ) => void
 }
 
@@ -135,30 +142,60 @@ export const HomeTimelineProvider = ({ children }: { children: ReactNode }) => {
   // 既存APIとの互換性を保つためのラッパー
   // appIndex → backendUrl への変換をここで行う
   const setReblogged = useCallback(
-    (appIndex: number, statusId: string, reblogged: boolean) => {
+    (
+      appIndex: number,
+      statusId: string,
+      reblogged: boolean,
+      remoteAccountId?: string,
+    ) => {
       const backendUrl = apps[appIndex]?.backendUrl
       if (backendUrl) {
-        storeActions.setReblogged(backendUrl, statusId, reblogged)
+        storeActions.setReblogged(
+          backendUrl,
+          statusId,
+          reblogged,
+          remoteAccountId,
+        )
       }
     },
     [apps, storeActions],
   )
 
   const setFavourited = useCallback(
-    (appIndex: number, statusId: string, favourited: boolean) => {
+    (
+      appIndex: number,
+      statusId: string,
+      favourited: boolean,
+      remoteAccountId?: string,
+    ) => {
       const backendUrl = apps[appIndex]?.backendUrl
       if (backendUrl) {
-        storeActions.setFavourited(backendUrl, statusId, favourited)
+        storeActions.setFavourited(
+          backendUrl,
+          statusId,
+          favourited,
+          remoteAccountId,
+        )
       }
     },
     [apps, storeActions],
   )
 
   const setBookmarked = useCallback(
-    (appIndex: number, statusId: string, bookmarked: boolean) => {
+    (
+      appIndex: number,
+      statusId: string,
+      bookmarked: boolean,
+      remoteAccountId?: string,
+    ) => {
       const backendUrl = apps[appIndex]?.backendUrl
       if (backendUrl) {
-        storeActions.setBookmarked(backendUrl, statusId, bookmarked)
+        storeActions.setBookmarked(
+          backendUrl,
+          statusId,
+          bookmarked,
+          remoteAccountId,
+        )
       }
     },
     [apps, storeActions],

@@ -15,20 +15,21 @@ import {
 } from 'react-icons/ri'
 import type { StatusAddAppIndex } from 'types/types'
 import { REACTION_BACKENDS } from 'util/constants'
-import { toggleReactionInDb } from 'util/db/sqlite/statusStore'
 import { GetClient } from 'util/GetClient'
+import { changeEmojiReaction } from 'util/hooks/timelineList/confirmedReactions'
 import { AppsContext } from 'util/provider/AppsProvider'
 import { SetActionsContext } from 'util/provider/HomeTimelineProvider'
 import { SetReplyToContext } from 'util/provider/ReplyToProvider'
 import { SettingContext } from 'util/provider/SettingProvider'
+import { verifyLogin } from 'util/verifiedLogin'
 
 export const Actions = ({
   status,
-  onReactionAdd,
+  onReactionsChange,
   onStatusChange,
 }: {
   status: StatusAddAppIndex
-  onReactionAdd?: (emoji: string) => void
+  onReactionsChange?: (reactions: Entity.Reaction[]) => void
   onStatusChange?: (updates: Partial<Entity.Status>) => void
 }) => {
   const apps = useContext(AppsContext)
@@ -39,6 +40,7 @@ export const Actions = ({
 
   const setting = useContext(SettingContext)
 
+  const [pendingAction, setPendingAction] = useState(false)
   const [reblogged, setReblogged] = useState(status.reblogged)
 
   const [favourited, setFavourited] = useState(status.favourited)
@@ -69,23 +71,22 @@ export const Actions = ({
         !REACTION_BACKENDS.includes(reactionApp.backend)
       )
         return
-      const reactionClient = GetClient(reactionApp)
       const statusId = status.reblog?.id ?? status.id
-      try {
-        await reactionClient.createEmojiReaction(statusId, emoji)
-      } catch (error) {
-        console.error('Failed to add reaction:', error)
-        return
-      }
-      onReactionAdd?.(emoji)
       setShowReactionPicker(false)
       try {
-        await toggleReactionInDb(reactionApp.backendUrl, statusId, true, emoji)
+        await changeEmojiReaction(
+          reactionApp,
+          statusId,
+          emoji,
+          true,
+          onReactionsChange,
+          status.reblog?.emoji_reactions ?? status.emoji_reactions ?? [],
+        )
       } catch (error) {
-        console.error('Failed to save reaction:', error)
+        console.error('Failed to update emoji reaction:', error)
       }
     },
-    [apps, status.appIndex, status.reblog?.id, status.id, onReactionAdd],
+    [apps, status, onReactionsChange],
   )
 
   const openPicker = useCallback(() => {
@@ -114,6 +115,24 @@ export const Actions = ({
   if (status.appIndex == null) return null
 
   const client = GetClient(apps[status.appIndex])
+
+  const statusId = status.reblog?.id ?? status.id
+  const applyAction = async (
+    request: () => Promise<unknown>,
+    update: (loginId: string) => void,
+  ) => {
+    if (pendingAction) return
+    setPendingAction(true)
+    try {
+      const loginId = (await verifyLogin(apps[status.appIndex])).id
+      await request()
+      update(loginId)
+    } catch (error) {
+      console.error('Failed to update status action:', error)
+    } finally {
+      setPendingAction(false)
+    }
+  }
 
   const statusApp = apps[status.appIndex]
   const canReact =
@@ -147,56 +166,49 @@ export const Actions = ({
       </button>
       <button
         className={isPrivate ? 'cursor-not-allowed opacity-50' : ''}
-        disabled={isPrivate}
-        onClick={() => {
-          if (isPrivate) return
-
-          if (reblogged ?? false) {
-            client.unreblogStatus(status.reblog?.id ?? status.id)
-            setActions.setReblogged(
-              status.appIndex,
-              status.reblog?.id ?? status.id,
-              false,
-            )
-            setReblogged(false)
-            onStatusChange?.({ reblogged: false })
-          } else {
-            client.reblogStatus(status.reblog?.id ?? status.id)
-            setActions.setReblogged(
-              status.appIndex,
-              status.reblog?.id ?? status.id,
-              true,
-            )
-            setReblogged(true)
-            onStatusChange?.({ reblogged: true })
-          }
-        }}
+        disabled={isPrivate || pendingAction}
+        onClick={() =>
+          applyAction(
+            () =>
+              reblogged
+                ? client.unreblogStatus(statusId)
+                : client.reblogStatus(statusId),
+            (loginId) => {
+              setActions.setReblogged(
+                status.appIndex,
+                statusId,
+                !reblogged,
+                loginId,
+              )
+              setReblogged(!reblogged)
+              onStatusChange?.({ reblogged: !reblogged })
+            },
+          )
+        }
         type="button"
       >
         {reblogIcon}
       </button>
       <button
-        onClick={() => {
-          if (favourited ?? false) {
-            client.unfavouriteStatus(status.reblog?.id ?? status.id)
-            setActions.setFavourited(
-              status.appIndex,
-              status.reblog?.id ?? status.id,
-              false,
-            )
-            setFavourited(false)
-            onStatusChange?.({ favourited: false })
-          } else {
-            client.favouriteStatus(status.reblog?.id ?? status.id)
-            setActions.setFavourited(
-              status.appIndex,
-              status.reblog?.id ?? status.id,
-              true,
-            )
-            setFavourited(true)
-            onStatusChange?.({ favourited: true })
-          }
-        }}
+        disabled={pendingAction}
+        onClick={() =>
+          applyAction(
+            () =>
+              favourited
+                ? client.unfavouriteStatus(statusId)
+                : client.favouriteStatus(statusId),
+            (loginId) => {
+              setActions.setFavourited(
+                status.appIndex,
+                statusId,
+                !favourited,
+                loginId,
+              )
+              setFavourited(!favourited)
+              onStatusChange?.({ favourited: !favourited })
+            },
+          )
+        }
         type="button"
       >
         {(favourited ?? false) ? (
@@ -207,7 +219,12 @@ export const Actions = ({
       </button>
       {canReact && (
         <>
-          <button onClick={openPicker} ref={reactionBtnRef} type="button">
+          <button
+            disabled={pendingAction}
+            onClick={openPicker}
+            ref={reactionBtnRef}
+            type="button"
+          >
             <RiEmotionLine size={24} />
           </button>
           {showReactionPicker && triggerRect && (
@@ -222,27 +239,25 @@ export const Actions = ({
         </>
       )}
       <button
-        onClick={() => {
-          if (bookmarked ?? false) {
-            client.unbookmarkStatus(status.reblog?.id ?? status.id)
-            setActions.setBookmarked(
-              status.appIndex,
-              status.reblog?.id ?? status.id,
-              false,
-            )
-            setBookmarked(false)
-            onStatusChange?.({ bookmarked: false })
-          } else {
-            client.bookmarkStatus(status.reblog?.id ?? status.id)
-            setActions.setBookmarked(
-              status.appIndex,
-              status.reblog?.id ?? status.id,
-              true,
-            )
-            setBookmarked(true)
-            onStatusChange?.({ bookmarked: true })
-          }
-        }}
+        disabled={pendingAction}
+        onClick={() =>
+          applyAction(
+            () =>
+              bookmarked
+                ? client.unbookmarkStatus(statusId)
+                : client.bookmarkStatus(statusId),
+            (loginId) => {
+              setActions.setBookmarked(
+                status.appIndex,
+                statusId,
+                !bookmarked,
+                loginId,
+              )
+              setBookmarked(!bookmarked)
+              onStatusChange?.({ bookmarked: !bookmarked })
+            },
+          )
+        }
         type="button"
       >
         {bookmarked ? (

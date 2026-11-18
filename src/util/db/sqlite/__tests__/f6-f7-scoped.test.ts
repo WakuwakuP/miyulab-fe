@@ -11,11 +11,17 @@ import { updateInteraction } from 'util/db/sqlite/helpers/interaction'
 import { syncPollVotes } from 'util/db/sqlite/helpers/poll'
 import type { WrittenTableCollector } from 'util/db/sqlite/protocol'
 import { handleEnsureLocalAccount } from 'util/db/sqlite/worker/handlers/accountHandlers'
-import { handleUpdateStatusAction } from 'util/db/sqlite/worker/handlers/interactionHandlers'
+import {
+  handleToggleReaction,
+  handleUpdateStatusAction,
+} from 'util/db/sqlite/worker/handlers/interactionHandlers'
 import { handleUpsertStatus } from 'util/db/sqlite/worker/handlers/statusHandlers'
 import type { DbExec } from 'util/db/sqlite/worker/handlers/types'
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
-import { createRealWorkerDb } from './realWorkerCommandAdapter'
+import {
+  createRealWorkerDb,
+  createSendCommandAdapter,
+} from './realWorkerCommandAdapter'
 
 const BACKEND_A = 'https://a.test'
 const BACKEND_B = 'https://b.test'
@@ -524,6 +530,103 @@ describe('スコープ付きバッチ (実 DB, 2 アカウント)', () => {
     updateInteraction(db, postId, laB, 'favourite', false)
     return { laA, laB, pollId, postId }
   }
+
+  it('restores all confirmed emojis for the acting account after separate database reads', () => {
+    const { postId, laA } = seedSharedPost()
+    const first = { count: 1, me: true, name: '⭐' }
+    const second = { count: 1, me: true, name: '🎉' }
+    const read = (url: string) =>
+      executeFlatFetch(db, {
+        backendUrls: [url],
+        displayOrder: [{ id: postId, table: 'posts' }],
+        notificationIds: [],
+        postIds: [postId],
+      }).posts.get(postId)?.emoji_reactions
+    handleToggleReaction(db, laA, 'shared', true, first.name, [first])
+    handleToggleReaction(db, laA, 'shared', true, second.name, [first, second])
+    expect(read(BACKEND_A)).toEqual([first, second])
+    expect(read(BACKEND_B)).toEqual([])
+    upsert(
+      status('shared', {
+        emoji_reactions: [{ ...first, count: 3, me: false }],
+      }),
+      BACKEND_A,
+      'home',
+    )
+    expect(read(BACKEND_A)).toEqual([{ ...first, count: 3 }, second])
+
+    upsert(status('shared', { emoji_reactions: [] }), BACKEND_A, 'home')
+    expect(read(BACKEND_A)).toEqual([{ ...first, count: 3 }, second])
+    native
+      .prepare(
+        'UPDATE post_interactions SET confirmed_reactions_json = ? WHERE post_id = ? AND local_account_id = ?',
+      )
+      .run('{', postId, laA)
+    native
+      .prepare(
+        'UPDATE post_stats SET emoji_reactions_json = ? WHERE post_id = ?',
+      )
+      .run(JSON.stringify([first]), postId)
+    expect(read(BACKEND_A)).toEqual([first])
+    upsert(
+      status('shared', { emoji_reactions: [first, second] }),
+      BACKEND_A,
+      'home',
+    )
+    expect(read(BACKEND_A)).toEqual([first, second])
+
+    handleToggleReaction(db, laA, 'shared', false, second.name, [first])
+    expect(read(BACKEND_A)).toEqual([first])
+  })
+
+  it('resolves two logins at one URL by verified remote ID and keeps global ownership private', async () => {
+    const { postId, laA } = seedSharedPost()
+    handleEnsureLocalAccount(
+      db,
+      BACKEND_A,
+      JSON.stringify(account('second-login', 'second@a.test')),
+    )
+    expect(resolveLocalAccountId(db, BACKEND_A, 'me-a')).toBe(laA)
+    const second = resolveLocalAccountId(db, BACKEND_A, 'second-login')
+    expect(second).not.toBeNull()
+    expect(second).not.toBe(laA)
+    if (second == null) throw new Error('Missing second account')
+    native
+      .prepare(
+        'INSERT INTO post_backend_ids(post_id, local_account_id, local_id, server_id) SELECT post_id, ?, local_id, server_id FROM post_backend_ids WHERE post_id = ? AND local_account_id = ?',
+      )
+      .run(second, postId, laA)
+    await createSendCommandAdapter(db).sendCommand({
+      action: 'favourited',
+      backendUrl: BACKEND_A,
+      remoteAccountId: 'second-login',
+      statusId: 'shared',
+      type: 'updateStatusAction',
+      value: false,
+    })
+    expect(
+      native
+        .prepare(
+          'SELECT is_favourited FROM post_interactions WHERE post_id = ? AND local_account_id = ?',
+        )
+        .get(postId, second),
+    ).toMatchObject({ is_favourited: 0 })
+
+    native
+      .prepare(
+        'UPDATE post_stats SET emoji_reactions_json = ? WHERE post_id = ?',
+      )
+      .run(JSON.stringify([{ count: 1, me: true, name: '⭐' }]), postId)
+    const result = executeFlatFetch(db, {
+      backendUrls: [BACKEND_A],
+      displayOrder: [{ id: postId, table: 'posts' }],
+      notificationIds: [],
+      postIds: [postId],
+    })
+    expect(result.posts.get(postId)?.localRemoteAccountId).toBe('me-a')
+    expect(result.posts.get(postId)?.favourited).toBe(true)
+    expect(result.posts.get(postId)?.emoji_reactions?.[0]?.me).toBe(false)
+  })
 
   it('backendUrls=[a] → A の投票/お気に入りのみ参照し B に漏れない', () => {
     const { postId } = seedSharedPost()

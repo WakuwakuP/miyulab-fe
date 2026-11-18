@@ -20,6 +20,7 @@ import {
   useTimelineScrollbackController,
   useTimelineStreamingController,
 } from 'util/hooks/timelineList'
+import { subscribeLocalInteraction } from 'util/hooks/timelineList/localInteraction'
 import { useHydrateMissingNotificationStatus } from 'util/hooks/useHydrateMissingNotificationStatus'
 import { useQueryDuration } from 'util/hooks/useQueryDuration'
 import {
@@ -53,6 +54,7 @@ export function useTimelineList(
   const {
     fetchInteractionUpdates,
     fetchPage,
+    sharedLoginBindings,
     subscribeToChanges,
     targetBackendUrls,
   } = useTimelineDataSource(config, options)
@@ -64,6 +66,14 @@ export function useTimelineList(
     timelineListReducer,
     undefined,
     createInitialState,
+  )
+
+  useEffect(
+    () =>
+      subscribeLocalInteraction((change) => {
+        dispatch({ ...change, type: 'LOCAL_INTERACTION' })
+      }),
+    [],
   )
 
   const stateRef = useRef(state)
@@ -88,13 +98,19 @@ export function useTimelineList(
   // config 変更検知
   const configIdRef = useRef(config.id)
 
+  const bindingsRef = useRef(sharedLoginBindings)
+
   useEffect(() => {
-    if (configIdRef.current !== config.id) {
+    if (
+      configIdRef.current !== config.id ||
+      bindingsRef.current !== sharedLoginBindings
+    ) {
+      bindingsRef.current = sharedLoginBindings
       configIdRef.current = config.id
       exhaustedResourcesRef.current = new Map()
       dispatch({ type: 'RESET' })
     }
-  }, [config.id])
+  }, [config.id, sharedLoginBindings])
 
   // ---- 初期ロード ----
   // DB の件数だけでは枯渇を判定しない。
@@ -102,11 +118,12 @@ export function useTimelineList(
   // バックエンドにはまだ過去データが存在する可能性がある。
   // 枯渇判定はスクロールバック時の API 応答にのみ委ねる。
   useEffect(() => {
-    if (stateRef.current.initialized) return
+    if (state.initialized) return
     if (options?.disabled) return
 
+    let cancelled = false
     fetchPage({ limit: PAGE_SIZE }).then((result) => {
-      if (!result) return
+      if (cancelled || !result) return
       recordDuration(result.durationMs)
       if (result.items.length === 0) {
         dispatch({ type: 'INITIAL_FETCH_EMPTY' })
@@ -114,7 +131,10 @@ export function useTimelineList(
         dispatch({ items: result.items, type: 'INITIAL_FETCH_SUCCEEDED' })
       }
     })
-  }, [fetchPage, recordDuration, options?.disabled])
+    return () => {
+      cancelled = true
+    }
+  }, [fetchPage, recordDuration, options?.disabled, state.initialized])
 
   // ---- ストリーミング controller ----
   useTimelineStreamingController({
@@ -133,6 +153,7 @@ export function useTimelineList(
     config,
     dispatch,
     exhaustedResourcesRef,
+    fetchInteractionUpdates,
     fetchPage,
     includeNotifications,
     recordDuration,

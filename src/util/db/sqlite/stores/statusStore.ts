@@ -332,11 +332,13 @@ export function createStatusWriteStore(
     statusId: string,
     action: 'reblogged' | 'favourited' | 'bookmarked',
     value: boolean,
+    remoteAccountId?: string,
   ): Promise<void> {
     return enqueueOperation(async (handle) => {
       await handle.sendCommand({
         action,
         backendUrl,
+        remoteAccountId,
         statusId,
         type: 'updateStatusAction',
         value,
@@ -350,11 +352,13 @@ export function createStatusWriteStore(
   function updateStatus(
     status: Entity.Status,
     backendUrl: string,
+    remoteAccountId?: string | null,
   ): Promise<void> {
     return enqueueOperation(async (handle) => {
       await handle.sendCommand({
         backendUrl,
         statusJson: JSON.stringify(status),
+        ...(remoteAccountId === undefined ? {} : { remoteAccountId }),
         type: 'updateStatus',
       })
     })
@@ -385,11 +389,15 @@ export function createStatusWriteStore(
     statusId: string,
     value: boolean,
     emoji: string,
+    reactions?: Entity.Reaction[],
+    remoteAccountId?: string,
   ): Promise<void> {
     return enqueueOperation(async (handle) => {
       await handle.sendCommand({
         backendUrl,
+        confirmedReactions: reactions,
         emoji,
+        remoteAccountId,
         statusId,
         type: 'toggleReaction',
         value,

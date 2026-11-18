@@ -2,11 +2,10 @@
 'use client'
 
 import type { Entity } from 'megalodon'
-import { useContext, useMemo } from 'react'
+import { useContext, useMemo, useState } from 'react'
 import type { StatusAddAppIndex } from 'types/types'
 import { REACTION_BACKENDS } from 'util/constants'
-import { toggleReactionInDb } from 'util/db/sqlite/statusStore'
-import { GetClient } from 'util/GetClient'
+import { changeEmojiReaction } from 'util/hooks/timelineList/confirmedReactions'
 import { AppsContext } from 'util/provider/AppsProvider'
 import {
   EmojiCatalogContext,
@@ -17,12 +16,13 @@ import { toSecureResourceUrl } from 'util/secureResourceUrl'
 export const EmojiReactions = ({
   status,
   reactions,
-  onToggle,
+  onReactionsChange,
 }: {
   status: StatusAddAppIndex
   reactions: Entity.Reaction[]
-  onToggle: (reactionName: string, currentlyMine: boolean) => void
+  onReactionsChange: (reactions: Entity.Reaction[]) => void
 }) => {
+  const [pending, setPending] = useState(new Set<string>())
   const apps = useContext(AppsContext)
   const emojiCatalog = useContext(EmojiCatalogContext)
   const emojiFallback = useContext(EmojiContext)
@@ -48,38 +48,27 @@ export const EmojiReactions = ({
   const canReact =
     statusApp != null && REACTION_BACKENDS.includes(statusApp.backend)
 
-  const handleReactionClick = (reaction: Entity.Reaction) => {
+  const handleReactionClick = async (reaction: Entity.Reaction) => {
     if (!canReact || statusApp == null) return
-
-    const client = GetClient(statusApp)
     const statusId = status.reblog?.id ?? status.id
-
-    onToggle(reaction.name, reaction.me)
-
-    if (reaction.me) {
-      client.deleteEmojiReaction(statusId, reaction.name).catch((error) => {
-        console.error('Failed to remove reaction:', error)
-      })
-      // DB からリアクションを削除
-      toggleReactionInDb(
-        statusApp.backendUrl,
+    setPending((names) => new Set(names).add(reaction.name))
+    try {
+      await changeEmojiReaction(
+        statusApp,
         statusId,
-        false,
         reaction.name,
-      ).catch((error) =>
-        console.error('Failed to remove reaction from DB:', error),
+        !reaction.me,
+        onReactionsChange,
+        reactions,
       )
-    } else {
-      client.createEmojiReaction(statusId, reaction.name).catch((error) => {
-        console.error('Failed to add reaction:', error)
+    } catch (error) {
+      console.error('Failed to update emoji reaction:', error)
+    } finally {
+      setPending((names) => {
+        const next = new Set(names)
+        next.delete(reaction.name)
+        return next
       })
-      // DB にリアクションを保存
-      toggleReactionInDb(
-        statusApp.backendUrl,
-        statusId,
-        true,
-        reaction.name,
-      ).catch((error) => console.error('Failed to save reaction to DB:', error))
     }
   }
 
@@ -94,7 +83,7 @@ export const EmojiReactions = ({
               : 'border-gray-600 hover:bg-gray-700',
             canReact ? 'cursor-pointer' : 'cursor-default',
           ].join(' ')}
-          disabled={!canReact}
+          disabled={!canReact || pending.has(reaction.name)}
           key={reaction.name}
           onClick={() => handleReactionClick(reaction)}
           type="button"

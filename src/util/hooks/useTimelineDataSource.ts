@@ -17,7 +17,6 @@ import {
   useMemo,
   useRef,
 } from 'react'
-
 import type {
   NotificationAddAppIndex,
   StatusAddAppIndex,
@@ -64,10 +63,15 @@ import {
 import { AppsContext } from 'util/provider/AppsProvider'
 import { NotificationReadContext } from 'util/provider/NotificationReadProvider'
 import {
+  AccountVerificationReadyContext,
+  TimelineAccountIdsContext,
+} from 'util/provider/PostAccountProvider'
+import {
   normalizeBackendFilter,
   resolveBackendUrls,
 } from 'util/timelineConfigValidator'
 import { useConfigRefresh } from 'util/timelineRefresh'
+import { trackReactionRead } from './timelineList/confirmedReactions'
 
 // --------------- 型定義 ---------------
 
@@ -125,6 +129,16 @@ export function useTimelineDataSource(
   options?: UseTimelineDataSourceOptions,
 ) {
   const apps = useContext(AppsContext)
+  const verificationReady = useContext(AccountVerificationReadyContext)
+  const timelineIds = useContext(TimelineAccountIdsContext)
+  const timelineApps = useMemo(
+    () =>
+      apps.map((app, i) => ({
+        backendUrl: app.backendUrl,
+        localRemoteAccountId: timelineIds[i],
+      })),
+    [apps, timelineIds],
+  )
   const { sync: syncReadState } = useContext(NotificationReadContext)
 
   // バックエンド解決
@@ -135,6 +149,27 @@ export function useTimelineDataSource(
   const targetBackendUrls = useMemo(
     () => resolveBackendUrls(normalizedFilter, apps),
     [normalizedFilter, apps],
+  )
+
+  const awaitingLogin =
+    !verificationReady &&
+    targetBackendUrls.some(
+      (url) =>
+        apps.filter((app) => app.backendUrl === url).length > 1 &&
+        !timelineApps.some(
+          (app) => app.backendUrl === url && app.localRemoteAccountId,
+        ),
+    )
+
+  const sharedLoginBindings = JSON.stringify(
+    timelineApps.flatMap((app, index) =>
+      targetBackendUrls.includes(app.backendUrl) &&
+      apps.some(
+        (other, i) => i !== index && other.backendUrl === app.backendUrl,
+      )
+        ? [[index, app.backendUrl, app.localRemoteAccountId]]
+        : [],
+    ),
   )
 
   // アカウント解決
@@ -228,7 +263,7 @@ export function useTimelineDataSource(
     async (
       fetchOptions?: FetchPageOptions,
     ): Promise<FetchPageResult | null> => {
-      if (disabledRef.current) return null
+      if (disabledRef.current || awaitingLogin) return null
       if (!basePlan || targetBackendUrls.length === 0) {
         // plan が生成できない場合でも初回コールバックを発火
         if (!hasFiredFirstFetchRef.current && onFirstFetchRef.current) {
@@ -250,6 +285,7 @@ export function useTimelineDataSource(
           : patchPlanForFetch(basePlan, limit, fetchOptions?.cursor)
 
       const version = ++fetchVersionRef.current
+      const reactionRead = trackReactionRead(apps)
 
       try {
         const handle = await getSqliteDb()
@@ -263,7 +299,7 @@ export function useTimelineDataSource(
 
         const items = buildTimelineItemsFromGraphResult(
           result,
-          apps,
+          timelineApps,
           targetBackendUrls,
         )
 
@@ -275,14 +311,16 @@ export function useTimelineDataSource(
 
         return {
           durationMs: result.meta.totalDurationMs,
-          items,
+          items: reactionRead.apply(items),
         }
       } catch (e) {
         console.error('[useTimelineDataSource] fetch error:', e)
         return null
+      } finally {
+        reactionRead.finish()
       }
     },
-    [basePlan, targetBackendUrls, apps],
+    [basePlan, targetBackendUrls, apps, timelineApps, awaitingLogin],
   )
 
   const fetchInteractionUpdates = useCallback(
@@ -290,7 +328,7 @@ export function useTimelineDataSource(
       changedPostIds: ReadonlySet<number>,
       visibleItems: readonly TimelineItem[],
     ): Promise<FetchPageResult | null> => {
-      if (disabledRef.current) return null
+      if (disabledRef.current || awaitingLogin) return null
       if (config.customQuery) return null
       if (config.advancedQuery) return null
       if (config.queryPlan != null) return null
@@ -315,6 +353,7 @@ export function useTimelineDataSource(
         })),
       ]
       const version = ++fetchVersionRef.current
+      const reactionRead = trackReactionRead(apps)
 
       try {
         const handle = await getSqliteDb()
@@ -327,13 +366,18 @@ export function useTimelineDataSource(
         if (fetchVersionRef.current !== version) return null
         const items = buildTimelineItemsFromFlatResult(
           result,
-          apps,
+          timelineApps,
           targetBackendUrls,
         )
-        return { durationMs: result.meta.totalDurationMs, items }
+        return {
+          durationMs: result.meta.totalDurationMs,
+          items: reactionRead.apply(items),
+        }
       } catch (e) {
         console.error('[useTimelineDataSource] interaction refresh error:', e)
         return null
+      } finally {
+        reactionRead.finish()
       }
     },
     [
@@ -343,6 +387,8 @@ export function useTimelineDataSource(
       config.queryPlan,
       targetBackendUrls,
       config.advancedQuery,
+      timelineApps,
+      awaitingLogin,
     ],
   )
 
@@ -389,6 +435,7 @@ export function useTimelineDataSource(
     apps,
     fetchInteractionUpdates,
     fetchPage,
+    sharedLoginBindings,
     subscribeToChanges,
     targetBackendUrls,
   }

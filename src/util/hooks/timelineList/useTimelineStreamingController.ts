@@ -197,7 +197,7 @@ export function createStreamingController({
     // scrollback 中は保留
     if (s.isScrollbackRunning) {
       tlDebug('[TL] onMatched: deferred (scrollback running)')
-      dispatch({ changedTables, type: 'STREAMING_DEFERRED' })
+      dispatch({ changedPostIds, changedTables, type: 'STREAMING_DEFERRED' })
       return
     }
     // 初期ロード完了前はスキップ

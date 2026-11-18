@@ -195,6 +195,7 @@ export function assembleStatusFromBatch(
     in_reply_to_account_id: null,
     in_reply_to_id: row[12] as string | null,
     language: row[8] as string | null,
+    localRemoteAccountId: row[48] as string | undefined,
     media_attachments: parseMediaAttachments(mediaJson),
     mentions: parseMentions(mentionsJson),
     muted: null,

@@ -86,7 +86,12 @@ export function createSendCommandAdapter(db: DbExec): {
           command.skipProfileUpdate,
         )
       case 'updateStatusAction': {
-        const localAccountId = resolveLocalAccountId(db, command.backendUrl)
+        const localAccountId = resolveLocalAccountId(
+          db,
+          command.backendUrl,
+          command.remoteAccountId,
+          true,
+        )
         if (localAccountId == null) return EMPTY_CHANGED_TABLES
         return handleUpdateStatusAction(
           db,
@@ -97,7 +102,12 @@ export function createSendCommandAdapter(db: DbExec): {
         )
       }
       case 'updateStatus':
-        return handleUpdateStatus(db, command.statusJson, command.backendUrl)
+        return handleUpdateStatus(
+          db,
+          command.statusJson,
+          command.backendUrl,
+          command.remoteAccountId,
+        )
       case 'handleDeleteEvent': {
         const localAccountId = resolveLocalAccountId(db, command.backendUrl)
         if (localAccountId == null) return EMPTY_CHANGED_TABLES
@@ -144,7 +154,12 @@ export function createSendCommandAdapter(db: DbExec): {
           command.accountJson,
         )
       case 'toggleReaction': {
-        const localAccountId = resolveLocalAccountId(db, command.backendUrl)
+        const localAccountId = resolveLocalAccountId(
+          db,
+          command.backendUrl,
+          command.remoteAccountId,
+          true,
+        )
         if (localAccountId == null) return EMPTY_CHANGED_TABLES
         return handleToggleReaction(
           db,
@@ -152,6 +167,7 @@ export function createSendCommandAdapter(db: DbExec): {
           command.statusId,
           command.value,
           command.emoji,
+          command.confirmedReactions,
         )
       }
       case 'bulkUpsertCustomEmojis':

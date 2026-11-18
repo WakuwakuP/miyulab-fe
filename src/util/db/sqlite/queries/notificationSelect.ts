@@ -1,3 +1,4 @@
+import { confirmedReactionsSql } from './confirmedReactionsSql'
 // ============================================================
 // Notification SQL テンプレート定数
 //
@@ -70,13 +71,13 @@ export const NOTIFICATION_SELECT = `
   (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM profile_custom_emojis rpace INNER JOIN custom_emojis ce ON rpace.custom_emoji_id = ce.id WHERE rpace.profile_id = rppr.id) AS rp_account_emojis_json,
   (SELECT json_object('id', pl.id, 'expires_at', pl.expires_at, 'multiple', pl.multiple, 'votes_count', pl.votes_count, 'options', (SELECT json_group_array(json_object('title', po.title, 'votes_count', po.votes_count)) FROM poll_options po WHERE po.poll_id = pl.id ORDER BY po.sort_order)) FROM polls pl WHERE pl.post_id = rp.id) AS rp_poll_json,
   (SELECT json_group_array(json_object('shortcode', ce.shortcode, 'url', ce.url, 'static_url', ce.static_url, 'visible_in_picker', ce.visible_in_picker)) FROM profile_custom_emojis pce2 INNER JOIN custom_emojis ce ON pce2.custom_emoji_id = ce.id WHERE pce2.profile_id = ap.id) AS actor_emojis_json,
-  rpps.emoji_reactions_json AS rp_emoji_reactions_json,
+  ${confirmedReactionsSql('rp', 'n.local_account_id', 'rpps')} AS rp_emoji_reactions_json,
   CASE WHEN EXISTS(SELECT 1 FROM post_media WHERE post_id = rp.id) THEN (SELECT json_group_array(json_object('id', pm.media_local_id, 'type', COALESCE((SELECT mt.name FROM media_types mt WHERE mt.id = pm.media_type_id), 'unknown'), 'url', pm.url, 'preview_url', pm.preview_url, 'description', pm.description, 'blurhash', pm.blurhash, 'remote_url', pm.remote_url)) FROM post_media pm WHERE pm.post_id = rp.id ORDER BY pm.sort_order) ELSE NULL END AS rp_media_json,
   (SELECT json_group_array(json_object('acct', pme.acct)) FROM post_mentions pme WHERE pme.post_id = rp.id) AS rp_mentions_json,
   (SELECT pv.voted FROM poll_votes pv INNER JOIN polls pl2 ON pv.poll_id = pl2.id WHERE pl2.post_id = rp.id AND pv.local_account_id = n.local_account_id LIMIT 1) AS rp_voted,
   (SELECT pv.own_votes_json FROM poll_votes pv INNER JOIN polls pl2 ON pv.poll_id = pl2.id WHERE pl2.post_id = rp.id AND pv.local_account_id = n.local_account_id LIMIT 1) AS rp_own_votes_json,
   n.reaction_name,
-  n.reaction_url`
+  n.reaction_url, la.remote_account_id`
 
 /**
  * Notification ベース JOIN 句

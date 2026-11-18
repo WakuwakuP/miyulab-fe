@@ -22,7 +22,26 @@ export function resolvePostId(
 export function resolveLocalAccountId(
   db: DbExecCompat,
   backendUrl: string,
+  remoteAccountId?: string,
+  requireUniqueLogin = false,
 ): number | null {
+  if (remoteAccountId !== undefined) {
+    const rows = db.exec(
+      'SELECT id FROM local_accounts WHERE backend_url = ? AND remote_account_id = ?;',
+      {
+        bind: [backendUrl, remoteAccountId],
+        returnValue: 'resultRows',
+      },
+    ) as number[][]
+    return rows[0]?.[0] ?? null
+  }
+  if (requireUniqueLogin) {
+    const rows = db.exec(
+      'SELECT id FROM local_accounts WHERE backend_url = ? LIMIT 2;',
+      { bind: [backendUrl], returnValue: 'resultRows' },
+    ) as number[][]
+    return rows.length === 1 ? rows[0][0] : null
+  }
   const cached = localAccountIdCache.get(backendUrl)
   if (cached !== undefined) return cached
 

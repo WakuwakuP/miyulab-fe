@@ -5,6 +5,7 @@ export type TimelineType = 'home' | 'local' | 'public' | 'tag'
 
 export interface SqliteStoredStatus extends Entity.Status {
   post_id: number
+  localRemoteAccountId?: string
   backendUrl: string
   timelineTypes: TimelineType[]
   belongingTags: string[]

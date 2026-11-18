@@ -1,3 +1,4 @@
+import type { Entity } from 'megalodon'
 /**
  * RPC プロトコル型定義 — SQLite OPFS Worker
  *
@@ -137,6 +138,7 @@ export type BulkUpsertStatusesRequest = {
 /** Status のアクション状態更新 */
 export type UpdateStatusActionRequest = {
   type: 'updateStatusAction'
+  remoteAccountId?: string
   id: number
   backendUrl: string
   statusId: string
@@ -147,6 +149,7 @@ export type UpdateStatusActionRequest = {
 /** Status 全体の更新（編集された投稿用） */
 export type UpdateStatusRequest = {
   type: 'updateStatus'
+  remoteAccountId?: string | null
   id: number
   statusJson: string
   backendUrl: string
@@ -289,6 +292,8 @@ export type ToggleReactionRequest = {
   backendUrl: string
   statusId: string
   value: boolean
+  remoteAccountId?: string
+  confirmedReactions?: Entity.Reaction[]
   emoji: string // ':blobcat:' or '👍'
 }
 

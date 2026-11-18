@@ -187,7 +187,12 @@ function dispatchWorkerRequest(msg: WorkerRequest, db: WorkerDb): void {
     }
 
     case 'updateStatusAction': {
-      const localAccountId = resolveLocalAccountId(db, msg.backendUrl)
+      const localAccountId = resolveLocalAccountId(
+        db,
+        msg.backendUrl,
+        msg.remoteAccountId,
+        true,
+      )
       if (localAccountId == null) {
         sendResponse(msg.id, { ok: true }, [])
         break
@@ -207,7 +212,12 @@ function dispatchWorkerRequest(msg: WorkerRequest, db: WorkerDb): void {
     }
 
     case 'updateStatus': {
-      const r = handleUpdateStatus(db, msg.statusJson, msg.backendUrl)
+      const r = handleUpdateStatus(
+        db,
+        msg.statusJson,
+        msg.backendUrl,
+        msg.remoteAccountId,
+      )
       sendResponse(msg.id, { ok: true }, r.changedTables, undefined, {
         backendUrl: msg.backendUrl,
       })
@@ -338,7 +348,12 @@ function dispatchWorkerRequest(msg: WorkerRequest, db: WorkerDb): void {
 
     // ---- Reaction ----
     case 'toggleReaction': {
-      const localAccountId = resolveLocalAccountId(db, msg.backendUrl)
+      const localAccountId = resolveLocalAccountId(
+        db,
+        msg.backendUrl,
+        msg.remoteAccountId,
+        true,
+      )
       if (localAccountId == null) {
         sendResponse(msg.id, { ok: true }, [])
         break
@@ -349,6 +364,7 @@ function dispatchWorkerRequest(msg: WorkerRequest, db: WorkerDb): void {
         msg.statusId,
         msg.value,
         msg.emoji,
+        msg.confirmedReactions,
       )
       sendResponse(msg.id, { ok: true }, r.changedTables, undefined, {
         backendUrl: msg.backendUrl,

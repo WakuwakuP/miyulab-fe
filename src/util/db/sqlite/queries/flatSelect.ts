@@ -1,3 +1,4 @@
+import { confirmedReactionsSql } from './confirmedReactionsSql'
 // ============================================================
 // Flat Fetch — SQL 定数
 //
@@ -61,7 +62,7 @@ export const POST_FLAT_SELECT = `
   COALESCE(ps.replies_count, 0) AS replies_count,
   COALESCE(ps.reblogs_count, 0) AS reblogs_count,
   COALESCE(ps.favourites_count, 0) AS favourites_count,
-  ps.emoji_reactions_json,
+  ${confirmedReactionsSql('p', 'spb.local_account_id', 'ps')},
   COALESCE(la_auth.backend_url, '') AS backendUrl,
   COALESCE(spb.local_id, '') AS local_id,
   COALESCE(la_auth.remote_account_id, '') AS author_account_id`
@@ -161,7 +162,7 @@ export const NOTIFICATION_FLAT_SELECT = `
   COALESCE(ap.header_url, '') AS actor_header,
   COALESCE(ap.is_locked, 0) AS actor_locked,
   COALESCE(ap.is_bot, 0) AS actor_bot,
-  COALESCE(ap.actor_uri, '') AS actor_url`
+  COALESCE(ap.actor_uri, '') AS actor_url, la.remote_account_id`
 
 // ================================================================
 // Notification コア JOIN（3 JOIN、関連投稿なし）

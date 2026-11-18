@@ -743,10 +743,16 @@ describe('main-thread command API', () => {
       {
         command: {
           backendUrl: 'https://example.test',
+          remoteAccountId: 'login-b',
           statusJson: '{"id":"2"}',
           type: 'updateStatus',
         },
-        expectedArgs: [measuredDb, '{"id":"2"}', 'https://example.test'],
+        expectedArgs: [
+          measuredDb,
+          '{"id":"2"}',
+          'https://example.test',
+          'login-b',
+        ],
         handler: mocks.handleUpdateStatus,
         hint: { backendUrl: 'https://example.test' },
       },
@@ -873,6 +879,7 @@ describe('main-thread command API', () => {
       '12',
       true,
       ':party:',
+      undefined,
     )
     expect(notify).toHaveBeenLastCalledWith('posts', {
       backendUrl: 'https://example.test',

@@ -17,13 +17,26 @@ import {
 
 export type TimelineItemFromGraph = StatusAddAppIndex | NotificationAddAppIndex
 
-type BackendApp = { backendUrl: string }
+type BackendApp = { backendUrl: string; localRemoteAccountId?: string }
 
 /**
  * appIndex を解決する
  */
-function resolveAppIndex(backendUrl: string, apps: BackendApp[]): number {
-  return apps.findIndex((app) => app.backendUrl === backendUrl)
+function resolveAppIndex(
+  backendUrl: string,
+  apps: BackendApp[],
+  remoteId?: string,
+): number {
+  const first = apps.findIndex((app) => app.backendUrl === backendUrl)
+  if (!apps.some((app, i) => i !== first && app.backendUrl === backendUrl))
+    return first
+  return remoteId
+    ? apps.findIndex(
+        (app) =>
+          app.backendUrl === backendUrl &&
+          app.localRemoteAccountId === remoteId,
+      )
+    : -1
 }
 
 function buildPostMapFromGraphResult(
@@ -38,20 +51,19 @@ function buildPostMapFromGraphResult(
       typeof buildBatchMapsFromResults
     >[0],
   )
-  const fallbackAppIndex =
-    targetBackendUrls.length > 0
-      ? resolveAppIndex(targetBackendUrls[0], apps)
-      : -1
   const postMap = new Map<number, StatusAddAppIndex>()
   for (const row of result.posts.detailRows) {
     const status = assembleStatusFromBatch(row, maps)
-    let appIndex = resolveAppIndex(status.backendUrl, apps)
-    if (appIndex < 0 && status.backendUrl === '' && fallbackAppIndex >= 0) {
-      appIndex = fallbackAppIndex
-      status.backendUrl = targetBackendUrls[0]
-    }
+    const backendUrl = status.backendUrl || targetBackendUrls[0]
+    if (!backendUrl) continue
+    const appIndex = resolveAppIndex(
+      backendUrl,
+      apps,
+      status.localRemoteAccountId,
+    )
     if (appIndex < 0) continue
-    postMap.set(status.post_id, { ...status, appIndex })
+    const item = { ...status, appIndex, backendUrl }
+    postMap.set(status.post_id, item)
   }
   return postMap
 }
@@ -65,7 +77,11 @@ function buildNotifMapFromGraphResult(
   const notifMap = new Map<number, NotificationAddAppIndex>()
   for (const row of result.notifications.detailRows) {
     const backendUrl = (row[1] as string) || ''
-    const appIndex = resolveAppIndex(backendUrl, apps)
+    const appIndex = resolveAppIndex(
+      backendUrl,
+      apps,
+      row[42] as string | undefined,
+    )
     if (appIndex < 0) continue
     const stored = rowToStoredNotification(row)
     notifMap.set(stored.notification_id, { ...stored, appIndex })
@@ -115,22 +131,25 @@ export function buildTimelineItemsFromFlatResult(
   targetBackendUrls: string[],
 ): TimelineItemFromGraph[] {
   const postMap = new Map<number, StatusAddAppIndex>()
-  const fallbackAppIndex =
-    targetBackendUrls.length > 0
-      ? resolveAppIndex(targetBackendUrls[0], apps)
-      : -1
   for (const [id, status] of result.posts) {
-    let appIndex = resolveAppIndex(status.backendUrl, apps)
-    if (appIndex < 0 && status.backendUrl === '' && fallbackAppIndex >= 0) {
-      appIndex = fallbackAppIndex
-      status.backendUrl = targetBackendUrls[0]
-    }
+    const backendUrl = status.backendUrl || targetBackendUrls[0]
+    if (!backendUrl) continue
+    const appIndex = resolveAppIndex(
+      backendUrl,
+      apps,
+      status.localRemoteAccountId,
+    )
     if (appIndex < 0) continue
-    postMap.set(id, { ...status, appIndex })
+    const item = { ...status, appIndex, backendUrl }
+    postMap.set(id, item)
   }
   const notifMap = new Map<number, NotificationAddAppIndex>()
   for (const [id, notif] of result.notifications) {
-    const appIndex = resolveAppIndex(notif.backendUrl, apps)
+    const appIndex = resolveAppIndex(
+      notif.backendUrl,
+      apps,
+      notif.localRemoteAccountId,
+    )
     if (appIndex < 0) continue
     notifMap.set(id, { ...notif, appIndex })
   }

@@ -20,6 +20,7 @@ import { TIMELINE_QUERY_LIMIT } from 'util/environment'
 import type {
   FetchPageOptions,
   FetchPageResult,
+  TimelineItem,
 } from 'util/hooks/useTimelineDataSource'
 import {
   allExhaustedFor,
@@ -29,6 +30,7 @@ import {
 
 import type { TimelineListEvent, TimelineListState } from './reducer'
 import {
+  INTERACTION_RELATED_TABLES,
   NOTIFICATION_READ_CHANGE,
   resolveStreamingFetchWindow,
 } from './streamingHelpers'
@@ -40,6 +42,10 @@ type UseTimelineScrollbackControllerArgs = {
   config: TimelineConfigV2
   dispatch: Dispatch<TimelineListEvent>
   exhaustedResourcesRef: RefObject<ExhaustedResources>
+  fetchInteractionUpdates: (
+    ids: ReadonlySet<number>,
+    items: readonly TimelineItem[],
+  ) => Promise<FetchPageResult | null>
   fetchPage: (options?: FetchPageOptions) => Promise<FetchPageResult | null>
   includeNotifications: boolean
   recordDuration: (ms: number) => void
@@ -70,6 +76,7 @@ export function useTimelineScrollbackController({
   config,
   dispatch,
   exhaustedResourcesRef,
+  fetchInteractionUpdates,
   fetchPage,
   includeNotifications,
   recordDuration,
@@ -79,7 +86,11 @@ export function useTimelineScrollbackController({
   return useCallback(async () => {
     const s = stateRef.current
     if (s.isScrollbackRunning || !s.hasMoreOlder) return
+    const resources = exhaustedResourcesRef.current
+    const isCurrentTimeline = () => resources === exhaustedResourcesRef.current
     dispatch({ type: 'SCROLLBACK_STARTED' })
+    const loadedItems: TimelineItem[] = []
+    let exhausted = false
 
     try {
       // DB からカーソル以前のアイテムを取得
@@ -94,16 +105,12 @@ export function useTimelineScrollbackController({
         limit: PAGE_SIZE,
       })
 
-      if (result && result.items.length >= PAGE_SIZE) {
-        recordDuration(result.durationMs)
-        dispatch({ items: result.items, type: 'SCROLLBACK_DB_SUCCEEDED' })
-        return
-      }
-
-      // DB のデータが不足 → まず DB 分を追加してカーソルを更新
+      if (!isCurrentTimeline()) return
       if (result && result.items.length > 0) {
+        loadedItems.push(...result.items)
         recordDuration(result.durationMs)
         dispatch({ items: result.items, type: 'SCROLLBACK_DB_SUCCEEDED' })
+        if (result.items.length >= PAGE_SIZE) return
       }
 
       // API フォールバック
@@ -111,9 +118,11 @@ export function useTimelineScrollbackController({
         config,
         apps,
         targetBackendUrls,
-        exhaustedResourcesRef.current,
+        resources,
         includeNotifications,
       )
+
+      if (!isCurrentTimeline()) return
 
       // 更新されたカーソルで再取得
       const retry = await fetchPage({
@@ -125,28 +134,27 @@ export function useTimelineScrollbackController({
         limit: PAGE_SIZE,
       })
 
+      if (!isCurrentTimeline()) return
       if (retry && retry.items.length > 0) {
+        loadedItems.push(...retry.items)
         dispatch({ items: retry.items, type: 'SCROLLBACK_DB_SUCCEEDED' })
       }
 
       // API が全バックエンドで枯渇 かつ DB にも追加データなし → 終端
       const allExhausted = isScrollbackExhausted(
         config,
-        exhaustedResourcesRef.current,
+        resources,
         targetBackendUrls,
         includeNotifications,
       )
-      if (allExhausted && (!retry || retry.items.length === 0)) {
-        dispatch({ hasMoreOlder: false, type: 'SCROLLBACK_COMPLETED' })
-        return
-      }
+      exhausted = allExhausted && (!retry || retry.items.length === 0)
     } finally {
       // scrollback 完了
-      if (stateRef.current.isScrollbackRunning) {
+      if (isCurrentTimeline()) {
         const flushState = stateRef.current
         const deferredChangedTables = flushState.deferredChangedTables
         dispatch({
-          hasMoreOlder: flushState.hasMoreOlder,
+          hasMoreOlder: !exhausted && flushState.hasMoreOlder,
           type: 'SCROLLBACK_COMPLETED',
         })
 
@@ -156,30 +164,53 @@ export function useTimelineScrollbackController({
             flushState,
             PAGE_SIZE,
           )
-          fetchPage({
-            changedTables: deferredChangedTables.has(NOTIFICATION_READ_CHANGE)
-              ? undefined
-              : deferredChangedTables,
-            cursor,
-            limit,
+          const ids = flushState.deferredPostIds
+          const flush = async () => {
+            if (
+              ids &&
+              [...deferredChangedTables].every((table) =>
+                INTERACTION_RELATED_TABLES.has(table),
+              )
+            ) {
+              const updates = await fetchInteractionUpdates(ids, [
+                ...flushState.sortedItems,
+                ...loadedItems,
+              ])
+              if (!isCurrentTimeline()) return
+              if (updates) {
+                recordDuration(updates.durationMs)
+                dispatch({
+                  items: updates.items,
+                  type: 'INTERACTION_UPDATES_SUCCEEDED',
+                })
+                return
+              }
+            }
+            const result = await fetchPage({
+              changedTables: deferredChangedTables.has(NOTIFICATION_READ_CHANGE)
+                ? undefined
+                : deferredChangedTables,
+              cursor,
+              limit,
+            })
+
+            if (!isCurrentTimeline() || !result) return
+            recordDuration(result.durationMs)
+            dispatch({
+              items: result.items,
+              type: deferredChangedTables.has(NOTIFICATION_READ_CHANGE)
+                ? 'NOTIFICATION_READ_REFRESH_SUCCEEDED'
+                : 'DEFERRED_STREAMING_FLUSH_SUCCEEDED',
+            })
+          }
+          flush().catch(() => {
+            console.warn('Deferred timeline refresh failed')
           })
-            .then((result) => {
-              if (!result) return
-              recordDuration(result.durationMs)
-              dispatch({
-                items: result.items,
-                type: deferredChangedTables.has(NOTIFICATION_READ_CHANGE)
-                  ? 'NOTIFICATION_READ_REFRESH_SUCCEEDED'
-                  : 'DEFERRED_STREAMING_FLUSH_SUCCEEDED',
-              })
-            })
-            .catch(() => {
-              console.warn('Deferred timeline refresh failed')
-            })
         }
       }
     }
   }, [
+    fetchInteractionUpdates,
     fetchPage,
     recordDuration,
     config,
