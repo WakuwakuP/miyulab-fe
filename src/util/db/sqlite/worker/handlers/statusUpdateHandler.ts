@@ -250,9 +250,8 @@ function applyStatusUpdate(
 
   upsertMentionsInternal(db, postId, status.mentions, collector)
   syncPostMedia(db, postId, status.media_attachments, collector)
-  syncPostStats(db, postId, status, collector, now)
-
   const localAccountId = resolveLocalAccountId(db, backendUrl)
+  syncPostStats(db, postId, status, collector, now, localAccountId)
   if (localAccountId !== null) {
     syncStatusInteractions(db, postId, localAccountId, status, collector, now)
   }

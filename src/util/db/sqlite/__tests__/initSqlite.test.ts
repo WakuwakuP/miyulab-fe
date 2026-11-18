@@ -873,6 +873,7 @@ describe('main-thread command API', () => {
       '12',
       true,
       ':party:',
+      undefined,
     )
     expect(notify).toHaveBeenLastCalledWith('posts', {
       backendUrl: 'https://example.test',

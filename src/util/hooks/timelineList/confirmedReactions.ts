@@ -109,7 +109,7 @@ export async function changeEmojiReaction(
     pendingWrites.set(id, change)
     for (const read of activeReads) read.set(id, change)
     onChange?.(latest)
-    await toggleReactionInDb(app.backendUrl, statusId, add, emoji)
+    await toggleReactionInDb(app.backendUrl, statusId, add, emoji, latest)
     pendingWrites.delete(id)
   } finally {
     turn.resolve(latest)

@@ -385,10 +385,12 @@ export function createStatusWriteStore(
     statusId: string,
     value: boolean,
     emoji: string,
+    reactions?: Entity.Reaction[],
   ): Promise<void> {
     return enqueueOperation(async (handle) => {
       await handle.sendCommand({
         backendUrl,
+        confirmedReactionsJson: JSON.stringify(reactions),
         emoji,
         statusId,
         type: 'toggleReaction',

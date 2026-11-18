@@ -1,3 +1,4 @@
+import { confirmedReactionsSql } from './confirmedReactionsSql'
 /**
  * Status 取得用の SQL SELECT 句・JOIN 句・フィルタ構築関数
  *
@@ -154,8 +155,8 @@ export const STATUS_SELECT = `
       '')
     ELSE ''
   END AS rb_author_account_id,
-  ps.emoji_reactions_json,
-  rps.emoji_reactions_json AS rb_emoji_reactions_json`
+  ${confirmedReactionsSql('p', 'spb.local_account_id', 'ps')},
+  ${confirmedReactionsSql('rs', 'spb.local_account_id', 'rps')} AS rb_emoji_reactions_json`
 
 // ================================================================
 // Phase2 バッチクエリ用の SELECT 句
@@ -249,8 +250,8 @@ export const STATUS_BASE_SELECT = `
       '')
     ELSE ''
   END AS rb_author_account_id,
-  ps.emoji_reactions_json,
-  rps.emoji_reactions_json AS rb_emoji_reactions_json`
+  ${confirmedReactionsSql('p', 'spb.local_account_id', 'ps')},
+  ${confirmedReactionsSql('rs', 'spb.local_account_id', 'rps')} AS rb_emoji_reactions_json`
 
 // ================================================================
 // フィルタ・JOIN 構築関数

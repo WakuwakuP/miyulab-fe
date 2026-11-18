@@ -289,6 +289,7 @@ export type ToggleReactionRequest = {
   backendUrl: string
   statusId: string
   value: boolean
+  confirmedReactionsJson?: string
   emoji: string // ':blobcat:' or '👍'
 }
 

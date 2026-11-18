@@ -524,7 +524,7 @@ function syncPostRelatedData(
 ): void {
   upsertMentionsInternal(db, postId, status.mentions, collector)
   syncPostMedia(db, postId, status.media_attachments, collector)
-  syncPostStats(db, postId, status, collector, now)
+  syncPostStats(db, postId, status, collector, now, localAccountId)
 
   if (localAccountId !== null) {
     syncInteractions(db, postId, localAccountId, status, collector, now)

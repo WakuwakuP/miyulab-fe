@@ -152,6 +152,7 @@ export function createSendCommandAdapter(db: DbExec): {
           command.statusId,
           command.value,
           command.emoji,
+          command.confirmedReactionsJson,
         )
       }
       case 'bulkUpsertCustomEmojis':

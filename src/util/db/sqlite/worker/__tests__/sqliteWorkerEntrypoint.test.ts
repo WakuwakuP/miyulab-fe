@@ -773,6 +773,7 @@ describe('SQLite worker entrypoint', () => {
         'remote-25',
         true,
         ':blobcat:',
+        undefined,
       )
       expectOkResponse(25, ['posts'], {
         backendUrl: 'https://social.example',

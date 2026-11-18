@@ -13,6 +13,7 @@ export function createInteractionTables(db: DbExec): void {
       is_pinned         INTEGER,
       my_reaction_name  TEXT,
       my_reaction_url   TEXT,
+      confirmed_reactions_json TEXT,
       updated_at        INTEGER NOT NULL,
       UNIQUE(post_id, local_account_id),
       FOREIGN KEY (post_id)          REFERENCES posts(id)          ON DELETE CASCADE,

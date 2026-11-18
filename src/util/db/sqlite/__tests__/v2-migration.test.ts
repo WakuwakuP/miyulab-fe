@@ -111,6 +111,7 @@ function resolveV2MigrationResultRows(
   if (sql.includes('notification_types')) {
     return [['emoji_reaction']]
   }
+  if (sql.includes('PRAGMA table_info(post_interactions)')) return []
   if (sql.includes('PRAGMA table_info(profiles)')) {
     return resolveProfilesTableInfoRows(state)
   }
@@ -320,7 +321,7 @@ describe('v2.0.0 マイグレーション', () => {
       migrations.push(...savedMigrations)
     })
 
-    it('v2.0.0 DB に対して v2.0.1 ~ v2.0.9 マイグレーションが適用される', () => {
+    it('v2.0.0 DB に対して v2.0.1 ~ v2.0.10 マイグレーションが適用される', () => {
       const v2Encoded = encodeSemVer({ major: 2, minor: 0, patch: 0 })
       const { db, handle } = createV2MigrationMockDb(v2Encoded)
       runMigrations(handle, mockDropAll, mockCreateFresh)

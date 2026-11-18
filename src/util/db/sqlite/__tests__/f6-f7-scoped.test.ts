@@ -11,7 +11,10 @@ import { updateInteraction } from 'util/db/sqlite/helpers/interaction'
 import { syncPollVotes } from 'util/db/sqlite/helpers/poll'
 import type { WrittenTableCollector } from 'util/db/sqlite/protocol'
 import { handleEnsureLocalAccount } from 'util/db/sqlite/worker/handlers/accountHandlers'
-import { handleUpdateStatusAction } from 'util/db/sqlite/worker/handlers/interactionHandlers'
+import {
+  handleToggleReaction,
+  handleUpdateStatusAction,
+} from 'util/db/sqlite/worker/handlers/interactionHandlers'
 import { handleUpsertStatus } from 'util/db/sqlite/worker/handlers/statusHandlers'
 import type { DbExec } from 'util/db/sqlite/worker/handlers/types'
 import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
@@ -524,6 +527,46 @@ describe('スコープ付きバッチ (実 DB, 2 アカウント)', () => {
     updateInteraction(db, postId, laB, 'favourite', false)
     return { laA, laB, pollId, postId }
   }
+
+  it('restores all confirmed emojis for the acting account after separate database reads', () => {
+    const { postId, laA } = seedSharedPost()
+    const first = { count: 1, me: true, name: '⭐' }
+    const second = { count: 1, me: true, name: '🎉' }
+    const read = (url: string) =>
+      executeFlatFetch(db, {
+        backendUrls: [url],
+        displayOrder: [{ id: postId, table: 'posts' }],
+        notificationIds: [],
+        postIds: [postId],
+      }).posts.get(postId)?.emoji_reactions
+    handleToggleReaction(
+      db,
+      laA,
+      'shared',
+      true,
+      first.name,
+      JSON.stringify([first]),
+    )
+    handleToggleReaction(
+      db,
+      laA,
+      'shared',
+      true,
+      second.name,
+      JSON.stringify([first, second]),
+    )
+    expect(read(BACKEND_A)).toEqual([first, second])
+    expect(read(BACKEND_B)).toEqual([])
+    handleToggleReaction(
+      db,
+      laA,
+      'shared',
+      false,
+      second.name,
+      JSON.stringify([first]),
+    )
+    expect(read(BACKEND_A)).toEqual([first])
+  })
 
   it('backendUrls=[a] → A の投票/お気に入りのみ参照し B に漏れない', () => {
     const { postId } = seedSharedPost()

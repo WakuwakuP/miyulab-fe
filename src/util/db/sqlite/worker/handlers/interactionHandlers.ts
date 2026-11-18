@@ -1,3 +1,4 @@
+import type { Entity } from 'megalodon'
 /**
  * インタラクション関連のハンドラ群
  *
@@ -185,6 +186,7 @@ export function handleToggleReaction(
   localId: string,
   value: boolean,
   emoji: string,
+  confirmedReactionsJson?: string,
 ): HandlerResult {
   const postId = resolvePostIdInternal(db, localAccountId, localId)
   if (postId === undefined) return { changedTables: [] }
@@ -192,6 +194,34 @@ export function handleToggleReaction(
   const result: HandlerResult = {
     changedPostIds: relatedPostIds,
     changedTables: ['post_interactions'],
+  }
+
+  if (confirmedReactionsJson !== undefined) {
+    const mine = (JSON.parse(confirmedReactionsJson) as Entity.Reaction[]).find(
+      (reaction) => reaction.me,
+    )
+    const now = Date.now()
+    for (const relatedId of relatedPostIds) {
+      db.exec(
+        `INSERT INTO post_interactions (post_id, local_account_id, confirmed_reactions_json, my_reaction_name, my_reaction_url, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT(post_id, local_account_id) DO UPDATE SET
+          confirmed_reactions_json = excluded.confirmed_reactions_json,
+          my_reaction_name = excluded.my_reaction_name, my_reaction_url = excluded.my_reaction_url,
+          updated_at = excluded.updated_at`,
+        {
+          bind: [
+            relatedId,
+            localAccountId,
+            confirmedReactionsJson,
+            mine?.name.replace(/^:(.+):$/, '$1') ?? null,
+            mine?.url ?? null,
+            now,
+          ],
+        },
+      )
+    }
+    return result
   }
 
   // value=false の場合はリアクションをクリア
