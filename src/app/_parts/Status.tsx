@@ -19,6 +19,7 @@ import type { Entity } from 'megalodon'
 import {
   type KeyboardEvent,
   type MouseEvent,
+  type ReactNode,
   useCallback,
   useContext,
   useEffect,
@@ -44,11 +45,11 @@ function QuotePreview({
   parent,
   appIndex,
   scrolling,
-}: {
+}: Readonly<{
   parent: Entity.Status
   appIndex: number
   scrolling: boolean
-}) {
+}>) {
   const app = useContext(AppsContext)[appIndex]
   const quote = parent.quote
   const embedded =
@@ -85,19 +86,23 @@ function QuotePreview({
   }, [app, embedded, parent.id, parent.uri, quote?.state, targetId])
 
   const quoted = quote?.state === 'accepted' ? (embedded ?? loaded) : null
+  let quoteBody: ReactNode
+  if (quoted) {
+    quoteBody = (
+      <Status
+        scrolling={scrolling}
+        showQuote={false}
+        status={{ ...quoted, appIndex }}
+      />
+    )
+  } else if (app && quote?.state === 'accepted' && loaded === undefined) {
+    quoteBody = '引用投稿を読み込み中…'
+  } else {
+    quoteBody = '引用投稿を表示できません'
+  }
   return (
     <blockquote aria-label="引用投稿" className="my-2 rounded-md border p-2">
-      {quoted ? (
-        <Status
-          scrolling={scrolling}
-          showQuote={false}
-          status={{ ...quoted, appIndex }}
-        />
-      ) : app && quote?.state === 'accepted' && loaded === undefined ? (
-        '引用投稿を読み込み中…'
-      ) : (
-        '引用投稿を表示できません'
-      )}
+      {quoteBody}
     </blockquote>
   )
 }
