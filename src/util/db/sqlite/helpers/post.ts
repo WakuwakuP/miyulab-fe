@@ -42,11 +42,7 @@ export function extractPostColumns(status: Entity.Status): PostColumns {
     }
   }
 
-  // quote 関連: megalodon の型定義にはないが実データに存在し得るフィールド
   const statusAny = status as Record<string, unknown>
-  const quote = statusAny.quote as Entity.Status | null | undefined
-  const quoteState: string | null = quote == null ? null : 'accepted'
-
   // plain_content: megalodon の型定義にはないがバックエンドによっては存在する
   const plainContent =
     (statusAny.plain_content as string | null | undefined) ?? null
@@ -66,8 +62,14 @@ export function extractPostColumns(status: Entity.Status): PostColumns {
     language: status.language ?? null,
     object_uri: status.uri,
     plain_content: plainContent,
-    quote_state: quoteState,
+    quote_state: status.quote ? (status.quote.state ?? 'accepted') : null,
     spoiler_text: status.spoiler_text ?? '',
     visibility_id: VISIBILITY_MAP[status.visibility] ?? 1,
   }
+}
+
+export function quoteFromState(state: unknown): Entity.Status['quote'] {
+  return typeof state === 'string'
+    ? { quoted_status_id: null, state: state as Entity.QuoteState }
+    : null
 }

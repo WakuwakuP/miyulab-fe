@@ -156,7 +156,8 @@ export const STATUS_SELECT = `
     ELSE ''
   END AS rb_author_account_id,
   ${confirmedReactionsSql('p', 'spb.local_account_id', 'ps')},
-  ${confirmedReactionsSql('rs', 'spb.local_account_id', 'rps')} AS rb_emoji_reactions_json`
+  ${confirmedReactionsSql('rs', 'spb.local_account_id', 'rps')} AS rb_emoji_reactions_json,
+  p.quote_state, rs.quote_state AS rb_quote_state`
 
 // ================================================================
 // Phase2 バッチクエリ用の SELECT 句
@@ -251,7 +252,8 @@ export const STATUS_BASE_SELECT = `
     ELSE ''
   END AS rb_author_account_id,
   ${confirmedReactionsSql('p', 'spb.local_account_id', 'ps')},
-  ${confirmedReactionsSql('rs', 'spb.local_account_id', 'rps')} AS rb_emoji_reactions_json`
+  ${confirmedReactionsSql('rs', 'spb.local_account_id', 'rps')} AS rb_emoji_reactions_json,
+  p.quote_state, rs.quote_state AS rb_quote_state`
 
 // ================================================================
 // フィルタ・JOIN 構築関数

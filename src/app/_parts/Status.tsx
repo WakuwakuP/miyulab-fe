@@ -29,6 +29,7 @@ import { RiRepeatFill, RiVideoLine } from 'react-icons/ri'
 import type { PollAddAppIndex, StatusAddAppIndex } from 'types/types'
 import { replaceEmojis } from 'util/emojiReplacer'
 import { formatDisplayNameHtml } from 'util/formatDisplayName'
+import { GetClient } from 'util/GetClient'
 import {
   type LocalInteraction,
   publishLocalInteraction,
@@ -39,16 +40,80 @@ import { SetDetailContext } from 'util/provider/DetailProvider'
 import { SetPlayerContext } from 'util/provider/PlayerProvider'
 import { toSecureResourceUrl } from 'util/secureResourceUrl'
 
+function QuotePreview({
+  parent,
+  appIndex,
+  scrolling,
+}: {
+  parent: Entity.Status
+  appIndex: number
+  scrolling: boolean
+}) {
+  const app = useContext(AppsContext)[appIndex]
+  const quote = parent.quote
+  const embedded =
+    quote && 'quoted_status' in quote ? quote.quoted_status : null
+  const targetId =
+    quote && 'quoted_status_id' in quote ? quote.quoted_status_id : null
+  const [loaded, setLoaded] = useState<Entity.Status | null>()
+  useEffect(() => {
+    setLoaded(undefined)
+    if (!app || quote?.state !== 'accepted' || embedded) return
+    let active = true
+    const client = GetClient(app)
+    async function loadQuote() {
+      if (targetId) return (await client.getStatus(targetId)).data
+      const { data } = await client.getStatus(parent.id)
+      const current = data.quote
+      if (data.uri !== parent.uri || current?.state !== 'accepted') return null
+      if ('quoted_status' in current) return current.quoted_status
+      return active && current.quoted_status_id
+        ? (await client.getStatus(current.quoted_status_id)).data
+        : null
+    }
+    void loadQuote().then(
+      (result) => {
+        if (active) setLoaded(result)
+      },
+      () => {
+        if (active) setLoaded(null)
+      },
+    )
+    return () => {
+      active = false
+    }
+  }, [app, embedded, parent.id, parent.uri, quote?.state, targetId])
+
+  const quoted = quote?.state === 'accepted' ? (embedded ?? loaded) : null
+  return (
+    <blockquote aria-label="引用投稿" className="my-2 rounded-md border p-2">
+      {quoted ? (
+        <Status
+          scrolling={scrolling}
+          showQuote={false}
+          status={{ ...quoted, appIndex }}
+        />
+      ) : app && quote?.state === 'accepted' && loaded === undefined ? (
+        '引用投稿を読み込み中…'
+      ) : (
+        '引用投稿を表示できません'
+      )}
+    </blockquote>
+  )
+}
+
 export const Status = ({
   status,
   className = '',
   small = false,
   scrolling = false,
+  showQuote = true,
   onStatusChange,
 }: {
   status: StatusAddAppIndex
   className?: string
   small?: boolean
+  showQuote?: boolean
   scrolling?: boolean
   onStatusChange?: (updates: Partial<Entity.Status>) => void
 }) => {
@@ -291,6 +356,7 @@ export const Status = ({
     status.reblog == null ? '' : 'border-l-4 border-blue-400 pl-2 mb-2',
   ].join(' ')
 
+  const parent = status.reblog ?? status
   const poll = status.reblog?.poll ?? status.poll
   const pollAddAppIndex =
     poll == null
@@ -408,6 +474,19 @@ export const Status = ({
         scrolling={scrolling}
         sensitive={status.reblog?.sensitive ?? status.sensitive}
       />
+      {showQuote && parent.quote && (
+        <QuotePreview
+          appIndex={status.appIndex}
+          key={JSON.stringify([
+            status.appIndex,
+            parent.uri,
+            parent.edited_at,
+            parent.quote.state,
+          ])}
+          parent={parent}
+          scrolling={scrolling}
+        />
+      )}
       <EmojiReactions
         onReactionsChange={onReactionsChange}
         reactions={localReactions}

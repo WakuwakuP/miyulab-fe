@@ -65,7 +65,8 @@ export const POST_FLAT_SELECT = `
   ${confirmedReactionsSql('p', 'spb.local_account_id', 'ps')},
   COALESCE(la_auth.backend_url, '') AS backendUrl,
   COALESCE(spb.local_id, '') AS local_id,
-  COALESCE(la_auth.remote_account_id, '') AS author_account_id`
+  COALESCE(la_auth.remote_account_id, '') AS author_account_id,
+  p.quote_state`
 
 // ================================================================
 // Post コア JOIN（5 JOIN、リブログなし）
