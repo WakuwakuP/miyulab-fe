@@ -1,0 +1,5 @@
+{
+  "$schema": "./node_modules/@mizchi/mutator/schema/mutator.config.schema.json",
+  "include": ["src/util/db/query-ir/executor/**/*.ts"],
+  "runner": "vitest"
+}

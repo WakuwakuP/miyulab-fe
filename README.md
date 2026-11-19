@@ -102,6 +102,7 @@ NEXT_PUBLIC_TIMELINE_QUERY_LIMIT=50
 | `yarn test:run` | Vitest を 1 回実行 |
 | `yarn test:watch` | Vitest を watch モードで実行 |
 | `yarn test:coverage` | Vitest のカバレッジ付き実行 |
+| `yarn test:mutation` | Query IR の executor 全体に対してミューテーションテストを実行（Node.js 24 以降） |
 | `yarn generate` | ZenStack の生成処理 |
 | `yarn copy:sqlite-wasm` | `@sqlite.org/sqlite-wasm` の配布ファイルを `public/` にコピー |
 

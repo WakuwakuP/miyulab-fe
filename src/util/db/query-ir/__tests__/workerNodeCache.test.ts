@@ -9,6 +9,16 @@ describe('WorkerNodeCache', () => {
     cache = new WorkerNodeCache()
   })
 
+  it('保存後に依存先が追加され、取得時のバージョンが合わなければエントリを削除する', () => {
+    const key = { binds: [], nodeId: 'a', sql: 'SELECT 1' }
+    const dependencies = ['posts']
+    cache.set(key, [], dependencies)
+    cache.bumpVersion('profiles')
+    dependencies.push('profiles')
+    expect(cache.get(key)).toBeNull()
+    expect(cache.size).toBe(0)
+  })
+
   // ============================================================
   // --- get / set 基本操作 ---
   // ============================================================
@@ -1020,6 +1030,12 @@ describe('WorkerNodeCache', () => {
 
       expect(cache.get(makeKey(0))).not.toBeNull()
       expect(cache.get(makeKey(1))).toBeNull()
+    })
+
+    it('単一エントリが上限の 50,000 行ちょうどなら保持する', () => {
+      const key = makeKey(0)
+      cache.set(key, makeRows(50_000), ['posts'])
+      expect(cache.get(key)).toHaveLength(50_000)
     })
 
     it('合計行数が 50,000 を超える場合、収まるまで最古エントリから追い出されること', () => {

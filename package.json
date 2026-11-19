@@ -48,6 +48,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.8",
+    "@mizchi/mutator": "^0.4.3",
     "@storybook/addon-docs": "^10.6.7",
     "@storybook/addon-themes": "^10.6.7",
     "@storybook/nextjs-vite": "^10.6.7",
@@ -92,6 +93,7 @@
     "storybook": "storybook dev -p 6006",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "test:mutation": "mutator",
     "test:run": "vitest run",
     "test:watch": "vitest",
     "typecheck": "next typegen && tsc --noEmit"

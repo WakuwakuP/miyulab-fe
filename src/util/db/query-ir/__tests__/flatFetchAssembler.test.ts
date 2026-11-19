@@ -143,7 +143,85 @@ function makeNotifRow(
 // assemblePostFromFlat テスト
 // ================================================================
 
+// LEFT JOIN でプロフィールが取得できなかった場合の表示用フィールド
+const missingProfile = {
+  acct: '',
+  avatar: '',
+  avatar_static: '',
+  bot: false,
+  created_at: '',
+  display_name: '',
+  emojis: [],
+  fields: [],
+  header: '',
+  header_static: '',
+  id: '',
+  locked: false,
+  note: '',
+  url: '',
+  username: '',
+}
+
 describe('assemblePostFromFlat', () => {
+  it('必須のIDと作成時刻だけがある投稿を表示用の既定値で復元する', () => {
+    const row: SqlValue[] = new Array(31).fill(null)
+    row[0] = 42
+    row[4] = 1000
+    expect(assemblePostFromFlat(row, emptyBatchMaps())).toMatchObject({
+      account: missingProfile,
+      backendUrl: '',
+      belongingTags: [],
+      content: '',
+      favourites_count: 0,
+      id: '',
+      quote_approval: { automatic: [], current_user: '', manual: [] },
+      reblogs_count: 0,
+      replies_count: 0,
+      sensitive: false,
+      spoiler_text: '',
+      tags: [],
+      timelineTypes: [],
+      uri: '',
+      visibility: 'public',
+    })
+  })
+
+  it('非公開アカウントのヘッダー、ブースト状態、反応数を保持する', () => {
+    const row = makePostRow(42, {
+      favouritesCount: 5,
+      reblogsCount: 3,
+      repliesCount: 2,
+      spoilerText: 'CW',
+    })
+    row[19] = 'https://example.com/header'
+    row[20] = 1
+    const maps = emptyBatchMaps()
+    maps.interactionsMap.set(42, JSON.stringify({ is_reblogged: 1 }))
+    expect(assemblePostFromFlat(row, maps)).toMatchObject({
+      account: { header: row[19], header_static: row[19], locked: true },
+      favourites_count: 5,
+      reblogged: true,
+      reblogs_count: 3,
+      replies_count: 2,
+      spoiler_text: 'CW',
+    })
+  })
+
+  it('投稿のタグとタイムライン種別から集約時の null を除く', () => {
+    const maps = emptyBatchMaps()
+    maps.belongingTagsMap.set(42, JSON.stringify(['sqlite', null, 'query']))
+    maps.timelineTypesMap.set(42, JSON.stringify([null, 'home', 'local']))
+
+    const post = assemblePostFromFlat(makePostRow(42), maps)
+
+    expect(post.belongingTags).toEqual(['sqlite', 'query'])
+    expect(post.tags).toEqual([
+      { name: 'sqlite', url: '' },
+      { name: 'query', url: '' },
+    ])
+    expect(post.timelineTypes).toEqual(['home', 'local'])
+  })
+
   it('引用状態の列がある場合だけ引用を復元する', () => {
     const row = makePostRow(42)
     const maps = emptyBatchMaps()
@@ -360,6 +438,53 @@ describe('assemblePostFromFlat', () => {
 // ================================================================
 
 describe('assembleNotificationFromFlat', () => {
+  it('鍵付き bot の通知ではアカウント属性と受け取ったリアクションを保持する', () => {
+    const row = makeNotifRow(12, { actorBot: 1, reactionName: '👍' })
+    row[16] = 1
+    const notification = assembleNotificationFromFlat(row, new Map(), new Map())
+    expect(notification.account).toMatchObject({ bot: true, locked: true })
+    expect(notification.reaction).toEqual({
+      accounts: [],
+      count: 1,
+      me: false,
+      name: '👍',
+    })
+  })
+
+  it('アクターのプロフィールが欠けた通知も表示できる', () => {
+    const row: SqlValue[] = new Array(20).fill(null)
+    row[0] = 12
+    row[3] = 1000
+    expect(
+      assembleNotificationFromFlat(row, new Map(), new Map()),
+    ).toMatchObject({
+      account: missingProfile,
+      backendUrl: '',
+      id: '12',
+      isRead: null,
+      type: '',
+    })
+  })
+
+  it.each([
+    [null, null],
+    [0, false],
+    [1, true],
+  ] as const)('既読列 %s を %s に変換する', (stored, expected) => {
+    const row = makeNotifRow(17)
+    row[4] = stored
+    const notification = assembleNotificationFromFlat(row, new Map(), new Map())
+    expect(notification.isRead).toBe(expected)
+  })
+
+  it('ローカル通知IDが欠けている場合はDBのIDを文字列として返す', () => {
+    const row = makeNotifRow(17)
+    row[2] = null
+    expect(assembleNotificationFromFlat(row, new Map(), new Map()).id).toBe(
+      '17',
+    )
+  })
+
   describe('基本フィールド', () => {
     it('通知タイプ、ID、backendUrl が正しくマッピングされる', () => {
       const row = makeNotifRow(10, {
@@ -498,7 +623,7 @@ describe('assembleNotificationFromFlat', () => {
 
       const result = assembleNotificationFromFlat(row, new Map(), new Map())
 
-      expect(result.reaction).toBeUndefined()
+      expect(result).not.toHaveProperty('reaction')
     })
   })
 })
