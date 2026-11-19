@@ -101,6 +101,27 @@ beforeEach(() => {
 })
 
 describe('notification マイクロバッチ', () => {
+  it('接続失敗時は全バックエンドの待機中の書き込みを拒否し、次のバッチを保存できる', async () => {
+    const failure = new Error('connection failed')
+    const getHandle = vi.fn(async () => adapter).mockRejectedValueOnce(failure)
+    const writes = createNotificationWriteStore(getHandle)
+    const pending = Promise.allSettled([
+      writes.addNotification(notification('a'), 'https://a.test'),
+      writes.addNotification(notification('a'), 'https://a.test'),
+      writes.addNotification(notification('b'), 'https://b.test'),
+    ])
+    await writes.flush()
+    expect(await pending).toEqual(
+      Array(3).fill({ reason: failure, status: 'rejected' }),
+    )
+    const retry = writes.addNotification(notification('a'), 'https://a.test')
+    await writes.flush()
+    await retry
+    expect(native.prepare('SELECT local_id FROM notifications').all()).toEqual([
+      { local_id: 'a' },
+    ])
+  })
+
   it('does not lose unread metadata when a generic event is coalesced before persistence', async () => {
     const unread = store.addNotification(
       { ...notification('known-unread'), isRead: false } as Entity.Notification,

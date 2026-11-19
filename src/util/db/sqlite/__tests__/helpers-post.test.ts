@@ -56,6 +56,27 @@ function createMockStatus(
 }
 
 describe('extractPostColumns', () => {
+  it('任意項目を省いたバックエンド応答から保存用の既定値を補う', () => {
+    const status = createMockStatus()
+    const partial = { ...status, url: null, visibility: 'unknown' }
+    Reflect.deleteProperty(partial, 'content')
+    Reflect.deleteProperty(partial, 'spoiler_text')
+    expect(extractPostColumns(partial as Entity.Status)).toMatchObject({
+      canonical_url: null,
+      content_html: '',
+      spoiler_text: '',
+      visibility_id: 1,
+    })
+  })
+
+  it.each(['accepted', 'pending', 'revoked', 'unauthorized'] as const)(
+    '引用状態 %s を保存する',
+    (state) => {
+      const status = createMockStatus({ quote: { quoted_status: null, state } })
+      expect(extractPostColumns(status).quote_state).toBe(state)
+    },
+  )
+
   it('Entity.Status からカラム値を抽出する', () => {
     const status = createMockStatus()
     const cols = extractPostColumns(status)

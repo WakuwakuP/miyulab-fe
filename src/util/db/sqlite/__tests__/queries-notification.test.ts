@@ -205,6 +205,18 @@ function makeBaseRow(): (string | number | null)[] {
 }
 
 describe('rowToStoredNotification', () => {
+  it('関連投稿の引用状態をローカルアカウントIDと区別する', () => {
+    const row = makeBaseRow()
+    row[14] = 100
+    row[42] = 'account-1'
+    expect(rowToStoredNotification(row).status?.quote).toBeNull()
+    row[43] = 'revoked'
+    expect(rowToStoredNotification(row).status?.quote).toEqual({
+      quoted_status_id: null,
+      state: 'revoked',
+    })
+  })
+
   it('backendUrl を local_accounts.backend_url から取得する', () => {
     const row = makeBaseRow()
     row[1] = 'https://mastodon.social'
