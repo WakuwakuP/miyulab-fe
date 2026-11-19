@@ -1,3 +1,4 @@
+import { quoteFromState } from 'util/db/sqlite/helpers/post'
 /**
  * SQLite ベースの Notification ストア
  *
@@ -251,7 +252,7 @@ export function rowToStoredNotification(
       pinned: null,
       plain_content: null,
       poll: rpPollJson ? parsePoll(rpPollJson, rpVoted, rpOwnVotesJson) : null,
-      quote: null,
+      quote: quoteFromState(row[43]),
       quote_approval: { automatic: [], current_user: '', manual: [] },
       reblog: null,
       reblogged: null,

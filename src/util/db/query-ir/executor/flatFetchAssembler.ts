@@ -1,3 +1,4 @@
+import { quoteFromState } from 'util/db/sqlite/helpers/post'
 // ============================================================
 // Flat Fetch — Assembler
 //
@@ -52,6 +53,7 @@ const P = {
   LOCAL_ID: 28,
   OBJECT_URI: 1,
   POST_ID: 0,
+  QUOTE_STATE: 30,
   REBLOG_OF_POST_ID: 10,
   REBLOGS_COUNT: 24,
   REPLIES_COUNT: 23,
@@ -175,7 +177,7 @@ export function assemblePostFromFlat(
     plain_content: null,
     poll: pollJson ? parseBatchPoll(pollJson) : null,
     post_id: postId,
-    quote: null,
+    quote: quoteFromState(row[P.QUOTE_STATE]),
     quote_approval: { automatic: [], current_user: '', manual: [] },
     reblog: null,
     reblogged: interactions?.is_reblogged === 1,
