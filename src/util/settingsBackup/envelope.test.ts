@@ -176,3 +176,215 @@ describe('buildSettingsEnvelope', () => {
     expect(result.ok).toBe(false)
   })
 })
+
+describe('タイムラインのインポート', () => {
+  function importTimeline(fields: Record<string, unknown>) {
+    return validateSettingsEnvelope(
+      envelope({
+        timelineSettings: { timelines: [timeline('feed', fields)], version: 2 },
+      }),
+    )
+  }
+
+  it.each([
+    { mode: 'all' },
+    { backendUrl: 'https://example.org', mode: 'single' },
+    {
+      backendUrls: ['https://a.example', 'https://b.example'],
+      mode: 'composite',
+    },
+  ])('有効なフィルターを保持する ($mode)', (backendFilter) => {
+    const fields = {
+      accountFilter: { accts: ['alice'], mode: 'include' },
+      backendFilter,
+      languageFilter: ['ja'],
+      minMediaCount: 0,
+      notificationFilter: ['mention'],
+      onlyMedia: false,
+      tabGroup: 'group',
+      tagConfig: { mode: 'or', tags: ['cats'] },
+      timelineTypes: ['home'],
+      visibilityFilter: ['public'],
+    }
+    expect(importTimeline(fields)).toMatchObject({
+      envelope: { payload: { timelineSettings: { timelines: [fields] } } },
+      ok: true,
+    })
+  })
+
+  it.each<[string, unknown]>([
+    ['id', ''],
+    ['id', 1],
+    ['type', 2],
+    ['type', 'unknown'],
+    ['visible', 1],
+    ['order', '1'],
+    ['order', Infinity],
+    ['label', 1],
+    ['tabGroup', false],
+    ['customQuery', 'x'.repeat(100001)],
+    ['minMediaCount', '1'],
+    ['minMediaCount', 0.5],
+    ['minMediaCount', -1],
+    ['minMediaCount', 101],
+    ['onlyMedia', 1],
+    ['backendFilter', []],
+    ['backendFilter', {}],
+    ['backendFilter', { mode: 'unknown' }],
+    ['backendFilter', { mode: 'single' }],
+    ['backendFilter', { backendUrl: '', mode: 'single' }],
+    ['backendFilter', { backendUrls: [], mode: 'composite' }],
+    ['backendFilter', { mode: 'composite' }],
+    ['tagConfig', []],
+    ['tagConfig', { mode: 'none' }],
+    ['tagConfig', { mode: 'and', tags: [1] }],
+    ['accountFilter', []],
+    ['accountFilter', { mode: 'none' }],
+    ['accountFilter', { accts: [1], mode: 'exclude' }],
+    ['queryPlan', []],
+    ['queryPlan', { note: 'x'.repeat(500000) }],
+    ['visibilityFilter', 'public'],
+    ['visibilityFilter', Array(9).fill('public')],
+    ['notificationFilter', [1]],
+    ['timelineTypes', ['tag']],
+    ['languageFilter', Array(101).fill('ja')],
+    ['languageFilter', ['x'.repeat(36)]],
+  ])('不正な %s を拒否する (%#)', (key, value) => {
+    expect(importTimeline({ [key]: value }).ok).toBe(false)
+  })
+})
+
+describe('設定バックアップの入力検証', () => {
+  it.each<[string, unknown]>([
+    ['timelineSettings', []],
+    ['timelineSettings', { version: 1 }],
+    ['timelineSettings', { version: 2 }],
+    ['timelineSettings', { timelines: [null], version: 2 }],
+    [
+      'timelineSettings',
+      {
+        timelines: Array.from({ length: 101 }, (_, i) => timeline(String(i))),
+        version: 2,
+      },
+    ],
+    ['setting', []],
+    ['setting', { backgroundPublicStreaming: 1 }],
+    ['setting', { showSensitive: 1 }],
+    ['setting', { playerSize: 1 }],
+    ['setting', { playerSize: 'huge' }],
+    ['setting', { defaultStatusVisibility: 1 }],
+    ['setting', { defaultStatusVisibility: 'unknown' }],
+    ['setting', { recentHashtagsCount: 51 }],
+    ['setting', { reactionEmojis: [false] }],
+    ['setting', { captureRawData: 1 }],
+    ['playerSetting', []],
+    ['playerSetting', { volume: '1' }],
+    ['playerSetting', { volume: NaN }],
+    ['playerSetting', { volume: -0.1 }],
+    ['playerSetting', { volume: 1.1 }],
+    ['hashtagHistory', {}],
+    ['hashtagHistory', Array(501).fill({})],
+    ['hashtagHistory', [null]],
+    ['hashtagHistory', [{ tag: 1 }]],
+    ['hashtagHistory', [{ isPinned: 0, tag: 'cats' }]],
+    ['hashtagHistory', [{ isPinned: true, tag: 'cats' }]],
+    [
+      'hashtagHistory',
+      [{ isPinned: true, lastAccessed: Infinity, tag: 'cats' }],
+    ],
+    ['users', {}],
+    ['users', Array(2001).fill({})],
+    ['users', [null]],
+    ['users', [{ id: 1 }]],
+    ['users', [{ id: '1' }]],
+    ['tags', [1]],
+  ])('不正な %s を含むバックアップを拒否する (%#)', (key, value) => {
+    expect(validateSettingsEnvelope(envelope({ [key]: value })).ok).toBe(false)
+  })
+
+  it('有効な設定とキャッシュを復元する', () => {
+    const payload = {
+      hashtagHistory: [{ isPinned: true, lastAccessed: 0, tag: 'cats' }],
+      playerSetting: { volume: 0 },
+      setting: {
+        backgroundPublicStreaming: false,
+        captureRawData: false,
+        defaultStatusVisibility: 'private',
+        playerSize: 'small',
+        reactionEmojis: ['🌸'],
+        recentHashtagsCount: 50,
+      },
+      tags: ['cats'],
+    }
+    expect(validateSettingsEnvelope(envelope(payload))).toEqual({
+      envelope: envelope(payload),
+      ok: true,
+    })
+  })
+
+  it('復元できないデータや過度に深い構造を拒否する', () => {
+    let nested: unknown = []
+    for (let level = 0; level < 33; level++) nested = [nested]
+    for (const input of [
+      null,
+      () => {},
+      envelope({ setting: { nested } }),
+      { ...envelope({}), payload: null },
+      envelope({}, 'yesterday'),
+    ]) {
+      expect(validateSettingsEnvelope(input).ok).toBe(false)
+    }
+  })
+})
+
+describe('エクスポート時のキャッシュ整形', () => {
+  it.each(['users', 'tags', 'hashtagHistory'])(
+    '%s の不正な形式と空配列を区別する',
+    (key) => {
+      for (const [stored, expected] of [
+        [{}, {}],
+        [[null], {}],
+        [[], { [key]: [] }],
+      ] as const) {
+        expect(
+          buildSettingsEnvelope(
+            (k) => (k === key ? JSON.stringify(stored) : null),
+            EXPORTED_AT,
+          ),
+        ).toEqual({ envelope: envelope(expected), ok: true })
+      }
+    },
+  )
+
+  it('無効な項目だけを除外し、履歴は先頭の有効な500件を保存する', () => {
+    const user = { acct: 'alice', avatar: '', display_name: 'Alice', id: '1' }
+    const history = Array.from({ length: 501 }, (_, lastAccessed) => ({
+      isPinned: false,
+      lastAccessed,
+      tag: String(lastAccessed),
+    }))
+    const storage: Record<string, unknown> = {
+      hashtagHistory: [
+        null,
+        { isPinned: 1, tag: 'x' },
+        { isPinned: true, tag: 'x' },
+        ...history,
+      ],
+      tags: [null, 'cats'],
+      users: [null, { id: 1 }, { id: '1' }, user],
+    }
+    expect(
+      buildSettingsEnvelope(
+        (key) => JSON.stringify(storage[key]) ?? null,
+        EXPORTED_AT,
+      ),
+    ).toEqual({
+      envelope: envelope({
+        hashtagHistory: history.slice(0, 500),
+        tags: ['cats'],
+        users: [user],
+      }),
+      ok: true,
+    })
+  })
+})
