@@ -343,7 +343,7 @@ describe('executeMerge', () => {
       // Arrange
       const node = mkNode('intersect')
       const originalRows = [
-        { createdAtMs: 300, id: 1 },
+        { createdAtMs: 30, id: 1 },
         { createdAtMs: 100, id: 2 },
       ]
       const inputs: NodeOutput[] = [mkInput(originalRows, 'a')]
@@ -352,10 +352,8 @@ describe('executeMerge', () => {
       const result = executeMerge(node, inputs)
 
       // Assert
-      expect(result.rows).toHaveLength(2)
-      expect(result.rows.map((r) => r.id)).toEqual(
-        expect.arrayContaining([1, 2]),
-      )
+      expect(result.rows).toEqual(inputs[0].rows)
+      expect(result.rows).not.toBe(inputs[0].rows)
     })
 
     it('2つの入力に共通するIDが1件もない時、空配列が返ること', () => {
@@ -611,6 +609,18 @@ describe('executeMerge', () => {
   // --- sourceTable 推論 ---
   // =============================================================
   describe('sourceTable推論', () => {
+    it('共通行がない場合は最初の入力のテーブルを引き継ぐ', () => {
+      const inputs = [
+        mkInput([{ createdAtMs: 10, id: 1 }], 'a', 'notifications'),
+        mkInput([{ createdAtMs: 10, id: 1 }], 'b', 'posts'),
+      ]
+
+      const result = executeMerge(mkNode('intersect'), inputs)
+
+      expect(result.rows).toEqual([])
+      expect(result.sourceTable).toBe('notifications')
+    })
+
     it('すべての入力のsourceTableが同一の時、その値がsourceTableとして返ること', () => {
       // Arrange
       const node = mkNode('union')

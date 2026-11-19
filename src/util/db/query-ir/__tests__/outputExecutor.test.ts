@@ -45,6 +45,60 @@ describe('executeOutput', () => {
   // =============================================================
   // --- 空入力 ---
   // =============================================================
+  it('ID順が時刻順と異なる場合もIDで並べ、通知の詳細取得には通知IDだけを渡す', () => {
+    const db = mockDb()
+    const result = executeOutput(
+      db,
+      mkNode({ sort: { direction: 'ASC', field: 'id' } }),
+      mkInput([mkRow(3, 10), mkRow(1, 90, 'notifications'), mkRow(2, 60)]),
+      [],
+    )
+    expect(result.displayOrder.map((row) => row.id)).toEqual([1, 2, 3])
+    expect(
+      db.calls.find((call) => call.sql.includes('FROM notifications n'))?.bind,
+    ).toEqual([1])
+  })
+
+  it('投稿だけなら通知の詳細取得を省略する', () => {
+    const db = mockDb()
+    executeOutput(db, mkNode(), mkInput([mkRow(1, 100)]), [])
+    expect(
+      db.calls.some((call) => call.sql.includes('FROM notifications n')),
+    ).toBe(false)
+  })
+
+  it('未対応テーブルは重複を除いてエラーに列挙する', () => {
+    expect(() =>
+      executeOutput(
+        mockDb(),
+        mkNode(),
+        mkInput([
+          mkRow(1, 30, 'profiles'),
+          mkRow(2, 20, 'hashtags'),
+          mkRow(3, 10, 'profiles'),
+        ]),
+        [],
+      ),
+    ).toThrow(/未対応テーブル: profiles, hashtags$/)
+  })
+
+  it.each(['ASC', 'DESC'] as const)(
+    '同一IDの投稿と通知は入力順を維持する (%s)',
+    (direction) => {
+      const rows = [mkRow(2, 100, 'notifications'), mkRow(2, 1, 'posts')]
+      const result = executeOutput(
+        mockDb(),
+        mkNode({ sort: { direction, field: 'id' } }),
+        mkInput(rows),
+        [],
+      )
+      expect(result.displayOrder).toEqual([
+        { id: 2, table: 'notifications' },
+        { id: 2, table: 'posts' },
+      ])
+    },
+  )
+
   describe('空入力', () => {
     it('rows が空の場合、空の結果とsourceType="post"が返る', () => {
       const db = mockDb()
@@ -62,6 +116,19 @@ describe('executeOutput', () => {
   // --- posts のみ ---
   // =============================================================
   describe('posts のみ', () => {
+    it('複数のブーストが共有する親投稿も一度だけバッチ取得する', () => {
+      const db = mockDb()
+      const detail = Array<string | number | null>(26).fill(null)
+      detail[25] = 77
+      db.exec.mockReturnValueOnce([detail, [...detail]])
+      executeOutput(db, mkNode(), mkInput([mkRow(1, 300), mkRow(2, 200)]), [])
+      expect(db.exec.mock.calls[0][1].bind).toEqual([1, 2])
+      const mediaQuery = db.calls.find(({ sql }) =>
+        sql.includes('FROM post_media'),
+      )
+      expect(mediaQuery?.bind).toEqual([1, 2, 77])
+    })
+
     it('sourceType が "post" になる', () => {
       const db = mockDb()
       const input = mkInput([mkRow(1, 300, 'posts'), mkRow(2, 200, 'posts')])
@@ -209,6 +276,23 @@ describe('executeOutput', () => {
   // --- ソート & ページネーション ---
   // =============================================================
   describe('ソート & ページネーション', () => {
+    it.each([
+      ['id', 'before', 2, [1]],
+      ['id', 'after', 2, [3]],
+      ['created_at_ms', 'before', 200, [3]],
+      ['created_at_ms', 'after', 200, [2]],
+    ] as const)(
+      '%s の %s カーソルは境界を含まない',
+      (field, direction, value, ids) => {
+        const node = mkNode({
+          pagination: { cursor: { direction, field, value }, limit: 10 },
+        })
+        const input = mkInput([mkRow(1, 200), mkRow(2, 300), mkRow(3, 100)])
+        const result = executeOutput(mockDb(), node, input, [])
+        expect(result.displayOrder.map((row) => row.id)).toEqual(ids)
+      },
+    )
+
     it('ASC ソートで displayOrder が昇順になる', () => {
       const db = mockDb()
       const node = mkNode({

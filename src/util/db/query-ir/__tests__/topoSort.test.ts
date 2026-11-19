@@ -259,7 +259,7 @@ describe('topoSort', () => {
     it('Outputノードに依存するエッジが無い孤立Outputと他ノードがある時、Outputが最後に来ること', () => {
       // Arrange — エッジなし、Outputは孤立している
       const plan = makePlan(
-        [makeGetIdsNode('getIds1'), makeOutputNode('output1')],
+        [makeOutputNode('output1'), makeGetIdsNode('getIds1')],
         [],
       )
 
@@ -485,14 +485,9 @@ describe('topoSort', () => {
       )
 
       // Act & Assert
-      try {
-        topoSort(plan)
-        expect.unreachable('エラーがスローされるべき')
-      } catch (e) {
-        const message = (e as Error).message
-        expect(message).toContain('x')
-        expect(message).toContain('y')
-      }
+      expect(() => topoSort(plan)).toThrow(
+        /^グラフにサイクルが検出されました: x, y$/,
+      )
     })
 
     it('自己ループ(sourceとtargetが同じ)のエッジがある時、サイクル検出エラーがスローされること', () => {

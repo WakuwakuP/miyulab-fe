@@ -1,10 +1,14 @@
 import { DatabaseSync } from 'node:sqlite'
 import { executeGetIds } from 'util/db/query-ir/executor/getIdsExecutor'
 import {
+  bumpAllGraphCacheVersions,
   bumpGraphCacheVersion,
+  captureGraphCacheVersions,
   clearGraphCache,
   executeGraphPlan,
+  syncGraphCacheVersions,
 } from 'util/db/query-ir/executor/graphExecutor'
+import { executeLookupRelated } from 'util/db/query-ir/executor/lookupRelatedExecutor'
 import type { SerializedGraphPlan } from 'util/db/query-ir/executor/types'
 import type {
   GetIdsNode,
@@ -17,7 +21,7 @@ import {
 } from 'util/db/query-ir/patchPlanForFetch'
 import type { DbExecCompat } from 'util/db/sqlite/helpers/types'
 import { createFreshSchema } from 'util/db/sqlite/schema'
-import { beforeEach, describe, expect, it, onTestFinished } from 'vitest'
+import { beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest'
 
 function createRealDb(): {
   db: DbExecCompat
@@ -138,6 +142,555 @@ describe('executeGraphPlan — ノードキャッシュ (実 SQLite)', () => {
   const runPlan = (plan: SerializedGraphPlan) =>
     executeGraphPlan(db as never, plan, { backendUrls: [] }, () => ({}))
 
+  it('OR の各分岐内では全条件を要求し、空の分岐を無視する', () => {
+    const result = executeGetIds(
+      db as never,
+      {
+        ...baseGetIds,
+        orBranches: [
+          [],
+          [
+            { column: 'created_at_ms', op: '>=', table: 'posts', value: 200 },
+            { column: 'id', op: '<', table: 'posts', value: 3 },
+          ],
+          [{ column: 'id', op: '=', table: 'posts', value: 1 }],
+        ],
+      },
+      new Map(),
+    )
+    expect(result.output.rows.map((row) => row.id)).toEqual([2, 1])
+  })
+
+  it('メディアの幅条件を満たす件数で投稿を絞り、メディアの変更を依存関係に含める', () => {
+    native.exec(`
+      INSERT INTO post_media (post_id, media_type_id, url, width)
+      VALUES (1, 1, 'a', 800), (1, 1, 'b', 640),
+             (2, 1, 'c', 800), (2, 1, 'd', 320)
+    `)
+    const result = executeGetIds(
+      db as never,
+      {
+        ...baseGetIds,
+        filters: [
+          {
+            countValue: 2,
+            innerFilters: [
+              { column: 'width', op: '>=', table: 'post_media', value: 640 },
+            ],
+            mode: 'count-gte',
+            table: 'post_media',
+          },
+        ],
+      },
+      new Map(),
+    )
+    expect(result.output.rows.map((row) => row.id)).toEqual([1])
+    expect(result.dependentTables).toContain('post_media')
+  })
+
+  it.each([
+    ['nearest', [12, 11]],
+    ['furthest', [14, 13]],
+  ] as const)(
+    '時間窓内の通知を投稿ごとに1件選ぶ (%s)',
+    (perLimitOrder, expected) => {
+      seedNotification(native, 13, 1, 150)
+      seedNotification(native, 14, 2, 250)
+      seedNotification(native, 15, 1, 151)
+      seedNotification(native, 16, 2, 199)
+      const result = runPlan(
+        planSourceToLookup(baseGetIds, {
+          ...baseLookup,
+          perLimit: 1,
+          perLimitOrder,
+          timeCondition: {
+            afterInput: true,
+            inputTimeColumn: 'created_at_ms',
+            lookupTimeColumn: 'created_at_ms',
+            windowMs: 50,
+          },
+        }),
+      )
+      expect(result.nodeOutputIds.lk.map((row) => row.id)).toEqual(expected)
+    },
+  )
+
+  it('投稿と通知をマージして時刻順に返し、中間出力にもテーブルを保持する', () => {
+    const result = runPlan({
+      edges: [
+        { source: 'posts', target: 'merge' },
+        { source: 'notifications', target: 'merge' },
+        { source: 'merge', target: 'out' },
+      ],
+      nodes: [
+        { id: 'posts', node: baseGetIds },
+        {
+          id: 'notifications',
+          node: { ...baseGetIds, table: 'notifications' },
+        },
+        {
+          id: 'merge',
+          node: { kind: 'merge-v2', limit: 3, strategy: 'union' },
+        },
+        {
+          id: 'out',
+          node: {
+            kind: 'output-v2',
+            pagination: { limit: 3 },
+            sort: { direction: 'DESC', field: 'created_at_ms' },
+          },
+        },
+      ],
+      version: 2,
+    })
+    const expected = [
+      { id: 3, table: 'posts' },
+      { id: 12, table: 'notifications' },
+      { id: 2, table: 'posts' },
+    ]
+    expect(result.nodeOutputIds.merge).toEqual(expected)
+    expect(result.displayOrder).toEqual(expected)
+    expect(result.meta.sourceType).toBe('mixed')
+    expect(result.meta.nodeStats.merge).toMatchObject({
+      cacheHit: false,
+      rowCount: 3,
+    })
+  })
+
+  it('出力が未接続なら表示結果は空でも上流の実行結果とバージョンを返す', () => {
+    const plan: SerializedGraphPlan = {
+      edges: [],
+      nodes: [
+        { id: 'src', node: baseGetIds },
+        {
+          id: 'out',
+          node: {
+            kind: 'output-v2',
+            pagination: { limit: 1 },
+            sort: { direction: 'DESC', field: 'created_at_ms' },
+          },
+        },
+      ],
+      version: 2,
+    }
+    const result = executeGraphPlan(
+      db as never,
+      plan,
+      { backendUrls: [] },
+      () => ({ posts: 7 }),
+    )
+    expect(result).toMatchObject({
+      capturedVersions: { posts: 7 },
+      displayOrder: [],
+      meta: { nodeStats: { src: { rowCount: 1 } }, sourceType: 'post' },
+      notifications: { detailRows: [] },
+      posts: { batchResults: {}, detailRows: [] },
+    })
+    expect(result.nodeOutputIds).toEqual({ src: [{ id: 3, table: 'posts' }] })
+  })
+
+  it('ハッシュタグ名による絞り込みで中間テーブルとタグ辞書の両方を追跡する', () => {
+    native.exec(`
+      INSERT INTO hashtags (id, name) VALUES (51, 'sqlite'), (52, 'other');
+      INSERT INTO post_hashtags (post_id, hashtag_id) VALUES (1, 51), (2, 52);
+    `)
+    const result = executeGetIds(
+      db as never,
+      {
+        ...baseGetIds,
+        filters: [
+          {
+            innerFilters: [
+              { column: 'name', op: '=', table: 'hashtags', value: 'sqlite' },
+            ],
+            mode: 'exists',
+            table: 'post_hashtags',
+          },
+        ],
+      },
+      new Map(),
+    )
+    expect(result.output.rows.map((row) => row.id)).toEqual([1])
+    expect(new Set(result.dependentTables)).toEqual(
+      new Set(['posts', 'post_hashtags', 'hashtags']),
+    )
+  })
+
+  it('入力未接続の lookup は空の中間結果を下流に渡し、SQL を発行しない', () => {
+    const plan = planSourceToLookup(baseGetIds, baseLookup)
+    plan.nodes = plan.nodes.filter((entry) => entry.id !== 'src')
+    plan.edges = [{ source: 'lk', target: 'out' }]
+    const result = runPlan(plan)
+    expect(result.nodeOutputIds).toEqual({ lk: [] })
+    expect(result.meta.nodeStats.lk).toMatchObject({
+      cacheHit: false,
+      rowCount: 0,
+    })
+    expect(result.meta.nodeStats.out).toMatchObject({ rowCount: 0 })
+    expect(result.displayOrder).toEqual([])
+    expect(execLog).toEqual([])
+  })
+
+  it.each([
+    ['nearest', [41, 43]],
+    ['furthest', [42, 44]],
+  ] as const)(
+    '時刻列がない関連テーブルで入力ごとに ID 順で選ぶ (%s)',
+    (perLimitOrder, expectedIds) => {
+      native.exec(`
+      INSERT INTO post_hashtags (id, post_id, hashtag_id)
+      VALUES (41, 1, 7), (42, 1, 8), (43, 2, 7), (44, 2, 8), (45, 3, 9)
+    `)
+      const result = executeLookupRelated(
+        db as never,
+        {
+          joinConditions: [{ inputColumn: 'id', lookupColumn: 'post_id' }],
+          kind: 'lookup-related',
+          lookupTable: 'post_hashtags',
+          perLimit: 1,
+          perLimitOrder,
+        },
+        {
+          hash: 'two-posts',
+          rows: [
+            { createdAtMs: 100, id: 1, table: 'posts' },
+            { createdAtMs: 200, id: 2, table: 'posts' },
+          ],
+          sourceTable: 'posts',
+        },
+      )
+      expect(
+        result.output.rows.map((row) => row.id).sort((a, b) => a - b),
+      ).toEqual(expectedIds)
+      expect(result.output.rows.map((row) => row.createdAtMs)).toEqual([0, 0])
+      expect(new Set(result.dependentTables)).toEqual(
+        new Set(['post_hashtags', 'posts']),
+      )
+    },
+  )
+
+  it.each([true, false])(
+    '集約時は perLimit より関連行ごとのグループ化を優先する (時間窓=%s)',
+    (withWindow) => {
+      seedNotification(native, 13, 1, 150)
+      const result = executeLookupRelated(
+        db as never,
+        {
+          ...baseLookup,
+          aggregate: { column: 'id', function: 'MAX' },
+          perLimit: 1,
+          ...(withWindow
+            ? {
+                timeCondition: {
+                  afterInput: true,
+                  inputTimeColumn: 'created_at_ms',
+                  lookupTimeColumn: 'created_at_ms',
+                  windowMs: 100,
+                },
+              }
+            : {}),
+        },
+        {
+          hash: 'post-1',
+          rows: [{ createdAtMs: 100, id: 1, table: 'posts' }],
+          sourceTable: 'posts',
+        },
+      )
+      expect(result.output.rows).toEqual([
+        { createdAtMs: 13, id: 13, table: 'notifications' },
+        { createdAtMs: 11, id: 11, table: 'notifications' },
+      ])
+      expect(new Set(result.dependentTables)).toEqual(
+        new Set(['posts', 'notifications']),
+      )
+    },
+  )
+
+  it.each([
+    [true, 'nearest', 11],
+    [true, 'furthest', 14],
+    [false, 'nearest', 15],
+    [false, 'furthest', 16],
+  ] as const)(
+    '通知の参照先を経由して時間窓内の1件を選ぶ (afterInput=%s, %s)',
+    (afterInput, perLimitOrder, expectedId) => {
+      seedNotification(native, 14, 1, 130)
+      seedNotification(native, 15, 1, 109)
+      seedNotification(native, 16, 1, 90)
+      seedNotification(native, 17, 1, 89)
+      seedNotification(native, 18, 1, 131)
+      seedNotification(native, 19, 2, 129)
+      const result = executeLookupRelated(
+        db as never,
+        {
+          ...baseLookup,
+          joinConditions: [
+            {
+              inputColumn: 'id',
+              lookupColumn: 'related_post_id',
+              resolve: {
+                inputKey: 'id',
+                lookupKey: 'id',
+                matchColumn: 'related_post_id',
+                via: 'notifications',
+              },
+            },
+          ],
+          perLimit: 1,
+          perLimitOrder,
+          timeCondition: {
+            afterInput,
+            inputTimeColumn: 'created_at_ms',
+            lookupTimeColumn: 'created_at_ms',
+            windowMs: 20,
+          },
+        },
+        {
+          hash: 'notification-11',
+          rows: [{ createdAtMs: 110, id: 11, table: 'notifications' }],
+          sourceTable: 'notifications',
+        },
+      )
+      expect(result.output.rows.map((row) => row.id)).toEqual([expectedId])
+    },
+  )
+
+  it.each([true, false])(
+    '投稿とアクターが共に一致する通知を返し、プロフィールの変更を追跡する (時間窓=%s)',
+    (withWindow) => {
+      native.exec(`
+      INSERT INTO profiles (id, username, server_id, acct, canonical_acct)
+      VALUES (41, 'alice', 0, 'alice', 'alice@example.com'), (42, 'bob', 0, 'bob', 'bob@example.com');
+      UPDATE posts SET author_profile_id = 41 WHERE id = 1;
+      UPDATE notifications SET actor_profile_id = 41 WHERE id IN (11, 12);
+    `)
+      seedNotification(native, 13, 1, 115)
+      native.exec(
+        'UPDATE notifications SET actor_profile_id = 42 WHERE id = 13',
+      )
+      const result = executeLookupRelated(
+        db as never,
+        {
+          ...baseLookup,
+          joinConditions: [
+            { inputColumn: 'id', lookupColumn: 'related_post_id' },
+            {
+              inputColumn: 'author_profile_id',
+              lookupColumn: 'actor_profile_id',
+              resolveIdentity: true,
+            },
+          ],
+          ...(withWindow
+            ? {
+                timeCondition: {
+                  afterInput: true,
+                  inputTimeColumn: 'created_at_ms',
+                  lookupTimeColumn: 'created_at_ms',
+                  windowMs: 200,
+                },
+              }
+            : {}),
+        },
+        {
+          hash: 'post-1',
+          rows: [{ createdAtMs: 100, id: 1, table: 'posts' }],
+          sourceTable: 'posts',
+        },
+      )
+      expect(result.output.rows.map((row) => row.id)).toEqual([11])
+      expect(new Set(result.dependentTables)).toEqual(
+        new Set(['posts', 'notifications', 'profiles']),
+      )
+    },
+  )
+
+  it.each([true, false])(
+    '実行メタデータは各ノードとグラフの経過時間を記録する (接続=%s)',
+    (connected) => {
+      const plan = planSourceToLookup(baseGetIds, baseLookup)
+      if (!connected)
+        plan.edges = plan.edges.filter((edge) => edge.target !== 'out')
+      let now = 100
+      using clock = vi.spyOn(performance, 'now').mockImplementation(() => ++now)
+      const { meta } = runPlan(plan)
+      expect(meta.nodeStats.src.durationMs).toBe(1)
+      expect(meta.totalDurationMs).toBe(clock.mock.calls.length - 1)
+      if (connected) expect(meta.nodeStats.out.cacheHit).toBe(false)
+    },
+  )
+
+  it('下流のSQLとバインドが同じでも、上流の出力が変われば再取得する', () => {
+    const plan = planSourceToLookup(baseGetIds, baseLookup)
+    plan.nodes[1] = {
+      id: 'lk',
+      node: { ...baseGetIds, table: 'notifications' },
+    }
+    runPlan(plan)
+    expect(runPlan(plan).meta.nodeStats.lk.cacheHit).toBe(true)
+    seedPost(native, 4, 400)
+    bumpGraphCacheVersion('posts')
+    expect(runPlan(plan).meta.nodeStats.lk.cacheHit).toBe(false)
+  })
+
+  it.each([true, false])(
+    'プロフィールの入力列が空なら主キーで本人を解決する (時間窓=%s)',
+    (withWindow) => {
+      native.exec(`
+      INSERT INTO profiles (id, username, server_id, acct, canonical_acct) VALUES (51,'alice',0,'alice','alice@example.com');
+      UPDATE notifications SET actor_profile_id = 51 WHERE id = 11;
+    `)
+      const result = executeLookupRelated(
+        db as never,
+        {
+          ...baseLookup,
+          joinConditions: [
+            {
+              inputColumn: '',
+              lookupColumn: 'actor_profile_id',
+              resolveIdentity: true,
+            },
+          ],
+          ...(withWindow
+            ? {
+                timeCondition: {
+                  afterInput: true,
+                  inputTimeColumn: 'id',
+                  lookupTimeColumn: 'created_at_ms',
+                  windowMs: 100,
+                },
+              }
+            : {}),
+        },
+        {
+          hash: 'profile-51',
+          rows: [{ createdAtMs: 51, id: 51, table: 'profiles' }],
+          sourceTable: 'profiles',
+        },
+      )
+      expect(result.output.rows.map((row) => row.id)).toEqual([11])
+    },
+  )
+
+  it('参照を解決する条件と直接比較する条件を同時に満たす通知だけを取得する', () => {
+    seedNotification(native, 21, 1, 120)
+    const result = executeLookupRelated(
+      db as never,
+      {
+        ...baseLookup,
+        joinConditions: [
+          { inputColumn: 'id', lookupColumn: 'id' },
+          {
+            inputColumn: 'id',
+            lookupColumn: 'related_post_id',
+            resolve: {
+              inputKey: 'id',
+              lookupKey: 'id',
+              matchColumn: 'related_post_id',
+              via: 'notifications',
+            },
+          },
+        ],
+        timeCondition: {
+          afterInput: true,
+          inputTimeColumn: 'created_at_ms',
+          lookupTimeColumn: 'created_at_ms',
+          windowMs: 50,
+        },
+      },
+      {
+        hash: 'notification-11',
+        rows: [{ createdAtMs: 110, id: 11, table: 'notifications' }],
+        sourceTable: 'notifications',
+      },
+    )
+    expect(result.output.rows.map((row) => row.id)).toEqual([11])
+  })
+
+  it('通知IDと時刻の順が逆でも perLimit は時刻順で通知を選ぶ', () => {
+    seedNotification(native, 21, 1, 90)
+    const result = executeLookupRelated(
+      db as never,
+      { ...baseLookup, perLimit: 1, perLimitOrder: 'nearest' },
+      {
+        hash: 'post-1',
+        rows: [{ createdAtMs: 100, id: 1, table: 'posts' }],
+        sourceTable: 'posts',
+      },
+    )
+    expect(result.output.rows.map((row) => row.id)).toEqual([21])
+  })
+
+  it('複数の本人照合条件で投稿者と通知元の各プロフィールを解決する', () => {
+    native.exec(`
+      INSERT INTO profiles (id, username, server_id, acct, canonical_acct)
+      VALUES (1,'alice',0,'alice','alice@example.com'), (2,'bob',0,'bob','bob@example.com');
+      UPDATE posts SET author_profile_id = 2 WHERE id = 1;
+      UPDATE notifications SET actor_profile_id = 2 WHERE id = 11;
+    `)
+    const result = executeLookupRelated(
+      db as never,
+      {
+        ...baseLookup,
+        joinConditions: [
+          {
+            inputColumn: 'id',
+            lookupColumn: 'related_post_id',
+            resolveIdentity: true,
+          },
+          {
+            inputColumn: 'author_profile_id',
+            lookupColumn: 'actor_profile_id',
+            resolveIdentity: true,
+          },
+        ],
+        timeCondition: {
+          afterInput: true,
+          inputTimeColumn: 'created_at_ms',
+          lookupTimeColumn: 'created_at_ms',
+          windowMs: 50,
+        },
+      },
+      {
+        hash: 'two-identities',
+        rows: [{ createdAtMs: 100, id: 1, table: 'posts' }],
+        sourceTable: 'posts',
+      },
+    )
+    expect(result.output.rows.map((row) => row.id)).toEqual([11])
+  })
+
+  it('未指定の入力列は時間窓付きの通常の結合でも主キーを使う', () => {
+    const result = executeLookupRelated(
+      db as never,
+      {
+        ...baseLookup,
+        joinConditions: [{ inputColumn: '', lookupColumn: 'related_post_id' }],
+        timeCondition: {
+          afterInput: true,
+          inputTimeColumn: 'created_at_ms',
+          lookupTimeColumn: 'created_at_ms',
+          windowMs: 50,
+        },
+      },
+      {
+        hash: 'post-1',
+        rows: [{ createdAtMs: 100, id: 1, table: 'posts' }],
+        sourceTable: 'posts',
+      },
+    )
+    expect(result.output.rows.map((row) => row.id)).toEqual([11])
+  })
+
+  it('孤立した出力ノードは他のノードの ID から入力を推測しない', () => {
+    const plan = planSourceToLookup(baseGetIds, baseLookup)
+    plan.nodes = [
+      { id: 'Stryker was here!', node: baseGetIds },
+      ...plan.nodes.filter((entry) => entry.node.kind === 'output-v2'),
+    ]
+    plan.edges = []
+    expect(runPlan(plan).displayOrder).toEqual([])
+  })
+
   it('コールド実行は各ノードの SQL を発行し、ウォーム実行は detail のみ発行する', () => {
     const plan = planSourceToLookup(baseGetIds, baseLookup)
 
@@ -154,6 +707,25 @@ describe('executeGraphPlan — ノードキャッシュ (実 SQLite)', () => {
     expect(warm.meta.nodeStats.src?.cacheHit).toBe(true)
     expect(warm.meta.nodeStats.lk?.cacheHit).toBe(true)
     expect(warm.nodeOutputIds.lk?.length).toBe(2)
+  })
+
+  it('一括更新と外部同期でキャッシュを無効化し、同じバージョンの再同期では再利用する', () => {
+    const plan = planSourceToLookup(baseGetIds, baseLookup)
+    runPlan(plan)
+    const before = captureGraphCacheVersions()
+    bumpAllGraphCacheVersions(['posts', 'notifications'])
+    const posts = (before.posts ?? 0) + 1
+    const notifications = (before.notifications ?? 0) + 1
+    expect(captureGraphCacheVersions()).toMatchObject({ notifications, posts })
+    expect(runPlan(plan).meta.nodeStats.src?.cacheHit).toBe(false)
+
+    const remote = new Map([['notifications', notifications + 1]])
+    syncGraphCacheVersions(remote)
+    const refreshed = runPlan(plan)
+    expect(refreshed.meta.nodeStats.src?.cacheHit).toBe(true)
+    expect(refreshed.meta.nodeStats.lk?.cacheHit).toBe(false)
+    syncGraphCacheVersions(remote)
+    expect(runPlan(plan).meta.nodeStats.lk?.cacheHit).toBe(true)
   })
 
   it('依存テーブルのバージョン bump で再クエリされる', () => {

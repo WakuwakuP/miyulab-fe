@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest'
-import { compileGetIds } from '../executor/getIdsExecutor'
+import { describe, expect, it, vi } from 'vitest'
+import { compileGetIds, executeGetIds } from '../executor/getIdsExecutor'
 import type { NodeOutput } from '../executor/types'
 import type { GetIdsNode } from '../nodes'
+import * as filterCompiler from '../translate/filterToSql'
 
 function makeNode(overrides: Partial<GetIdsNode> = {}): GetIdsNode {
   return {
@@ -28,6 +29,76 @@ function extractWhereClause(sql: string): string {
 }
 
 describe('compileGetIds', () => {
+  it.each(['inner', 'left'] as const)(
+    'フィルターコンパイラが返す %s JOIN の重複を除き、依存テーブルを保持する',
+    (type) => {
+      const join = {
+        alias: 'pm',
+        on: 'pm.post_id = p.id',
+        table: 'post_media',
+        type,
+      }
+      using compiler = vi
+        .spyOn(filterCompiler, 'compileFilterNode')
+        .mockReturnValue({
+          binds: [],
+          joins: [
+            join,
+            join,
+            {
+              alias: 'pr',
+              on: 'pr.id = p.author_profile_id',
+              table: 'profiles',
+              type: 'left',
+            },
+          ],
+          sql: '1=1',
+        })
+      const result = compileGetIds(
+        makeNode({
+          filters: [{ column: 'id', op: 'IS NOT NULL', table: 'posts' }],
+        }),
+        new Map(),
+      )
+      expect(compiler).toHaveBeenCalledOnce()
+      expect(result.sql.match(/JOIN post_media pm/g)).toHaveLength(1)
+      expect(result.sql).toContain('LEFT JOIN profiles pr')
+      expect(result.sql.includes('GROUP BY p.id')).toBe(type === 'inner')
+      expect(result.sql).not.toContain('WHERE')
+      expect(new Set(result.dependentTables)).toEqual(
+        new Set(['posts', 'post_media', 'profiles']),
+      )
+    },
+  )
+
+  it('バインドのない取得ではパラメータを省略し、取得行の時刻変更をハッシュに反映する', () => {
+    const db = {
+      exec: vi
+        .fn()
+        .mockReturnValueOnce([[4, 100]])
+        .mockReturnValueOnce([[4, 101]]),
+    }
+    const first = executeGetIds(db, makeNode(), new Map())
+    const second = executeGetIds(db, makeNode(), new Map())
+    expect(db.exec).toHaveBeenCalledWith(first.sql, {
+      bind: undefined,
+      returnValue: 'resultRows',
+    })
+    expect(first.output.hash).not.toBe(second.output.hash)
+  })
+
+  it('単一条件の OR は通常のフィルタと同じキャッシュ用 SQL に正規化する', () => {
+    const filters: GetIdsNode['filters'] = [
+      { column: 'id', op: '=', table: 'posts', value: 1 },
+    ]
+    const direct = compileGetIds(makeNode({ filters }), new Map())
+    const branch = compileGetIds(makeNode({ orBranches: [filters] }), new Map())
+    expect(branch).toEqual(direct)
+    expect(direct.sql).toBe(
+      'SELECT p.id AS id, p.created_at_ms AS created_at_ms FROM posts p WHERE p.id = ? ORDER BY p.created_at_ms DESC',
+    )
+  })
+
   describe('outputTimeColumn のデフォルト動作', () => {
     it('省略時は created_at_ms を時刻カラムとして使用する', () => {
       const node = makeNode()

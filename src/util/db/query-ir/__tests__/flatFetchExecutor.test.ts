@@ -109,6 +109,61 @@ function makeRequest(
 // ================================================================
 
 describe('executeFlatFetch', () => {
+  it('複数通知のアクター絵文字をプロフィールIDで一括取得し、対応する通知に割り当てる', () => {
+    const emoji = {
+      shortcode: 'wave',
+      static_url: 'https://example.com/wave.png',
+      url: 'https://example.com/wave.png',
+    }
+    const db = mockDb({
+      0: [
+        makeNotifRow(1, { actorProfileId: 20 }),
+        makeNotifRow(2, { actorProfileId: 30 }),
+        makeNotifRow(3, { actorProfileId: 20 }),
+      ],
+      1: [[20, JSON.stringify([emoji])]],
+    })
+    const result = executeFlatFetch(
+      db,
+      makeRequest({ notificationIds: [1, 2, 3] }),
+    )
+    expect(db.calls[1].bind).toEqual([20, 30])
+    expect(db.calls[1].sql).toMatch(/IN\s*\(\?,\s*\?\)/i)
+    for (const id of [1, 3]) {
+      expect(result.notifications.get(id)?.account.emojis).toMatchObject([
+        emoji,
+      ])
+    }
+    expect(result.notifications.get(2)?.account.emojis).toEqual([])
+  })
+
+  it('共有されたブースト元と通知の関連投稿を一度ずつ取得し、バッチ対象にも含める', () => {
+    const db = mockDb({
+      0: [
+        makePostRow(1, { reblogOfPostId: 10 }),
+        makePostRow(2, { reblogOfPostId: 10 }),
+      ],
+      1: [makePostRow(10)],
+      2: [
+        makeNotifRow(3, { relatedPostId: 10 }),
+        makeNotifRow(4, { relatedPostId: 20 }),
+        makeNotifRow(5, { relatedPostId: 20 }),
+      ],
+      3: [makePostRow(20)],
+    })
+    const result = executeFlatFetch(
+      db,
+      makeRequest({ notificationIds: [3, 4, 5], postIds: [1, 2] }),
+    )
+    expect(db.calls[1].bind).toEqual([10])
+    expect(db.calls[3].bind).toEqual([20])
+    const media = db.calls.find(({ sql }) => sql.includes('FROM post_media'))
+    expect(media?.bind).toEqual([1, 2, 10, 20])
+    expect(media?.sql).toMatch(/IN\s*\(\?,\?,\?,\?\)/i)
+    expect(result.posts.get(2)?.reblog?.id).toBe('local_10')
+    expect(result.notifications.get(5)?.status?.id).toBe('local_20')
+  })
+
   // --- 空入力 ---
   describe('空入力', () => {
     it('全 ID が空の場合、空の結果を返す', () => {
@@ -282,11 +337,16 @@ describe('executeFlatFetch', () => {
 
   // --- メタ情報 ---
   describe('メタ情報', () => {
-    it('totalDurationMs が 0 以上の数値である', () => {
+    it('totalDurationMs はフェッチの経過時間を返す', () => {
+      using clock = vi
+        .spyOn(performance, 'now')
+        .mockReturnValueOnce(40)
+        .mockReturnValueOnce(47)
       const db = mockDb()
       const result = executeFlatFetch(db, makeRequest())
 
-      expect(result.meta.totalDurationMs).toBeGreaterThanOrEqual(0)
+      expect(clock).toHaveBeenCalledTimes(2)
+      expect(result.meta.totalDurationMs).toBe(7)
     })
   })
 })

@@ -1,0 +1,126 @@
+{
+  "1fm0sz6cov6": {
+    "reason": "上流なしのキャッシュキー表現だけが undefined から空配列の JSON に変わる。読み書きに同一キーを使い、上流がある場合の非空配列とも衝突しない。",
+    "where": "src/util/db/query-ir/executor/graphExecutor.ts:186:5 upstreamOutputs.size > 0 -> true"
+  },
+  "1g0lltiqmij": {
+    "reason": "出力がすでに末尾なら splice で末尾を取り出して push で同じ位置に戻す。出力順も行数も変わらない。",
+    "where": "src/util/db/query-ir/executor/topoSort.ts:20:23 sorted.length - 1 -> sorted.length + 1"
+  },
+  "1hcawxj651i": {
+    "reason": "入力列が id のときだけ分岐先が変わり得るが、補間した列名と既定の列名は共に src.id になる。",
+    "where": "src/util/db/query-ir/executor/lookupRelatedExecutor.ts:147:53 'id' -> ''"
+  },
+  "1j7b7b4xnks": {
+    "reason": "executePostOutput は投稿行が1件以上の場合だけ呼ばれる。バッチに渡す ID はその全行から得た ID を含むため空にならない。",
+    "where": "src/util/db/query-ir/executor/outputExecutor.ts:235:7 postIds.length === 0 -> false"
+  },
+  "1l22zmcok1d": {
+    "reason": "有効なグラフでは各ノードの隣接リストを先に初期化する。キューから取り出せるノードには、出辺が0件でも空の隣接リストが存在する。",
+    "where": "src/util/db/query-ir/executor/topoSort.ts:59:54 [] -> [\"Stryker was here!\"]"
+  },
+  "1n83l4hwqyc": {
+    "reason": "公開入口 executeMerge が入力0件で先に返るため、内部の mergeIntersect に空の inputs が渡る経路はない。",
+    "where": "src/util/db/query-ir/executor/mergeExecutor.ts:90:7 inputs.length === 0 -> false"
+  },
+  "2cfj7q6fb0d": {
+    "reason": "空の orBranches をコンパイルしても条件は null になり、WHERE に何も追加されない。",
+    "where": "src/util/db/query-ir/executor/getIdsExecutor.ts:281:26 node.orBranches.length > 0 -> true"
+  },
+  "2csyvi4mcw2": {
+    "reason": "入力辺が空なら incoming[0] は undefined。出力 Map のキーは文字列なので検索しても undefined を返す。",
+    "where": "src/util/db/query-ir/executor/graphExecutor.ts:107:10 incoming.length > 0 -> true"
+  },
+  "2dzujbzridd": {
+    "reason": "空行で通常経路を通っても投稿・通知とも SQL を発行せず、空の表示順・詳細・バッチ結果と sourceType=post を返す。",
+    "where": "src/util/db/query-ir/executor/outputExecutor.ts:93:26 { return { displayOrder: [], notifications: { detailRows: [… -> {}"
+  },
+  "2eyqnd1gkth": {
+    "reason": "resolveOutputTable は主キー id なら元テーブルを返す。空文字も外部キーマップに存在しないため同じ元テーブルを返す。",
+    "where": "src/util/db/query-ir/executor/lookupRelatedExecutor.ts:298:55 'id' -> ''"
+  },
+  "2ms1uhpi72": {
+    "reason": "公開入口 executeMerge が入力0件で先に返るため、内部の mergeIntersect に空の inputs が渡る経路はない。",
+    "where": "src/util/db/query-ir/executor/mergeExecutor.ts:90:35 [] -> [\"Stryker was here!\"]"
+  },
+  "15bp3mgyu2m": {
+    "reason": "入力列が id なら指定値も既定値も id。空文字は先頭の真偽判定で既定値になり、それ以外の列名はそのまま使う。",
+    "where": "src/util/db/query-ir/executor/lookupRelatedExecutor.ts:328:27 jc.inputColumn !== 'id' -> true"
+  },
+  "17felxpdg2h": {
+    "reason": "入力列が id なら指定値も既定値も id。空文字は先頭の真偽判定で既定値になり、それ以外の列名はそのまま使う。",
+    "where": "src/util/db/query-ir/executor/lookupRelatedExecutor.ts:138:27 jc.inputColumn !== 'id' -> true"
+  },
+  "19lhxq54ysw": {
+    "reason": "上流の行が空なら map で抽出する ID も空配列になり、空入力用の分岐と同じフィルタ値を返す。",
+    "where": "src/util/db/query-ir/executor/getIdsExecutor.ts:95:19 upstream.rows.length > 0 -> upstream.rows.length >= 0"
+  },
+  "24azkovh04j": {
+    "reason": "追加のブースト元がない場合に Set を通しても IN 句が選ぶ投稿集合は同じ。表示順・詳細行はこの時点ですでに確定している。",
+    "where": "src/util/db/query-ir/executor/outputExecutor.ts:182:7 reblogIds.length > 0 -> true"
+  },
+  "24w3jpthlmx": {
+    "reason": "未接続 lookup の内部ハッシュは下流のキーにのみ使う。空文字でも接続済みの lookup:empty や通常の結果ハッシュとは異なるため、同じ入力を再利用し別の入力を区別できる。",
+    "where": "src/util/db/query-ir/executor/graphExecutor.ts:233:13 'lookup:no-input' -> ''"
+  },
+  "29mfrepaxpt": {
+    "reason": "件数が正の limit 以下なら slice(0, limit) は同じ行を同じ順に返す。対象配列はマージ内部で作った配列であり、入力配列との参照共有も生じない。",
+    "where": "src/util/db/query-ir/executor/mergeExecutor.ts:58:25 rows.length > node.limit -> true"
+  },
+  "37z3xkbrfz": {
+    "reason": "resolveOutputTable は主キー id なら元テーブルを返す。空文字も外部キーマップに存在しないため同じ元テーブルを返す。",
+    "where": "src/util/db/query-ir/executor/lookupRelatedExecutor.ts:475:55 'id' -> ''"
+  },
+  "281kjcgb6j8": {
+    "reason": "空の orBranches をコンパイルしても条件は null になり、WHERE に何も追加されない。",
+    "where": "src/util/db/query-ir/executor/getIdsExecutor.ts:281:26 node.orBranches.length > 0 -> node.orBranches.length >= 0"
+  },
+  "591ryh6ror": {
+    "reason": "空行で通常経路を通っても投稿・通知とも SQL を発行せず、空の表示順・詳細・バッチ結果と sourceType=post を返す。",
+    "where": "src/util/db/query-ir/executor/outputExecutor.ts:93:7 rows.length === 0 -> false"
+  },
+  "2038h15q75d": {
+    "reason": "出力がすでに末尾なら splice で末尾を取り出して push で同じ位置に戻す。出力順も行数も変わらない。",
+    "where": "src/util/db/query-ir/executor/topoSort.ts:20:7 outputIndex === sorted.length - 1 -> false"
+  },
+  "2574oqc1ekp": {
+    "reason": "入力辺が空なら incoming[0] は undefined。出力 Map のキーは文字列なので検索しても undefined を返す。",
+    "where": "src/util/db/query-ir/executor/graphExecutor.ts:107:10 incoming.length > 0 -> incoming.length >= 0"
+  },
+  "eu8evkq6gq": {
+    "reason": "resolveOutputTable は主キー id なら元テーブルを返す。空文字も外部キーマップに存在しないため同じ元テーブルを返す。",
+    "where": "src/util/db/query-ir/executor/getIdsExecutor.ts:329:72 'id' -> ''"
+  },
+  "f246yp7kq5": {
+    "reason": "入力列が id なら指定値も既定値も id。空文字は先頭の真偽判定で既定値になり、それ以外の列名はそのまま使う。",
+    "where": "src/util/db/query-ir/executor/lookupRelatedExecutor.ts:328:46 'id' -> ''"
+  },
+  "go9jazinal": {
+    "reason": "上流なしのキャッシュキー表現だけが undefined から空配列の JSON に変わる。読み書きに同一キーを使い、上流がある場合の非空配列とも衝突しない。",
+    "where": "src/util/db/query-ir/executor/graphExecutor.ts:186:5 upstreamOutputs.size > 0 -> upstreamOutputs.size >= 0"
+  },
+  "knfilq2ln1": {
+    "reason": "上流の行が空なら map で抽出する ID も空配列になり、空入力用の分岐と同じフィルタ値を返す。",
+    "where": "src/util/db/query-ir/executor/getIdsExecutor.ts:95:19 upstream.rows.length > 0 -> true"
+  },
+  "mah4ftxyxu": {
+    "reason": "追加のブースト元がない場合に Set を通しても IN 句が選ぶ投稿集合は同じ。表示順・詳細行はこの時点ですでに確定している。",
+    "where": "src/util/db/query-ir/executor/outputExecutor.ts:182:7 reblogIds.length > 0 -> reblogIds.length >= 0"
+  },
+  "qmiwhhc0tu": {
+    "reason": "入力列が id なら指定値も既定値も id。空文字は先頭の真偽判定で既定値になり、それ以外の列名はそのまま使う。",
+    "where": "src/util/db/query-ir/executor/lookupRelatedExecutor.ts:138:46 'id' -> ''"
+  },
+  "rfcsjv54tw": {
+    "reason": "入力列が id のときだけ分岐先が変わり得るが、補間した列名と既定の列名は共に src.id になる。",
+    "where": "src/util/db/query-ir/executor/lookupRelatedExecutor.ts:147:34 jc.inputColumn !== 'id' -> true"
+  },
+  "rkj6nhqhr0": {
+    "reason": "空になったキューでさらに1回ループしても shift は undefined を返し、結果配列への追加前に break する。",
+    "where": "src/util/db/query-ir/executor/topoSort.ts:54:10 queue.length > 0 -> queue.length >= 0"
+  },
+  "wuizd5zm8u": {
+    "reason": "件数が正の limit 以下なら slice(0, limit) は同じ行を同じ順に返す。対象配列はマージ内部で作った配列であり、入力配列との参照共有も生じない。",
+    "where": "src/util/db/query-ir/executor/mergeExecutor.ts:58:25 rows.length > node.limit -> rows.length >= node.limit"
+  }
+}

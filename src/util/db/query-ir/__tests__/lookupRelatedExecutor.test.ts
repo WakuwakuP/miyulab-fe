@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { DbExec } from '../../sqlite/queries/executionEngine'
-import { executeLookupRelated } from '../executor/lookupRelatedExecutor'
+import {
+  executeLookupRelated,
+  hashLookupRelatedOutput,
+} from '../executor/lookupRelatedExecutor'
 import type { NodeOutput } from '../executor/types'
 import type { LookupRelatedNode } from '../nodes'
 
@@ -21,6 +24,115 @@ function makeInput(
 }
 
 describe('executeLookupRelated', () => {
+  it('入力が空の場合と検索結果が空の場合を下流キャッシュで区別する', () => {
+    const node: LookupRelatedNode = {
+      joinConditions: [{ inputColumn: 'id', lookupColumn: 'id' }],
+      kind: 'lookup-related',
+      lookupTable: 'posts',
+    }
+    const skipped = executeLookupRelated(mockDb(), node, makeInput([]))
+    expect(skipped.dependentTables).toEqual(['posts', 'notifications'])
+    expect(skipped.output.hash).toBe('lookup:empty')
+    expect(hashLookupRelatedOutput(skipped.sql, skipped.binds, [])).toBe(
+      skipped.output.hash,
+    )
+
+    const input = makeInput([{ createdAtMs: 10, id: 1 }])
+    const miss = executeLookupRelated(mockDb(), node, input)
+    const hit = executeLookupRelated(mockDb([[1, 10]]), node, input)
+    const updated = executeLookupRelated(mockDb([[1, 20]]), node, input)
+    expect(
+      new Set([skipped, miss, hit, updated].map((result) => result.output.hash))
+        .size,
+    ).toBe(4)
+  })
+
+  it('結合条件が空の場合は条件やバインドを付けずに取得する', () => {
+    const db = mockDb()
+    const result = executeLookupRelated(
+      db,
+      { joinConditions: [], kind: 'lookup-related', lookupTable: 'posts' },
+      makeInput([{ createdAtMs: 2, id: 1 }]),
+    )
+    expect(result.sql).toMatch(
+      /^SELECT .* FROM posts lt ORDER BY created_at_ms DESC$/,
+    )
+    expect(db.exec).toHaveBeenCalledWith(result.sql, {
+      bind: undefined,
+      returnValue: 'resultRows',
+    })
+  })
+
+  it('参照解決時の件数制限は指定した時間窓の列で順位付けする', () => {
+    const result = executeLookupRelated(
+      mockDb(),
+      {
+        joinConditions: [
+          {
+            inputColumn: 'id',
+            lookupColumn: 'id',
+            resolve: {
+              inputKey: 'id',
+              lookupKey: 'id',
+              matchColumn: 'related_post_id',
+              via: 'notifications',
+            },
+          },
+        ],
+        kind: 'lookup-related',
+        lookupTable: 'posts',
+        perLimit: 1,
+        perLimitOrder: 'nearest',
+        timeCondition: {
+          afterInput: true,
+          inputTimeColumn: 'created_at_ms',
+          lookupTimeColumn: 'edited_at_ms',
+          windowMs: 50,
+        },
+      },
+      makeInput([{ createdAtMs: 100, id: 1 }]),
+    )
+    expect(result.sql).toContain(
+      'PARTITION BY lt.id ORDER BY lt.edited_at_ms ASC',
+    )
+  })
+
+  it.each([
+    [true, 1],
+    [true, undefined],
+    [false, 1],
+  ] as const)(
+    'SQLキャッシュキーに空の句の空白を残さない (時間窓=%s, limit=%s)',
+    (window, perLimit) => {
+      const result = executeLookupRelated(
+        mockDb(),
+        {
+          joinConditions: [{ inputColumn: 'id', lookupColumn: 'id' }],
+          kind: 'lookup-related',
+          lookupTable: 'posts',
+          perLimit,
+          perLimitOrder: 'nearest',
+          ...(window
+            ? {
+                timeCondition: {
+                  afterInput: true,
+                  inputTimeColumn: 'created_at_ms',
+                  lookupTimeColumn: 'created_at_ms',
+                  windowMs: 100,
+                },
+              }
+            : {}),
+        },
+        makeInput([{ createdAtMs: 100, id: 1 }]),
+      )
+      expect(result.sql).toBe(
+        result.sql.trim().replace(/\s+/g, ' ').replace(/ \)/g, ')'),
+      )
+      if (perLimit)
+        expect(result.sql).toContain('ORDER BY lt.created_at_ms ASC)')
+    },
+  )
+
   describe('空入力', () => {
     it('入力行が空の場合、SQL を実行せず空の結果を返す', () => {
       const db = mockDb()
@@ -180,44 +292,51 @@ describe('executeLookupRelated', () => {
       )
     })
 
-    it('resolve + timeCondition の場合、IN ベース + グローバル時間窓になる', () => {
-      const db = mockDb()
-      const node: LookupRelatedNode = {
-        joinConditions: [
-          {
-            inputColumn: 'id',
-            lookupColumn: 'id',
-            resolve: {
-              inputKey: 'id',
-              lookupKey: 'id',
-              matchColumn: 'related_post_id',
-              via: 'notifications',
+    it.each([
+      [true, '<=', 1000, 183000],
+      [false, '<', 3000, -179000],
+    ] as const)(
+      'resolve の時間窓は入力全体の時刻範囲を使う (afterInput=%s)',
+      (afterInput, upperOp, first, second) => {
+        const db = mockDb()
+        const node: LookupRelatedNode = {
+          joinConditions: [
+            {
+              inputColumn: 'id',
+              lookupColumn: 'id',
+              resolve: {
+                inputKey: 'id',
+                lookupKey: 'id',
+                matchColumn: 'related_post_id',
+                via: 'notifications',
+              },
             },
+          ],
+          kind: 'lookup-related',
+          lookupTable: 'posts',
+          timeCondition: {
+            afterInput,
+            inputTimeColumn: 'created_at_ms',
+            lookupTimeColumn: 'created_at_ms',
+            windowMs: 180000,
           },
-        ],
-        kind: 'lookup-related',
-        lookupTable: 'posts',
-        timeCondition: {
-          afterInput: true,
-          inputTimeColumn: 'created_at_ms',
-          lookupTimeColumn: 'created_at_ms',
-          windowMs: 180000,
-        },
-      }
-      const input = makeInput([
-        { createdAtMs: 1000, id: 10 },
-        { createdAtMs: 3000, id: 20 },
-      ])
+        }
+        const input = makeInput([
+          { createdAtMs: 1000, id: 10 },
+          { createdAtMs: 3000, id: 20 },
+        ])
 
-      const result = executeLookupRelated(db, node, input)
+        const result = executeLookupRelated(db, node, input)
 
-      // resolve があるため IN ベース（グローバル時間窓）
-      expect(result.sql).toContain('lt.id IN (SELECT related_post_id')
-      expect(result.sql).toContain('lt.created_at_ms >= ?')
-      expect(result.sql).toContain('lt.created_at_ms <= ?')
-      // JOIN は使用されない
-      expect(result.sql).not.toContain('JOIN')
-    })
+        // resolve があるため IN ベース（グローバル時間窓）
+        expect(result.sql).toContain('lt.id IN (SELECT related_post_id')
+        expect(result.sql).toContain('lt.created_at_ms >= ?')
+        expect(result.sql).toContain(`lt.created_at_ms ${upperOp} ?`)
+        expect(result.binds).toEqual([10, 20, first, second])
+        // JOIN は使用されない
+        expect(result.sql).not.toContain('JOIN')
+      },
+    )
   })
 
   describe('JOIN ベース: timeCondition あり・resolve なし (per-row 相関)', () => {
