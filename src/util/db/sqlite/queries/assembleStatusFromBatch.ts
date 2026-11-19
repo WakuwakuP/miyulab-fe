@@ -1,3 +1,4 @@
+import { quoteFromState } from 'util/db/sqlite/helpers/post'
 /**
  * バッチクエリ (STATUS_BASE_SELECT + BatchMaps) の行データ → SqliteStoredStatus 変換
  *
@@ -130,7 +131,7 @@ export function assembleStatusFromBatch(
       pinned: null,
       plain_content: null,
       poll: rbPollJson ? parseBatchPoll(rbPollJson) : null,
-      quote: null,
+      quote: quoteFromState(row[53]),
       quote_approval: { automatic: [], current_user: '', manual: [] },
       reblog: null,
       reblogged: rbInteractions?.is_reblogged === 1,
@@ -203,7 +204,7 @@ export function assembleStatusFromBatch(
     plain_content: null,
     poll: pollJson ? parseBatchPoll(pollJson) : null,
     post_id: postId,
-    quote: null,
+    quote: quoteFromState(row[52]),
     quote_approval: { automatic: [], current_user: '', manual: [] },
     reblog,
     reblogged: interactions?.is_reblogged === 1,

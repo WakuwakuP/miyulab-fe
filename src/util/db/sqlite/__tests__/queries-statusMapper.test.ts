@@ -147,6 +147,20 @@ function makeMaps(overrides: Partial<BatchMaps> = {}): BatchMaps {
 // ─── rowToStoredStatus ──────────────────────────────────────────
 
 describe('rowToStoredStatus', () => {
+  it('投稿とブースト元の引用状態を個別に復元する', () => {
+    const row = makeRow()
+    row[11] = 1
+    row[33] = 77
+    row[66] = 'pending'
+    row[67] = 'accepted'
+    const status = rowToStoredStatus(row)
+    expect(status.quote).toEqual({ quoted_status_id: null, state: 'pending' })
+    expect(status.reblog?.quote).toEqual({
+      quoted_status_id: null,
+      state: 'accepted',
+    })
+  })
+
   it('rowToStoredStatus が正しいカラムインデックスでデータを抽出する', () => {
     const row = makeRow()
     const result = rowToStoredStatus(row)
@@ -273,6 +287,20 @@ describe('rowToStoredStatus', () => {
 // ─── assembleStatusFromBatch ────────────────────────────────────
 
 describe('assembleStatusFromBatch', () => {
+  it('投稿とブースト元の引用状態を個別に復元する', () => {
+    const row = makeBaseRow()
+    row[11] = 1
+    row[25] = 77
+    row[52] = 'pending'
+    row[53] = 'accepted'
+    const status = assembleStatusFromBatch(row, makeMaps())
+    expect(status.quote).toEqual({ quoted_status_id: null, state: 'pending' })
+    expect(status.reblog?.quote).toEqual({
+      quoted_status_id: null,
+      state: 'accepted',
+    })
+  })
+
   it('assembleStatusFromBatch が interactionsMap を使用する', () => {
     const row = makeBaseRow()
     const postId = row[0] as number

@@ -144,6 +144,17 @@ function makeNotifRow(
 // ================================================================
 
 describe('assemblePostFromFlat', () => {
+  it('引用状態の列がある場合だけ引用を復元する', () => {
+    const row = makePostRow(42)
+    const maps = emptyBatchMaps()
+    expect(assemblePostFromFlat(row, maps).quote).toBeNull()
+    row[30] = 'accepted'
+    expect(assemblePostFromFlat(row, maps).quote).toEqual({
+      quoted_status_id: null,
+      state: 'accepted',
+    })
+  })
+
   describe('基本フィールド', () => {
     it('投稿ID、URI、コンテンツが正しくマッピングされる', () => {
       const row = makePostRow(42, {

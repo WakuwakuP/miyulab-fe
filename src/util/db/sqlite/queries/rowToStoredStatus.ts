@@ -1,3 +1,4 @@
+import { quoteFromState } from 'util/db/sqlite/helpers/post'
 /**
  * インラインクエリ (STATUS_SELECT) の行データ → SqliteStoredStatus 変換
  *
@@ -169,7 +170,7 @@ export function rowToStoredStatus(
       pinned: null,
       plain_content: null,
       poll: rbPollJson ? parseInlinePoll(rbPollJson) : null,
-      quote: null,
+      quote: quoteFromState(row[67]),
       quote_approval: { automatic: [], current_user: '', manual: [] },
       reblog: null,
       reblogged: hasInteraction(
@@ -257,7 +258,7 @@ export function rowToStoredStatus(
     poll: pollJson ? parseInlinePoll(pollJson) : null,
     // SqliteStoredStatus extra fields
     post_id: row[0] as number,
-    quote: null,
+    quote: quoteFromState(row[66]),
     quote_approval: { automatic: [], current_user: '', manual: [] },
     reblog,
     reblogged: hasInteraction(
