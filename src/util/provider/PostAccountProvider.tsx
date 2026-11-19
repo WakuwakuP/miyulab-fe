@@ -47,25 +47,6 @@ async function timelineAccountId(app: App, verifiedId?: string) {
   }
 }
 
-function resolveCachedTimelineAccountId(
-  app: App,
-  shared: boolean,
-): Promise<string | undefined> {
-  return shared ? timelineAccountId(app) : Promise.resolve(undefined)
-}
-
-function resolveVerifiedTimelineAccountId(
-  app: App,
-  shared: boolean,
-  verifiedId: string | undefined,
-  cachedId: string | undefined,
-): Promise<string | undefined> {
-  if (shared && verifiedId) {
-    return timelineAccountId(app, verifiedId)
-  }
-  return Promise.resolve(verifiedId ?? cachedId)
-}
-
 export const TimelineAccountIdsContext = createContext<
   readonly (string | undefined)[]
 >([])
@@ -128,7 +109,9 @@ export const PostAccountProvider = ({
         )
         if (cancelled) return
         const cachedIds = await Promise.all(
-          apps.map((app, i) => resolveCachedTimelineAccountId(app, shared[i])),
+          apps.map((app, i) =>
+            shared[i] ? timelineAccountId(app) : Promise.resolve(undefined),
+          ),
         )
         if (cancelled) return
         setTimelineIds(cachedIds)
@@ -147,12 +130,10 @@ export const PostAccountProvider = ({
               result.status === 'fulfilled'
                 ? result.value.account.id
                 : undefined
-            return resolveVerifiedTimelineAccountId(
-              app,
-              shared[i],
-              id,
-              cachedIds[i],
-            )
+            if (shared[i] && id) {
+              return timelineAccountId(app, id)
+            }
+            return Promise.resolve(id ?? cachedIds[i])
           }),
         )
         if (cancelled) return
