@@ -8,6 +8,7 @@ import {
   type SetStateAction,
   useContext,
   useEffect,
+  useMemo,
   useState,
 } from 'react'
 import type { App } from 'types/types'
@@ -18,6 +19,8 @@ export type VerifiedAccount = {
   account: Entity.Account
   index: number
 }
+
+const EMPTY_VERIFIED_ACCOUNTS: VerifiedAccount[] = []
 
 function verifyAppAccount(app: App, index: number): Promise<VerifiedAccount> {
   return verifyLogin(app).then((account) => ({ account, index }))
@@ -44,12 +47,33 @@ async function timelineAccountId(app: App, verifiedId?: string) {
   }
 }
 
+function resolveCachedTimelineAccountId(
+  app: App,
+  shared: boolean,
+): Promise<string | undefined> {
+  return shared ? timelineAccountId(app) : Promise.resolve(undefined)
+}
+
+function resolveVerifiedTimelineAccountId(
+  app: App,
+  shared: boolean,
+  verifiedId: string | undefined,
+  cachedId: string | undefined,
+): Promise<string | undefined> {
+  if (shared && verifiedId) {
+    return timelineAccountId(app, verifiedId)
+  }
+  return Promise.resolve(verifiedId ?? cachedId)
+}
+
 export const TimelineAccountIdsContext = createContext<
   readonly (string | undefined)[]
 >([])
 export const AccountVerificationReadyContext = createContext(false)
 
-export const PostAccountContext = createContext<VerifiedAccount[]>([])
+export const PostAccountContext = createContext<VerifiedAccount[]>(
+  EMPTY_VERIFIED_ACCOUNTS,
+)
 
 export const SelectedAppIndexContext = createContext<number>(0)
 
@@ -86,7 +110,7 @@ export const PostAccountProvider = ({
 
   useEffect(() => {
     if (apps.length <= 0) {
-      setAccounts([])
+      setAccounts(EMPTY_VERIFIED_ACCOUNTS)
       return
     }
 
@@ -104,9 +128,7 @@ export const PostAccountProvider = ({
         )
         if (cancelled) return
         const cachedIds = await Promise.all(
-          apps.map((app, i) =>
-            shared[i] ? timelineAccountId(app) : undefined,
-          ),
+          apps.map((app, i) => resolveCachedTimelineAccountId(app, shared[i])),
         )
         if (cancelled) return
         setTimelineIds(cachedIds)
@@ -125,9 +147,12 @@ export const PostAccountProvider = ({
               result.status === 'fulfilled'
                 ? result.value.account.id
                 : undefined
-            return shared[i] && id
-              ? timelineAccountId(app, id)
-              : (id ?? cachedIds[i])
+            return resolveVerifiedTimelineAccountId(
+              app,
+              shared[i],
+              id,
+              cachedIds[i],
+            )
           }),
         )
         if (cancelled) return
@@ -144,10 +169,15 @@ export const PostAccountProvider = ({
     }
   }, [apps])
 
+  const postAccounts = useMemo(
+    () => accounts ?? EMPTY_VERIFIED_ACCOUNTS,
+    [accounts],
+  )
+
   return (
     <TimelineAccountIdsContext.Provider value={timelineIds}>
       <AccountVerificationReadyContext.Provider value={accounts !== null}>
-        <PostAccountContext.Provider value={accounts ?? []}>
+        <PostAccountContext.Provider value={postAccounts}>
           <SelectedAppIndexContext.Provider value={selectedAppIndex}>
             <SetSelectedAppIndexContext.Provider value={setSelectedAppIndex}>
               {children}

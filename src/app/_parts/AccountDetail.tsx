@@ -148,7 +148,7 @@ export const AccountDetail = ({ account }: { account: AccountAddAppIndex }) => {
             onClick={(e) => {
               e.stopPropagation()
               setDetail({
-                content: e.currentTarget.innerText
+                content: (e.currentTarget.textContent ?? '')
                   .toLocaleLowerCase()
                   .replace('#', ''),
                 type: 'Hashtag',

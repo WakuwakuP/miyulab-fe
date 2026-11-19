@@ -87,6 +87,113 @@ export type TimelineListEvent =
 
 // --------------- reducer ---------------
 
+function matchesLocalInteractionTarget(
+  item: TimelineItem,
+  event: Extract<TimelineListEvent, { type: 'LOCAL_INTERACTION' }>,
+): boolean {
+  return (
+    item.appIndex === event.appIndex &&
+    'backendUrl' in item &&
+    item.backendUrl === event.backendUrl
+  )
+}
+
+function applyLocalInteractionToItem(
+  item: TimelineItem,
+  event: Extract<TimelineListEvent, { type: 'LOCAL_INTERACTION' }>,
+): TimelineItem | null {
+  if (!matchesLocalInteractionTarget(item, event)) return null
+
+  if ('type' in item) {
+    if (!item.status) return null
+    const status = updateAccountStatus(
+      item.status,
+      event.statusId,
+      event.updates,
+    )
+    return status !== item.status ? { ...item, status } : null
+  }
+
+  const status = updateAccountStatus(item, event.statusId, event.updates)
+  return status !== item ? status : null
+}
+
+function applyLocalInteraction(
+  state: TimelineListState,
+  event: Extract<TimelineListEvent, { type: 'LOCAL_INTERACTION' }>,
+): TimelineListState {
+  const items: TimelineItem[] = []
+  for (const item of state.sortedItems) {
+    const updated = applyLocalInteractionToItem(item, event)
+    if (updated) items.push(updated)
+  }
+  return applyInteractionUpdates(state, {
+    items,
+    type: 'INTERACTION_UPDATES_SUCCEEDED',
+  })
+}
+
+function applyInteractionUpdates(
+  state: TimelineListState,
+  event: Extract<TimelineListEvent, { type: 'INTERACTION_UPDATES_SUCCEEDED' }>,
+): TimelineListState {
+  if (event.items.length === 0) return state
+  const nextMap = new Map(state.itemMap)
+  let touched = false
+  for (const item of event.items) {
+    const key = itemKey(item)
+    if (nextMap.has(key)) {
+      nextMap.set(key, item)
+      touched = true
+    }
+  }
+  if (!touched) return state
+  return {
+    ...state,
+    itemMap: nextMap,
+    sortedItems: state.sortedItems.map(
+      (item) => nextMap.get(itemKey(item)) ?? item,
+    ),
+  }
+}
+
+function applyStreamingDeferred(
+  state: TimelineListState,
+  event: Extract<TimelineListEvent, { type: 'STREAMING_DEFERRED' }>,
+): TimelineListState {
+  return {
+    ...state,
+    deferredChangedTables: mergeChangedTables(
+      state.deferredChangedTables,
+      event.changedTables,
+    ),
+    // Selective refresh requires complete ID coverage across all pending hints.
+    deferredPostIds:
+      event.changedPostIds &&
+      (!state.deferredChangedTables || state.deferredPostIds)
+        ? new Set([...(state.deferredPostIds ?? []), ...event.changedPostIds])
+        : undefined,
+  }
+}
+
+function applyNotificationReadRefresh(
+  state: TimelineListState,
+  items: TimelineItem[],
+): TimelineListState {
+  return mergeItems(
+    {
+      ...state,
+      deferredChangedTables: null,
+      itemMap: new Map(),
+      newestId: 0,
+      newestMs: 0,
+      oldestMs: Number.MAX_SAFE_INTEGER,
+      sortedItems: [],
+    },
+    items,
+  )
+}
+
 export function timelineListReducer(
   state: TimelineListState,
   event: TimelineListEvent,
@@ -102,89 +209,16 @@ export function timelineListReducer(
       return mergeItems(state, event.items)
 
     case 'NOTIFICATION_READ_REFRESH_SUCCEEDED':
-      return mergeItems(
-        {
-          ...state,
-          deferredChangedTables: null,
-          itemMap: new Map(),
-          newestId: 0,
-          newestMs: 0,
-          oldestMs: Number.MAX_SAFE_INTEGER,
-          sortedItems: [],
-        },
-        event.items,
-      )
+      return applyNotificationReadRefresh(state, event.items)
 
-    case 'LOCAL_INTERACTION': {
-      const items: TimelineItem[] = []
-      for (const item of state.sortedItems) {
-        if (
-          item.appIndex !== event.appIndex ||
-          !('backendUrl' in item) ||
-          item.backendUrl !== event.backendUrl
-        )
-          continue
-        if ('type' in item) {
-          if (!item.status) continue
-          const status = updateAccountStatus(
-            item.status,
-            event.statusId,
-            event.updates,
-          )
-          if (status !== item.status) items.push({ ...item, status })
-        } else {
-          const status = updateAccountStatus(
-            item,
-            event.statusId,
-            event.updates,
-          )
-          if (status !== item) items.push(status)
-        }
-      }
-      return timelineListReducer(state, {
-        items,
-        type: 'INTERACTION_UPDATES_SUCCEEDED',
-      })
-    }
+    case 'LOCAL_INTERACTION':
+      return applyLocalInteraction(state, event)
 
-    case 'INTERACTION_UPDATES_SUCCEEDED': {
-      if (event.items.length === 0) return state
-      const nextMap = new Map(state.itemMap)
-      let touched = false
-      for (const item of event.items) {
-        const key = itemKey(item)
-        if (nextMap.has(key)) {
-          nextMap.set(key, item)
-          touched = true
-        }
-      }
-      if (!touched) return state
-      return {
-        ...state,
-        itemMap: nextMap,
-        sortedItems: state.sortedItems.map(
-          (item) => nextMap.get(itemKey(item)) ?? item,
-        ),
-      }
-    }
+    case 'INTERACTION_UPDATES_SUCCEEDED':
+      return applyInteractionUpdates(state, event)
 
     case 'STREAMING_DEFERRED':
-      return {
-        ...state,
-        deferredChangedTables: mergeChangedTables(
-          state.deferredChangedTables,
-          event.changedTables,
-        ),
-        // Selective refresh requires complete ID coverage across all pending hints.
-        deferredPostIds:
-          event.changedPostIds &&
-          (!state.deferredChangedTables || state.deferredPostIds)
-            ? new Set([
-                ...(state.deferredPostIds ?? []),
-                ...event.changedPostIds,
-              ])
-            : undefined,
-      }
+      return applyStreamingDeferred(state, event)
 
     case 'DEFERRED_STREAMING_FLUSH_SUCCEEDED':
       return mergeItems({ ...state, deferredChangedTables: null }, event.items)

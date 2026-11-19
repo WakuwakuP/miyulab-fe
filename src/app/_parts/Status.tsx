@@ -202,7 +202,7 @@ export const Status = ({
               setDetail({
                 content: status.tags.find(
                   (tag) =>
-                    e.currentTarget.innerText.toLocaleLowerCase() ===
+                    (e.currentTarget.textContent ?? '').toLocaleLowerCase() ===
                     `#${tag.name.toLocaleLowerCase()}`,
                 )?.name as string,
                 type: 'Hashtag',
