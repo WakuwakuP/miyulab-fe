@@ -6,8 +6,6 @@
 
 import {
   addEdge,
-  applyEdgeChanges,
-  applyNodeChanges,
   type OnConnect,
   type OnEdgesChange,
   type OnNodesChange,
@@ -127,14 +125,12 @@ export function FlowQueryEditorModal({
     addJitterIndexRef.current = 0
   }, [open, resolvedPlanV2])
 
-  const onNodesChange: OnNodesChange = useCallback(
-    (changes) =>
-      setNodes((nds) => applyNodeChanges(changes, nds) as FlowNode[]),
+  const onNodesChange: OnNodesChange<FlowNode> = useCallback(
+    (changes) => setNodes((nds) => changes.applyTo(nds)),
     [],
   )
-  const onEdgesChange: OnEdgesChange = useCallback(
-    (changes) =>
-      setEdges((eds) => applyEdgeChanges(changes, eds) as FlowEdge[]),
+  const onEdgesChange: OnEdgesChange<FlowEdge> = useCallback(
+    (changes) => setEdges((eds) => changes.applyTo(eds)),
     [],
   )
   const onConnect: OnConnect = useCallback(
