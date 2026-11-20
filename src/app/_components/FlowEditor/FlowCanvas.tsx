@@ -148,8 +148,8 @@ export type ViewportCenterFn = () => { x: number; y: number }
 type FlowCanvasProps = {
   nodes: FlowNode[]
   edges: FlowEdge[]
-  onNodesChange: OnNodesChange
-  onEdgesChange: OnEdgesChange
+  onNodesChange: OnNodesChange<FlowNode>
+  onEdgesChange: OnEdgesChange<FlowEdge>
   onConnect: OnConnect
   onDeleteNode: (id: string) => void
   onUpdateNodeData: (id: string, data: FlowNode['data']) => void
@@ -237,7 +237,7 @@ export function FlowCanvas({
   const handleInit = useCallback(
     (instance: ReactFlowInstance<FlowNode, FlowEdge>) => {
       if (!didInitialFit) {
-        instance.fitView({ padding: 0.2 })
+        instance.fitView({ padding: '8.33%' })
         setDidInitialFit(true)
       }
     },
@@ -248,7 +248,7 @@ export function FlowCanvas({
     <FlowActionsContext value={flowActions}>
       <div className="flex h-full flow-editor-root">
         <div className="flex-1 relative flow-canvas-root">
-          <ReactFlow
+          <ReactFlow<FlowNode, FlowEdge>
             defaultEdgeOptions={{
               style: { stroke: '#4b5563', strokeWidth: 2 },
               type: 'deletable',
@@ -257,6 +257,8 @@ export function FlowCanvas({
             edges={edges}
             edgesFocusable
             edgeTypes={edgeTypes}
+            elevateEdgesOnSelect={false}
+            forceColorMode="light"
             nodes={nodes}
             nodeTypes={nodeTypes}
             onConnect={onConnect}
