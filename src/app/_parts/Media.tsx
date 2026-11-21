@@ -74,8 +74,10 @@ export const Media = ({
               'aspect-square max-h-48 object-contain p-0.5',
               className,
             ].join(' ')}
+            decoding="async"
             height={1920}
             key={media.id}
+            loading="lazy"
             src={fullSize ? (remoteUrl ?? mediaUrl) : (previewUrl ?? mediaUrl)}
             width={1920}
           />
@@ -99,8 +101,10 @@ export const Media = ({
           <img
             alt=""
             className="h-full w-full object-contain"
+            decoding="async"
             height={1920}
             key={media.id}
+            loading="lazy"
             src={fullSize ? (remoteUrl ?? mediaUrl) : (previewUrl ?? mediaUrl)}
             width={1920}
           />
@@ -122,12 +126,15 @@ export const Media = ({
           }}
           type="button"
         >
-          <video
-            className="h-full w-full object-contain"
-            key={media.id}
-            muted
-            src={mediaUrl}
-          />
+          {previewUrl && previewUrl !== mediaUrl && (
+            <img
+              alt=""
+              className="h-full w-full object-contain"
+              decoding="async"
+              loading="lazy"
+              src={previewUrl}
+            />
+          )}
           <span
             aria-hidden="true"
             className="absolute left-0 top-0 h-full w-full bg-black/50"
@@ -142,7 +149,13 @@ export const Media = ({
     case 'audio':
       return (
         <div className={['relative h-16 p-0.5', className].join(' ')}>
-          <audio className="w-full" controls key={media.id} src={mediaUrl}>
+          <audio
+            className="w-full"
+            controls
+            key={media.id}
+            preload="none"
+            src={mediaUrl}
+          >
             {media.description && (
               <track
                 default
