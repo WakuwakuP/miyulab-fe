@@ -35,10 +35,15 @@ function ipv4FromMappedHextets(mapped: string): string | null {
   return `${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`
 }
 
+function isUnspecifiedIpv6(host: string): boolean {
+  if (!host.includes(':') || host.includes('.')) return false
+  return host.split(':').every((part) => part === '' || /^0+$/.test(part))
+}
+
 function isPrivateIpv6(hostname: string): boolean {
   const host = stripIpv6Brackets(hostname.toLowerCase()).split('%')[0]
 
-  if (host === '::1') return true
+  if (host === '::1' || isUnspecifiedIpv6(host)) return true
 
   const ipv4Mapped = /^::ffff:(.+)$/i.exec(host)
   if (ipv4Mapped) {
