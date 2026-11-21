@@ -36,6 +36,19 @@ describe('attachmentProxy', () => {
       expect(isPrivateHost('[::1]')).toBe(true)
     })
 
+    it('IPv6未指定アドレスを拒否する', () => {
+      expect(isPrivateHost('::')).toBe(true)
+      expect(isPrivateHost('[::]')).toBe(true)
+      expect(isPrivateHost('0:0:0:0:0:0:0:0')).toBe(true)
+      expect(isPrivateHost('[0:0:0:0:0:0:0:0]')).toBe(true)
+      expect(isPrivateHost('0::0')).toBe(true)
+      expect(isPrivateHost('::0')).toBe(true)
+      expect(isPrivateHost('0::')).toBe(true)
+      expect(isPrivateHost('0000:0000:0000:0000:0000:0000:0000:0000')).toBe(
+        true,
+      )
+    })
+
     it('IPv4-mapped IPv6 loopbackを拒否する', () => {
       expect(isPrivateHost('::ffff:127.0.0.1')).toBe(true) // NOSONAR -- SSRF boundary fixture.
       expect(isPrivateHost('[::ffff:127.0.0.1]')).toBe(true)
@@ -106,6 +119,15 @@ describe('attachmentProxy', () => {
       await expect(
         isPrivateHostWithDns('93.184.216.34'), // NOSONAR -- DNS bypass fixture.
       ).resolves.toBe(false)
+      expect(mockedLookup).not.toHaveBeenCalled()
+    })
+
+    it('IPv6未指定アドレスはDNS解決せず拒否する', async () => {
+      mockedLookup.mockClear()
+
+      await expect(isPrivateHostWithDns('::')).resolves.toBe(true)
+      await expect(isPrivateHostWithDns('[::]')).resolves.toBe(true)
+      await expect(isPrivateHostWithDns('0:0:0:0:0:0:0:0')).resolves.toBe(true)
       expect(mockedLookup).not.toHaveBeenCalled()
     })
   })
