@@ -156,15 +156,12 @@ export const Media = ({
             preload="none"
             src={mediaUrl}
           >
-            {media.description && (
-              <track
-                default
-                kind="descriptions"
-                label="Attachment description"
-                src={descriptionTrackUrl(media.description)}
-                srcLang="und"
-              />
-            )}
+            <track
+              kind="captions"
+              label="Captions"
+              src={captionsTrackSrc(media.description)}
+              srcLang="und"
+            />
           </audio>
           <button
             aria-label={media.description || 'Open audio media'}
