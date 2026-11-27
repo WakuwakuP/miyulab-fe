@@ -22,7 +22,7 @@
     "emoji-picker-react": "^5.1.4",
     "html-react-parser": "^6.1.10",
     "jquery": "^4.1.0",
-    "lucide-react": "^1.77.0",
+    "lucide-react": "^1.79.0",
     "megalodon": "^10.3.1",
     "mfm-js": "^0.28.0",
     "misskey-js": "^2026.11.0",
@@ -48,7 +48,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.8",
-    "@mizchi/mutator": "^0.4.3",
+    "@mizchi/mutator": "^0.5.4",
     "@storybook/addon-docs": "^10.6.8",
     "@storybook/addon-themes": "^10.6.8",
     "@storybook/nextjs-vite": "^10.6.8",
