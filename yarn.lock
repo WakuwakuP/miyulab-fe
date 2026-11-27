@@ -1266,36 +1266,46 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@mizchi/mutator-core@npm:0.4.3":
-  version: 0.4.3
-  resolution: "@mizchi/mutator-core@npm:0.4.3"
+"@mizchi/mutator-bun@npm:0.5.4":
+  version: 0.5.4
+  resolution: "@mizchi/mutator-bun@npm:0.5.4"
   dependencies:
-    magic-string: "npm:^1.4.5"
-    oxc-parser: "npm:0.159.0"
-  checksum: 10c0/9bbd86f591266a4aec2ef054d480d03e8581e4f1ea7e972538db6bfffafd62ba88392b92ac2a958553baca110f0d46c1fede17b86f39e68947e29f9d6f265a6b
+    "@mizchi/mutator-core": "npm:0.5.4"
+  checksum: 10c0/3831eb8d82570b42f54eb156dd0332f7913c44447820993ff4d31397d8e6692207d6f7abea818234166de7e4c149d996a7e70018f4b6b4c2aa52eb0da23a9930
   languageName: node
   linkType: hard
 
-"@mizchi/mutator-jest@npm:0.4.3":
-  version: 0.4.3
-  resolution: "@mizchi/mutator-jest@npm:0.4.3"
+"@mizchi/mutator-core@npm:0.5.4":
+  version: 0.5.4
+  resolution: "@mizchi/mutator-core@npm:0.5.4"
   dependencies:
-    "@mizchi/mutator-core": "npm:0.4.3"
+    "@mizchi/test-impact": "npm:0.5.4"
+    magic-string: "npm:^1.4.5"
+    oxc-parser: "npm:0.159.0"
+  checksum: 10c0/ae2710ba1add413b0eba107fbe8cb5f552125207802b3a6cccee8500e83b973a64855beaea38146b3769906c44737e3928cd5500aa658358bd265229056fefde
+  languageName: node
+  linkType: hard
+
+"@mizchi/mutator-jest@npm:0.5.4":
+  version: 0.5.4
+  resolution: "@mizchi/mutator-jest@npm:0.5.4"
+  dependencies:
+    "@mizchi/mutator-core": "npm:0.5.4"
   peerDependencies:
     jest: ">=30.0.0"
   peerDependenciesMeta:
     jest:
       optional: true
-  checksum: 10c0/9c43e1e986ac5e8378f84feb7a9e25349ea4d6a57bfafe9d9ccb98ef3c172f4dfe6e140ed1c7e4ee5107173114fce7b901660854bbb9836e455fb3133d1bc5d2
+  checksum: 10c0/092669accb3707ce5ec68f9b22d548699c5cb2168e866ba51f358d8b837481e537a30a46c6f053d5d307754810a10bdd1c99016be59c56c2f3bd59be45d67252
   languageName: node
   linkType: hard
 
-"@mizchi/mutator-playwright@npm:0.4.3":
-  version: 0.4.3
-  resolution: "@mizchi/mutator-playwright@npm:0.4.3"
+"@mizchi/mutator-playwright@npm:0.5.4":
+  version: 0.5.4
+  resolution: "@mizchi/mutator-playwright@npm:0.5.4"
   dependencies:
-    "@jridgewell/trace-mapping": "npm:^0.3.31"
-    "@mizchi/mutator-core": "npm:0.4.3"
+    "@mizchi/mutator-core": "npm:0.5.4"
+    "@mizchi/test-impact": "npm:0.5.4"
   peerDependencies:
     "@playwright/test": ">=1.50.0"
     vite: ">=6.0.0"
@@ -1304,45 +1314,66 @@ __metadata:
       optional: true
     vite:
       optional: true
-  checksum: 10c0/61a16b80e075157498844b4062a2eb8b5f4dd8aaa13f9b45928c4278137db26f864677fbdfddb3a360c9e69fc8b3dd4325fc79515f2bc169fafc0f29a3dfb671
+  checksum: 10c0/ff9d05c94faf0dab17c39dc29241a1adf0e2e4038b8dace6cdacc67de5e40808528600ccee2d579a26b876b8ab8d4fcdf2e22661ed45c46d37765855496ddae9
   languageName: node
   linkType: hard
 
-"@mizchi/mutator-typecheck@npm:0.4.3":
-  version: 0.4.3
-  resolution: "@mizchi/mutator-typecheck@npm:0.4.3"
+"@mizchi/mutator-typecheck@npm:0.5.4":
+  version: 0.5.4
+  resolution: "@mizchi/mutator-typecheck@npm:0.5.4"
   dependencies:
-    "@mizchi/mutator-core": "npm:0.4.3"
-  checksum: 10c0/5b7cc6e943f5baa995835002b58634c8553d657f34cc433cb5451e3275154e4d5957cce9daf4ebe2bbd8f298911ce9d2cab18e11341f82211107f51e42188d04
+    "@mizchi/mutator-core": "npm:0.5.4"
+  checksum: 10c0/e2f72451e7aa2d6224115a36c557df350d4efde4fc1e18f3fbd3828024852c105000fd33a2b82296a4326eff0befb2da6e686f0a3749596ff008d4ce1ef9d6e8
   languageName: node
   linkType: hard
 
-"@mizchi/mutator-vitest@npm:0.4.3":
-  version: 0.4.3
-  resolution: "@mizchi/mutator-vitest@npm:0.4.3"
+"@mizchi/mutator-vitest@npm:0.5.4":
+  version: 0.5.4
+  resolution: "@mizchi/mutator-vitest@npm:0.5.4"
   dependencies:
-    "@mizchi/mutator-core": "npm:0.4.3"
+    "@mizchi/mutator-core": "npm:0.5.4"
   peerDependencies:
     vitest: ^5.0.0
   peerDependenciesMeta:
     vitest:
       optional: true
-  checksum: 10c0/a38ced68cdaa3f19e0ade38a0d288f211abeec69d6de384404f797c8da27b9894549bc0c2c1e856818502bf3bcda27c372cb04717e0913c856b63c3fb3daf291
+  checksum: 10c0/5e0222fc2ee81708655865ca6a401de582fbdece912cbafff02ca814551713864282935d163528e57b0e6ebb791cf4ed003d0dd6a6ddfd42d64c566ffe68b033
   languageName: node
   linkType: hard
 
-"@mizchi/mutator@npm:^0.4.3":
-  version: 0.4.3
-  resolution: "@mizchi/mutator@npm:0.4.3"
+"@mizchi/mutator@npm:^0.5.4":
+  version: 0.5.4
+  resolution: "@mizchi/mutator@npm:0.5.4"
   dependencies:
-    "@mizchi/mutator-core": "npm:0.4.3"
-    "@mizchi/mutator-jest": "npm:0.4.3"
-    "@mizchi/mutator-playwright": "npm:0.4.3"
-    "@mizchi/mutator-typecheck": "npm:0.4.3"
-    "@mizchi/mutator-vitest": "npm:0.4.3"
+    "@mizchi/mutator-bun": "npm:0.5.4"
+    "@mizchi/mutator-core": "npm:0.5.4"
+    "@mizchi/mutator-jest": "npm:0.5.4"
+    "@mizchi/mutator-playwright": "npm:0.5.4"
+    "@mizchi/mutator-typecheck": "npm:0.5.4"
+    "@mizchi/mutator-vitest": "npm:0.5.4"
+    "@mizchi/test-impact": "npm:0.5.4"
+    chokidar: "npm:6.0.0"
   bin:
     mutator: dist/cli.js
-  checksum: 10c0/24929725f33d9970f39a40bd9a18ffc784da1b07831fec583bc47b710aec6b874ba6ba33217186fde168e8ff415d073d56521499c9bfc34949747d1bbac8a8fc
+  checksum: 10c0/d2c1d0735512b6efe3bd75c055daffe8d3ed97bd211eb0b9961fd0ac1d3ac6233b448fdf705a6dbe6f067e43f9737fb2f4307d726fcf9a799bc19aae36b7693d
+  languageName: node
+  linkType: hard
+
+"@mizchi/test-impact@npm:0.5.4":
+  version: 0.5.4
+  resolution: "@mizchi/test-impact@npm:0.5.4"
+  dependencies:
+    "@jridgewell/trace-mapping": "npm:^0.3.31"
+    oxc-parser: "npm:0.159.0"
+    typescript: "npm:6.0.3"
+  peerDependencies:
+    "@playwright/test": ">=1.50.0"
+  peerDependenciesMeta:
+    "@playwright/test":
+      optional: true
+  bin:
+    test-impact: dist/cli.js
+  checksum: 10c0/d21a9eb1f64728181637aa30adb78b54f9b231244859ecccfb8356cef7b1c67dbb887fa842988e39a891367da1ce2fc201e1eb17867979ee3f4f5de615384a13
   languageName: node
   linkType: hard
 
@@ -4229,6 +4260,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"chokidar@npm:6.0.0":
+  version: 6.0.0
+  resolution: "chokidar@npm:6.0.0"
+  dependencies:
+    readdirp: "npm:^5.1.1"
+  checksum: 10c0/75651391e81b0cf7efa8ec373b68afaf1ad13283e8cae01737976bd0ff72fcb5afac75942ac3c07393d414269737229eb7648d74d32a1373764ecd0711b626b9
+  languageName: node
+  linkType: hard
+
 "chokidar@npm:^4.0.3":
   version: 4.0.3
   resolution: "chokidar@npm:4.0.3"
@@ -6079,16 +6119,16 @@ __metadata:
   languageName: node
   linkType: hard
 
-"lucide-react@npm:^1.77.0":
-  version: 1.77.0
-  resolution: "lucide-react@npm:1.77.0"
+"lucide-react@npm:^1.79.0":
+  version: 1.79.0
+  resolution: "lucide-react@npm:1.79.0"
   peerDependencies:
     "@types/react": "*"
     react: ^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0
   peerDependenciesMeta:
     "@types/react":
       optional: true
-  checksum: 10c0/602824e6080ae948bfeb875fef90b6ae341edaf9991d434405245460699ef3a7ed8aacb5c604cc2211794f4941179c13b1e43c0a9c0858964705b1b673a16f74
+  checksum: 10c0/d8e8e6ea867c0c6e6afaa3205155a5284197cd5630a3ea811c833ae1433261c1e81e6122156b16741ea92d92c769534649197833507e47fa8c89a917ef467b64
   languageName: node
   linkType: hard
 
@@ -6294,7 +6334,7 @@ __metadata:
     "@dnd-kit/core": "npm:^6.3.1"
     "@dnd-kit/sortable": "npm:^10.0.0"
     "@dnd-kit/utilities": "npm:^3.2.2"
-    "@mizchi/mutator": "npm:^0.4.3"
+    "@mizchi/mutator": "npm:^0.5.4"
     "@radix-ui/react-context-menu": "npm:^2.4.1"
     "@radix-ui/react-dialog": "npm:^1.3.1"
     "@radix-ui/react-select": "npm:^2.4.1"
@@ -6328,7 +6368,7 @@ __metadata:
     husky: "npm:9.1.7"
     jquery: "npm:^4.1.0"
     lint-staged: "npm:^17.6.2"
-    lucide-react: "npm:^1.77.0"
+    lucide-react: "npm:^1.79.0"
     megalodon: "npm:^10.3.1"
     mfm-js: "npm:^0.28.0"
     misskey-js: "npm:^2026.11.0"
@@ -7487,6 +7527,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"readdirp@npm:^5.1.1":
+  version: 5.1.1
+  resolution: "readdirp@npm:5.1.1"
+  checksum: 10c0/5e99755684b9104761e48801828f4d2614efa33b1698629929c5985184dc63a7f8233c827832c40dc7be16b00cc871d303cf9de396d2fb74b9465ee2aa2424a1
+  languageName: node
+  linkType: hard
+
 "recast@npm:^0.23.5":
   version: 0.23.21
   resolution: "recast@npm:0.23.21"
@@ -8280,7 +8327,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"typescript@npm:^6.0.3":
+"typescript@npm:6.0.3, typescript@npm:^6.0.3":
   version: 6.0.3
   resolution: "typescript@npm:6.0.3"
   bin:
@@ -8290,7 +8337,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"typescript@patch:typescript@npm%3A^6.0.3#optional!builtin<compat/typescript>":
+"typescript@patch:typescript@npm%3A6.0.3#optional!builtin<compat/typescript>, typescript@patch:typescript@npm%3A^6.0.3#optional!builtin<compat/typescript>":
   version: 6.0.3
   resolution: "typescript@patch:typescript@npm%3A6.0.3#optional!builtin<compat/typescript>::version=6.0.3&hash=5786d5"
   bin:
