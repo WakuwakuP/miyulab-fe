@@ -1,5 +1,7 @@
 import { type Backend, backendList } from 'types/types'
 
+const DEFAULT_BACKEND_URL = 'https://pl.waku.dev'
+
 function trimTrailingSlashes(value: string): string {
   let end = value.length
   while (end > 0 && value[end - 1] === '/') end -= 1
@@ -20,6 +22,33 @@ export function normalizeSettingsBackupOrigin(raw: string): string | null {
   if (url.search !== '' || url.hash !== '') return null
   if (url.pathname !== '/') return null
   return url.origin
+}
+
+function addNormalizedOrigin(origins: Set<string>, raw: string): void {
+  const origin = normalizeSettingsBackupOrigin(raw)
+  if (origin) origins.add(origin)
+}
+
+/** 確認済み Fediverse オリジンだけを認可先にする。 */
+export function getAllowedSettingsBackupOrigins(): ReadonlySet<string> {
+  const origins = new Set<string>()
+  addNormalizedOrigin(
+    origins,
+    process.env.NEXT_PUBLIC_BACKEND_URL ?? DEFAULT_BACKEND_URL,
+  )
+  for (const part of (process.env.SETTINGS_BACKUP_ALLOWED_ORIGINS ?? '').split(
+    ',',
+  )) {
+    addNormalizedOrigin(origins, part.trim())
+  }
+  return origins
+}
+
+export function isAllowedSettingsBackupOrigin(
+  origin: string,
+  allowed: ReadonlySet<string>,
+): boolean {
+  return allowed.has(origin)
 }
 
 export function isSettingsBackupBackend(value: unknown): value is Backend {

@@ -1,7 +1,8 @@
 export const SETTINGS_BACKUP_FORMAT = 'miyulab-settings-backup'
 export const SETTINGS_BACKUP_VERSION = 1
 export const SETTINGS_BACKUP_CHANNEL = 'miyulab-settings'
-export const SETTINGS_BACKUP_KEEP = 20
+export const SETTINGS_BACKUP_KEEP = 10
+export const SETTINGS_BACKUP_GLOBAL_MAX = 200
 export const SETTINGS_BACKUP_MAX_BYTES = 2 * 1024 * 1024
 export const SETTINGS_AUTHORIZE_INTERVAL_MS = 1_000
 export const SETTINGS_CREATE_INTERVAL_MS = 10_000
@@ -24,6 +25,7 @@ export type SettingsBackupStorageKey =
 export const SETTINGS_BACKUP_ERRORS = {
   authorizationFailed: 'Authorization failed',
   invalid: 'Invalid backup',
+  quotaExceeded: 'Quota exceeded',
   rateLimited: 'Rate limited',
   unavailable: 'Cloud backup is unavailable',
 } as const

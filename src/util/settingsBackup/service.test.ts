@@ -10,7 +10,12 @@ vi.mock('util/attachmentProxy', async () => {
   }
 })
 
-import { SETTINGS_BACKUP_COOKIE, SETTINGS_BACKUP_TTL_MS } from './constants'
+import {
+  SETTINGS_BACKUP_COOKIE,
+  SETTINGS_BACKUP_GLOBAL_MAX,
+  SETTINGS_BACKUP_KEEP,
+  SETTINGS_BACKUP_TTL_MS,
+} from './constants'
 import { stableStringify } from './envelope'
 import { sha256Hex } from './hash'
 import {
@@ -40,6 +45,7 @@ import type { SettingsBackupVerifyFetch } from './verifyAccount'
 const DB_URL = 'postgres://user:pass@host/db'
 const TOKEN = 'owner-token-123_ABC~+/='
 const NOW = 1_700_000_000_000
+const ALLOWED_ORIGINS = new Set(['https://social.example'])
 
 type StoredRow = SettingsBackupInsert & {
   createdAt: number
@@ -59,6 +65,9 @@ function memoryStore(
         row.ownerBackendUrl === backendUrl && row.ownerAccountId === accountId,
     )
   return {
+    async countAll() {
+      return rows.length
+    },
     async delete(owner, id) {
       const index = rows.findIndex(
         (row) =>
@@ -103,7 +112,7 @@ function memoryStore(
       return owned(owner.backendUrl, owner.accountId)
         .slice()
         .reverse()
-        .slice(0, 20)
+        .slice(0, SETTINGS_BACKUP_KEEP)
         .map(
           (row): SettingsBackupSummary => ({
             createdAt: new Date(row.createdAt).toISOString(),
@@ -172,6 +181,7 @@ function deps(options?: {
   const store = memoryStore()
   const now = options?.now ?? NOW
   const value: SettingsBackupDeps = {
+    allowedOrigins: ALLOWED_ORIGINS,
     callerKey: 'test',
     cookies: jar,
     databaseUrl: DB_URL,
@@ -228,11 +238,12 @@ describe('settings backup service', () => {
     })
   })
 
-  it('同じ内容は行を増やさず、21件目で最古が消え、他の所有者は読めない', async () => {
+  it('同じ内容は行を増やさず、上限超過で最古が消え、他の所有者は読めない', async () => {
     const jar = cookieJar()
     let now = NOW
     const store = memoryStore(() => now)
     const context: SettingsBackupDeps = {
+      allowedOrigins: ALLOWED_ORIGINS,
       callerKey: 'test',
       cookies: jar,
       databaseUrl: DB_URL,
@@ -279,7 +290,7 @@ describe('settings backup service', () => {
     })
     expect(store.rows[0]?.payloadSha256).toBe(sha256Hex(content))
 
-    for (let index = 0; index < 20; index += 1) {
+    for (let index = 0; index < SETTINGS_BACKUP_KEEP; index += 1) {
       now += 11_000
       const created = await createSettingsBackup(
         envelope(`col-${index}`),
@@ -287,7 +298,7 @@ describe('settings backup service', () => {
       )
       expect(created.success).toBe(true)
     }
-    expect(store.rows).toHaveLength(20)
+    expect(store.rows).toHaveLength(SETTINGS_BACKUP_KEEP)
     expect(store.rows.some((row) => row.payload.includes('"id":"home"'))).toBe(
       false,
     )
@@ -295,7 +306,7 @@ describe('settings backup service', () => {
     const listed = await listSettingsBackups(context)
     expect(listed.success).toBe(true)
     if (!listed.success) return
-    expect(listed.backups).toHaveLength(20)
+    expect(listed.backups).toHaveLength(SETTINGS_BACKUP_KEEP)
 
     const otherJar = cookieJar()
     otherJar.set(
@@ -338,6 +349,7 @@ describe('settings backup service', () => {
     const now = NOW
     const store = memoryStore(() => now)
     const context: SettingsBackupDeps = {
+      allowedOrigins: ALLOWED_ORIGINS,
       callerKey: 'test',
       cookies: jar,
       databaseUrl: DB_URL,
@@ -419,6 +431,77 @@ describe('settings backup service', () => {
       { ...failing.deps, callerKey: 'other' },
     )
     expect(other).toMatchObject({ success: true })
+  })
+
+  it('許可していないオリジンへは問い合わせない', async () => {
+    const { deps: context } = deps()
+    const result = await authorizeSettingsBackup(
+      'mastodon',
+      'https://unlisted.example',
+      TOKEN,
+      context,
+    )
+    expect(result).toEqual({
+      error: 'Authorization failed',
+      success: false,
+    })
+    expect(context.fetch).not.toHaveBeenCalled()
+  })
+
+  it('全体件数が上限なら新規保存しない', async () => {
+    const jar = cookieJar()
+    const store = memoryStore()
+    const context: SettingsBackupDeps = {
+      allowedOrigins: ALLOWED_ORIGINS,
+      callerKey: 'test',
+      cookies: jar,
+      databaseUrl: DB_URL,
+      fetch: vi.fn(),
+      limits: createSettingsBackupLimits(),
+      now: () => NOW,
+      store,
+    }
+    const key = deriveSettingsBackupAuthKey(DB_URL)
+    if (key == null) throw new Error('missing key')
+    jar.set(
+      SETTINGS_BACKUP_COOKIE,
+      createSettingsBackupSessionValue(
+        {
+          accountId: 'remote-id',
+          acct: 'alice',
+          backendUrl: 'https://social.example',
+        },
+        hashSettingsBackupAccessToken(TOKEN),
+        NOW + SETTINGS_BACKUP_TTL_MS,
+        key,
+      ),
+      {
+        httpOnly: true,
+        maxAge: 28_800,
+        path: '/',
+        sameSite: 'strict',
+        secure: true,
+      },
+    )
+    for (let index = 0; index < SETTINGS_BACKUP_GLOBAL_MAX; index += 1) {
+      store.rows.push({
+        createdAt: NOW,
+        formatVersion: 1,
+        id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`,
+        ownerAccountId: 'other-id',
+        ownerBackendUrl: 'https://social.example',
+        payload: '{}',
+        payloadSha256: `hash-${index}`,
+        timelineCount: 0,
+      })
+    }
+    await expect(
+      createSettingsBackup(envelope('home'), context),
+    ).resolves.toEqual({
+      error: 'Quota exceeded',
+      success: false,
+    })
+    expect(store.rows).toHaveLength(SETTINGS_BACKUP_GLOBAL_MAX)
   })
 
   it('DATABASE_URL が無いときは使えない', async () => {

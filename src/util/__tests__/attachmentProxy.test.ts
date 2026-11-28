@@ -3,13 +3,16 @@ import {
   createProxyAccessToken,
   getAttachmentProxyAllowedDomains,
   isAllowedContentType,
+  isAllowedMediaHost,
   isAllowedRequestHost,
   isPrivateHost,
   isPrivateHostWithDns,
   isRequestFromAllowedOrigin,
+  shouldIssueAttachmentProxyCookie,
+  toProxiedAttachmentSrc,
   verifyProxyAccessToken,
 } from 'util/attachmentProxy'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 type LookupAll = (
   hostname: string,
@@ -21,6 +24,10 @@ const mockedLookup = vi.hoisted(() => vi.fn<LookupAll>())
 vi.mock('node:dns/promises', () => ({
   lookup: mockedLookup,
 }))
+
+afterEach(() => {
+  vi.unstubAllEnvs()
+})
 
 describe('attachmentProxy', () => {
   describe('isPrivateHost', () => {
@@ -286,8 +293,70 @@ describe('attachmentProxy', () => {
 
       await expect(createProxyAccessToken()).resolves.toBeNull()
       await expect(verifyProxyAccessToken('1234.invalid')).resolves.toBe(false)
+    })
+  })
 
-      vi.unstubAllEnvs()
+  describe('allowed media hosts', () => {
+    it('既定バックエンドと追加ホストだけを許可する', () => {
+      vi.stubEnv('NEXT_PUBLIC_BACKEND_URL', 'https://pl.waku.dev')
+      vi.stubEnv(
+        'NEXT_PUBLIC_ATTACHMENT_PROXY_ALLOWED_MEDIA_HOSTS',
+        'cdn.example',
+      )
+      vi.stubEnv('ATTACHMENT_PROXY_ALLOWED_MEDIA_HOSTS', 'media.example')
+
+      expect(isAllowedMediaHost('pl.waku.dev')).toBe(true)
+      expect(isAllowedMediaHost('cdn.example')).toBe(true)
+      expect(isAllowedMediaHost('media.example')).toBe(true)
+      expect(isAllowedMediaHost('unlisted.example')).toBe(false)
+    })
+
+    it('許可ホストだけを同一オリジンのプロキシ経路にする', () => {
+      vi.stubEnv('NEXT_PUBLIC_BACKEND_URL', 'https://pl.waku.dev')
+      vi.stubEnv('NEXT_PUBLIC_ATTACHMENT_PROXY_ALLOWED_MEDIA_HOSTS', '')
+      vi.stubEnv('ATTACHMENT_PROXY_ALLOWED_MEDIA_HOSTS', '')
+
+      expect(
+        toProxiedAttachmentSrc('https://pl.waku.dev/files/a.png?x=1'),
+      ).toBe('/api/attachment/pl.waku.dev/files/a.png?x=1')
+      expect(toProxiedAttachmentSrc('https://unlisted.example/a.png')).toBe(
+        'https://unlisted.example/a.png',
+      )
+    })
+  })
+
+  describe('shouldIssueAttachmentProxyCookie', () => {
+    it('文書ナビゲーションだけに Cookie を発行する', () => {
+      expect(
+        shouldIssueAttachmentProxyCookie({
+          pathname: '/',
+          secFetchDest: 'document',
+        }),
+      ).toBe(true)
+      expect(
+        shouldIssueAttachmentProxyCookie({
+          pathname: '/settings',
+          secFetchDest: 'iframe',
+        }),
+      ).toBe(false)
+      expect(
+        shouldIssueAttachmentProxyCookie({
+          pathname: '/',
+          secFetchDest: 'empty',
+        }),
+      ).toBe(false)
+      expect(
+        shouldIssueAttachmentProxyCookie({
+          pathname: '/',
+          secFetchDest: null,
+        }),
+      ).toBe(false)
+      expect(
+        shouldIssueAttachmentProxyCookie({
+          pathname: '/api/attachment/unlisted.example/a.png',
+          secFetchDest: 'document',
+        }),
+      ).toBe(false)
     })
   })
 })

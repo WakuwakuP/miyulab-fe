@@ -1,6 +1,14 @@
 import { lookup } from 'node:dns/promises'
 import { isIP } from 'node:net'
 
+export {
+  getAllowedMediaHosts,
+  getClientAllowedMediaHosts,
+  isAllowedMediaHost,
+  shouldIssueAttachmentProxyCookie,
+  toProxiedAttachmentSrc,
+} from 'util/attachmentProxyHosts'
+
 const ALLOWED_CONTENT_TYPES = ['image/', 'audio/', 'video/']
 
 export const PROXY_COOKIE_NAME = '__attachment_proxy'

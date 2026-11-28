@@ -10,6 +10,7 @@ import {
 import Image from 'next/image'
 import type { ComponentProps } from 'react'
 import { useMemo, useRef } from 'react'
+import { toProxiedAttachmentSrc } from 'util/attachmentProxyHosts'
 
 type ProxyImageProps = Omit<ComponentProps<typeof Image>, 'src'> & {
   /** オリジナルの画像URL（https://から始まる完全なURL） */
@@ -26,21 +27,10 @@ export const ProxyImage = ({
 }: ProxyImageProps) => {
   const imgRef = useRef<HTMLImageElement>(null)
 
-  // 元のURLからプロキシURLを生成
-  const proxySrc = useMemo(() => {
-    try {
-      const u = new URL(originalSrc)
-      const host = u.host
-      const path = u.pathname.replace(/^\//, '')
-      const qs = u.search ? `?${u.searchParams.toString()}` : ''
-      // If there's no path (i.e., root), avoid trailing slash duplication
-      const proxiedPath = path ? `/${path}` : ''
-      return `/api/attachment/${host}${proxiedPath}${qs}`
-    } catch {
-      // URLのパースに失敗した場合は元のURLをそのまま使用
-      return originalSrc
-    }
-  }, [originalSrc])
+  const proxySrc = useMemo(
+    () => toProxiedAttachmentSrc(originalSrc),
+    [originalSrc],
+  )
 
   const handleOpenInNewTab = () => {
     window.open(originalSrc, '_blank', 'noopener,noreferrer')

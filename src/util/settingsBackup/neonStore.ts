@@ -29,6 +29,9 @@ export function createNeonSettingsBackupStore(
   client: SettingsBackupNeonClient,
 ): SettingsBackupStore {
   return {
+    async countAll() {
+      return client.settingsBackup.count()
+    },
     async delete(owner, id) {
       const result = await client.settingsBackup.deleteMany({
         where: { ...ownerWhere(owner), id },

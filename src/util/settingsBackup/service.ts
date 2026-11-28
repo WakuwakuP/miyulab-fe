@@ -4,6 +4,7 @@ import {
   SETTINGS_BACKUP_COOKIE,
   SETTINGS_BACKUP_COOKIE_MAX_AGE,
   SETTINGS_BACKUP_ERRORS,
+  SETTINGS_BACKUP_GLOBAL_MAX,
   SETTINGS_BACKUP_KEEP,
   SETTINGS_BACKUP_TTL_MS,
   SETTINGS_CREATE_INTERVAL_MS,
@@ -16,6 +17,7 @@ import {
 } from './envelope'
 import { sha256Hex } from './hash'
 import {
+  isAllowedSettingsBackupOrigin,
   isSettingsBackupAccessToken,
   isSettingsBackupBackend,
   normalizeSettingsBackupOrigin,
@@ -54,6 +56,7 @@ export type SettingsBackupCookieJar = {
 }
 
 export type SettingsBackupDeps = {
+  allowedOrigins: ReadonlySet<string>
   callerKey: string
   cookies: SettingsBackupCookieJar
   databaseUrl: string | undefined
@@ -132,6 +135,7 @@ export async function authorizeSettingsBackup(
       : null
   if (
     origin == null ||
+    !isAllowedSettingsBackupOrigin(origin, deps.allowedOrigins) ||
     !isSettingsBackupBackend(backend) ||
     !isSettingsBackupAccessToken(accessToken)
   )
@@ -262,6 +266,9 @@ export async function createSettingsBackup(
       now - latestCreatedAt < SETTINGS_CREATE_INTERVAL_MS
     )
       return failure(SETTINGS_BACKUP_ERRORS.rateLimited)
+    const total = await deps.store.countAll()
+    if (total >= SETTINGS_BACKUP_GLOBAL_MAX)
+      return failure(SETTINGS_BACKUP_ERRORS.quotaExceeded)
     const stored = stableStringify(validated.envelope)
     const created = await deps.store.insert(session, {
       formatVersion: validated.envelope.formatVersion,
