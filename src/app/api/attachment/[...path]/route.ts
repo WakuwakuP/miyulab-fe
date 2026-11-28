@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import {
   getAttachmentProxyAllowedDomains,
   isAllowedContentType,
+  isAllowedMediaHost,
   isAllowedRequestHost,
   isPrivateHostWithDns,
   isRequestFromAllowedOrigin,
@@ -73,21 +74,28 @@ export async function GET(
       return NextResponse.json({ error: 'Invalid URL' }, { status: 400 })
     }
 
-    // プライベート/内部ネットワークへのリクエストをブロック (SSRF防止)
-    if (await isPrivateHostWithDns(parsedUrl.hostname)) {
+    // 許可したメディアホスト以外、およびプライベート網は拒否する
+    if (
+      !isAllowedMediaHost(parsedUrl.hostname) ||
+      (await isPrivateHostWithDns(parsedUrl.hostname))
+    ) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    // 外部メディアを取得
     const attachmentResponse = await fetch(imageUrl, {
       cache: 'force-cache',
       headers: { 'User-Agent': 'miyulab-fe/1.0' },
+      redirect: 'manual',
     })
+
+    if (attachmentResponse.status >= 300 && attachmentResponse.status < 400) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+    }
 
     if (!attachmentResponse.ok) {
       return NextResponse.json(
         { error: 'Failed to fetch image' },
-        { status: attachmentResponse.status },
+        { status: 502 },
       )
     }
 
