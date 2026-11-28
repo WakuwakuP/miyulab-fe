@@ -3,6 +3,7 @@
 import { cookies, headers } from 'next/headers'
 import { getNeonClient } from 'util/db/neon/client'
 import { createNeonSettingsBackupStore } from 'util/settingsBackup/neonStore'
+import { getAllowedSettingsBackupOrigins } from 'util/settingsBackup/origin'
 import {
   authorizeSettingsBackup as authorizeWithDeps,
   createSettingsBackupLimits,
@@ -43,6 +44,7 @@ async function buildDeps(): Promise<SettingsBackupDeps> {
   }
   const client = getNeonClient()
   return {
+    allowedOrigins: getAllowedSettingsBackupOrigins(),
     callerKey: await callerKey(),
     cookies: cookiesAdapter,
     databaseUrl: process.env.DATABASE_URL,

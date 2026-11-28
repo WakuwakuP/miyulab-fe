@@ -15,6 +15,7 @@ export type SettingsBackupInsert = {
 }
 
 export type SettingsBackupStore = {
+  countAll(): Promise<number>
   delete(owner: SettingsBackupSession, id: string): Promise<boolean>
   findLatest(owner: SettingsBackupSession): Promise<{
     createdAt: string

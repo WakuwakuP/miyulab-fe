@@ -1,8 +1,14 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  getAllowedSettingsBackupOrigins,
+  isAllowedSettingsBackupOrigin,
   isSettingsBackupAccessToken,
   normalizeSettingsBackupOrigin,
 } from './origin'
+
+afterEach(() => {
+  vi.unstubAllEnvs()
+})
 
 describe('normalizeSettingsBackupOrigin', () => {
   it('https のオリジンを正規化する', () => {
@@ -26,6 +32,26 @@ describe('normalizeSettingsBackupOrigin', () => {
     expect(
       normalizeSettingsBackupOrigin('https://social.example/?q=1'),
     ).toBeNull()
+  })
+})
+
+describe('getAllowedSettingsBackupOrigins', () => {
+  it('既定のバックエンドと追加の https オリジンだけを残す', () => {
+    vi.stubEnv('NEXT_PUBLIC_BACKEND_URL', 'https://pl.waku.dev/')
+    vi.stubEnv(
+      'SETTINGS_BACKUP_ALLOWED_ORIGINS',
+      'https://social.example, http://insecure.example, https://user:pass@evil.example',
+    )
+    const allowed = getAllowedSettingsBackupOrigins()
+    expect(allowed).toEqual(
+      new Set(['https://pl.waku.dev', 'https://social.example']),
+    )
+    expect(isAllowedSettingsBackupOrigin('https://pl.waku.dev', allowed)).toBe(
+      true,
+    )
+    expect(
+      isAllowedSettingsBackupOrigin('https://unlisted.example', allowed),
+    ).toBe(false)
   })
 })
 

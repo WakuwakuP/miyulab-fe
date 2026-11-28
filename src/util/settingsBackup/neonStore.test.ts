@@ -16,15 +16,18 @@ describe('createNeonSettingsBackupStore', () => {
     const findFirst = vi.fn().mockResolvedValue(null)
     const findMany = vi.fn().mockResolvedValue([])
     const create = vi.fn().mockResolvedValue({ id: 'id-1' })
+    const count = vi.fn().mockResolvedValue(0)
     const deleteMany = vi.fn().mockResolvedValue({ count: 1 })
     const store = createNeonSettingsBackupStore({
-      settingsBackup: { create, deleteMany, findFirst, findMany },
+      settingsBackup: { count, create, deleteMany, findFirst, findMany },
     } as unknown as SettingsBackupNeonClient)
 
     await store.findLatest(owner)
     await store.list(owner)
     await store.getPayload(owner, '11111111-1111-4111-8111-111111111111')
     await store.delete(owner, '11111111-1111-4111-8111-111111111111')
+    await expect(store.countAll()).resolves.toBe(0)
+    expect(count).toHaveBeenCalledOnce()
     await store.insert(owner, {
       formatVersion: 1,
       payload: '{}',
@@ -74,6 +77,7 @@ describe('createNeonSettingsBackupStore', () => {
     const deleteMany = vi.fn().mockResolvedValue({ count: 1 })
     const store = createNeonSettingsBackupStore({
       settingsBackup: {
+        count: vi.fn(),
         create: vi.fn(),
         deleteMany,
         findFirst: vi.fn(),
